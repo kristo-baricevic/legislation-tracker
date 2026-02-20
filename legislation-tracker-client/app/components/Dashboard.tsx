@@ -9,22 +9,35 @@ export default function Dashboard() {
   const [showAmendments, setShowAmendments] = React.useState<boolean>(false);
   return (
     <>
-      <button
-        onClick={() => {
-          setShowAmendments(false);
-          setShowBills(true);
-        }}
-      >
-        BILLS
-      </button>
-      <button
-        onClick={() => {
-          setShowBills(false);
-          setShowAmendments(true);
-        }}
-      >
-        AMENDMENTS
-      </button>
+      <div className="flex flex-row gap-x-12">
+        <button
+          className="flex"
+          onClick={() => {
+            setShowAmendments(false);
+            setShowBills(true);
+          }}
+        >
+          BILLS
+        </button>
+        <button
+          className="flex"
+          onClick={() => {
+            setShowBills(false);
+            setShowAmendments(true);
+          }}
+        >
+          AMENDMENTS
+        </button>
+        <button
+          className="flex"
+          onClick={() => {
+            setShowBills(false);
+            setShowAmendments(false);
+          }}
+        >
+          CLOSE
+        </button>
+      </div>
       {showBills ? <FetchBill /> : ""}
       {showAmendments ? <FetchAmendments /> : ""}
     </>
