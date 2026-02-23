@@ -16,7 +16,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="flex flex-row bg-slate-600 gap-x-12 p-2 mb-8">
+      <div className="flex w-full flex-wrap bg-slate-600 gap-x-12 p-2 mb-8">
         <button
           className="flex cursor-pointer hover:bg-slate-500 p-12"
           onClick={() => {

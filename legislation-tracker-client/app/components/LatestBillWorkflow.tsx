@@ -3,7 +3,7 @@ import React from "react";
 
 export default function LatestBillWorkflow() {
   const [congressData, setCongressData] = React.useState<any>(null);
-  const url = "/api/bill/latest";
+  const url = "/api/congress/bill/latest";
   const url2 = "/api/congress";
   const url3 = "/api/congress/vote";
   React.useEffect(() => {
@@ -11,9 +11,9 @@ export default function LatestBillWorkflow() {
       //get most recent bill
       const billRes = await fetch(url);
       const billJson: any = await billRes.json();
-      console.log("data returned ", billJson);
+      console.log("data returned ", billJson.bills);
 
-      const { congress, billType, billNumber } = billJson;
+      const { congress, type: billType, number: billNumber } = billJson.bills;
 
       console.log(
         " congress ",
@@ -29,12 +29,22 @@ export default function LatestBillWorkflow() {
         `${url2}/${congress}/${billType}/${billNumber}`
       );
       const detailsJson = await detailsRes.json();
-      const actions = detailsJson.bill?.actions || [];
+      const actionsUrl = detailsJson.bill?.actions?.url;
 
-      console.log("data latest json", detailsJson);
+      console.log(
+        "data latest json",
+        detailsJson,
+        "actions",
+        detailsJson.bill?.actions
+      );
 
-      const voteAction = actions.find((a: any) => a.text?.includes("Roll"));
-
+      const actionsRes = await fetch(
+        `${actionsUrl}&api_key=${process.env.NEXT_PUBLIC_CONGRESS_API_KEY}`
+      );
+      const actionsJson = await actionsRes.json();
+      const voteAction = actionsJson.actions.find((a: any) =>
+        a.text.includes("Roll")
+      );
       if (!voteAction) return;
 
       // use reg ex to extract the text 'Roll' plus a digit
