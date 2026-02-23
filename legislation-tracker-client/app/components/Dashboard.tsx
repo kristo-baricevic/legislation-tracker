@@ -4,11 +4,14 @@ import React from "react";
 import FetchBill from "./FetchBill";
 import FetchAmendments from "./FetchAmendments";
 import FetchBillsGovInfo from "./FetchBillsGovInfo";
+import LatestBillWorkflow from "./LatestBillWorkflow";
 
 export default function Dashboard() {
   const [showBills, setShowBills] = React.useState<boolean>(false);
   const [showAmendments, setShowAmendments] = React.useState<boolean>(false);
   const [showGovInfoBills, setShowGovInfoBills] =
+    React.useState<boolean>(false);
+  const [latestBillWorkflow, setLatestBillWorkflow] =
     React.useState<boolean>(false);
 
   return (
@@ -20,6 +23,7 @@ export default function Dashboard() {
             setShowAmendments(false);
             setShowGovInfoBills(false);
             setShowBills(true);
+            setLatestBillWorkflow(false);
           }}
         >
           BILLS
@@ -30,6 +34,7 @@ export default function Dashboard() {
             setShowBills(false);
             setShowGovInfoBills(false);
             setShowAmendments(true);
+            setLatestBillWorkflow(false);
           }}
         >
           AMENDMENTS
@@ -40,6 +45,7 @@ export default function Dashboard() {
             setShowBills(false);
             setShowAmendments(false);
             setShowGovInfoBills(true);
+            setLatestBillWorkflow(false);
           }}
         >
           GOVINFO BILLS
@@ -50,6 +56,18 @@ export default function Dashboard() {
             setShowBills(false);
             setShowAmendments(false);
             setShowGovInfoBills(false);
+            setLatestBillWorkflow(true);
+          }}
+        >
+          LATEST BILL WORKFLOW
+        </button>
+        <button
+          className="flex cursor-pointer hover:bg-slate-500 p-12"
+          onClick={() => {
+            setShowBills(false);
+            setShowAmendments(false);
+            setShowGovInfoBills(false);
+            setLatestBillWorkflow(false);
           }}
         >
           CLOSE
@@ -58,6 +76,7 @@ export default function Dashboard() {
       {showBills ? <FetchBill /> : ""}
       {showAmendments ? <FetchAmendments /> : ""}
       {showGovInfoBills ? <FetchBillsGovInfo /> : ""}
+      {latestBillWorkflow ? <LatestBillWorkflow /> : ""}
     </>
   );
 }
