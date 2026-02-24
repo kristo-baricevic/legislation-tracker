@@ -16,7 +16,7 @@ export async function GET(
 
   const { congress, chamber, rollNumber } = params;
 
-  const url = `https://api.congress.gov/v3/bill/${congress}/${chamber}/${rollNumber}?api_key=${apiKey}`;
+  const url = `https://api.congress.gov/v3/vote/${congress}/${chamber}/${rollNumber}?api_key=${apiKey}`;
 
   const res = await fetch(url);
   const data = await res.json();
