@@ -34,41 +34,49 @@ export default function LatestBillWorkflow() {
         billNumber
       );
 
-      //vote data
-      const detailsRes = await fetch(
+      // 1) get actions
+      const actionsRes = await fetch(
         `${url2}/${congress}/${billType}/${billNumber}`
       );
-      const detailsJson = await detailsRes.json();
+      const actionsJson = await actionsRes.json();
 
-      const votesRes = await fetch(
-        `${url2}/${congress}/${billType}/${billNumber}/votes`
+      const actionsUrl = actionsJson?.bill?.actions?.url;
+
+      if (!actionsUrl) {
+        console.log("No actions URL found", actionsJson);
+        return;
+      }
+
+      const actionsRes2 = await fetch(
+        `/api/congress/action?url=${encodeURIComponent(actionsUrl)}`
+      );
+      const actionsData = await actionsRes2.json();
+      console.log("actionsJson", actionsJson);
+      // 2) find roll call text
+      const voteAction = actionsData.actions.find((a: any) =>
+        a.text.includes("Roll no.")
       );
 
-      const votesJson = await votesRes.json();
+      if (!voteAction) return;
 
-      const vote = votesJson.votes?.[0];
+      const rollMatch = voteAction.text.match(/Roll no\. (\d+)/i);
+      const rollNumber = rollMatch?.[1];
 
-      console.log("votes json", votesJson);
+      const chamber = voteAction.text.includes("Senate") ? "senate" : "house";
 
-      if (!vote) return;
+      const voteUrl = voteAction?.recordedVotes?.[0]?.url;
 
-      const rollNumber = vote.rollNumber;
-      const chamber = vote.chamber.toLowerCase();
+      if (!voteUrl) {
+        console.log("No recordedVotes URL found", voteAction);
+        return;
+      }
 
       const voteRes = await fetch(
-        `${url3}/${congress}/${chamber}/${rollNumber}`
+        `/api/congress/action?url=${encodeURIComponent(voteUrl)}`
       );
-
       const voteJson = await voteRes.json();
-      // use reg ex to extract the text 'Roll' plus a digit
 
-      //[
-      //   "Roll no. 250", // index 0 → full matched text
-      //   "250"           // index 1 → first capture group
-      // ]
-
-      console.log("vote json", voteJson);
-
+      console.log("bill data ", billJson, "vote data", voteJson);
       setCongressData({
         bill: billJson,
         vote: voteJson,
