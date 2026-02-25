@@ -1,30 +1,35 @@
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const url = searchParams.get("url");
+  const { searchParams } = new URL(request.url);
+  const rawUrl = searchParams.get("url");
 
-    if (!url) {
+  if (!rawUrl) {
     return NextResponse.json({ error: "Missing url" }, { status: 400 });
-    }
+  }
 
-    const apiKey = process.env.NEXT_PUBLIC_CONGRESS_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_CONGRESS_API_KEY;
 
-    const finalUrl = `${url}&api_key=${apiKey}`;
+  // Append api_key if calling api.congress.gov
+  let url = rawUrl;
 
-    const res = await fetch(finalUrl, { cache: "no-store" });
+  if (url.includes("api.congress.gov") && !url.includes("api_key=")) {
+    const separator = url.includes("?") ? "&" : "?";
+    url = `${url}${separator}api_key=${apiKey}`;
+  }
 
-    const contentType = res.headers.get("content-type");
+  const res = await fetch(url);
 
-    if (contentType?.includes("application/json")) {
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-    }
+  const contentType = res.headers.get("content-type") || "";
 
-    const text = await res.text();
-    return new Response(text, {
-        status: res.status,
-        headers: { "content-type": contentType || "text/plain" },
-    });
+  if (contentType.includes("application/json")) {
+    const json = await res.json();
+    return NextResponse.json(json, { status: res.status });
+  }
 
+  const text = await res.text();
+  return new Response(text, {
+    status: res.status,
+    headers: { "content-type": contentType },
+  });
 }

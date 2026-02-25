@@ -17,7 +17,8 @@ export async function GET(
     return NextResponse.json({ error: "Missing CONGRESS API key" }, { status: 500 });
   }
 
-  const url = `https://api.congress.gov/v3/${chamber}/votes/${congress}/${rollNumber}?api_key=${apiKey}`;  const res = await fetch(url, { cache: "no-store" });
+  const url = `https://api.congress.gov/v3/${chamber}/votes/${congress}/${rollNumber}?api_key=${apiKey}`;
+  const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
 
   return NextResponse.json(data, { status: res.status });
