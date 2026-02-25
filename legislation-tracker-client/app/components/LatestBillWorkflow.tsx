@@ -92,19 +92,19 @@ export default function LatestBillWorkflow() {
           <table border={1} cellPadding={6}>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Party</th>
-                <th>State</th>
-                <th>Vote</th>
+                <th className="px-4">Name</th>
+                <th className="px-4">Party</th>
+                <th className="px-4">State</th>
+                <th className="px-4">Vote</th>
               </tr>
             </thead>
             <tbody>
               {data.vote.map((member: any, index: number) => (
                 <tr key={index}>
-                  <td>{member.name}</td>
-                  <td>{member.party}</td>
-                  <td>{member.state}</td>
-                  <td>{member.vote}</td>
+                  <td className="px-4">{member.name}</td>
+                  <td className="px-4">{member.party}</td>
+                  <td className="px-4">{member.state}</td>
+                  <td className="px-4">{member.vote}</td>
                 </tr>
               ))}
             </tbody>
