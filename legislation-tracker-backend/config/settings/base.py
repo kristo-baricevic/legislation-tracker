@@ -37,12 +37,12 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
-    # Local apps (Phase 2 will add these)
-    # "apps.accounts",
-    # "apps.legislation",
-    # "apps.congress",
-    # "apps.changelog",
-    # "apps.ingestion",
+    # Local apps
+    "apps.congress",
+    "apps.legislation",
+    "apps.changelog",
+    "apps.ingestion",
+    "apps.accounts",
 ]
 
 MIDDLEWARE = [
@@ -136,3 +136,6 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Custom user (must be before first migration that touches auth)
+AUTH_USER_MODEL = "accounts.User"
