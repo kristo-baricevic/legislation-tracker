@@ -1,0 +1,2 @@
+# Production: base only (no dev tools)
+-r base.txt

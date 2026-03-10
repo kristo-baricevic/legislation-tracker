@@ -1,0 +1,9 @@
+# Development: base + testing and tooling
+-r base.txt
+
+pytest>=7.4
+pytest-django>=4.7
+black>=24.0
+ruff>=0.1
+django-extensions>=3.2
+ipython>=8.0
