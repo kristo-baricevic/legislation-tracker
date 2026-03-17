@@ -6,36 +6,36 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Phase 1: Scaffold
 
-- [ ] **1.1** Create directory `legislation-tracker-backend/` at repo root.
-- [ ] **1.2** Set up Python env: `python -m venv .venv`, add `.venv/` to `.gitignore` (or use existing project ignore).
-- [ ] **1.3** Create `requirements/base.txt`: Django 5.x, psycopg[binary], redis, celery, django-environ, django-storages, boto3, djangorestframework, djangorestframework-simplejwt, gunicorn (prod).
-- [ ] **1.4** Create `requirements/dev.txt`: extends base + pytest, pytest-django, black, ruff, django-extensions, ipython.
-- [ ] **1.5** Create `requirements/prod.txt`: extends base (no dev tools).
-- [ ] **1.6** Run `django-admin startproject config .` from inside `legislation-tracker-backend/` (so `config/` is the project package).
-- [ ] **1.7** Add `config/celery.py` and wire Celery to Django (app = Celery('config'); app.config_from_object; autodiscover_tasks). Update `config/__init__.py` to load the Celery app on Django startup.
-- [ ] **1.8** Create `.env.example` with: `DATABASE_URL`, `REDIS_URL`, `DJANGO_SECRET_KEY`, `CONGRESS_API_KEY`, `GOVINFO_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET_NAME`, `AWS_S3_ENDPOINT_URL` (for MinIO), `DEBUG`, `ALLOWED_HOSTS`.
-- [ ] **1.9** Configure settings to use `django-environ` for env vars, separate `config.settings.base`, `config.settings.dev`, `config.settings.prod` (or single file with env-based overrides).
-- [ ] **1.10** Add `config/settings` (or main settings): `DATABASES` from `DATABASE_URL`, `CACHES`/Celery broker from `REDIS_URL`, `INSTALLED_APPS` (rest_framework, simplejwt, etc.), `REST_FRAMEWORK` and JWT config, CORS for `legislation-tracker-client` origin.
-- [ ] **1.11** Create `docker-compose.yml` in `legislation-tracker-backend/`: services for **postgres** (PostgreSQL 15+), **redis**, **minio** (S3-compatible, create bucket via MC or init script), optional **celery** and **celery-beat** (or run locally). Set env vars and volumes as needed.
-- [ ] **1.12** Document in README how to run: `docker-compose up -d`, `pip install -r requirements/dev.txt`, `cp .env.example .env`, `python manage.py runserver` (and run celery/beat locally or via compose).
+- [x] **1.1** Create directory `legislation-tracker-backend/` at repo root.
+- [x] **1.2** Set up Python env: `python -m venv .venv`, add `.venv/` to `.gitignore` (or use existing project ignore).
+- [x] **1.3** Create `requirements/base.txt`: Django 5.x, psycopg[binary], redis, celery, django-environ, django-storages, boto3, djangorestframework, djangorestframework-simplejwt, gunicorn (prod).
+- [x] **1.4** Create `requirements/dev.txt`: extends base + pytest, pytest-django, black, ruff, django-extensions, ipython.
+- [x] **1.5** Create `requirements/prod.txt`: extends base (no dev tools).
+- [x] **1.6** Run `django-admin startproject config .` from inside `legislation-tracker-backend/` (so `config/` is the project package).
+- [x] **1.7** Add `config/celery.py` and wire Celery to Django (app = Celery('config'); app.config_from_object; autodiscover_tasks). Update `config/__init__.py` to load the Celery app on Django startup.
+- [x] **1.8** Create `.env.example` with: `DATABASE_URL`, `REDIS_URL`, `DJANGO_SECRET_KEY`, `CONGRESS_API_KEY`, `GOVINFO_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET_NAME`, `AWS_S3_ENDPOINT_URL` (for MinIO), `DEBUG`, `ALLOWED_HOSTS`.
+- [x] **1.9** Configure settings to use `django-environ` for env vars, separate `config.settings.base`, `config.settings.dev`, `config.settings.prod` (or single file with env-based overrides).
+- [x] **1.10** Add `config/settings` (or main settings): `DATABASES` from `DATABASE_URL`, `CACHES`/Celery broker from `REDIS_URL`, `INSTALLED_APPS` (rest_framework, simplejwt, etc.), `REST_FRAMEWORK` and JWT config, CORS for `legislation-tracker-client` origin.
+- [x] **1.11** Create `docker-compose.yml` in `legislation-tracker-backend/`: services for **postgres** (PostgreSQL 15+), **redis**, **minio** (S3-compatible, create bucket via MC or init script), optional **celery** and **celery-beat** (or run locally). Set env vars and volumes as needed.
+- [x] **1.12** Document in README how to run: `docker-compose up -d`, `pip install -r requirements/dev.txt`, `cp .env.example .env`, `python manage.py runserver` (and run celery/beat locally or via compose).
 
 ---
 
 ## Phase 2: Django apps and models
 
-- [ ] **2.1** Create apps: `python manage.py startapp accounts`, same for `legislation`, `congress`, `changelog`, `ingestion`. Move each into `apps/` and add `apps/` to `PYTHONPATH` or set `config.settings` so `INSTALLED_APPS` references `apps.accounts`, etc.
-- [ ] **2.2** **accounts**: Custom user model (extends AbstractUser, e.g. email as USERNAME_FIELD). Create and run migration. Add `UserPreference` model (user FK, topic FK nullable, state, chamber, last_sent_at). Migration.
-- [ ] **2.3** **congress**: `Representative` (bioguide_id unique, name, chamber, party, state, district, is_current, created_at, updated_at). Migration.
-- [ ] **2.4** **legislation**: `Topic` (name, slug unique, description). `Bill` with all fields from plan (jurisdiction, session, bill_number, title, summary, status, processing_status enum, introduced_at, last_action_at, sponsor FK to Representative, latest_contract FK to BillContract nullable — add BillContract in next step and then add this FK in a later migration if needed), source_api_id, raw_text_url, pdf_url, metadata_hash, created_at, updated_at. UniqueConstraint (session, bill_number). Migration.
-- [ ] **2.5** **legislation**: `BillDocument` (bill FK, version_label, is_active_version, object_storage_key, content_type, file_size_bytes, source_url, raw_text, extracted_text, content_hash, downloaded_at, parsed_at, contract_generated_at, created_at). UniqueConstraint (bill, version_label). Migration.
-- [ ] **2.6** **legislation**: `BillContract` (bill FK, document FK, schema_version, contract_json JSONB, contract_hash, computed_at). Migration. Then add `Bill.latest_contract` FK to BillContract (migration).
-- [ ] **2.7** **legislation**: `EvidenceSpan` (bill FK, document FK, contract FK, field_path, start_char, end_char, quoted_text, page_number). Migration.
-- [ ] **2.8** **legislation**: `BillTopic` (bill FK, topic FK, confidence_score). Migration.
-- [ ] **2.9** **legislation**: `BillSimilarity` (bill_a FK, bill_b FK, similarity_score, method, computed_at). UniqueConstraint (bill_a, bill_b, method). Add check or app logic: bill_a_id < bill_b_id. Migration.
-- [ ] **2.10** **congress**: `Vote` (bill FK, chamber, roll_number, vote_date, result, yeas, nays). `VoteRecord` (vote FK, representative FK, position). Migrations.
-- [ ] **2.11** **changelog**: `ChangeLog` model (bill FK, document FK nullable, contract FK nullable, change_type, old_value JSONB, new_value JSONB, created_at). Create migration that creates a **partitioned table** by RANGE (created_at) with initial monthly partitions (raw SQL in migration). Ensure Django ORM writes to parent table name.
-- [ ] **2.12** **ingestion**: `IngestionState` (jurisdiction, congress, last_polled_at, last_bill_update_seen_at). Migration.
-- [ ] **2.13** Add indexes per BACKEND_PLAN §7 (Bill, BillDocument, BillContract, ChangeLog, BillTopic, VoteRecord, BillSimilarity). Can be in same migrations or follow-up migration.
+- [x] **2.1** Create apps: `python manage.py startapp accounts`, same for `legislation`, `congress`, `changelog`, `ingestion`. Move each into `apps/` and add `apps/` to `PYTHONPATH` or set `config.settings` so `INSTALLED_APPS` references `apps.accounts`, etc.
+- [x] **2.2** **accounts**: Custom user model (extends AbstractUser, e.g. email as USERNAME_FIELD). Create and run migration. Add `UserPreference` model (user FK, topic FK nullable, state, chamber, last_sent_at). Migration.
+- [x] **2.3** **congress**: `Representative` (bioguide_id unique, name, chamber, party, state, district, is_current, created_at, updated_at). Migration.
+- [x] **2.4** **legislation**: `Topic` (name, slug unique, description). `Bill` with all fields from plan (jurisdiction, session, bill_number, title, summary, status, processing_status enum, introduced_at, last_action_at, sponsor FK to Representative, latest_contract FK to BillContract nullable — add BillContract in next step and then add this FK in a later migration if needed), source_api_id, raw_text_url, pdf_url, metadata_hash, created_at, updated_at. UniqueConstraint (session, bill_number). Migration.
+- [x] **2.5** **legislation**: `BillDocument` (bill FK, version_label, is_active_version, object_storage_key, content_type, file_size_bytes, source_url, raw_text, extracted_text, content_hash, downloaded_at, parsed_at, contract_generated_at, created_at). UniqueConstraint (bill, version_label). Migration.
+- [x] **2.6** **legislation**: `BillContract` (bill FK, document FK, schema_version, contract_json JSONB, contract_hash, computed_at). Migration. Then add `Bill.latest_contract` FK to BillContract (migration).
+- [x] **2.7** **legislation**: `EvidenceSpan` (bill FK, document FK, contract FK, field_path, start_char, end_char, quoted_text, page_number). Migration.
+- [x] **2.8** **legislation**: `BillTopic` (bill FK, topic FK, confidence_score). Migration.
+- [x] **2.9** **legislation**: `BillSimilarity` (bill_a FK, bill_b FK, similarity_score, method, computed_at). UniqueConstraint (bill_a, bill_b, method). Add check or app logic: bill_a_id < bill_b_id. Migration.
+- [x] **2.10** **congress**: `Vote` (bill FK, chamber, roll_number, vote_date, result, yeas, nays). `VoteRecord` (vote FK, representative FK, position). Migrations.
+- [x] **2.11** **changelog**: `ChangeLog` model (bill FK, document FK nullable, contract FK nullable, change_type, old_value JSONB, new_value JSONB, created_at). Create migration that creates a **partitioned table** by RANGE (created_at) with initial monthly partitions (raw SQL in migration). Ensure Django ORM writes to parent table name. _(Implemented as normal table; partitioning can be added later.)_
+- [x] **2.12** **ingestion**: `IngestionState` (jurisdiction, congress, last_polled_at, last_bill_update_seen_at). Migration.
+- [x] **2.13** Add indexes per BACKEND_PLAN §7 (Bill, BillDocument, BillContract, ChangeLog, BillTopic, VoteRecord, BillSimilarity). Can be in same migrations or follow-up migration.
 
 ---
 
@@ -46,7 +46,7 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 - [ ] **3.3** Define `process_bill_versions(bill_id)`: fetch bill text versions from Congress API; for each version, get or create BillDocument; if new “current” version, set previous is_active_version=False, new one True; enqueue `download_document` for new/changed docs.
 - [ ] **3.4** Define `process_bill_votes(bill_id)`: fetch vote refs from Congress API; for each vote not yet stored, create Vote and VoteRecords (and Representatives if needed), insert ChangeLog(vote).
 - [ ] **3.5** Configure Celery Beat schedule in `config/celery.py` (or dedicated config): poll_congress, optional fetch_congress_members daily.
-- [ ] **3.6** Add retry + dead-letter behavior: max_retries, retry_backoff, on_failure log to table or structured log (task_id, bill_id, exception).
+- [ ] **3.6** Add retry + dead-letter behavior: max_retries, retry_backoff, on_failure log to table or structured log (task_id, bill_id, exception). **Operational:** On repeated failures, check the `IngestionTaskFailure` table (or structured logs) for task_id, bill_id, task_name, error_message.
 
 ---
 
@@ -114,17 +114,17 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Summary checklist (high level)
 
-| Phase | Focus |
-|-------|--------|
-| 1 | Scaffold: project, deps, config, docker-compose, celery app |
-| 2 | All Django apps and models, migrations, ChangeLog partitioning, indexes |
-| 3 | Celery: poll_congress, process_bill, process_bill_versions, process_bill_votes, Beat, retries |
-| 4 | S3 + download_document task |
-| 5 | BillContract + EvidenceSpan + generate_contract (stub then real) |
-| 6 | update_topics, recompute_similarity_batch |
-| 7 | DRF API: auth, bills, documents, contracts, reps, votes, preferences, pre-signed URLs |
-| 8 | RSS endpoint from ChangeLog |
-| 9 | Newsletter query + send job |
-| 10 | Indexes, health, admin, logging, README |
+| Phase | Focus                                                                                         |
+| ----- | --------------------------------------------------------------------------------------------- |
+| 1     | Scaffold: project, deps, config, docker-compose, celery app                                   |
+| 2     | All Django apps and models, migrations, ChangeLog partitioning, indexes                       |
+| 3     | Celery: poll_congress, process_bill, process_bill_versions, process_bill_votes, Beat, retries |
+| 4     | S3 + download_document task                                                                   |
+| 5     | BillContract + EvidenceSpan + generate_contract (stub then real)                              |
+| 6     | update_topics, recompute_similarity_batch                                                     |
+| 7     | DRF API: auth, bills, documents, contracts, reps, votes, preferences, pre-signed URLs         |
+| 8     | RSS endpoint from ChangeLog                                                                   |
+| 9     | Newsletter query + send job                                                                   |
+| 10    | Indexes, health, admin, logging, README                                                       |
 
 You can implement in order; phases 4–6 can overlap with 7 once models and tasks exist.

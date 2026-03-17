@@ -113,6 +113,9 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
+# Congress.gov API (ingestion)
+CONGRESS_API_KEY = env("CONGRESS_API_KEY", default="")
+
 # CORS: allow the Next.js client
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
