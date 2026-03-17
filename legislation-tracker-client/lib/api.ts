@@ -75,3 +75,123 @@ export async function register(email: string, password: string): Promise<Registe
   }
   return res.json();
 }
+
+/** Try to refresh the access token using the stored refresh token. Returns new access token or null. */
+async function tryRefreshToken(): Promise<string | null> {
+  const refresh = getStoredRefreshToken();
+  if (!refresh) return null;
+  const base = getApiBase();
+  const res = await fetch(`${base}/api/auth/token/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { access: string };
+  if (data.access) {
+    setStoredTokens(data.access, refresh);
+    return data.access;
+  }
+  return null;
+}
+
+/** Authenticated GET. On 401, tries to refresh the token and retries once; then throws. */
+export async function authGet<T = unknown>(path: string, retried = false): Promise<T> {
+  const base = getApiBase();
+  const token = getStoredAccessToken();
+  const headers: HeadersInit = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${base}${path}`, { headers });
+  if (res.status === 401 && !retried) {
+    const newToken = await tryRefreshToken();
+    if (newToken) return authGet<T>(path, true);
+    clearStoredTokens();
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface BillListItem {
+  id: number;
+  jurisdiction: string;
+  session: number;
+  bill_number: string;
+  title: string;
+  status: string;
+  sponsor_name: string | null;
+  introduced_at: string | null;
+  last_action_at: string | null;
+}
+
+export interface BillDocumentItem {
+  id: number;
+  version_label: string;
+  is_active_version: boolean;
+  source_url: string | null;
+  downloaded_at: string | null;
+}
+
+export interface BillDetail extends BillListItem {
+  summary: string | null;
+  processing_status: string;
+  sponsor: number | null;
+  raw_text_url: string | null;
+  pdf_url: string | null;
+  source_api_id: string | null;
+  documents: BillDocumentItem[];
+  congress_gov_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillsPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: BillListItem[];
+}
+
+export async function getBills(params?: { session?: number; page?: number }): Promise<BillsPage> {
+  const sp = new URLSearchParams();
+  if (params?.session != null) sp.set("session", String(params.session));
+  if (params?.page != null) sp.set("page", String(params.page));
+  const q = sp.toString();
+  return authGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
+}
+
+export async function getBill(id: number): Promise<BillDetail> {
+  return authGet<BillDetail>(`/api/bills/${id}/`);
+}
+
+export interface RepresentativeItem {
+  id: number;
+  bioguide_id: string;
+  name: string;
+  chamber: string;
+  party: string;
+  state: string;
+  district: string | null;
+}
+
+export interface RepresentativesPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: RepresentativeItem[];
+}
+
+export async function getRepresentatives(params?: {
+  state?: string;
+  chamber?: string;
+  page?: number;
+}): Promise<RepresentativesPage> {
+  const sp = new URLSearchParams();
+  if (params?.state) sp.set("state", params.state);
+  if (params?.chamber) sp.set("chamber", params.chamber);
+  if (params?.page != null) sp.set("page", String(params.page));
+  const q = sp.toString();
+  return authGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
+}

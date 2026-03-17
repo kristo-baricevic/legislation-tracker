@@ -2,6 +2,11 @@
 Celery app for legislation-tracker-backend.
 Loads config from Django settings and autodiscovers tasks in installed apps.
 """
+import os
+
+# So "celery -A config" works without exporting DJANGO_SETTINGS_MODULE each time
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
+
 from celery import Celery
 from celery.signals import task_failure
 
@@ -9,12 +14,23 @@ app = Celery("config")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
+# Print at startup so it's always visible (runs when worker process loads config)
+try:
+    from django.conf import settings
+    _key = getattr(settings, "CONGRESS_API_KEY", "") or ""
+    if _key:
+        print("[config] CONGRESS_API_KEY is set (length=%s)" % len(_key))
+    else:
+        print("[config] CONGRESS_API_KEY is NOT set — set it in .env and restart worker")
+except Exception as e:
+    print("[config] Could not check CONGRESS_API_KEY:", e)
+
 # Beat schedule: poll Congress every 10 minutes
 app.conf.beat_schedule = {
     "poll-congress": {
         "task": "apps.ingestion.tasks.poll_congress",
         "schedule": 600.0,  # every 10 minutes (in seconds)
-        "options": {"kwargs": {"jurisdiction": "federal", "congress": 119}},
+        "kwargs": {"jurisdiction": "federal", "congress": 119},
     },
 }
 

@@ -27,6 +27,12 @@ export default function AuthNav() {
       <Link href="/" className="hover:text-green-300">
         Home
       </Link>
+      <Link href="/bills" className="hover:text-green-300">
+        Bills
+      </Link>
+      <Link href="/representatives" className="hover:text-green-300">
+        Representatives
+      </Link>
       {hasToken ? (
         <button
           type="button"

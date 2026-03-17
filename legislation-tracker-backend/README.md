@@ -31,6 +31,13 @@ cp .env.example .env
 # .env.example already has DATABASE_URL pointing at Postgres and REDIS_URL.
 ```
 
+- The `.env` file must live in **legislation-tracker-backend/** (same directory as `manage.py`), not in the repo root.
+- For Congress ingestion use **CONGRESS_API_KEY** (get a key at https://api.congress.gov). Use `CONGRESS_API_KEY=your-key` with no spaces around `=`. After changing `.env`, **restart the Celery worker** so it picks up the new value.
+
+**Verify the key is loaded:** from the backend directory run  
+`python manage.py shell -c "from django.conf import settings; k=getattr(settings,'CONGRESS_API_KEY',''); print('CONGRESS_API_KEY loaded:', bool(k), 'length:', len(k))"`  
+You should see `CONGRESS_API_KEY loaded: True length: <number>`.
+
 `.env.example` uses `DATABASE_URL=postgres://legislation:legislation@localhost:5432/legislation`. Do not change this if you use `docker compose` for Postgres.
 
 ### 3. Python env and deps
@@ -124,19 +131,52 @@ DATABASE_URL=sqlite:///./db.sqlite3
 
 Then run `python manage.py migrate` and `python manage.py runserver` as above. Redis and MinIO are still optional for Celery and S3.
 
-### 6. Celery (optional for Phase 1)
+### 6. Celery (Phase 3 ingestion)
 
-With Redis running:
+With **Redis** running (e.g. `docker compose up -d` or `brew services start redis`):
+
+**Start worker** (one terminal):
 
 ```bash
-# Terminal 2: worker
+cd legislation-tracker-backend
+source .venv/bin/activate   # if using venv
 celery -A config worker -l info
+```
 
-# Terminal 3: beat (scheduler)
+**Start Beat** (second terminal):
+
+```bash
+cd legislation-tracker-backend
+source .venv/bin/activate
 celery -A config beat -l info
 ```
 
-Set `DJANGO_SETTINGS_MODULE=config.settings.dev` if needed (manage.py defaults to it).
+The Celery app sets `DJANGO_SETTINGS_MODULE=config.settings.dev` by default so you don’t need to export it. To use production settings, set `DJANGO_SETTINGS_MODULE=config.settings.prod` before running Celery.
+
+**Trigger `poll_congress` once** (third terminal or after worker/beat are running):
+
+```bash
+cd legislation-tracker-backend
+source .venv/bin/activate
+python manage.py shell -c "
+from apps.ingestion.tasks import poll_congress
+r = poll_congress.delay()
+print('Enqueued:', r.get(timeout=30))
+"
+```
+
+**Confirm Bills and ChangeLog rows:**
+
+```bash
+python manage.py shell -c "
+from apps.legislation.models import Bill
+from apps.changelog.models import ChangeLog
+print('Bills:', Bill.objects.count())
+print('ChangeLog entries:', ChangeLog.objects.count())
+for b in Bill.objects.all()[:5]:
+    print(' ', b.bill_number, b.title[:50] if b.title else '')
+"
+```
 
 ## Project layout
 

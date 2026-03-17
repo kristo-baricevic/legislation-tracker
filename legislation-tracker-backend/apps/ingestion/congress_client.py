@@ -2,11 +2,13 @@
 Congress.gov API v3 client for ingestion.
 Uses CONGRESS_API_KEY from Django settings. Base URL: https://api.congress.gov/v3.
 """
+import logging
 import time
-from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 class CongressAPIError(Exception):
@@ -26,11 +28,20 @@ def _request(method, path, params=None):
     base = "https://api.congress.gov/v3"
     url = f"{base.rstrip('/')}/{path.lstrip('/')}"
     api_key = _get_api_key()
+    if not api_key:
+        logger.warning(
+            "CONGRESS_API_KEY is not set. Set it in legislation-tracker-backend/.env and restart the Celery worker."
+        )
     if api_key:
         params = dict(params or {})
         params.setdefault("api_key", api_key)
+    logger.debug("Congress API request: %s %s (params keys: %s)", method, path, list(params.keys()) if params else [])
     resp = requests.request(method, url, params=params, timeout=30)
     if not resp.ok:
+        logger.error(
+            "Congress API error: %s %s -> %s %s",
+            method, path, resp.status_code, (resp.text[:200] if resp.text else ""),
+        )
         raise CongressAPIError(
             f"Congress API error: {resp.status_code}",
             status_code=resp.status_code,
@@ -70,12 +81,19 @@ def bill_list(congress, bill_type, from_date_time=None, limit=250):
             "number": str(num) if num is not None else "",
             "updateDate": update_date,
         })
+    logger.info(
+        "bill_list: congress=%s bill_type=%s from_date_time=%s -> %s bills (raw response had %s items)",
+        congress, bill_type, from_date_time, len(out), len(bills),
+    )
+    if bills and not out:
+        logger.warning("bill_list: API returned %s raw items but parsed 0; check response shape.", len(bills))
     return out
 
 
 def bill_detail(congress, bill_type, bill_number):
     """GET /bill/{congress}/{billType}/{billNumber}. Returns full bill object."""
     bill_type = (bill_type or "hr").lower()
+    logger.debug("bill_detail: congress=%s bill_type=%s bill_number=%s", congress, bill_type, bill_number)
     data = _request("GET", f"bill/{congress}/{bill_type}/{bill_number}")
     _throttle()
     return data.get("bill") or data
@@ -103,12 +121,17 @@ def bill_text_list(congress, bill_type, bill_number):
                     url = f["url"]
                     break
         result.append({"version_label": str(label), "url": url or ""})
+    logger.info(
+        "bill_text_list: congress=%s bill_type=%s bill_number=%s -> %s versions",
+        congress, bill_type, bill_number, len(result),
+    )
     return result
 
 
 def vote_detail(congress, chamber, roll_number):
     """GET /vote/{congress}/{chamber}/{rollNumber}. Returns vote and member positions."""
     chamber = (chamber or "house").lower()
+    logger.debug("vote_detail: congress=%s chamber=%s roll_number=%s", congress, chamber, roll_number)
     data = _request("GET", f"vote/{congress}/{chamber}/{roll_number}")
     _throttle()
     return data.get("vote") or data

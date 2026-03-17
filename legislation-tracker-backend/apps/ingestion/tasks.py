@@ -88,6 +88,7 @@ def poll_congress(jurisdiction="federal", congress=119):
     """
     Fetch bill list from Congress API, update IngestionState, enqueue process_bill per bill.
     """
+    logger.info("poll_congress: starting jurisdiction=%s congress=%s", jurisdiction, congress)
     state, _ = IngestionState.objects.get_or_create(
         jurisdiction=jurisdiction,
         congress=congress,
@@ -96,27 +97,31 @@ def poll_congress(jurisdiction="federal", congress=119):
     from_date_time = None
     if state.last_bill_update_seen_at:
         from_date_time = state.last_bill_update_seen_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        logger.info("poll_congress: incremental from_date_time=%s", from_date_time)
+    else:
+        logger.info("poll_congress: full fetch (no last_bill_update_seen_at)")
     bill_types = ["hr", "s"]
     all_bill_keys = set()
     latest_update = state.last_bill_update_seen_at
     for bt in bill_types:
         try:
             items = bill_list(congress, bt, from_date_time=from_date_time, limit=250)
+            logger.info("poll_congress: bill_type=%s -> %s bills", bt, len(items))
+            for b in items:
+                key = bill_key(b["congress"], b["type"], b["number"])
+                all_bill_keys.add(key)
+                ud = b.get("updateDate")
+                if ud:
+                    if isinstance(ud, str):
+                        try:
+                            ud = datetime.fromisoformat(ud.replace("Z", "+00:00"))
+                        except Exception:
+                            ud = None
+                    if ud and (latest_update is None or ud > latest_update):
+                        latest_update = ud
         except CongressAPIError as e:
-            logger.warning("poll_congress bill_list %s %s: %s", congress, bt, e)
+            logger.warning("poll_congress: bill_list failed congress=%s bill_type=%s: %s", congress, bt, e)
             continue
-        for b in items:
-            key = bill_key(b["congress"], b["type"], b["number"])
-            all_bill_keys.add(key)
-            ud = b.get("updateDate")
-            if ud:
-                if isinstance(ud, str):
-                    try:
-                        ud = datetime.fromisoformat(ud.replace("Z", "+00:00"))
-                    except Exception:
-                        ud = None
-                if ud and (latest_update is None or ud > latest_update):
-                    latest_update = ud
     now = timezone.now()
     state.last_polled_at = now
     if latest_update:
@@ -124,6 +129,7 @@ def poll_congress(jurisdiction="federal", congress=119):
     state.save(update_fields=["last_polled_at", "last_bill_update_seen_at"])
     for key in all_bill_keys:
         process_bill.apply_async(args=[key])
+    logger.info("poll_congress: done enqueued=%s last_bill_update_seen_at=%s", len(all_bill_keys), latest_update)
     return {"enqueued": len(all_bill_keys)}
 
 
@@ -156,6 +162,7 @@ def process_bill(self, bill_key_str):
     try:
         return _process_bill_impl(bill_key_str)
     except Exception as exc:
+        logger.exception("process_bill failed: bill_key=%s retries=%s: %s", bill_key_str, self.request.retries, exc)
         if self.request.retries >= self.max_retries:
             if isinstance(bill_key_str, str):
                 try:
@@ -173,6 +180,7 @@ def process_bill(self, bill_key_str):
 
 
 def _process_bill_impl(bill_key_str):
+    logger.info("process_bill: starting bill_key=%s", bill_key_str)
     congress, bill_type, bill_number = parse_bill_key(bill_key_str)
     bill_number_display = format_bill_number(bill_type, bill_number)
     detail = bill_detail(congress, bill_type, bill_number)
@@ -233,6 +241,7 @@ def _process_bill_impl(bill_key_str):
             if bill.metadata_hash == metadata_hash:
                 bill.processing_status = ProcessingStatus.COMPLETE
                 bill.save(update_fields=["processing_status"])
+                logger.info("process_bill: unchanged (hash match) bill_id=%s bill_key=%s", bill.id, bill_key_str)
                 return {"bill_id": bill.id, "unchanged": True}
             old_status = bill.status
             bill.processing_status = ProcessingStatus.PROCESSING
@@ -266,6 +275,7 @@ def _process_bill_impl(bill_key_str):
         raise
     bill.processing_status = ProcessingStatus.COMPLETE
     bill.save(update_fields=["processing_status"])
+    logger.info("process_bill: success bill_id=%s bill_key=%s (updated, enqueued versions+votes)", bill.id, bill_key_str)
     return {"bill_id": bill.id, "unchanged": False}
 
 
@@ -278,6 +288,7 @@ def _process_bill_impl(bill_key_str):
 )
 def process_bill_versions(self, bill_id):
     """Fetch bill text versions, create/update BillDocument, enqueue download_document (stub)."""
+    logger.info("process_bill_versions: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
     if not bill:
         logger.warning("process_bill_versions: bill_id=%s not found", bill_id)
@@ -297,9 +308,11 @@ def process_bill_versions(self, bill_id):
         num = bill.bill_number.replace(" ", "").strip() or "0"
     try:
         versions = bill_text_list(congress, bill_type, num)
-    except CongressAPIError:
+    except CongressAPIError as e:
+        logger.warning("process_bill_versions: bill_id=%s bill_text_list failed: %s", bill_id, e)
         raise
     if not versions:
+        logger.info("process_bill_versions: bill_id=%s no versions returned", bill_id)
         return
     # Mark one as active (e.g. last)
     for i, v in enumerate(versions):
@@ -318,6 +331,7 @@ def process_bill_versions(self, bill_id):
             doc.is_active_version = True
             doc.save(update_fields=["is_active_version"])
         download_document.apply_async(args=[doc.id])
+    logger.info("process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions))
     return {"bill_id": bill_id, "versions": len(versions)}
 
 
@@ -330,6 +344,7 @@ def process_bill_versions(self, bill_id):
 )
 def process_bill_votes(self, bill_id):
     """Fetch vote refs from bill detail, create Vote/VoteRecord/Representative, insert ChangeLog(vote)."""
+    logger.info("process_bill_votes: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
     if not bill:
         logger.warning("process_bill_votes: bill_id=%s not found", bill_id)
@@ -342,6 +357,7 @@ def process_bill_votes(self, bill_id):
     votes_refs = detail.get("votes") or []
     if isinstance(votes_refs, dict):
         votes_refs = votes_refs.get("rollCalls") or votes_refs.get("votes") or []
+    votes_created = 0
     for ref in votes_refs:
         if not isinstance(ref, dict):
             continue
@@ -411,7 +427,9 @@ def process_bill_votes(self, bill_id):
                     "chamber": vote.chamber,
                 },
             )
-    return {"bill_id": bill_id}
+            votes_created += 1
+    logger.info("process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created)
+    return {"bill_id": bill_id, "votes_created": votes_created}
 
 
 @shared_task
@@ -419,9 +437,12 @@ def download_document(document_id):
     """
     Phase 3 stub: no-op. Phase 4 will download from GovInfo/S3 and set downloaded_at.
     """
+    logger.info("download_document: document_id=%s (stub)", document_id)
     doc = BillDocument.objects.filter(pk=document_id).first()
     if doc:
-        from django.utils import timezone
         doc.downloaded_at = timezone.now()
         doc.save(update_fields=["downloaded_at"])
+        logger.debug("download_document: set downloaded_at for document_id=%s", document_id)
+    else:
+        logger.warning("download_document: document_id=%s not found", document_id)
     return {"document_id": document_id, "stub": True}
