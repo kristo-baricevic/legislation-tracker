@@ -4,7 +4,7 @@
 
 This app is the **pipeline** that pulls data from **Congress.gov** into our database: it keeps a **polling cursor**, runs **background jobs** to fetch bills, versions, and votes, and records **failures** when something breaks after retries. You can think of it as the automated “newsroom wire” that keeps our copy of federal legislation up to date.
 
-## How it works (plain English + tech)
+## How it works
 
 - **Celery** is a **task queue**: work is scheduled on **Redis** (the message broker). **Celery Beat** runs on a schedule (e.g. every 10 minutes) and **Celery workers** execute the tasks.
 - **`congress_client.py`** talks to the **Congress.gov REST API v3** over **HTTPS** using **Python requests**; the API key comes from Django settings (`CONGRESS_API_KEY` in `.env`).
