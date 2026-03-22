@@ -1,8 +1,10 @@
-# Legislation Tracker
+# Legislation Tracker (frontend)
+
+**Full-stack local setup (Postgres + Redis + Django + Celery + this app, without Docker):** see the **[root README](../README.md)**.
 
 ## Getting Started
 
-First, run the development server:
+First, run the development server (backend should be running separately if you use the API):
 
 ```bash
 npm run dev

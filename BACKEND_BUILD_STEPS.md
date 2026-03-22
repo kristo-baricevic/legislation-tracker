@@ -52,16 +52,16 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Phase 4: Document storage (S3)
 
-- [ ] **4.1** Configure django-storages + boto3 for S3 (and MinIO via custom endpoint in dev). Settings: AWS_ACCESS_KEY_ID, SECRET, BUCKET, optional ENDPOINT_URL for MinIO.
-- [ ] **4.2** Implement `download_document(document_id)`: resolve GovInfo URL for document (from BillDocument.source_url or Congress + GovInfo lookup), download file, upload to S3 with key `bills/{session}/{bill_number}/{version_label}.{ext}`, set BillDocument.object_storage_key, downloaded_at, file_size_bytes, content_hash; extract text if PDF/XML and set extracted_text, parsed_at; enqueue `generate_contract`. Short-circuit if content_hash matches existing. Retries + backoff.
-- [ ] **4.3** Call `download_document` from `process_bill_versions` when a new or changed version is detected (or from a separate task enqueued there).
+- [x] **4.1** Configure django-storages + boto3 for S3 (and MinIO via custom endpoint in dev). Settings: `AWS_*`, `AWS_S3_ENDPOINT_URL` for MinIO; optional `USE_LOCAL_DOCUMENT_STORAGE=True` for filesystem under `local_media/` (no MinIO).
+- [x] **4.2** Implement `download_document(document_id)`: download from `BillDocument.source_url`, upload with key `bills/{session}/{bill_number}/{version_label}.{ext}`, set `object_storage_key`, `downloaded_at`, `file_size_bytes`, `content_hash`, `extracted_text` (PDF/XML/HTML), `parsed_at`; enqueue `generate_contract` stub. Short-circuit if `content_hash` unchanged. Retries on HTTP errors.
+- [x] **4.3** `process_bill_versions` already enqueues `download_document` per document (unchanged from Phase 3).
 
 ---
 
 ## Phase 5: Interpretation layer (BillContract + EvidenceSpan)
 
-- [ ] **5.1** Implement canonical JSON serialization for contract_json: one function that takes a dict, sorts keys, normalizes numbers/whitespace, returns string for hashing. Use it everywhere before computing contract_hash.
-- [ ] **5.2** Implement `generate_contract(document_id)` (stub first): load BillDocument; if no extracted_text skip or use placeholder; build minimal contract_json (e.g. empty structure or title-only); compute contract_hash; if same as existing BillContract for this document, exit; else create/update BillContract, set Bill.latest_contract and BillDocument.contract_generated_at, insert ChangeLog(contract_update, document=..., contract=...), enqueue `update_topics` and add bill_id to similarity queue. Create EvidenceSpan rows for each top-level field (stub: one span per field path).
+- [x] **5.1** Canonical JSON + hash: `apps/legislation/contract_json.py` — `canonical_json_string`, `contract_hash_from_dict` (sorted keys, normalized strings).
+- [x] **5.2** `generate_contract(document_id)` (stub content): builds `contract_json` from title + excerpt of `extracted_text`; skips if hash unchanged; creates `BillContract`, sets `Bill.latest_contract`, `BillDocument.contract_generated_at`, `ChangeLog(contract_update)`, `EvidenceSpan` per top-level key; enqueues `update_topics` and `schedule_similarity_for_bill` (Phase 6 stubs). See **[legislation-tracker-backend/docs/PHASE_5_CONTRACT.md](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)**.
 - [ ] **5.3** (Later) Replace stub with real NLP extraction producing contract_json and EvidenceSpans.
 
 ---
