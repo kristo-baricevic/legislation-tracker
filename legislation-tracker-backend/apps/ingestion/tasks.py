@@ -4,6 +4,8 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 import hashlib
 import logging
 from datetime import datetime
+
+import requests
 from django.utils import timezone
 
 from celery import shared_task
@@ -18,8 +20,18 @@ from apps.ingestion.congress_client import (
     bill_text_list,
     vote_detail,
 )
+from apps.ingestion.document_download import (
+    build_object_key,
+    download_url,
+    extract_text_from_pdf,
+    extract_text_from_xml_or_html,
+    guess_extension,
+    sha256_hex,
+    upload_and_metadata,
+)
 from apps.ingestion.models import IngestionState, IngestionTaskFailure
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
+from apps.legislation.tasks import generate_contract
 
 logger = logging.getLogger(__name__)
 
@@ -432,17 +444,94 @@ def process_bill_votes(self, bill_id):
     return {"bill_id": bill_id, "votes_created": votes_created}
 
 
-@shared_task
-def download_document(document_id):
+@shared_task(
+    bind=True,
+    autoretry_for=(requests.RequestException, OSError),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=3,
+)
+def download_document(self, document_id):
     """
-    Phase 3 stub: no-op. Phase 4 will download from GovInfo/S3 and set downloaded_at.
+    Download file from BillDocument.source_url, upload to storage (MinIO/S3 or local_media),
+    set content_hash, extracted_text when PDF/XML/HTML, enqueue generate_contract stub.
     """
-    logger.info("download_document: document_id=%s (stub)", document_id)
-    doc = BillDocument.objects.filter(pk=document_id).first()
-    if doc:
+    logger.info("download_document: starting document_id=%s", document_id)
+    doc = BillDocument.objects.select_related("bill").filter(pk=document_id).first()
+    if not doc:
+        logger.warning("download_document: document_id=%s not found", document_id)
+        return {"document_id": document_id, "skipped": True, "reason": "not_found"}
+
+    if not doc.source_url:
+        logger.warning("download_document: no source_url for document_id=%s", document_id)
+        return {"document_id": document_id, "skipped": True, "reason": "no_source_url"}
+
+    bill = doc.bill
+    try:
+        data, content_type = download_url(doc.source_url)
+    except requests.RequestException as e:
+        logger.warning("download_document: HTTP error document_id=%s: %s", document_id, e)
+        raise
+
+    new_hash = sha256_hex(data)
+    if doc.content_hash == new_hash and doc.object_storage_key:
+        logger.info(
+            "download_document: unchanged hash, skipping upload document_id=%s", document_id
+        )
         doc.downloaded_at = timezone.now()
         doc.save(update_fields=["downloaded_at"])
-        logger.debug("download_document: set downloaded_at for document_id=%s", document_id)
+        generate_contract.apply_async(args=[document_id])
+        return {"document_id": document_id, "unchanged": True}
+
+    ext = ""
+    if content_type and "pdf" in content_type.lower():
+        ext = ".pdf"
+    elif content_type and "xml" in content_type.lower():
+        ext = ".xml"
+    elif content_type and "html" in content_type.lower():
+        ext = ".html"
     else:
-        logger.warning("download_document: document_id=%s not found", document_id)
-    return {"document_id": document_id, "stub": True}
+        ext = guess_extension(doc.source_url, content_type)
+
+    object_key = build_object_key(
+        bill.session,
+        bill.bill_number,
+        doc.version_label,
+        ext,
+    )
+
+    saved_key, size = upload_and_metadata(object_key, data, content_type)
+
+    extracted = ""
+    if content_type and "pdf" in content_type.lower():
+        extracted = extract_text_from_pdf(data)
+    elif content_type and ("xml" in content_type.lower() or "html" in content_type.lower()):
+        extracted = extract_text_from_xml_or_html(data, content_type)
+
+    now = timezone.now()
+    doc.object_storage_key = saved_key
+    doc.file_size_bytes = size
+    doc.content_hash = new_hash
+    doc.content_type = (content_type[:128] if content_type else None)
+    doc.extracted_text = extracted or None
+    doc.downloaded_at = now
+    doc.parsed_at = now if extracted else None
+    doc.save(
+        update_fields=[
+            "object_storage_key",
+            "file_size_bytes",
+            "content_hash",
+            "content_type",
+            "extracted_text",
+            "downloaded_at",
+            "parsed_at",
+        ]
+    )
+    logger.info(
+        "download_document: success document_id=%s key=%s bytes=%s",
+        document_id,
+        saved_key,
+        size,
+    )
+    generate_contract.apply_async(args=[document_id])
+    return {"document_id": document_id, "object_storage_key": saved_key, "size": size}

@@ -116,6 +116,34 @@ SIMPLE_JWT = {
 # Congress.gov API (ingestion)
 CONGRESS_API_KEY = env("CONGRESS_API_KEY", default="")
 
+# Document storage — MinIO (S3-compatible, local) or AWS S3; see README
+# When USE_LOCAL_DOCUMENT_STORAGE=True, files go to local_media/ (no MinIO/S3 needed).
+USE_LOCAL_DOCUMENT_STORAGE = env.bool("USE_LOCAL_DOCUMENT_STORAGE", default=False)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="legislation-tracker-documents")
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default="")
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
+AWS_DEFAULT_ACL = None
+AWS_S3_ADDRESSING_STYLE = env("AWS_S3_ADDRESSING_STYLE", default="path")
+AWS_S3_FILE_OVERWRITE = False
+
+if USE_LOCAL_DOCUMENT_STORAGE:
+    MEDIA_ROOT = BASE_DIR / "local_media"
+    MEDIA_URL = "/media/"
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": str(BASE_DIR / "local_media")},
+        }
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        }
+    }
+
 # CORS: allow the Next.js client
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",

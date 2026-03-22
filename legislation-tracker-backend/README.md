@@ -2,6 +2,8 @@
 
 Django backend for the legislation tracker: bills, documents, structured contracts, change log, and feeds.
 
+**Run locally without Docker (Postgres + Redis + Celery + Next.js client):** see the **[root README](../README.md)**.
+
 See [BACKEND_PLAN.md](../BACKEND_PLAN.md) and [ARCHITECTURE_ELI5.md](../ARCHITECTURE_ELI5.md) in the repo root for architecture. Build steps: [BACKEND_BUILD_STEPS.md](../BACKEND_BUILD_STEPS.md).
 
 ## Quick start (local) — Postgres
@@ -193,13 +195,17 @@ legislation-tracker-backend/
 
 Each app under `apps/` has its own **README.md** describing purpose, how it fits the stack, and main models or tasks:
 
-| App | README |
-|-----|--------|
-| `accounts` | [apps/accounts/README.md](apps/accounts/README.md) |
+| App           | README                                                   |
+| ------------- | -------------------------------------------------------- |
+| `accounts`    | [apps/accounts/README.md](apps/accounts/README.md)       |
 | `legislation` | [apps/legislation/README.md](apps/legislation/README.md) |
-| `congress` | [apps/congress/README.md](apps/congress/README.md) |
-| `changelog` | [apps/changelog/README.md](apps/changelog/README.md) |
-| `ingestion` | [apps/ingestion/README.md](apps/ingestion/README.md) |
+| `congress`    | [apps/congress/README.md](apps/congress/README.md)       |
+| `changelog`   | [apps/changelog/README.md](apps/changelog/README.md)     |
+| `ingestion`   | [apps/ingestion/README.md](apps/ingestion/README.md)     |
+
+**File storage (bill PDFs / documents):** [docs/FILE_STORAGE.md](docs/FILE_STORAGE.md)
+
+**Bill “contract” (plain-language interpretation, Phase 5):** [docs/PHASE_5_CONTRACT.md](docs/PHASE_5_CONTRACT.md)
 
 ## Settings
 
@@ -208,16 +214,13 @@ Each app under `apps/` has its own **README.md** describing purpose, how it fits
 
 Override with `DJANGO_SETTINGS_MODULE=config.settings.prod` when running in production.
 
-## MinIO (S3-compatible storage)
+## Bill document file storage (MinIO / S3 / local disk)
 
-After `docker compose up -d`, MinIO is at http://localhost:9000 (console: 9001). Create a bucket named `legislation-tracker-documents` via the console or:
+Ingested bill files (PDFs, etc.) are downloaded by the **`download_document`** Celery task and stored via **Django** + **django-storages** — either **MinIO** (free local S3-compatible server), **AWS S3**, or plain **disk** under `local_media/`.
 
-```bash
-docker compose exec minio mc alias set local http://localhost:9000 minioadmin minioadmin
-docker compose exec minio mc mb local/legislation-tracker-documents
-```
+**Read the dedicated guide:** **[docs/FILE_STORAGE.md](docs/FILE_STORAGE.md)** — how the flow works, which env vars to set, and troubleshooting.
 
-(Requires `mc` in the MinIO container; newer MinIO images may use a different approach.)
+Quick dev defaults: `docker compose up -d minio`, then `.env` with `AWS_S3_ENDPOINT_URL=http://localhost:9000` and credentials from `.env.example`. Or set `USE_LOCAL_DOCUMENT_STORAGE=True` to skip MinIO entirely.
 
 ## Tests
 

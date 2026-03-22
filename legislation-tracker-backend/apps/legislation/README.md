@@ -16,6 +16,10 @@ This app is the **core “what is a bill?”** data model. It stores the officia
 
 The **Django REST Framework (DRF)** exposes read-only **list/detail APIs** for bills (`/api/bills/`) so the **Next.js** frontend can show tables and detail pages.
 
+**Phase 4 — document files:** **`download_document`** (Celery, in `ingestion` app) saves bytes to **django-storages** targeting **MinIO** (local, free) or **filesystem** (`USE_LOCAL_DOCUMENT_STORAGE=True`).
+
+**Phase 5 — contract layer:** **`generate_contract`** builds a **stub** `contract_json` (title + excerpt + version), hashes it with **`contract_json.canonical_json_string`**, creates **`BillContract`** / **`EvidenceSpan`** / **`ChangeLog`**, and enqueues Phase 6 stubs. Full write-up: **[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
+
 ## What you’ll find here
 
 | Model | Role |
