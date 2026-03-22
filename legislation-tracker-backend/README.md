@@ -191,6 +191,16 @@ legislation-tracker-backend/
 └── README.md
 ```
 
+Each app under `apps/` has its own **README.md** describing purpose, how it fits the stack, and main models or tasks:
+
+| App | README |
+|-----|--------|
+| `accounts` | [apps/accounts/README.md](apps/accounts/README.md) |
+| `legislation` | [apps/legislation/README.md](apps/legislation/README.md) |
+| `congress` | [apps/congress/README.md](apps/congress/README.md) |
+| `changelog` | [apps/changelog/README.md](apps/changelog/README.md) |
+| `ingestion` | [apps/ingestion/README.md](apps/ingestion/README.md) |
+
 ## Settings
 
 - **config.settings.dev** — default for `runserver` and local Celery (DEBUG=True, AllowAny for DRF).
