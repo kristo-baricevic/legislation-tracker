@@ -62,7 +62,7 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 - [x] **5.1** Canonical JSON + hash: `apps/legislation/contract_json.py` — `canonical_json_string`, `contract_hash_from_dict` (sorted keys, normalized strings).
 - [x] **5.2** `generate_contract(document_id)` (stub content): builds `contract_json` from title + excerpt of `extracted_text`; skips if hash unchanged; creates `BillContract`, sets `Bill.latest_contract`, `BillDocument.contract_generated_at`, `ChangeLog(contract_update)`, `EvidenceSpan` per top-level key; enqueues `update_topics` and `schedule_similarity_for_bill` (Phase 6 stubs). See **[legislation-tracker-backend/docs/PHASE_5_CONTRACT.md](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)**.
-- [ ] **5.3** (Later) Replace stub with real NLP extraction producing contract_json and EvidenceSpans.
+- [ ] **5.3** (Later) Replace stub with real NLP extraction producing contract_json and EvidenceSpans. See **[legislation-tracker-backend/docs/PHASE_5_3_PLAN.md](legislation-tracker-backend/docs/PHASE_5_3_PLAN.md)** (schema versioning, extraction pipeline, evidence offsets).
 
 ---
 

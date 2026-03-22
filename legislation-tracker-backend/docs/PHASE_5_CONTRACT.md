@@ -52,7 +52,7 @@ Phase 5 adds the **first version** of that layer: we store a **JSON document** (
 
 ### Later (Phase 5.3)
 
-Replace the stub builder with **real NLP** that fills `contract_json` and EvidenceSpans from the full text — **same tables**, richer content.
+Replace the stub builder with **real NLP** that fills `contract_json` and EvidenceSpans from the full text — **same tables**, richer content. **Detailed plan:** [PHASE_5_3_PLAN.md](PHASE_5_3_PLAN.md) (versioned schema, chunk → extract → merge, EvidenceSpan rules).
 
 ---
 
