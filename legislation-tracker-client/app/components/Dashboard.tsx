@@ -16,9 +16,9 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="flex w-full flex-wrap bg-slate-600 gap-x-12 p-2 mb-8">
+      <div className="mb-8 flex w-full flex-wrap gap-x-12 bg-slate-300 p-2 text-slate-900 dark:bg-slate-600 dark:text-green-300">
         <button
-          className="flex cursor-pointer hover:bg-slate-500 p-12"
+          className="flex cursor-pointer p-12 hover:bg-slate-400 dark:hover:bg-slate-500"
           onClick={() => {
             setShowAmendments(false);
             setShowGovInfoBills(false);
@@ -29,7 +29,7 @@ export default function Dashboard() {
           BILLS
         </button>
         <button
-          className="flex cursor-pointer hover:bg-slate-500 p-12"
+          className="flex cursor-pointer p-12 hover:bg-slate-400 dark:hover:bg-slate-500"
           onClick={() => {
             setShowBills(false);
             setShowGovInfoBills(false);
@@ -40,7 +40,7 @@ export default function Dashboard() {
           AMENDMENTS
         </button>
         <button
-          className="flex cursor-pointer hover:bg-slate-500 p-12"
+          className="flex cursor-pointer p-12 hover:bg-slate-400 dark:hover:bg-slate-500"
           onClick={() => {
             setShowBills(false);
             setShowAmendments(false);
@@ -51,7 +51,7 @@ export default function Dashboard() {
           GOVINFO BILLS
         </button>
         <button
-          className="flex cursor-pointer hover:bg-slate-500 p-12"
+          className="flex cursor-pointer p-12 hover:bg-slate-400 dark:hover:bg-slate-500"
           onClick={() => {
             setShowBills(false);
             setShowAmendments(false);
@@ -62,7 +62,7 @@ export default function Dashboard() {
           LATEST BILL WORKFLOW
         </button>
         <button
-          className="flex cursor-pointer hover:bg-slate-500 p-12"
+          className="flex cursor-pointer p-12 hover:bg-slate-400 dark:hover:bg-slate-500"
           onClick={() => {
             setShowBills(false);
             setShowAmendments(false);

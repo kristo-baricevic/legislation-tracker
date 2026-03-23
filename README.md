@@ -10,12 +10,12 @@ Use this path if you have **PostgreSQL** and **Redis** installed on your machine
 
 ### What to install first
 
-| Piece | Role |
-|--------|------|
-| **Python 3.11+** | Backend |
-| **PostgreSQL** | Main database |
-| **Redis** | Celery queue (ingestion, downloads, contract generation) |
-| **Node.js 18+** | Frontend |
+| Piece            | Role                                                     |
+| ---------------- | -------------------------------------------------------- |
+| **Python 3.11+** | Backend                                                  |
+| **PostgreSQL**   | Main database                                            |
+| **Redis**        | Celery queue (ingestion, downloads, contract generation) |
+| **Node.js 18+**  | Frontend                                                 |
 
 ---
 
@@ -131,10 +131,10 @@ The client expects the API at **http://localhost:8000** by default. To change th
 
 ### Quick reference
 
-| Service | URL |
-|--------|-----|
-| Next.js app | http://localhost:3000 |
-| Django API | http://127.0.0.1:8000 |
+| Service      | URL                          |
+| ------------ | ---------------------------- |
+| Next.js app  | http://localhost:3000        |
+| Django API   | http://127.0.0.1:8000        |
 | Django admin | http://127.0.0.1:8000/admin/ |
 
 ---

@@ -134,6 +134,25 @@ export interface BillDocumentItem {
   downloaded_at: string | null;
 }
 
+/** Phase 5 contract evidence row (field → quote from bill text). */
+export interface EvidenceSpanItem {
+  field_path: string;
+  quoted_text: string;
+  page_number: number | null;
+}
+
+/** Phase 5 plain-language contract snapshot (nested on bill detail). */
+export interface BillContractItem {
+  id: number;
+  schema_version: string;
+  contract_json: Record<string, unknown>;
+  contract_hash: string;
+  computed_at: string;
+  document: number;
+  document_version_label: string;
+  evidence_spans: EvidenceSpanItem[];
+}
+
 export interface BillDetail extends BillListItem {
   summary: string | null;
   processing_status: string;
@@ -143,6 +162,8 @@ export interface BillDetail extends BillListItem {
   source_api_id: string | null;
   documents: BillDocumentItem[];
   congress_gov_url: string | null;
+  /** Latest generated contract (after Celery processes documents). */
+  latest_contract: BillContractItem | null;
   created_at: string;
   updated_at: string;
 }
@@ -154,12 +175,56 @@ export interface BillsPage {
   results: BillListItem[];
 }
 
-export async function getBills(params?: { session?: number; page?: number }): Promise<BillsPage> {
+/** Policy topic (for bill filters). */
+export interface TopicItem {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface BillFilterOptions {
+  jurisdictions: string[];
+}
+
+export interface GetBillsParams {
+  page?: number;
+  session?: number;
+  /** Exact primary key */
+  id?: number;
+  /** Case-insensitive substring match on bill_number */
+  bill_number?: string;
+  /** Case-insensitive substring match */
+  status?: string;
+  /** Sponsor: numeric = Representative id, else name substring */
+  sponsor?: string;
+  jurisdiction?: string;
+  /** Fuzzy: topic name or slug contains this string */
+  topic?: string;
+  /** Exact topic tag (bill must have this topic); takes precedence over `topic` text */
+  topic_id?: number;
+}
+
+export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   const sp = new URLSearchParams();
-  if (params?.session != null) sp.set("session", String(params.session));
   if (params?.page != null) sp.set("page", String(params.page));
+  if (params?.session != null) sp.set("session", String(params.session));
+  if (params?.id != null) sp.set("id", String(params.id));
+  if (params?.bill_number?.trim()) sp.set("bill_number", params.bill_number.trim());
+  if (params?.status?.trim()) sp.set("status", params.status.trim());
+  if (params?.sponsor?.trim()) sp.set("sponsor", params.sponsor.trim());
+  if (params?.jurisdiction?.trim()) sp.set("jurisdiction", params.jurisdiction.trim());
+  if (params?.topic?.trim()) sp.set("topic", params.topic.trim());
+  if (params?.topic_id != null) sp.set("topic_id", String(params.topic_id));
   const q = sp.toString();
   return authGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
+}
+
+export async function getTopics(): Promise<TopicItem[]> {
+  return authGet<TopicItem[]>("/api/topics/");
+}
+
+export async function getBillFilterOptions(): Promise<BillFilterOptions> {
+  return authGet<BillFilterOptions>("/api/bills/filter-options/");
 }
 
 export async function getBill(id: number): Promise<BillDetail> {

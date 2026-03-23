@@ -23,30 +23,39 @@ export default function AuthNav() {
   };
 
   return (
-    <nav className="flex items-center gap-4 font-mono text-sm text-green-400">
-      <Link href="/" className="hover:text-green-300">
+    <nav className="flex items-center gap-4 font-mono text-sm text-slate-800 dark:text-green-400">
+      <Link href="/" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
         Home
       </Link>
-      <Link href="/bills" className="hover:text-green-300">
+      <Link href="/bills" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
         Bills
       </Link>
-      <Link href="/representatives" className="hover:text-green-300">
+      <Link
+        href="/representatives"
+        className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300"
+      >
         Representatives
       </Link>
       {hasToken ? (
         <button
           type="button"
           onClick={handleLogout}
-          className="hover:text-green-300 hover:underline"
+          className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
         >
           Log out
         </button>
       ) : (
         <>
-          <Link href="/login" className="hover:text-green-300 hover:underline">
+          <Link
+            href="/login"
+            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+          >
             Log in
           </Link>
-          <Link href="/signup" className="hover:text-green-300 hover:underline">
+          <Link
+            href="/signup"
+            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+          >
             Sign up
           </Link>
         </>

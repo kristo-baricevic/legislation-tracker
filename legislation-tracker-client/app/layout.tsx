@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import AuthNav from "./components/AuthNav";
+import SiteHeader from "./components/SiteHeader";
+import { THEME_STORAGE_KEY } from "../lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,19 +23,19 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
+  const themeInitScript = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var t=localStorage.getItem(k);if(t==='dark')document.documentElement.classList.add('dark');else document.documentElement.classList.remove('dark');}catch(e){}})();`;
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
       >
-        <header className="flex items-center justify-between border-b border-green-900/50 bg-black px-4 py-3">
-          <a href="/" className="font-mono text-lg font-medium text-green-400">
-            Legislation Tracker
-          </a>
-          <AuthNav />
-        </header>
+        <SiteHeader />
         {children}
       </body>
     </html>

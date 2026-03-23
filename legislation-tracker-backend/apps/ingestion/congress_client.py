@@ -55,13 +55,13 @@ def _throttle():
     time.sleep(0.3)
 
 
-def bill_list(congress, bill_type, from_date_time=None, limit=250):
+def bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
     """
-    GET /bill/{congress}/{billType}?sort=updateDate+desc&limit=...&fromDateTime=...
+    GET /bill/{congress}/{billType}?sort=updateDate+desc&limit=...&offset=...&fromDateTime=...
     Returns list of items with congress, type, number, updateDate (for cursor).
     """
     bill_type = (bill_type or "hr").lower()
-    params = {"sort": "updateDate desc", "limit": limit}
+    params = {"sort": "updateDate desc", "limit": limit, "offset": offset}
     if from_date_time:
         params["fromDateTime"] = from_date_time
     data = _request("GET", f"bill/{congress}/{bill_type}", params=params)
@@ -82,8 +82,8 @@ def bill_list(congress, bill_type, from_date_time=None, limit=250):
             "updateDate": update_date,
         })
     logger.info(
-        "bill_list: congress=%s bill_type=%s from_date_time=%s -> %s bills (raw response had %s items)",
-        congress, bill_type, from_date_time, len(out), len(bills),
+        "bill_list: congress=%s bill_type=%s offset=%s from_date_time=%s -> %s bills (raw response had %s items)",
+        congress, bill_type, offset, from_date_time, len(out), len(bills),
     )
     if bills and not out:
         logger.warning("bill_list: API returned %s raw items but parsed 0; check response shape.", len(bills))

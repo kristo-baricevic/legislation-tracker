@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
-from .models import Bill, BillDocument
+from .models import Bill, BillContract, BillDocument, EvidenceSpan, Topic
+
+
+class TopicSerializer(serializers.ModelSerializer):
+    """Policy topics for filters and tagging."""
+
+    class Meta:
+        model = Topic
+        fields = ["id", "name", "slug"]
 
 
 class BillDocumentSerializer(serializers.ModelSerializer):
@@ -12,6 +20,36 @@ class BillDocumentSerializer(serializers.ModelSerializer):
             "is_active_version",
             "source_url",
             "downloaded_at",
+        ]
+
+
+class EvidenceSpanSerializer(serializers.ModelSerializer):
+    """Evidence rows for the latest contract (audit trail / citations)."""
+
+    class Meta:
+        model = EvidenceSpan
+        fields = ["field_path", "quoted_text", "page_number"]
+
+
+class BillContractSerializer(serializers.ModelSerializer):
+    """Structured interpretation for a bill version (Phase 5)."""
+
+    evidence_spans = EvidenceSpanSerializer(many=True, read_only=True)
+    document_version_label = serializers.CharField(
+        source="document.version_label", read_only=True
+    )
+
+    class Meta:
+        model = BillContract
+        fields = [
+            "id",
+            "schema_version",
+            "contract_json",
+            "contract_hash",
+            "computed_at",
+            "document",
+            "document_version_label",
+            "evidence_spans",
         ]
 
 
@@ -41,11 +79,12 @@ class BillListSerializer(serializers.ModelSerializer):
 
 
 class BillDetailSerializer(serializers.ModelSerializer):
-    """For retrieve: full bill + documents."""
+    """For retrieve: full bill + documents + latest plain-language contract (Phase 5)."""
 
     sponsor_name = serializers.SerializerMethodField()
     documents = BillDocumentSerializer(many=True, read_only=True)
     congress_gov_url = serializers.SerializerMethodField()
+    latest_contract = BillContractSerializer(read_only=True)
 
     class Meta:
         model = Bill
@@ -67,6 +106,7 @@ class BillDetailSerializer(serializers.ModelSerializer):
             "source_api_id",
             "documents",
             "congress_gov_url",
+            "latest_contract",
             "created_at",
             "updated_at",
         ]

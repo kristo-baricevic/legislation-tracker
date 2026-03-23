@@ -3,7 +3,7 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 """
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 
 import requests
 from django.utils import timezone
@@ -48,6 +48,36 @@ def parse_bill_key(bill_key):
 
 def bill_key(congress, bill_type, bill_number):
     return f"{congress}-{(bill_type or 'hr').lower()}-{bill_number}"
+
+
+def _ensure_utc_aware(dt):
+    """Normalize DB or parsed datetimes so comparisons never mix naive vs aware."""
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        return timezone.make_aware(dt, dt_timezone.utc)
+    return dt
+
+
+def _parse_congress_update_datetime(value):
+    """Parse bill list updateDate (string or datetime); return UTC-aware or None."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            dt = datetime.fromisoformat(s)
+        except Exception:
+            return None
+    else:
+        return None
+    return _ensure_utc_aware(dt)
 
 
 def format_bill_number(bill_type, bill_number):
@@ -114,26 +144,59 @@ def poll_congress(jurisdiction="federal", congress=119):
         logger.info("poll_congress: full fetch (no last_bill_update_seen_at)")
     bill_types = ["hr", "s"]
     all_bill_keys = set()
-    latest_update = state.last_bill_update_seen_at
+    latest_update = _ensure_utc_aware(state.last_bill_update_seen_at)
+    page_limit = 250
     for bt in bill_types:
-        try:
-            items = bill_list(congress, bt, from_date_time=from_date_time, limit=250)
-            logger.info("poll_congress: bill_type=%s -> %s bills", bt, len(items))
+        offset = 0
+        previous_page_keys = None
+        while True:
+            try:
+                items = bill_list(
+                    congress,
+                    bt,
+                    from_date_time=from_date_time,
+                    limit=page_limit,
+                    offset=offset,
+                )
+            except CongressAPIError as e:
+                logger.warning(
+                    "poll_congress: bill_list failed congress=%s bill_type=%s offset=%s: %s",
+                    congress,
+                    bt,
+                    offset,
+                    e,
+                )
+                break
+            logger.info(
+                "poll_congress: bill_type=%s offset=%s -> %s bills",
+                bt,
+                offset,
+                len(items),
+            )
+            if not items:
+                break
+            page_keys = tuple(
+                sorted(
+                    bill_key(b["congress"], b["type"], b["number"]) for b in items
+                )
+            )
+            if offset > 0 and previous_page_keys == page_keys:
+                logger.warning(
+                    "poll_congress: bill_type=%s offset=%s repeated same page (API may not support offset); stopping pagination",
+                    bt,
+                    offset,
+                )
+                break
+            previous_page_keys = page_keys
             for b in items:
                 key = bill_key(b["congress"], b["type"], b["number"])
                 all_bill_keys.add(key)
-                ud = b.get("updateDate")
-                if ud:
-                    if isinstance(ud, str):
-                        try:
-                            ud = datetime.fromisoformat(ud.replace("Z", "+00:00"))
-                        except Exception:
-                            ud = None
-                    if ud and (latest_update is None or ud > latest_update):
-                        latest_update = ud
-        except CongressAPIError as e:
-            logger.warning("poll_congress: bill_list failed congress=%s bill_type=%s: %s", congress, bt, e)
-            continue
+                ud = _parse_congress_update_datetime(b.get("updateDate"))
+                if ud and (latest_update is None or ud > latest_update):
+                    latest_update = ud
+            if len(items) < page_limit:
+                break
+            offset += page_limit
     now = timezone.now()
     state.last_polled_at = now
     if latest_update:
@@ -254,6 +317,23 @@ def _process_bill_impl(bill_key_str):
                 bill.processing_status = ProcessingStatus.COMPLETE
                 bill.save(update_fields=["processing_status"])
                 logger.info("process_bill: unchanged (hash match) bill_id=%s bill_key=%s", bill.id, bill_key_str)
+                # Still run document/votes pipeline if we never stored files (hash match skips the block below).
+                needs_doc_pipeline = (
+                    not bill.documents.exists()
+                    or bill.documents.filter(downloaded_at__isnull=True).exists()
+                )
+                if needs_doc_pipeline:
+                    try:
+                        process_bill_versions.apply_async(args=[bill.id])
+                        process_bill_votes.apply_async(args=[bill.id])
+                        logger.info(
+                            "process_bill: enqueued versions+votes (documents missing or not downloaded) bill_id=%s",
+                            bill.id,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "process_bill: failed to enqueue versions/votes bill_id=%s", bill.id
+                        )
                 return {"bill_id": bill.id, "unchanged": True}
             old_status = bill.status
             bill.processing_status = ProcessingStatus.PROCESSING
@@ -345,6 +425,29 @@ def process_bill_versions(self, bill_id):
         download_document.apply_async(args=[doc.id])
     logger.info("process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions))
     return {"bill_id": bill_id, "versions": len(versions)}
+
+
+@shared_task
+def backfill_process_bill_versions_for_all_bills(session=None):
+    """
+    Enqueue process_bill_versions for every Bill in the database (optional congress session).
+
+    Use this to download bill text for **all** rows already ingested. Each bill triggers
+    Congress API text-version calls and download_document tasks (watch rate limits).
+    """
+    qs = Bill.objects.all().order_by("id")
+    if session is not None:
+        qs = qs.filter(session=int(session))
+    enqueued = 0
+    for bid in qs.values_list("id", flat=True):
+        process_bill_versions.apply_async(args=[bid])
+        enqueued += 1
+    logger.info(
+        "backfill_process_bill_versions_for_all_bills: enqueued=%s (session=%s)",
+        enqueued,
+        session,
+    )
+    return {"enqueued": enqueued, "session": session}
 
 
 @shared_task(

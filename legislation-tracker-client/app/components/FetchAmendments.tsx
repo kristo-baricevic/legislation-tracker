@@ -58,8 +58,8 @@ export default function FetchAmendments() {
   // console.log("amendment data is ", amendmentData);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 text-green-300 font-mono sm:items-start ">
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 font-mono text-slate-900 dark:text-green-300 sm:items-start ">
         <h1 className="mb-8">Amendments</h1>
         <table className="min-w-125">
           <thead>

@@ -92,6 +92,10 @@ flowchart TD
 
 ---
 
+## UI (bill detail)
+
+The **Next.js** bill detail page (`/bills/[id]`) includes a **“Plain-language summary (beta)”** section fed by **`latest_contract`** on `GET /api/bills/{id}/` (nested `BillContract` + `evidence_spans`). If no contract exists yet, the section explains that **`generate_contract`** must run after document download.
+
 ## Related
 
 - **Phase 4 (files):** [FILE_STORAGE.md](FILE_STORAGE.md)  
