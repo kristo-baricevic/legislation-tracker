@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=400">
+  <meta name="viewport" content="width=420">
   <link rel="stylesheet" href="styles.css">
   <title>Legislation Tracker</title>
 </head>
@@ -12,11 +12,29 @@
       <h1>Legislation Tracker</h1>
       <p class="subtitle">Find bills related to this article</p>
     </header>
-<!-- 
+
+    <section id="auth-section" class="auth-section">
+      <div id="auth-signed-out">
+        <p class="auth-copy">Sign in to track matched bills and topics.</p>
+        <form id="login-form" class="login-form">
+          <input id="login-email" type="email" autocomplete="email" placeholder="Email" required>
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="Password" required>
+          <button type="submit">Sign in</button>
+        </form>
+        <div class="auth-links">
+          <a id="open-login" href="http://localhost:3000/login" target="_blank">Open app login</a>
+        </div>
+      </div>
+      <div id="auth-signed-in" class="signed-in" hidden>
+        <span>Tracking enabled</span>
+        <button id="logout-button" type="button">Sign out</button>
+      </div>
+    </section>
+
     <div id="status" class="status">
       <div class="spinner"></div>
-      <span>Analyzing article…</span>
-    </div> -->
+      <span id="status-text">Analyzing article...</span>
+    </div>
 
     <div id="error" class="error" hidden></div>
 
@@ -38,11 +56,12 @@
 
     <footer>
       <a id="open-app" href="http://localhost:3000/bills" target="_blank">
-        Open Legislation Tracker →
+        Open Legislation Tracker
       </a>
     </footer>
   </div>
 
+  <script src="extension-utils.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

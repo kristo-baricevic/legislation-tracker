@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Legislation Tracker",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Find relevant legislation for any article you're reading.",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
   ],
   "action": {
     "default_popup": "popup.html",
