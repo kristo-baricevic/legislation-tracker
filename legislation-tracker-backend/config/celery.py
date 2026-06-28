@@ -37,6 +37,10 @@ app.conf.beat_schedule = {
         "schedule": 3600.0,  # every hour
         "kwargs": {"session": 119, "batch_size": 500},
     },
+    "poll-tracked-bills": {
+        "task": "apps.ingestion.tasks.poll_tracked_bills",
+        "schedule": 300.0,  # every 5 minutes (in seconds)
+    },
 }
 
 

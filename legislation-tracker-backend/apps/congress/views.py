@@ -8,6 +8,7 @@ from .serializers import RepresentativeSerializer
 class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
     """List representatives. Public. Filter by state=XX or chamber=house|senate."""
 
+    authentication_classes = []
     permission_classes = [AllowAny]
     serializer_class = RepresentativeSerializer
     queryset = Representative.objects.all().order_by("state", "name")

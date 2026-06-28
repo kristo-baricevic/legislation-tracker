@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveAllowedCongressActionUrl } from "./allowlisted-url";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -8,14 +9,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing url" }, { status: 400 });
   }
 
-  const apiKey = process.env.NEXT_PUBLIC_CONGRESS_API_KEY;
-
-  // Append api_key if calling api.congress.gov
-  let url = rawUrl;
-
-  if (url.includes("api.congress.gov") && !url.includes("api_key=")) {
-    const separator = url.includes("?") ? "&" : "?";
-    url = `${url}${separator}api_key=${apiKey}`;
+  const url = resolveAllowedCongressActionUrl(
+    rawUrl,
+    process.env.CONGRESS_API_KEY ?? process.env.NEXT_PUBLIC_CONGRESS_API_KEY,
+  );
+  if (!url) {
+    return NextResponse.json({ error: "URL is not allowed" }, { status: 400 });
   }
 
   const res = await fetch(url);

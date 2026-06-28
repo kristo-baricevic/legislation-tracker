@@ -37,6 +37,10 @@ export function clearStoredTokens(): void {
   localStorage.removeItem(AUTH_REFRESH_KEY);
 }
 
+export function isLoggedIn(): boolean {
+  return !!getStoredAccessToken();
+}
+
 export interface LoginResponse {
   access: string;
   refresh: string;
@@ -76,7 +80,6 @@ export async function register(email: string, password: string): Promise<Registe
   return res.json();
 }
 
-/** Try to refresh the access token using the stored refresh token. Returns new access token or null. */
 async function tryRefreshToken(): Promise<string | null> {
   const refresh = getStoredRefreshToken();
   if (!refresh) return null;
@@ -95,7 +98,6 @@ async function tryRefreshToken(): Promise<string | null> {
   return null;
 }
 
-/** Public GET (no auth required). */
 export async function publicGet<T = unknown>(path: string): Promise<T> {
   const base = getApiBase();
   const res = await fetch(`${base}${path}`);
@@ -106,7 +108,6 @@ export async function publicGet<T = unknown>(path: string): Promise<T> {
   return res.json();
 }
 
-/** Authenticated GET. On 401, tries to refresh the token and retries once; then throws. */
 export async function authGet<T = unknown>(path: string, retried = false): Promise<T> {
   const base = getApiBase();
   const token = getStoredAccessToken();
@@ -116,6 +117,35 @@ export async function authGet<T = unknown>(path: string, retried = false): Promi
   if (res.status === 401 && !retried) {
     const newToken = await tryRefreshToken();
     if (newToken) return authGet<T>(path, true);
+    if (token) {
+      clearStoredTokens();
+      return authGet<T>(path, true);
+    }
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function authPost<T = unknown>(
+  path: string,
+  body?: Record<string, unknown>,
+  retried = false,
+): Promise<T> {
+  const base = getApiBase();
+  const token = getStoredAccessToken();
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers,
+    body: body == null ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 401 && !retried) {
+    const newToken = await tryRefreshToken();
+    if (newToken) return authPost<T>(path, body, true);
     clearStoredTokens();
   }
   if (!res.ok) {
@@ -125,25 +155,26 @@ export async function authGet<T = unknown>(path: string, retried = false): Promi
   return res.json();
 }
 
-/** Authenticated POST. */
-export async function authPost<T = unknown>(path: string, body: unknown): Promise<T> {
+export async function authDelete(path: string, retried = false): Promise<void> {
   const base = getApiBase();
   const token = getStoredAccessToken();
-  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const headers: HeadersInit = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${base}${path}`, {
-    method: "POST",
+    method: "DELETE",
     headers,
-    body: JSON.stringify(body),
   });
+  if (res.status === 401 && !retried) {
+    const newToken = await tryRefreshToken();
+    if (newToken) return authDelete(path, true);
+    clearStoredTokens();
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
   }
-  return res.json();
 }
 
-/** Topic tag on a bill (from Phase 6 keyword inference). */
 export interface BillTopicItem {
   topic_id: number;
   name: string;
@@ -172,22 +203,22 @@ export interface BillDocumentItem {
   downloaded_at: string | null;
 }
 
-/** Phase 5 contract evidence row (field → quote from bill text). */
 export interface EvidenceSpanItem {
   field_path: string;
+  start_char: number;
+  end_char: number;
   quoted_text: string;
   page_number: number | null;
 }
 
-/** Phase 5 plain-language contract snapshot (nested on bill detail). */
 export interface BillContractItem {
   id: number;
   schema_version: string;
   contract_json: Record<string, unknown>;
   contract_hash: string;
   computed_at: string;
-  document: number;
-  document_version_label: string;
+  document: number | null;
+  document_version_label: string | null;
   evidence_spans: EvidenceSpanItem[];
 }
 
@@ -200,9 +231,7 @@ export interface BillDetail extends BillListItem {
   source_api_id: string | null;
   documents: BillDocumentItem[];
   congress_gov_url: string | null;
-  /** Latest generated contract (after Celery processes documents). */
   latest_contract: BillContractItem | null;
-  topics: BillTopicItem[];
   created_at: string;
   updated_at: string;
 }
@@ -214,7 +243,6 @@ export interface BillsPage {
   results: BillListItem[];
 }
 
-/** Policy topic (for bill filters). */
 export interface TopicItem {
   id: number;
   name: string;
@@ -228,18 +256,12 @@ export interface BillFilterOptions {
 export interface GetBillsParams {
   page?: number;
   session?: number;
-  /** Exact primary key */
   id?: number;
-  /** Case-insensitive substring match on bill_number */
   bill_number?: string;
-  /** Case-insensitive substring match */
   status?: string;
-  /** Sponsor: numeric = Representative id, else name substring */
   sponsor?: string;
   jurisdiction?: string;
-  /** Fuzzy: topic name or slug contains this string */
   topic?: string;
-  /** Exact topic tag (bill must have this topic); takes precedence over `topic` text */
   topic_id?: number;
 }
 
@@ -268,6 +290,26 @@ export async function getBillFilterOptions(): Promise<BillFilterOptions> {
 
 export async function getBill(id: number): Promise<BillDetail> {
   return publicGet<BillDetail>(`/api/bills/${id}/`);
+}
+
+export interface RelatedBillItem {
+  bill: BillListItem;
+  similarity_score: number;
+  method: string;
+}
+
+export interface RelatedBillsResponse {
+  results: RelatedBillItem[];
+}
+
+export async function getRelatedBills(
+  id: number,
+  params?: { limit?: number },
+): Promise<RelatedBillsResponse> {
+  const sp = new URLSearchParams();
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const q = sp.toString();
+  return publicGet<RelatedBillsResponse>(`/api/bills/${id}/related/${q ? `?${q}` : ""}`);
 }
 
 export interface RepresentativeItem {
@@ -300,24 +342,149 @@ export async function getRepresentatives(params?: {
   return publicGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
 }
 
-// --- User preferences (auth required) ---
-
 export interface FollowedTopicsResponse {
   topic_ids: number[];
 }
 
-export async function getFollowedTopics(): Promise<FollowedTopicsResponse> {
+export function getFollowedTopics(): Promise<FollowedTopicsResponse> {
   return authGet<FollowedTopicsResponse>("/api/preferences/followed-topics/");
 }
 
-export async function followTopic(topicId: number): Promise<unknown> {
+export function followTopic(topicId: number): Promise<unknown> {
   return authPost("/api/preferences/follow-topic/", { topic_id: topicId });
 }
 
-export async function unfollowTopic(topicId: number): Promise<unknown> {
+export function unfollowTopic(topicId: number): Promise<unknown> {
   return authPost("/api/preferences/unfollow-topic/", { topic_id: topicId });
 }
 
-export function isLoggedIn(): boolean {
-  return !!getStoredAccessToken();
+export interface TrackedBillItem {
+  id: number;
+  bill: BillListItem;
+  created_at: string;
+}
+
+export interface TrackedTopicItem {
+  id: number;
+  topic: TopicItem;
+  created_at: string;
+}
+
+export interface TrackedLegislatorItem {
+  id: number;
+  representative: RepresentativeItem;
+  created_at: string;
+}
+
+export interface TrackingSummary {
+  bills: TrackedBillItem[];
+  topics: TrackedTopicItem[];
+  legislators: TrackedLegislatorItem[];
+}
+
+export interface TrackingFeedEntry {
+  id: number;
+  bill: BillListItem;
+  change_type: string;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TrackingFeed {
+  entries: TrackingFeedEntry[];
+}
+
+export function getMyTracking(): Promise<TrackingSummary> {
+  return authGet<TrackingSummary>("/api/tracking/");
+}
+
+export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFeed> {
+  const sp = new URLSearchParams();
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  const q = sp.toString();
+  return authGet<TrackingFeed>(`/api/tracking/feed/${q ? `?${q}` : ""}`);
+}
+
+export function trackBill(billId: number): Promise<TrackedBillItem> {
+  return authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId });
+}
+
+export function untrackBill(billId: number): Promise<void> {
+  return authDelete(`/api/tracking/bills/${billId}/`);
+}
+
+export function trackTopic(topicId: number): Promise<TrackedTopicItem> {
+  return authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId });
+}
+
+export function untrackTopic(topicId: number): Promise<void> {
+  return authDelete(`/api/tracking/topics/${topicId}/`);
+}
+
+export function trackLegislator(
+  representativeId: number,
+): Promise<TrackedLegislatorItem> {
+  return authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
+    representative: representativeId,
+  });
+}
+
+export function untrackLegislator(representativeId: number): Promise<void> {
+  return authDelete(`/api/tracking/legislators/${representativeId}/`);
+}
+
+export interface IngestionTaskResponse {
+  task_id: string;
+  task_name: string;
+  jurisdiction?: string;
+  congress?: number;
+  session?: number;
+}
+
+export interface IngestBillResponse {
+  bill: BillListItem;
+  tracked_bill: TrackedBillItem;
+  ingestion: {
+    bill_id: number;
+    unchanged?: boolean;
+  };
+}
+
+export function ingestBill(params: {
+  congress: number;
+  billType: string;
+  billNumber: string;
+}): Promise<IngestBillResponse> {
+  return authPost<IngestBillResponse>("/api/ingestion/bills/", {
+    congress: params.congress,
+    bill_type: params.billType,
+    bill_number: params.billNumber,
+  });
+}
+
+export function triggerPollCongress(params: {
+  jurisdiction: string;
+  congress: number;
+}): Promise<IngestionTaskResponse> {
+  return authPost<IngestionTaskResponse>("/api/ingestion/poll-congress/", {
+    jurisdiction: params.jurisdiction,
+    congress: params.congress,
+  });
+}
+
+export function triggerDocumentBackfill(params: {
+  session: number;
+}): Promise<IngestionTaskResponse> {
+  return authPost<IngestionTaskResponse>("/api/ingestion/backfill-documents/", {
+    session: params.session,
+  });
+}
+
+export function triggerTopicBackfill(params: {
+  session: number;
+}): Promise<IngestionTaskResponse> {
+  return authPost<IngestionTaskResponse>("/api/ingestion/backfill-topics/", {
+    session: params.session,
+  });
 }

@@ -61,15 +61,15 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 ## Phase 5: Interpretation layer (BillContract + EvidenceSpan)
 
 - [x] **5.1** Canonical JSON + hash: `apps/legislation/contract_json.py` — `canonical_json_string`, `contract_hash_from_dict` (sorted keys, normalized strings).
-- [x] **5.2** `generate_contract(document_id)` (stub content): builds `contract_json` from title + excerpt of `extracted_text`; skips if hash unchanged; creates `BillContract`, sets `Bill.latest_contract`, `BillDocument.contract_generated_at`, `ChangeLog(contract_update)`, `EvidenceSpan` per top-level key; enqueues `update_topics` and `schedule_similarity_for_bill` (Phase 6 stubs). See **[legislation-tracker-backend/docs/PHASE_5_CONTRACT.md](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)**.
-- [ ] **5.3** (Later) Replace stub with real NLP extraction producing contract_json and EvidenceSpans. See **[legislation-tracker-backend/docs/PHASE_5_3_PLAN.md](legislation-tracker-backend/docs/PHASE_5_3_PLAN.md)** (schema versioning, extraction pipeline, evidence offsets).
+- [x] **5.2** `generate_contract(document_id)`: builds deterministic structured `contract_json` from source text (summary, key points, requirements, funding mentions, effective dates); skips if hash unchanged; creates `BillContract`, sets `Bill.latest_contract`, `BillDocument.contract_generated_at`, `ChangeLog(contract_update)`, and exact `EvidenceSpan` citations for source-backed fields; enqueues `update_topics` and `schedule_similarity_for_bill`. See **[legislation-tracker-backend/docs/PHASE_5_CONTRACT.md](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)**.
+- [ ] **5.3** (Later) Replace deterministic extraction with richer NLP extraction producing deeper contract_json and EvidenceSpans. See **[legislation-tracker-backend/docs/PHASE_5_3_PLAN.md](legislation-tracker-backend/docs/PHASE_5_3_PLAN.md)** (schema versioning, extraction pipeline, evidence offsets).
 
 ---
 
 ## Phase 6: Topics and similarity
 
 - [x] **6.1** Implement `update_topics(contract_id)`: keyword-based topic inference from `topic_taxonomy.py` (22 canonical topics); matches against bill title, summary, and contract fields; updates BillTopic with confidence scores; computes topic_set_hash; inserts ChangeLog(topic_update) on change. Seed topics via `python manage.py seed_topics`. Backfill existing contracts via `python manage.py backfill_topics [--sync]`.
-- [x] **6.2** Implement `recompute_similarity_batch`: periodic Beat task (hourly); finds bills without similarity scores; enqueues `schedule_similarity_for_bill` per bill; title-based Jaccard similarity with threshold 0.15; upserts BillSimilarity with `bill_a_id < bill_b_id` ordering.
+- [x] **6.2** Implement `recompute_similarity_batch`: periodic Beat task (hourly); enqueues `schedule_similarity_for_bill` per bill; deterministic topic/text similarity with thresholding; upserts BillSimilarity with `bill_a_id < bill_b_id` ordering.
 - [x] **6.3** Wire: `generate_contract` enqueues `update_topics` and `schedule_similarity_for_bill`; Beat runs `recompute_similarity_batch` hourly. Topics included in bill list and detail API responses (`BillTopicSerializer`) and rendered in Next.js frontend (badges with confidence %).
 
 ---

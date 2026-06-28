@@ -10,7 +10,9 @@ from django.utils import timezone
 
 from celery import shared_task
 from django.db import transaction
+from django.db.models import Q
 
+from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion.congress_client import (
@@ -31,7 +33,7 @@ from apps.ingestion.document_download import (
 )
 from apps.ingestion.models import IngestionState, IngestionTaskFailure
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
-from apps.legislation.tasks import generate_contract, generate_contract_for_bill, update_topics
+from apps.legislation.tasks import generate_contract
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,17 @@ def parse_bill_key(bill_key):
 
 def bill_key(congress, bill_type, bill_number):
     return f"{congress}-{(bill_type or 'hr').lower()}-{bill_number}"
+
+
+def bill_to_bill_key(bill):
+    """Convert a stored Bill row (e.g. HR 123) into the Congress task key."""
+    parts = str(bill.bill_number or "").strip().split()
+    if len(parts) < 2:
+        return None
+    bill_type = parts[0].lower()
+    if bill_type not in ("hr", "s"):
+        return None
+    return bill_key(bill.session, bill_type, parts[1])
 
 
 def _ensure_utc_aware(dt):
@@ -101,7 +114,7 @@ def compute_metadata_hash(status, title, summary, last_action_at):
 
 
 def _infer_chamber(sponsor_blob):
-    """Infer senate vs house from sponsor data. The Congress API doesn't include a chamber field."""
+    """Infer senate vs house from sponsor data when Congress API omits chamber."""
     name = sponsor_blob.get("fullName") or sponsor_blob.get("name") or ""
     if name.startswith("Sen.") or name.startswith("Sen "):
         return "senate"
@@ -109,7 +122,7 @@ def _infer_chamber(sponsor_blob):
         return "house"
     if sponsor_blob.get("district"):
         return "house"
-    return sponsor_blob.get("chamber", "house").lower() or "house"
+    return (sponsor_blob.get("chamber") or "house").lower() or "house"
 
 
 def get_or_create_representative_from_sponsor(sponsor_blob):
@@ -181,7 +194,7 @@ def poll_congress(jurisdiction="federal", congress=119):
                     offset,
                     e,
                 )
-                break
+                raise
             logger.info(
                 "poll_congress: bill_type=%s offset=%s -> %s bills",
                 bt,
@@ -221,6 +234,44 @@ def poll_congress(jurisdiction="federal", congress=119):
         process_bill.apply_async(args=[key])
     logger.info("poll_congress: done enqueued=%s last_bill_update_seen_at=%s", len(all_bill_keys), latest_update)
     return {"enqueued": len(all_bill_keys)}
+
+
+@shared_task
+def poll_tracked_bills():
+    """
+    Refresh bills relevant to user tracking.
+
+    This does not discover new bills by topic/legislator. The broad poll_congress
+    schedule handles discovery; this task gives already-tracked corpus rows a
+    more direct refresh path.
+    """
+    direct_bill_ids = TrackedBill.objects.values_list("bill_id", flat=True)
+    topic_ids = TrackedTopic.objects.values_list("topic_id", flat=True)
+    representative_ids = TrackedLegislator.objects.values_list(
+        "representative_id",
+        flat=True,
+    )
+    bills = (
+        Bill.objects.filter(
+            Q(id__in=direct_bill_ids)
+            | Q(bill_topics__topic_id__in=topic_ids)
+            | Q(sponsor_id__in=representative_ids)
+        )
+        .only("id", "session", "bill_number")
+        .order_by("id")
+        .distinct()
+    )
+    keys = []
+    for bill in bills:
+        key = bill_to_bill_key(bill)
+        if key:
+            keys.append(key)
+
+    for key in sorted(set(keys)):
+        process_bill.apply_async(args=[key])
+
+    logger.info("poll_tracked_bills: enqueued=%s", len(set(keys)))
+    return {"enqueued": len(set(keys))}
 
 
 def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc):
@@ -329,19 +380,34 @@ def _process_bill_impl(bill_key_str):
         bill_id = bill.id
         if not created:
             if bill.metadata_hash == metadata_hash:
-                bill.processing_status = ProcessingStatus.COMPLETE
-                bill.save(update_fields=["processing_status"])
                 logger.info("process_bill: unchanged (hash match) bill_id=%s bill_key=%s", bill.id, bill_key_str)
-                needs_enrichment = (
+                # Still run document/votes pipeline if we never stored files (hash match skips the block below).
+                needs_doc_pipeline = (
                     not bill.documents.exists()
                     or bill.documents.filter(downloaded_at__isnull=True).exists()
-                    or not bill.bill_topics.exists()
-                    or bill.latest_contract is None
                 )
-                if needs_enrichment:
-                    _ingest_bill_fully(bill, congress, bill_type, bill_number)
+                bill.processing_status = (
+                    ProcessingStatus.PROCESSING
+                    if needs_doc_pipeline
+                    else ProcessingStatus.COMPLETE
+                )
+                bill.save(update_fields=["processing_status"])
+                if needs_doc_pipeline:
+                    try:
+                        process_bill_versions.apply_async(args=[bill.id])
+                        process_bill_votes.apply_async(args=[bill.id])
+                        logger.info(
+                            "process_bill: enqueued versions+votes (documents missing or not downloaded) bill_id=%s",
+                            bill.id,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "process_bill: failed to enqueue versions/votes bill_id=%s",
+                            bill.id,
+                        )
                 return {"bill_id": bill.id, "unchanged": True}
             old_status = bill.status
+            old_title = bill.title
             bill.processing_status = ProcessingStatus.PROCESSING
             bill.title = title or bill.title
             bill.summary = summary if summary is not None else bill.summary
@@ -354,8 +420,8 @@ def _process_bill_impl(bill_key_str):
             ChangeLog.objects.create(
                 bill=bill,
                 change_type="status_update",
-                old_value={"status": old_status, "title": bill.title},
-                new_value={"status": status, "title": title},
+                old_value={"status": old_status, "title": old_title},
+                new_value={"status": bill.status, "title": bill.title},
             )
         else:
             ChangeLog.objects.create(
@@ -364,114 +430,15 @@ def _process_bill_impl(bill_key_str):
                 old_value=None,
                 new_value={"status": status, "title": title},
             )
-    _ingest_bill_fully(bill, congress, bill_type, bill_number)
-    logger.info("process_bill: success bill_id=%s bill_key=%s", bill.id, bill_key_str)
-    return {"bill_id": bill.id, "unchanged": False}
-
-
-def _ingest_bill_fully(bill, congress, bill_type, bill_number):
-    """
-    Run the entire enrichment pipeline synchronously for a single bill:
-    versions -> download -> contract -> topics -> votes.
-    """
-    # 1. Fetch text versions and download documents
     try:
-        versions = bill_text_list(congress, bill_type, bill_number)
-    except (CongressAPIError, Exception) as e:
-        logger.warning("_ingest_bill_fully: bill_text_list failed bill_id=%s: %s", bill.id, e)
-        versions = []
-
-    active_doc = None
-    for i, v in enumerate(versions or []):
-        label = v.get("version_label") or v.get("url") or f"v{i}"
-        url = v.get("url") or ""
-        doc, _ = BillDocument.objects.get_or_create(
-            bill=bill,
-            version_label=label[:50],
-            defaults={"source_url": url or None, "is_active_version": False},
-        )
-        if url and (doc.source_url or "") != url:
-            doc.source_url = url
-            doc.save(update_fields=["source_url"])
-        if i == len(versions) - 1:
-            BillDocument.objects.filter(bill=bill).update(is_active_version=False)
-            doc.is_active_version = True
-            doc.save(update_fields=["is_active_version"])
-            active_doc = doc
-
-        # Download inline
-        if doc.source_url and not doc.downloaded_at:
-            try:
-                _download_document_sync(doc)
-            except Exception as e:
-                logger.warning(
-                    "_ingest_bill_fully: download failed doc_id=%s: %s", doc.id, e
-                )
-
-    # 2. Generate contract (uses extracted text if available, else title)
-    generate_contract_for_bill(bill.id)
-    if active_doc and active_doc.downloaded_at and active_doc.extracted_text:
-        generate_contract(active_doc.id)
-
-    # 3. Assign topics
-    update_topics(bill_id=bill.id)
-
-    # 4. Votes (still async — they require extra API calls per vote and are not critical)
-    try:
+        process_bill_versions.apply_async(args=[bill.id])
         process_bill_votes.apply_async(args=[bill.id])
     except Exception:
-        logger.exception("_ingest_bill_fully: failed to enqueue votes bill_id=%s", bill.id)
-
-    bill.processing_status = ProcessingStatus.COMPLETE
-    bill.save(update_fields=["processing_status"])
-
-
-def _download_document_sync(doc):
-    """Download a single BillDocument's source file, extract text, save to storage."""
-    bill = doc.bill
-    data, content_type = download_url(doc.source_url)
-    new_hash = sha256_hex(data)
-
-    if doc.content_hash == new_hash and doc.object_storage_key:
-        doc.downloaded_at = timezone.now()
-        doc.save(update_fields=["downloaded_at"])
-        return
-
-    ext = ""
-    if content_type and "pdf" in content_type.lower():
-        ext = ".pdf"
-    elif content_type and "xml" in content_type.lower():
-        ext = ".xml"
-    elif content_type and "html" in content_type.lower():
-        ext = ".html"
-    else:
-        ext = guess_extension(doc.source_url, content_type)
-
-    object_key = build_object_key(bill.session, bill.bill_number, doc.version_label, ext)
-    saved_key, size = upload_and_metadata(object_key, data, content_type)
-
-    extracted = ""
-    if content_type and "pdf" in content_type.lower():
-        extracted = extract_text_from_pdf(data)
-    elif content_type and ("xml" in content_type.lower() or "html" in content_type.lower()):
-        extracted = extract_text_from_xml_or_html(data, content_type)
-
-    now = timezone.now()
-    doc.object_storage_key = saved_key
-    doc.file_size_bytes = size
-    doc.content_hash = new_hash
-    doc.content_type = (content_type[:128] if content_type else None)
-    doc.extracted_text = extracted or None
-    doc.downloaded_at = now
-    doc.parsed_at = now if extracted else None
-    doc.save(update_fields=[
-        "object_storage_key", "file_size_bytes", "content_hash",
-        "content_type", "extracted_text", "downloaded_at", "parsed_at",
-    ])
-    logger.info(
-        "_download_document_sync: doc_id=%s key=%s bytes=%s text=%s",
-        doc.id, saved_key, size, len(extracted),
-    )
+        bill.processing_status = ProcessingStatus.FAILED
+        bill.save(update_fields=["processing_status"])
+        raise
+    logger.info("process_bill: success bill_id=%s bill_key=%s (updated, enqueued versions+votes)", bill.id, bill_key_str)
+    return {"bill_id": bill.id, "unchanged": False}
 
 
 @shared_task(
@@ -482,7 +449,7 @@ def _download_document_sync(doc):
     max_retries=2,
 )
 def process_bill_versions(self, bill_id):
-    """Fetch bill text versions, create/update BillDocument, enqueue download_document (stub)."""
+    """Fetch bill text versions, create/update BillDocument, enqueue download_document."""
     logger.info("process_bill_versions: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
     if not bill:
@@ -518,14 +485,22 @@ def process_bill_versions(self, bill_id):
             version_label=label[:50],
             defaults={"source_url": url or None, "is_active_version": False},
         )
-        if not created and (doc.source_url or "") != url:
+        source_url_changed = not created and (doc.source_url or "") != url
+        if source_url_changed:
             doc.source_url = url or None
             doc.save(update_fields=["source_url"])
         if i == len(versions) - 1:
             BillDocument.objects.filter(bill=bill).update(is_active_version=False)
             doc.is_active_version = True
             doc.save(update_fields=["is_active_version"])
-        download_document.apply_async(args=[doc.id])
+        needs_download = (
+            created
+            or source_url_changed
+            or not doc.object_storage_key
+            or doc.downloaded_at is None
+        )
+        if needs_download:
+            download_document.apply_async(args=[doc.id])
     logger.info("process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions))
     return {"bill_id": bill_id, "versions": len(versions)}
 
@@ -585,10 +560,7 @@ def process_bill_votes(self, bill_id):
             continue
         if Vote.objects.filter(bill=bill, chamber=chamber, roll_number=int(roll)).exists():
             continue
-        try:
-            vote_data = vote_detail(congress, chamber, roll)
-        except CongressAPIError:
-            continue
+        vote_data = vote_detail(congress, chamber, roll)
         vote_date = vote_data.get("date") or vote_data.get("voteDate")
         if isinstance(vote_date, str):
             try:
@@ -660,7 +632,7 @@ def process_bill_votes(self, bill_id):
 def download_document(self, document_id):
     """
     Download file from BillDocument.source_url, upload to storage (MinIO/S3 or local_media),
-    set content_hash, extracted_text when PDF/XML/HTML, enqueue generate_contract stub.
+    set content_hash, extracted_text when PDF/XML/HTML, enqueue generate_contract.
     """
     logger.info("download_document: starting document_id=%s", document_id)
     doc = BillDocument.objects.select_related("bill").filter(pk=document_id).first()

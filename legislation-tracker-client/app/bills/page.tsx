@@ -1,22 +1,24 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import SelectField, { type SelectOption } from "../components/SelectField";
 import {
   getBillFilterOptions,
   getBills,
+  getMyTracking,
+  getStoredAccessToken,
   getTopics,
+  trackTopic,
   type BillListItem,
   type BillsPage,
   type TopicItem,
+  untrackTopic,
 } from "@/lib/api";
 
 const PAGE_SIZE = 20;
 
 function BillsTable() {
-  const searchParams = useSearchParams();
-
   const [page, setPage] = useState<BillsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,10 +33,12 @@ function BillsTable() {
   const [jurisdictionFilter, setJurisdictionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sponsorFilter, setSponsorFilter] = useState("");
-  const [topicIdFilter, setTopicIdFilter] = useState<string>(
-    searchParams.get("topic_id") ?? ""
-  );
+  const [topicIdFilter, setTopicIdFilter] = useState<string>("");
   const [topicFuzzyFilter, setTopicFuzzyFilter] = useState("");
+  const [hasAccount, setHasAccount] = useState(false);
+  const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
+  const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const loadFilterMeta = useCallback(async () => {
     try {
@@ -52,6 +56,30 @@ function BillsTable() {
   useEffect(() => {
     loadFilterMeta();
   }, [loadFilterMeta]);
+
+  useEffect(() => {
+    const signedIn = Boolean(getStoredAccessToken());
+    setHasAccount(signedIn);
+    if (!signedIn) return;
+
+    let cancelled = false;
+    getMyTracking()
+      .then((summary) => {
+        if (!cancelled) {
+          setTrackedTopicIds(summary.topics.map((item) => item.topic.id));
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setTrackingError(
+            e instanceof Error ? e.message : "Failed to load tracked topics",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,12 +139,6 @@ function BillsTable() {
     [],
   );
 
-  const onTopicDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setPageNum(1);
-    setTopicIdFilter(e.target.value);
-    if (e.target.value) setTopicFuzzyFilter("");
-  };
-
   const onTopicFuzzyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPageNum(1);
     setTopicFuzzyFilter(e.target.value);
@@ -127,11 +149,52 @@ function BillsTable() {
     page &&
     page.results.length === PAGE_SIZE &&
     page.count > pageNum * PAGE_SIZE;
+  const selectedTopicId = topicIdFilter ? parseInt(topicIdFilter, 10) : NaN;
+  const selectedTopic = topics.find((topic) => topic.id === selectedTopicId);
+  const selectedTopicIsTracked =
+    !Number.isNaN(selectedTopicId) && trackedTopicIds.includes(selectedTopicId);
+  const jurisdictionOptions: SelectOption[] = [
+    { value: "", label: "All" },
+    ...jurisdictions.map((jurisdiction) => ({
+      value: jurisdiction,
+      label: jurisdiction,
+    })),
+  ];
+  const topicOptions: SelectOption[] = [
+    { value: "", label: "All" },
+    ...topics.map((topic) => ({
+      value: String(topic.id),
+      label: topic.name,
+    })),
+  ];
+
+  async function toggleSelectedTopicTracking() {
+    if (Number.isNaN(selectedTopicId)) return;
+    setTrackingTopicId(selectedTopicId);
+    setTrackingError(null);
+    try {
+      if (selectedTopicIsTracked) {
+        await untrackTopic(selectedTopicId);
+        setTrackedTopicIds((ids) => ids.filter((id) => id !== selectedTopicId));
+      } else {
+        await trackTopic(selectedTopicId);
+        setTrackedTopicIds((ids) =>
+          ids.includes(selectedTopicId) ? ids : [...ids, selectedTopicId],
+        );
+      }
+    } catch (e) {
+      setTrackingError(
+        e instanceof Error ? e.message : "Failed to update tracked topic",
+      );
+    } finally {
+      setTrackingTopicId(null);
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-background p-6 font-mono text-slate-900 dark:text-green-300">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between">
+    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+      <div className="w-full">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-green-400">
             Ingested Bills
           </h1>
@@ -149,7 +212,7 @@ function BillsTable() {
             an exact tag, or <strong>topic contains</strong> for a fuzzy match
             (not both).
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-slate-600 dark:text-green-500">Bill ID</span>
               <input
@@ -181,21 +244,15 @@ function BillsTable() {
                 className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Jurisdiction</span>
-              <select
-                value={jurisdictionFilter}
-                onChange={resetPageAndSet(setJurisdictionFilter)}
-                className="cursor-pointer rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
-              >
-                <option value="">All</option>
-                {jurisdictions.map((j) => (
-                  <option key={j} value={j}>
-                    {j}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Jurisdiction"
+              value={jurisdictionFilter}
+              options={jurisdictionOptions}
+              onChange={(value) => {
+                setPageNum(1);
+                setJurisdictionFilter(value);
+              }}
+            />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-slate-600 dark:text-green-500">Status (contains)</span>
               <input
@@ -216,21 +273,16 @@ function BillsTable() {
                 className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Topic (exact)</span>
-              <select
-                value={topicIdFilter}
-                onChange={onTopicDropdownChange}
-                className="cursor-pointer rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
-              >
-                <option value="">All</option>
-                {topics.map((t) => (
-                  <option key={t.id} value={String(t.id)}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Topic (exact)"
+              value={topicIdFilter}
+              options={topicOptions}
+              onChange={(value) => {
+                setPageNum(1);
+                setTopicIdFilter(value);
+                if (value) setTopicFuzzyFilter("");
+              }}
+            />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-slate-600 dark:text-green-500">Topic contains (fuzzy)</span>
               <input
@@ -242,6 +294,43 @@ function BillsTable() {
                 className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 disabled:opacity-40 dark:border-green-700 dark:bg-black dark:text-green-300"
               />
             </label>
+          </div>
+          <div className="mt-4 border-t border-slate-300 pt-3 text-sm dark:border-green-900/70">
+            {hasAccount ? (
+              selectedTopic ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-slate-600 dark:text-green-500">
+                    {selectedTopic.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleSelectedTopicTracking}
+                    disabled={trackingTopicId === selectedTopic.id}
+                    className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                  >
+                    {trackingTopicId === selectedTopic.id
+                      ? "Saving..."
+                      : selectedTopicIsTracked
+                        ? "Tracked topic"
+                        : "Track topic"}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-slate-600 dark:text-green-500">
+                  Select an exact topic to track it.
+                </p>
+              )
+            ) : (
+              <Link
+                href="/login"
+                className="text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+              >
+                Log in to track topics
+              </Link>
+            )}
+            {trackingError && (
+              <p className="mt-2 text-red-700 dark:text-red-300">{trackingError}</p>
+            )}
           </div>
         </div>
 
@@ -258,21 +347,20 @@ function BillsTable() {
             <p className="mb-4 text-slate-600 dark:text-green-500/80">
               {page.count} bill{page.count !== 1 ? "s" : ""} (page {pageNum})
             </p>
-            <div className="overflow-x-auto rounded-lg border border-slate-400 dark:border-green-800">
-              <table className="w-full text-left">
+            <div className="overflow-hidden rounded-lg border border-slate-400 dark:border-green-800">
+              <table className="w-full table-fixed text-left">
                 <thead>
                   <tr className="border-b border-slate-400 bg-slate-300/80 dark:border-green-800 dark:bg-green-950/20">
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">ID</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Bill #</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">ID</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Bill #</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">
                       Jurisdiction
                     </th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Session</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Title</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Status</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Sponsor</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Topics</th>
-                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Actions</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Session</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Title</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Status</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Sponsor</th>
+                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -281,37 +369,18 @@ function BillsTable() {
                       key={bill.id}
                       className="border-b border-slate-300 hover:bg-white/60 dark:border-green-900/50 dark:hover:bg-green-950/10"
                     >
-                      <td className="p-3 text-slate-600 dark:text-green-500">{bill.id}</td>
-                      <td className="p-3 font-medium">{bill.bill_number}</td>
-                      <td className="p-3">{bill.jurisdiction}</td>
-                      <td className="p-3">{bill.session}</td>
-                      <td className="max-w-md truncate p-3" title={bill.title}>
+                      <td className="truncate p-3 text-slate-600 dark:text-green-500">{bill.id}</td>
+                      <td className="truncate p-3 font-medium">{bill.bill_number}</td>
+                      <td className="truncate p-3">{bill.jurisdiction}</td>
+                      <td className="truncate p-3">{bill.session}</td>
+                      <td className="truncate p-3" title={bill.title}>
                         {bill.title}
                       </td>
-                      <td className="max-w-xs truncate p-3" title={bill.status}>
+                      <td className="truncate p-3" title={bill.status}>
                         {bill.status}
                       </td>
-                      <td className="p-3">{bill.sponsor_name ?? "—"}</td>
-                      <td className="max-w-xs p-3">
-                        <div className="flex flex-wrap gap-1">
-                          {bill.topics && bill.topics.length > 0 ? (
-                            bill.topics.slice(0, 3).map((t) => (
-                              <span
-                                key={t.topic_id}
-                                className="inline-block rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-400"
-                              >
-                                {t.name}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-slate-400 dark:text-green-700">—</span>
-                          )}
-                          {bill.topics && bill.topics.length > 3 && (
-                            <span className="text-xs text-slate-500 dark:text-green-600">
-                              +{bill.topics.length - 3}
-                            </span>
-                          )}
-                        </div>
+                      <td className="truncate p-3" title={bill.sponsor_name ?? undefined}>
+                        {bill.sponsor_name ?? "—"}
                       </td>
                       <td className="p-3">
                         <Link
@@ -326,7 +395,7 @@ function BillsTable() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-4 flex gap-4">
+            <div className="mt-4 flex flex-wrap gap-3">
               {pageNum > 1 && (
                 <button
                   type="button"
@@ -354,9 +423,5 @@ function BillsTable() {
 }
 
 export default function BillsPage() {
-  return (
-    <Suspense>
-      <BillsTable />
-    </Suspense>
-  );
+  return <BillsTable />;
 }

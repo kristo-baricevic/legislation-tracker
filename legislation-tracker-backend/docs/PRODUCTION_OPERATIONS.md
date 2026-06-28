@@ -1,0 +1,142 @@
+# Production Operations
+
+This backend needs four production processes/services:
+
+1. **PostgreSQL** for durable application data.
+2. **Redis** for Celery broker/result backend and Django cache.
+3. **Django web** for the API.
+4. **Celery worker + Celery Beat** for ingestion, document processing, contracts, and scheduled refreshes.
+
+The Next.js client is deployed separately and points at the Django API with `NEXT_PUBLIC_API_URL`.
+
+## Required Environment
+
+Set these for the Django web process, Celery worker, and Celery Beat:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.prod
+DEBUG=False
+DJANGO_SECRET_KEY=<long-random-secret>
+ALLOWED_HOSTS=api.example.com
+DATABASE_URL=postgres://...
+REDIS_URL=redis://...
+CONGRESS_API_KEY=<congress-api-key>
+CORS_ALLOWED_ORIGINS=https://app.example.com
+```
+
+Optional but expected for document storage:
+
+```bash
+USE_LOCAL_DOCUMENT_STORAGE=False
+AWS_ACCESS_KEY_ID=<key>
+AWS_SECRET_ACCESS_KEY=<secret>
+AWS_STORAGE_BUCKET_NAME=<bucket>
+AWS_S3_REGION_NAME=us-east-1
+AWS_S3_ENDPOINT_URL=<optional-s3-compatible-endpoint>
+```
+
+`USE_LOCAL_DOCUMENT_STORAGE=True` is only appropriate for local development or a single-node deployment where local disk persistence is explicitly managed.
+
+## Release Commands
+
+Run database migrations before serving traffic:
+
+```bash
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py check
+```
+
+Run the API with a production WSGI server:
+
+```bash
+gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000}
+```
+
+Run a Celery worker:
+
+```bash
+celery -A config worker -l info
+```
+
+Run Celery Beat as exactly one scheduler instance:
+
+```bash
+celery -A config beat -l info
+```
+
+Do not run multiple Beat schedulers against the same environment unless you also add a distributed scheduler/lock. Multiple Beat instances can enqueue duplicate ingestion work.
+
+## Scheduled Background Polling
+
+Celery Beat currently schedules:
+
+| Schedule key | Task | Interval | Purpose |
+| --- | --- | ---: | --- |
+| `poll-congress` | `apps.ingestion.tasks.poll_congress` | 10 minutes | Broad Congress.gov discovery for updated federal bills. |
+| `poll-tracked-bills` | `apps.ingestion.tasks.poll_tracked_bills` | 5 minutes | Direct refresh for bills already relevant to user tracking. |
+
+Both schedules enqueue normal ingestion tasks. They do not store user-specific feed rows. The durable history is written to the shared `ChangeLog` table by ingestion tasks such as `process_bill`, `process_bill_votes`, document processing, and contract generation.
+
+Contract generation enqueues `update_topics`, which deterministically infers policy topics from the bill title, summary, and contract text. Topic changes are written as persistent `topic_update` rows in `ChangeLog`.
+
+`GET /api/tracking/feed/` reads persistent `ChangeLog` rows and filters them for the authenticated user based on tracked bills, tracked topics, and tracked legislators.
+
+Important limitation: `poll_tracked_bills` refreshes bills that already exist in the shared corpus. Discovery of brand-new bills still depends on `poll_congress`, followed by topic assignment/sponsor data.
+
+## Manual Admin Controls
+
+These ingestion endpoints are staff-only in production and local development:
+
+```text
+POST /api/ingestion/poll-congress/
+POST /api/ingestion/backfill-documents/
+POST /api/ingestion/backfill-topics/
+POST /api/ingestion/bills/
+```
+
+Regular authenticated users can use tracking and feed endpoints, but cannot manually trigger ingestion:
+
+```text
+GET  /api/tracking/
+GET  /api/tracking/feed/
+POST /api/tracking/bills/
+POST /api/tracking/topics/
+POST /api/tracking/legislators/
+```
+
+## Operational Checks
+
+Verify Django configuration:
+
+```bash
+python manage.py check
+```
+
+Verify Celery can load settings and tasks:
+
+```bash
+celery -A config inspect registered
+```
+
+Check core data counts:
+
+```bash
+python manage.py shell -c "
+from apps.legislation.models import Bill
+from apps.changelog.models import ChangeLog
+from apps.accounts.models import TrackedBill, TrackedTopic, TrackedLegislator
+print('Bills:', Bill.objects.count())
+print('ChangeLog:', ChangeLog.objects.count())
+print('Tracked bills:', TrackedBill.objects.count())
+print('Tracked topics:', TrackedTopic.objects.count())
+print('Tracked legislators:', TrackedLegislator.objects.count())
+"
+```
+
+Expected production behavior:
+
+- Celery Beat periodically enqueues polling tasks.
+- Celery workers process those tasks and write shared bill/changelog updates.
+- User dashboards read tracking summaries and persistent feed entries from the API.
+- Staff can manually enqueue ingestion when needed; normal users cannot.

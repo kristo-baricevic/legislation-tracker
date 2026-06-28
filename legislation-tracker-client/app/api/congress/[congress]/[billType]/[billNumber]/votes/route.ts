@@ -5,19 +5,19 @@ export async function GET(
   context: {
     params: Promise<{
       congress: string;
-      chamber: string;
-      rollNumber: string;
+      billType: string;
+      billNumber: string;
     }>;
   }
 ) {
-  const { congress, chamber, rollNumber } = await context.params;
+  const { congress, billType, billNumber } = await context.params;
 
   const apiKey = process.env.NEXT_PUBLIC_CONGRESS_API_KEY;
 
-  const url = `https://api.congress.gov/v3/vote/${congress}/${chamber}/${rollNumber}?api_key=${apiKey}`;
+  const url = `https://api.congress.gov/v3/bill/${congress}/${billType.toLowerCase()}/${billNumber}?api_key=${apiKey}`;
 
   const res = await fetch(url);
   const data = await res.json();
 
-  return NextResponse.json(data);
+  return NextResponse.json({ votes: data?.bill?.votes ?? [] }, { status: res.status });
 }

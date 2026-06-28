@@ -12,13 +12,13 @@ This app is the **core “what is a bill?”** data model. It stores the officia
 - **BillContract** is the structured, plain-language interpretation of a document version (`contract_json`), with a hash so we know when the interpretation changed.
 - **EvidenceSpan** ties contract fields back to **exact spans** in the source text (for transparency and citations).
 - **Topic** / **BillTopic** support tagging bills for search and feeds.
-- **BillSimilarity** stores precomputed “related bill” scores (future use for recommendations).
+- **BillSimilarity** stores precomputed “related bill” scores for recommendations.
 
 The **Django REST Framework (DRF)** exposes read-only **list/detail APIs** for bills (`/api/bills/`) so the **Next.js** frontend can show tables and detail pages.
 
 **Phase 4 — document files:** **`download_document`** (Celery, in `ingestion` app) saves bytes to **django-storages** targeting **MinIO** (local, free) or **filesystem** (`USE_LOCAL_DOCUMENT_STORAGE=True`).
 
-**Phase 5 — contract layer:** **`generate_contract`** builds a **stub** `contract_json` (title + excerpt + version), hashes it with **`contract_json.canonical_json_string`**, creates **`BillContract`** / **`EvidenceSpan`** / **`ChangeLog`**, and enqueues Phase 6 stubs. Full write-up: **[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
+**Phase 5 — contract layer:** **`generate_contract`** builds deterministic structured summaries from bill text, hashes them with **`contract_json.canonical_json_string`**, creates **`BillContract`** / **`EvidenceSpan`** / **`ChangeLog`**, and enqueues topic and similarity recomputation. Full write-up: **[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
 
 ## What you’ll find here
 

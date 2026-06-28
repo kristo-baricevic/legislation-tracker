@@ -114,7 +114,9 @@ def bill_text_list(congress, bill_type, bill_number):
     result = []
     for v in versions if isinstance(versions, list) else []:
         label = v.get("type") or v.get("version") or v.get("label") or "unknown"
-        url = v.get("url") or v.get("format", {}).get("url") if isinstance(v.get("format"), dict) else None
+        url = v.get("url")
+        if not url and isinstance(v.get("format"), dict):
+            url = v.get("format", {}).get("url")
         if not url and isinstance(v.get("formats"), list):
             for f in v.get("formats", []):
                 if f.get("url"):

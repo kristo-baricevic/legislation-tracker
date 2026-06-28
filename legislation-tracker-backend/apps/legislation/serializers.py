@@ -40,7 +40,7 @@ class EvidenceSpanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EvidenceSpan
-        fields = ["field_path", "quoted_text", "page_number"]
+        fields = ["field_path", "start_char", "end_char", "quoted_text", "page_number"]
 
 
 class BillContractSerializer(serializers.ModelSerializer):

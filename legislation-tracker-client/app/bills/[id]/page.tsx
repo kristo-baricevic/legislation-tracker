@@ -5,8 +5,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   getBill,
+  getMyTracking,
+  getStoredAccessToken,
+  trackBill,
   type BillContractItem,
   type BillDetail,
+  untrackBill,
 } from "@/lib/api";
 
 function ContractSection({ contract }: { contract: BillContractItem }) {
@@ -34,7 +38,7 @@ function ContractSection({ contract }: { contract: BillContractItem }) {
           : ""}
       </p>
       {plain ? (
-        <p className="max-w-2xl whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-green-100">
+        <p className="w-full break-words whitespace-pre-wrap leading-relaxed text-slate-800 [overflow-wrap:anywhere] dark:text-green-100">
           {plain}
         </p>
       ) : (
@@ -43,7 +47,7 @@ function ContractSection({ contract }: { contract: BillContractItem }) {
       {excerpt && excerpt !== plain && (
         <div className="mt-4">
           <h3 className="mb-1 text-sm text-slate-600 dark:text-green-500">Source excerpt</h3>
-          <p className="max-w-2xl whitespace-pre-wrap text-sm text-slate-700 dark:text-green-300/90">
+          <p className="w-full break-words whitespace-pre-wrap text-sm text-slate-700 [overflow-wrap:anywhere] dark:text-green-300/90">
             {excerpt}
           </p>
         </div>
@@ -62,7 +66,7 @@ function ContractSection({ contract }: { contract: BillContractItem }) {
                 <div className="font-mono text-xs text-slate-600 dark:text-green-500">
                   {ev.field_path}
                 </div>
-                <div className="mt-1 line-clamp-4 text-slate-700 dark:text-green-300/80">
+                <div className="mt-1 line-clamp-4 break-words text-slate-700 [overflow-wrap:anywhere] dark:text-green-300/80">
                   {ev.quoted_text}
                 </div>
               </li>
@@ -80,6 +84,10 @@ function BillDetailInner() {
   const [bill, setBill] = useState<BillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasAccount, setHasAccount] = useState(false);
+  const [isTracked, setIsTracked] = useState(false);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -103,31 +111,81 @@ function BillDetailInner() {
     };
   }, [id]);
 
+  useEffect(() => {
+    const signedIn = Boolean(getStoredAccessToken());
+    setHasAccount(signedIn);
+    if (!signedIn || Number.isNaN(id)) return;
+
+    let cancelled = false;
+    setTrackingError(null);
+    getMyTracking()
+      .then((summary) => {
+        if (!cancelled) {
+          setIsTracked(summary.bills.some((item) => item.bill.id === id));
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setTrackingError(
+            e instanceof Error ? e.message : "Failed to load tracking status",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  async function toggleBillTracking() {
+    if (!bill) return;
+    setTrackingLoading(true);
+    setTrackingError(null);
+    try {
+      if (isTracked) {
+        await untrackBill(bill.id);
+        setIsTracked(false);
+      } else {
+        await trackBill(bill.id);
+        setIsTracked(true);
+      }
+    } catch (e) {
+      setTrackingError(
+        e instanceof Error ? e.message : "Failed to update tracking",
+      );
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-background p-6 font-mono text-slate-900 dark:text-green-300">
-        <p className="text-slate-600 dark:text-green-500">Loading…</p>
+      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+        <div className="w-full">
+          <p className="text-slate-600 dark:text-green-500">Loading...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !bill) {
     return (
-      <div className="min-h-screen bg-background p-6 font-mono text-slate-900 dark:text-green-300">
-        <p className="text-red-700 dark:text-red-400">{error ?? "Bill not found"}</p>
-        <Link
-          href="/bills"
-          className="mt-4 inline-block cursor-pointer text-blue-900 underline dark:text-green-400"
-        >
-          ← Back to bills
-        </Link>
+      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+        <div className="w-full">
+          <p className="text-red-700 dark:text-red-400">{error ?? "Bill not found"}</p>
+          <Link
+            href="/bills"
+            className="mt-4 inline-block cursor-pointer text-blue-900 underline dark:text-green-400"
+          >
+            ← Back to bills
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-6 font-mono text-slate-900 dark:text-green-300">
-      <div className="mx-auto max-w-4xl">
+    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+      <div className="w-full">
         <Link
           href="/bills"
           className="mb-6 inline-block cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
@@ -135,12 +193,44 @@ function BillDetailInner() {
           ← Back to bills
         </Link>
 
-        <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
-          {bill.bill_number} ({bill.session})
-        </h1>
-        <p className="mb-6 text-slate-800 dark:text-green-200">{bill.title}</p>
+        <div className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
+              {bill.bill_number} ({bill.session})
+            </h1>
+            <p className="text-slate-800 dark:text-green-200">{bill.title}</p>
+          </div>
+          <div className="shrink-0">
+            {hasAccount ? (
+              <button
+                type="button"
+                onClick={toggleBillTracking}
+                disabled={trackingLoading}
+                className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+              >
+                {trackingLoading
+                  ? "Saving..."
+                  : isTracked
+                    ? "Tracked bill"
+                    : "Track bill"}
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="text-sm text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+              >
+                Log in to track this bill
+              </Link>
+            )}
+            {trackingError && (
+              <p className="mt-2 max-w-48 text-sm text-red-700 dark:text-red-300">
+                {trackingError}
+              </p>
+            )}
+          </div>
+        </div>
 
-        <dl className="mb-6 grid gap-2">
+        <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="text-sm text-slate-600 dark:text-green-500">Jurisdiction</dt>
             <dd>{bill.jurisdiction}</dd>
@@ -166,7 +256,9 @@ function BillDetailInner() {
           {bill.summary && (
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Summary</dt>
-              <dd className="max-w-2xl whitespace-pre-wrap">{bill.summary}</dd>
+              <dd className="w-full break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {bill.summary}
+              </dd>
             </div>
           )}
         </dl>
@@ -175,16 +267,20 @@ function BillDetailInner() {
           <div className="mb-6">
             <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Topics</h2>
             <div className="flex flex-wrap gap-2">
-              {bill.topics.map((t) => (
+              {bill.topics.map((topic) => (
                 <span
-                  key={t.topic_id}
+                  key={topic.topic_id}
                   className="inline-flex items-center gap-1 rounded-full border border-slate-400 bg-slate-100 px-3 py-1 text-sm text-slate-800 dark:border-green-700 dark:bg-green-950/30 dark:text-green-300"
-                  title={t.confidence_score != null ? `Confidence: ${(t.confidence_score * 100).toFixed(0)}%` : undefined}
+                  title={
+                    topic.confidence_score != null
+                      ? `Confidence: ${(topic.confidence_score * 100).toFixed(0)}%`
+                      : undefined
+                  }
                 >
-                  {t.name}
-                  {t.confidence_score != null && (
+                  {topic.name}
+                  {topic.confidence_score != null && (
                     <span className="text-xs text-slate-500 dark:text-green-600">
-                      {(t.confidence_score * 100).toFixed(0)}%
+                      {(topic.confidence_score * 100).toFixed(0)}%
                     </span>
                   )}
                 </span>
@@ -201,8 +297,10 @@ function BillDetailInner() {
               Plain-language summary (beta)
             </h2>
             <p>
-              No summary available yet. A plain-language summary will be generated
-              once this bill is fully processed.
+              No generated summary yet. After a bill document is downloaded and
+              the{" "}
+              <code className="text-slate-800 dark:text-green-500/90">generate_contract</code> Celery
+              task runs, a structured summary will appear here.
             </p>
           </section>
         )}

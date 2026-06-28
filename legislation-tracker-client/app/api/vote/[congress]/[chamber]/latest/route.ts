@@ -47,7 +47,7 @@ export async function GET(
     }
 
     return NextResponse.json({ vote: latestVote });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

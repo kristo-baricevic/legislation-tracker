@@ -48,3 +48,99 @@ class UserPreference(models.Model):
         if self.chamber:
             parts.append(f"chamber={self.chamber}")
         return " ".join(parts)
+
+
+class TrackedBill(models.Model):
+    """A bill a user is personally tracking."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="tracked_bills",
+    )
+    bill = models.ForeignKey(
+        "legislation.Bill",
+        on_delete=models.CASCADE,
+        related_name="tracked_by_users",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "accounts_trackedbill"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "bill"],
+                name="accounts_trackedbill_user_bill_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["bill"]),
+        ]
+
+    def __str__(self):
+        return f"User {self.user_id} tracks bill {self.bill_id}"
+
+
+class TrackedTopic(models.Model):
+    """A policy topic a user is personally tracking."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="tracked_topics",
+    )
+    topic = models.ForeignKey(
+        "legislation.Topic",
+        on_delete=models.CASCADE,
+        related_name="tracked_by_users",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "accounts_trackedtopic"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "topic"],
+                name="accounts_trackedtopic_user_topic_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["topic"]),
+        ]
+
+    def __str__(self):
+        return f"User {self.user_id} tracks topic {self.topic_id}"
+
+
+class TrackedLegislator(models.Model):
+    """A legislator a user is personally tracking."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="tracked_legislators",
+    )
+    representative = models.ForeignKey(
+        "congress.Representative",
+        on_delete=models.CASCADE,
+        related_name="tracked_by_users",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "accounts_trackedlegislator"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "representative"],
+                name="accounts_trackedlegislator_user_rep_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["representative"]),
+        ]
+
+    def __str__(self):
+        return f"User {self.user_id} tracks representative {self.representative_id}"

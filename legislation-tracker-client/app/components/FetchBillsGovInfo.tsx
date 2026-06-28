@@ -28,8 +28,8 @@ export default function FetchBillsGovInfo() {
   React.useEffect(() => {
     const fetchData = async () => {
       const data = await fetch(url);
-      const dataJson: any = await data.json();
-      setBills(dataJson.packages);
+      const dataJson = (await data.json()) as GovInfoBills;
+      setBills(dataJson.packages ?? []);
     };
     fetchData();
   }, [url]);
@@ -37,10 +37,10 @@ export default function FetchBillsGovInfo() {
   console.log("data is ", bills);
 
   return (
-    <div>
+    <div className="w-full px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-10 2xl:px-12">
       <h1 className="mb-4">Fetch Bills</h1>
       {bills.map((b) => (
-        <div className="mb-4" key={b.packageId}>
+        <div className="mb-4 overflow-hidden rounded border border-slate-400 bg-white/70 p-4 dark:border-green-900/70 dark:bg-black" key={b.packageId}>
           <div>{b.title}</div>
           <div>{b.dateIssued}</div>
         </div>

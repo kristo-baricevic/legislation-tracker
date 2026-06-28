@@ -36,8 +36,8 @@ const useFetchAmendments = (): Amendments[] => {
 
   React.useEffect(() => {
     const fetchData = async () => {
-      let data = await fetch(url);
-      let dataJson: AmendmentData = await data.json();
+      const data = await fetch(url);
+      const dataJson: AmendmentData = await data.json();
       console.log("data json amend", dataJson);
       setAmendments(dataJson.amendments);
     };
@@ -58,32 +58,34 @@ export default function FetchAmendments() {
   // console.log("amendment data is ", amendmentData);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 font-mono text-slate-900 dark:text-green-300 sm:items-start ">
+    <div className="w-full bg-background">
+      <main className="w-full px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-10 2xl:px-12">
         <h1 className="mb-8">Amendments</h1>
-        <table className="min-w-125">
-          <thead>
-            <tr>
-              {columns.map((h) => (
-                <th className="px-4" key={h}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-
-          <tbody>
-            {amendmentData.map((a, idx) => (
-              <tr key={idx}>
-                {columns.map((col) => (
-                  <td className="py-8 px-4" key={col}>
-                    {a[col]}
-                  </td>
+        <div className="rounded-lg border border-slate-400 dark:border-green-800">
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                {columns.map((h) => (
+                  <th className="px-4 py-3" key={h}>
+                    {h}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {amendmentData.map((a, idx) => (
+                <tr key={idx}>
+                  {columns.map((col) => (
+                    <td className="px-4 py-4" key={col}>
+                      {a[col]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </main>
     </div>
   );

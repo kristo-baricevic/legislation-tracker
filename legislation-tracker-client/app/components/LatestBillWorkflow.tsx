@@ -20,25 +20,57 @@ function parseHouseRollCallXml(xmlString: string) {
   });
 }
 
+interface RecentBill {
+  congress: number;
+  type: string;
+  number: string;
+}
+
+interface RecentBillsResponse {
+  bills?: RecentBill[];
+}
+
+interface RecordedVoteAction {
+  recordedVotes?: Array<{ url: string }>;
+}
+
+interface ActionsResponse {
+  actions?: RecordedVoteAction[];
+}
+
+interface BillActionsResponse {
+  bill?: {
+    title?: string;
+    actions?: {
+      url?: string;
+    };
+  };
+}
+
+type VoteMember = ReturnType<typeof parseHouseRollCallXml>[number];
+
+interface LatestBillWorkflowData {
+  bill: BillActionsResponse;
+  vote: VoteMember[];
+}
+
 export default function LatestBillWorkflow() {
-  const [data, setData] = React.useState<any>(null);
+  const [data, setData] = React.useState<LatestBillWorkflowData | null>(null);
 
   React.useEffect(() => {
     const fetchLatestVotedBill = async () => {
-      const apiKey = process.env.NEXT_PUBLIC_CONGRESS_API_KEY;
-
       // 1. Get recently updated bills
       const billsRes = await fetch(`/api/congress/recent?congress=119&type=hr`);
-      const billsJson = await billsRes.json();
+      const billsJson = (await billsRes.json()) as RecentBillsResponse;
 
-      for (const bill of billsJson.bills) {
+      for (const bill of billsJson.bills ?? []) {
         const { congress, type, number } = bill;
 
         // 2. Fetch actions for each bill
         const actionsRes = await fetch(
           `/api/congress/${congress}/${type.toLowerCase()}/${number}`
         );
-        const actionsJson = await actionsRes.json();
+        const actionsJson = (await actionsRes.json()) as BillActionsResponse;
 
         const actionsUrl = actionsJson?.bill?.actions?.url;
         if (!actionsUrl) continue;
@@ -46,14 +78,15 @@ export default function LatestBillWorkflow() {
         const actionsRes2 = await fetch(
           `/api/congress/action?url=${encodeURIComponent(actionsUrl)}`
         );
-        const actionsData = await actionsRes2.json();
+        const actionsData = (await actionsRes2.json()) as ActionsResponse;
 
-        const voteAction = actionsData.actions.find(
-          (a: any) => a.recordedVotes && a.recordedVotes.length > 0
+        const voteAction = actionsData.actions?.find(
+          (action) => action.recordedVotes && action.recordedVotes.length > 0
         );
 
         if (voteAction) {
-          const voteUrl = voteAction.recordedVotes[0].url;
+          const voteUrl = voteAction.recordedVotes?.[0]?.url;
+          if (!voteUrl) continue;
 
           const voteRes = await fetch(
             `/api/congress/action?url=${encodeURIComponent(voteUrl)}`
@@ -64,7 +97,8 @@ export default function LatestBillWorkflow() {
           let voteData;
 
           if (contentType.includes("application/json")) {
-            voteData = await voteRes.json();
+            const jsonVoteData = await voteRes.json();
+            voteData = Array.isArray(jsonVoteData) ? jsonVoteData : [];
           } else {
             const xmlText = await voteRes.text();
             voteData = parseHouseRollCallXml(xmlText);
@@ -84,31 +118,38 @@ export default function LatestBillWorkflow() {
   }, []);
 
   return (
-    <div>
+    <div className="w-full px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-10 2xl:px-12">
       {data ? (
         <>
-          <h2>{data.bill.bill.title}</h2>
+          <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-green-400">
+            {data.bill.bill?.title}
+          </h2>
 
-          <table border={1} cellPadding={6}>
-            <thead>
-              <tr>
-                <th className="px-4">Name</th>
-                <th className="px-4">Party</th>
-                <th className="px-4">State</th>
-                <th className="px-4">Vote</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.vote.map((member: any, index: number) => (
-                <tr key={index}>
-                  <td className="px-4">{member.name}</td>
-                  <td className="px-4">{member.party}</td>
-                  <td className="px-4">{member.state}</td>
-                  <td className="px-4">{member.vote}</td>
+          <div className="rounded-lg border border-slate-400 dark:border-green-800">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-400 bg-slate-300/80 dark:border-green-800 dark:bg-green-950/20">
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Party</th>
+                  <th className="px-4 py-3">State</th>
+                  <th className="px-4 py-3">Vote</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.vote.map((member, index) => (
+                  <tr
+                    key={index}
+                    className="border-b border-slate-300 dark:border-green-900/50"
+                  >
+                    <td className="px-4 py-3">{member.name}</td>
+                    <td className="px-4 py-3">{member.party}</td>
+                    <td className="px-4 py-3">{member.state}</td>
+                    <td className="px-4 py-3">{member.vote}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       ) : (
         "Loading..."

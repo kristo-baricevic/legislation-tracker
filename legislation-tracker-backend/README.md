@@ -6,6 +6,10 @@ Django backend for the legislation tracker: bills, documents, structured contrac
 
 See [BACKEND_PLAN.md](../BACKEND_PLAN.md) and [ARCHITECTURE_ELI5.md](../ARCHITECTURE_ELI5.md) in the repo root for architecture. Build steps: [BACKEND_BUILD_STEPS.md](../BACKEND_BUILD_STEPS.md).
 
+For production process layout, environment variables, Celery worker/Beat commands,
+staff-only ingestion controls, and background polling behavior, see
+[docs/PRODUCTION_OPERATIONS.md](docs/PRODUCTION_OPERATIONS.md).
+
 ## Quick start (local) — Postgres
 
 The backend is set up to use **PostgreSQL** by default when you use the provided `.env`. Follow these steps in order.

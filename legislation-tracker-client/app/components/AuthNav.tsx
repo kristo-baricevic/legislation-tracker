@@ -23,7 +23,7 @@ export default function AuthNav() {
   };
 
   return (
-    <nav className="flex items-center gap-4 font-mono text-sm text-slate-800 dark:text-green-400">
+    <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-sm text-slate-800 dark:text-green-400">
       <Link href="/" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
         Home
       </Link>

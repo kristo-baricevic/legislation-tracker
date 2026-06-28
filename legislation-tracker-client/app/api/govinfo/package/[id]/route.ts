@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: {
+    params: Promise<{
+      id: string;
+    }>;
+  }
 ) {
   const apiKey = process.env.GOVINFO_API_KEY;
-  const { id } = params;
+  const { id } = await context.params;
 
   const url = `https://api.govinfo.gov/packages/${id}/htm?api_key=${apiKey}`;
 
