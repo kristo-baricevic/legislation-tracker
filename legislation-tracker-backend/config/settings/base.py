@@ -135,20 +135,29 @@ if USE_LOCAL_DOCUMENT_STORAGE:
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
             "OPTIONS": {"location": str(BASE_DIR / "local_media")},
-        }
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
     }
 else:
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-        }
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
     }
 
-# CORS: allow the Next.js client
+# CORS: allow the Next.js client and Chrome extension
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=["http://localhost:3000", "http://127.0.0.1:3000"],
 )
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^chrome-extension://.*$",
+]
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

@@ -68,9 +68,9 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Phase 6: Topics and similarity
 
-- [ ] **6.1** Implement `update_topics(contract_id)`: from BillContract generate or infer topic labels; get/create Topic rows; update BillTopic; compute topic_set_hash; if changed insert ChangeLog(topic_update).
-- [ ] **6.2** Implement `recompute_similarity_batch`: periodic Beat task; drain similarity queue (or query bills needing similarity); compute pairs with bill_a_id < bill_b_id; upsert BillSimilarity. Use simple method first (e.g. title similarity); add embedding method later.
-- [ ] **6.3** Wire: `generate_contract` enqueues `update_topics` and pushes bill_id to similarity queue; Beat runs `recompute_similarity_batch` on schedule.
+- [x] **6.1** Implement `update_topics(contract_id)`: keyword-based topic inference from `topic_taxonomy.py` (22 canonical topics); matches against bill title, summary, and contract fields; updates BillTopic with confidence scores; computes topic_set_hash; inserts ChangeLog(topic_update) on change. Seed topics via `python manage.py seed_topics`. Backfill existing contracts via `python manage.py backfill_topics [--sync]`.
+- [x] **6.2** Implement `recompute_similarity_batch`: periodic Beat task (hourly); finds bills without similarity scores; enqueues `schedule_similarity_for_bill` per bill; title-based Jaccard similarity with threshold 0.15; upserts BillSimilarity with `bill_a_id < bill_b_id` ordering.
+- [x] **6.3** Wire: `generate_contract` enqueues `update_topics` and `schedule_similarity_for_bill`; Beat runs `recompute_similarity_batch` hourly. Topics included in bill list and detail API responses (`BillTopicSerializer`) and rendered in Next.js frontend (badges with confidence %).
 
 ---
 

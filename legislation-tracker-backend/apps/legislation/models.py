@@ -131,6 +131,8 @@ class BillContract(models.Model):
     document = models.ForeignKey(
         BillDocument,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="contracts",
     )
     schema_version = models.CharField(max_length=20, default="1.0")
@@ -161,6 +163,8 @@ class EvidenceSpan(models.Model):
     document = models.ForeignKey(
         BillDocument,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="evidence_spans",
     )
     contract = models.ForeignKey(

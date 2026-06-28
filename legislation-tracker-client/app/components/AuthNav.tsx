@@ -30,6 +30,9 @@ export default function AuthNav() {
       <Link href="/bills" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
         Bills
       </Link>
+      <Link href="/topics" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
+        Topics
+      </Link>
       <Link
         href="/representatives"
         className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300"

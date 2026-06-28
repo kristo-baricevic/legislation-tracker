@@ -95,6 +95,17 @@ async function tryRefreshToken(): Promise<string | null> {
   return null;
 }
 
+/** Public GET (no auth required). */
+export async function publicGet<T = unknown>(path: string): Promise<T> {
+  const base = getApiBase();
+  const res = await fetch(`${base}${path}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 /** Authenticated GET. On 401, tries to refresh the token and retries once; then throws. */
 export async function authGet<T = unknown>(path: string, retried = false): Promise<T> {
   const base = getApiBase();
@@ -114,6 +125,32 @@ export async function authGet<T = unknown>(path: string, retried = false): Promi
   return res.json();
 }
 
+/** Authenticated POST. */
+export async function authPost<T = unknown>(path: string, body: unknown): Promise<T> {
+  const base = getApiBase();
+  const token = getStoredAccessToken();
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+/** Topic tag on a bill (from Phase 6 keyword inference). */
+export interface BillTopicItem {
+  topic_id: number;
+  name: string;
+  slug: string;
+  confidence_score: number | null;
+}
+
 export interface BillListItem {
   id: number;
   jurisdiction: string;
@@ -124,6 +161,7 @@ export interface BillListItem {
   sponsor_name: string | null;
   introduced_at: string | null;
   last_action_at: string | null;
+  topics: BillTopicItem[];
 }
 
 export interface BillDocumentItem {
@@ -164,6 +202,7 @@ export interface BillDetail extends BillListItem {
   congress_gov_url: string | null;
   /** Latest generated contract (after Celery processes documents). */
   latest_contract: BillContractItem | null;
+  topics: BillTopicItem[];
   created_at: string;
   updated_at: string;
 }
@@ -216,19 +255,19 @@ export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   if (params?.topic?.trim()) sp.set("topic", params.topic.trim());
   if (params?.topic_id != null) sp.set("topic_id", String(params.topic_id));
   const q = sp.toString();
-  return authGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
+  return publicGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
 }
 
 export async function getTopics(): Promise<TopicItem[]> {
-  return authGet<TopicItem[]>("/api/topics/");
+  return publicGet<TopicItem[]>("/api/topics/");
 }
 
 export async function getBillFilterOptions(): Promise<BillFilterOptions> {
-  return authGet<BillFilterOptions>("/api/bills/filter-options/");
+  return publicGet<BillFilterOptions>("/api/bills/filter-options/");
 }
 
 export async function getBill(id: number): Promise<BillDetail> {
-  return authGet<BillDetail>(`/api/bills/${id}/`);
+  return publicGet<BillDetail>(`/api/bills/${id}/`);
 }
 
 export interface RepresentativeItem {
@@ -258,5 +297,27 @@ export async function getRepresentatives(params?: {
   if (params?.chamber) sp.set("chamber", params.chamber);
   if (params?.page != null) sp.set("page", String(params.page));
   const q = sp.toString();
-  return authGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
+  return publicGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
+}
+
+// --- User preferences (auth required) ---
+
+export interface FollowedTopicsResponse {
+  topic_ids: number[];
+}
+
+export async function getFollowedTopics(): Promise<FollowedTopicsResponse> {
+  return authGet<FollowedTopicsResponse>("/api/preferences/followed-topics/");
+}
+
+export async function followTopic(topicId: number): Promise<unknown> {
+  return authPost("/api/preferences/follow-topic/", { topic_id: topicId });
+}
+
+export async function unfollowTopic(topicId: number): Promise<unknown> {
+  return authPost("/api/preferences/unfollow-topic/", { topic_id: topicId });
+}
+
+export function isLoggedIn(): boolean {
+  return !!getStoredAccessToken();
 }

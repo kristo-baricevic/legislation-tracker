@@ -32,6 +32,11 @@ app.conf.beat_schedule = {
         "schedule": 600.0,  # every 10 minutes (in seconds)
         "kwargs": {"jurisdiction": "federal", "congress": 119},
     },
+    "recompute-similarity-batch": {
+        "task": "apps.legislation.tasks.recompute_similarity_batch",
+        "schedule": 3600.0,  # every hour
+        "kwargs": {"session": 119, "batch_size": 500},
+    },
 }
 
 

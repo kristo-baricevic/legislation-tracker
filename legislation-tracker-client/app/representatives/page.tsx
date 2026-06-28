@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import RequireAuth from "@/app/components/RequireAuth";
 import { getRepresentatives, type RepresentativeItem } from "@/lib/api";
 
 const PAGE_SIZE = 20;
@@ -171,9 +170,5 @@ function RepresentativesTable() {
 }
 
 export default function RepresentativesPage() {
-  return (
-    <RequireAuth>
-      <RepresentativesTable />
-    </RequireAuth>
-  );
+  return <RepresentativesTable />;
 }

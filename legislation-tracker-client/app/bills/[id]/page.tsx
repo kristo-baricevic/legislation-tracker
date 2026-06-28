@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import RequireAuth from "@/app/components/RequireAuth";
 import {
   getBill,
   type BillContractItem,
@@ -172,6 +171,28 @@ function BillDetailInner() {
           )}
         </dl>
 
+        {bill.topics && bill.topics.length > 0 && (
+          <div className="mb-6">
+            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Topics</h2>
+            <div className="flex flex-wrap gap-2">
+              {bill.topics.map((t) => (
+                <span
+                  key={t.topic_id}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-400 bg-slate-100 px-3 py-1 text-sm text-slate-800 dark:border-green-700 dark:bg-green-950/30 dark:text-green-300"
+                  title={t.confidence_score != null ? `Confidence: ${(t.confidence_score * 100).toFixed(0)}%` : undefined}
+                >
+                  {t.name}
+                  {t.confidence_score != null && (
+                    <span className="text-xs text-slate-500 dark:text-green-600">
+                      {(t.confidence_score * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {bill.latest_contract ? (
           <ContractSection contract={bill.latest_contract} />
         ) : (
@@ -180,10 +201,8 @@ function BillDetailInner() {
               Plain-language summary (beta)
             </h2>
             <p>
-              No generated summary yet. After a bill document is downloaded and
-              the{" "}
-              <code className="text-slate-800 dark:text-green-500/90">generate_contract</code> Celery
-              task runs, a stub summary will appear here.
+              No summary available yet. A plain-language summary will be generated
+              once this bill is fully processed.
             </p>
           </section>
         )}
@@ -263,9 +282,5 @@ function BillDetailInner() {
 }
 
 export default function BillDetailPage() {
-  return (
-    <RequireAuth>
-      <BillDetailInner />
-    </RequireAuth>
-  );
+  return <BillDetailInner />;
 }

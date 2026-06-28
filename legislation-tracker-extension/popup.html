@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400">
+  <link rel="stylesheet" href="styles.css">
+  <title>Legislation Tracker</title>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Legislation Tracker</h1>
+      <p class="subtitle">Find bills related to this article</p>
+    </header>
+<!-- 
+    <div id="status" class="status">
+      <div class="spinner"></div>
+      <span>Analyzing article…</span>
+    </div> -->
+
+    <div id="error" class="error" hidden></div>
+
+    <div id="results" hidden>
+      <section id="topics-section">
+        <h2>Matched Topics</h2>
+        <div id="topics" class="topics"></div>
+      </section>
+
+      <section id="bills-section">
+        <h2>Related Bills</h2>
+        <div id="bills" class="bills"></div>
+      </section>
+
+      <div id="no-results" class="no-results" hidden>
+        <p>No matching legislation found for this article.</p>
+      </div>
+    </div>
+
+    <footer>
+      <a id="open-app" href="http://localhost:3000/bills" target="_blank">
+        Open Legislation Tracker →
+      </a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

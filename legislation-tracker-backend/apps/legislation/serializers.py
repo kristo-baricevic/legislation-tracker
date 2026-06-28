@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Bill, BillContract, BillDocument, EvidenceSpan, Topic
+from .models import Bill, BillContract, BillDocument, BillTopic, EvidenceSpan, Topic
 
 
 class TopicSerializer(serializers.ModelSerializer):
@@ -9,6 +9,18 @@ class TopicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Topic
         fields = ["id", "name", "slug"]
+
+
+class BillTopicSerializer(serializers.ModelSerializer):
+    """Topic tag on a bill, with name/slug inlined."""
+
+    topic_id = serializers.IntegerField(source="topic.id", read_only=True)
+    name = serializers.CharField(source="topic.name", read_only=True)
+    slug = serializers.CharField(source="topic.slug", read_only=True)
+
+    class Meta:
+        model = BillTopic
+        fields = ["topic_id", "name", "slug", "confidence_score"]
 
 
 class BillDocumentSerializer(serializers.ModelSerializer):
@@ -54,9 +66,10 @@ class BillContractSerializer(serializers.ModelSerializer):
 
 
 class BillListSerializer(serializers.ModelSerializer):
-    """For list view: bill fields + sponsor name."""
+    """For list view: bill fields + sponsor name + topics."""
 
     sponsor_name = serializers.SerializerMethodField()
+    topics = BillTopicSerializer(source="bill_topics", many=True, read_only=True)
 
     class Meta:
         model = Bill
@@ -70,6 +83,7 @@ class BillListSerializer(serializers.ModelSerializer):
             "sponsor_name",
             "introduced_at",
             "last_action_at",
+            "topics",
         ]
 
     def get_sponsor_name(self, obj):
@@ -79,12 +93,13 @@ class BillListSerializer(serializers.ModelSerializer):
 
 
 class BillDetailSerializer(serializers.ModelSerializer):
-    """For retrieve: full bill + documents + latest plain-language contract (Phase 5)."""
+    """For retrieve: full bill + documents + latest plain-language contract + topics (Phase 5/6)."""
 
     sponsor_name = serializers.SerializerMethodField()
     documents = BillDocumentSerializer(many=True, read_only=True)
     congress_gov_url = serializers.SerializerMethodField()
     latest_contract = BillContractSerializer(read_only=True)
+    topics = BillTopicSerializer(source="bill_topics", many=True, read_only=True)
 
     class Meta:
         model = Bill
@@ -107,6 +122,7 @@ class BillDetailSerializer(serializers.ModelSerializer):
             "documents",
             "congress_gov_url",
             "latest_contract",
+            "topics",
             "created_at",
             "updated_at",
         ]

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import RequireAuth from "@/app/components/RequireAuth";
+import { useSearchParams } from "next/navigation";
 import {
   getBillFilterOptions,
   getBills,
@@ -15,6 +15,8 @@ import {
 const PAGE_SIZE = 20;
 
 function BillsTable() {
+  const searchParams = useSearchParams();
+
   const [page, setPage] = useState<BillsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,9 @@ function BillsTable() {
   const [jurisdictionFilter, setJurisdictionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sponsorFilter, setSponsorFilter] = useState("");
-  const [topicIdFilter, setTopicIdFilter] = useState<string>("");
+  const [topicIdFilter, setTopicIdFilter] = useState<string>(
+    searchParams.get("topic_id") ?? ""
+  );
   const [topicFuzzyFilter, setTopicFuzzyFilter] = useState("");
 
   const loadFilterMeta = useCallback(async () => {
@@ -267,6 +271,7 @@ function BillsTable() {
                     <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Title</th>
                     <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Status</th>
                     <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Sponsor</th>
+                    <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Topics</th>
                     <th className="p-3 font-semibold text-slate-900 dark:text-green-400">Actions</th>
                   </tr>
                 </thead>
@@ -287,6 +292,27 @@ function BillsTable() {
                         {bill.status}
                       </td>
                       <td className="p-3">{bill.sponsor_name ?? "—"}</td>
+                      <td className="max-w-xs p-3">
+                        <div className="flex flex-wrap gap-1">
+                          {bill.topics && bill.topics.length > 0 ? (
+                            bill.topics.slice(0, 3).map((t) => (
+                              <span
+                                key={t.topic_id}
+                                className="inline-block rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-400"
+                              >
+                                {t.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-slate-400 dark:text-green-700">—</span>
+                          )}
+                          {bill.topics && bill.topics.length > 3 && (
+                            <span className="text-xs text-slate-500 dark:text-green-600">
+                              +{bill.topics.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-3">
                         <Link
                           href={`/bills/${bill.id}`}
@@ -329,8 +355,8 @@ function BillsTable() {
 
 export default function BillsPage() {
   return (
-    <RequireAuth>
+    <Suspense>
       <BillsTable />
-    </RequireAuth>
+    </Suspense>
   );
 }
