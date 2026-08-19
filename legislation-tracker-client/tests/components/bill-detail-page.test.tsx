@@ -1,8 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BillDetailPage from "@/app/bills/[id]/page";
-import { getBill, getStoredAccessToken } from "@/lib/api";
+import {
+  getBill,
+  getContracts,
+  getVote,
+  getVotes,
+  getStoredAccessToken,
+} from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "10" }),
@@ -16,6 +23,9 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/api", () => ({
   getBill: vi.fn(),
+  getContracts: vi.fn(),
+  getVote: vi.fn(),
+  getVotes: vi.fn(),
   getApiBase: () => "http://localhost:8000",
   getStoredAccessToken: vi.fn(),
   getMyTracking: vi.fn(),
@@ -59,9 +69,68 @@ describe("BillDetailPage", () => {
       created_at: "2026-08-19T00:00:00Z",
       updated_at: "2026-08-19T00:00:00Z",
     });
+    vi.mocked(getContracts).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 4,
+          schema_version: "1.1",
+          contract_json: { plain_summary: "Contract history summary" },
+          contract_hash: "hash",
+          computed_at: "2026-08-19T00:00:00Z",
+          document: null,
+          document_version_label: null,
+          evidence_spans: [],
+        },
+      ],
+    });
+    vi.mocked(getVotes).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 33,
+          bill: 10,
+          chamber: "house",
+          roll_number: 17,
+          vote_date: "2026-08-19T00:00:00Z",
+          result: "Passed",
+          yeas: 220,
+          nays: 210,
+        },
+      ],
+    });
+    vi.mocked(getVote).mockResolvedValue({
+      id: 33,
+      bill: 10,
+      chamber: "house",
+      roll_number: 17,
+      vote_date: "2026-08-19T00:00:00Z",
+      result: "Passed",
+      yeas: 220,
+      nays: 210,
+      records: [
+        {
+          representative: {
+            id: 1,
+            bioguide_id: "V000001",
+            name: "Voting Representative",
+            chamber: "house",
+            party: "Independent",
+            state: "NY",
+            district: null,
+          },
+          position: "yes",
+        },
+      ],
+    });
   });
 
   it("keeps a public bill readable while showing an unauthenticated tracking prompt", async () => {
+    const user = userEvent.setup();
     render(<BillDetailPage />);
 
     expect(await screen.findByRole("heading", { name: "HR 10 (119)" })).toBeVisible();
@@ -78,5 +147,12 @@ describe("BillDetailPage", () => {
       "href",
       "http://localhost:8000/api/documents/9/text/",
     );
+    expect(await screen.findByRole("heading", { name: "Contract history" })).toBeVisible();
+    expect(screen.getByText("Contract history summary")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Roll-call votes" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "View member positions" }));
+    await waitFor(() => expect(getVote).toHaveBeenCalledWith(33));
+    expect(await screen.findByText("Voting Representative")).toBeVisible();
   });
 });

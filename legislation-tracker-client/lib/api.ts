@@ -226,6 +226,13 @@ export interface BillContractItem {
   evidence_spans: EvidenceSpanItem[];
 }
 
+export interface BillContractsPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: BillContractItem[];
+}
+
 export interface BillDetail extends BillListItem {
   summary: string | null;
   processing_status: string;
@@ -300,6 +307,45 @@ export async function getBillFilterOptions(): Promise<BillFilterOptions> {
 
 export async function getBill(id: number): Promise<BillDetail> {
   return publicGet<BillDetail>(`/api/bills/${id}/`);
+}
+
+export async function getContracts(billId: number): Promise<BillContractsPage> {
+  return publicGet<BillContractsPage>(`/api/contracts/?bill=${billId}`);
+}
+
+export interface VoteListItem {
+  id: number;
+  bill: number;
+  chamber: string;
+  roll_number: number;
+  vote_date: string;
+  result: string;
+  yeas: number;
+  nays: number;
+}
+
+export interface VoteRecordItem {
+  representative: RepresentativeItem;
+  position: string;
+}
+
+export interface VoteDetailItem extends VoteListItem {
+  records: VoteRecordItem[];
+}
+
+export interface VotesPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: VoteListItem[];
+}
+
+export async function getVotes(billId: number): Promise<VotesPage> {
+  return publicGet<VotesPage>(`/api/votes/?bill=${billId}`);
+}
+
+export async function getVote(voteId: number): Promise<VoteDetailItem> {
+  return publicGet<VoteDetailItem>(`/api/votes/${voteId}/`);
 }
 
 export interface RelatedBillItem {

@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
+from apps.congress.models import Vote, VoteRecord
 from apps.legislation import views
 from apps.congress.models import Representative
 from apps.legislation.models import (
@@ -205,3 +206,98 @@ def test_public_document_text_endpoint_serves_extracted_or_raw_text():
 
     assert response.status_code == 200
     assert response.json() == {"text": "An accessible plain-text bill version."}
+
+
+@pytest.mark.django_db
+def test_contract_history_list_and_detail_are_public_and_filtered_by_bill():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 106",
+        title="Contract history bill",
+        status="introduced",
+    )
+    document = BillDocument.objects.create(bill=bill, version_label="Introduced")
+    older = BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version="1.0",
+        contract_json={"plain_summary": "Original summary"},
+        contract_hash="old-contract",
+    )
+    latest = BillContract.objects.create(
+        bill=bill,
+        document=None,
+        schema_version="1.1",
+        contract_json={"plain_summary": "Updated summary"},
+        contract_hash="new-contract",
+    )
+
+    response = APIClient().get(f"/api/contracts/?bill={bill.id}")
+    detail = APIClient().get(f"/api/contracts/{latest.id}/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["results"]] == [latest.id, older.id]
+    assert response.json()["results"][1]["document_version_label"] == "Introduced"
+    assert detail.status_code == 200
+    assert detail.json()["contract_json"] == {"plain_summary": "Updated summary"}
+
+
+@pytest.mark.django_db
+def test_vote_list_and_detail_include_member_positions_for_a_bill():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 107",
+        title="Vote history bill",
+        status="introduced",
+    )
+    representative = Representative.objects.create(
+        bioguide_id="V000001",
+        name="Voting Representative",
+        chamber="house",
+        party="Independent",
+        state="NY",
+    )
+    vote = Vote.objects.create(
+        bill=bill,
+        chamber="house",
+        roll_number=17,
+        vote_date="2026-08-19T12:00:00Z",
+        result="Passed",
+        yeas=220,
+        nays=210,
+    )
+    VoteRecord.objects.create(vote=vote, representative=representative, position="yes")
+
+    response = APIClient().get(f"/api/votes/?bill={bill.id}")
+    detail = APIClient().get(f"/api/votes/{vote.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {
+            "id": vote.id,
+            "bill": bill.id,
+            "chamber": "house",
+            "roll_number": 17,
+            "vote_date": "2026-08-19T12:00:00Z",
+            "result": "Passed",
+            "yeas": 220,
+            "nays": 210,
+        }
+    ]
+    assert detail.status_code == 200
+    assert detail.json()["records"] == [
+        {
+            "representative": {
+                "id": representative.id,
+                "bioguide_id": "V000001",
+                "name": "Voting Representative",
+                "chamber": "house",
+                "party": "Independent",
+                "state": "NY",
+                "district": None,
+            },
+            "position": "yes",
+        }
+    ]

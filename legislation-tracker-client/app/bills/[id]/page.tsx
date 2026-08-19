@@ -6,11 +6,16 @@ import { useParams } from "next/navigation";
 import {
   getBill,
   getApiBase,
+  getContracts,
   getMyTracking,
   getStoredAccessToken,
+  getVote,
+  getVotes,
   trackBill,
   type BillContractItem,
   type BillDetail,
+  type VoteDetailItem,
+  type VoteListItem,
   untrackBill,
 } from "@/lib/api";
 
@@ -79,6 +84,98 @@ function ContractSection({ contract }: { contract: BillContractItem }) {
   );
 }
 
+function ContractHistorySection({ contracts }: { contracts: BillContractItem[] }) {
+  if (contracts.length === 0) return null;
+  return (
+    <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
+      <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
+        Contract history
+      </h2>
+      <ul className="space-y-3">
+        {contracts.map((contract) => {
+          const summary = contract.contract_json.plain_summary;
+          return (
+            <li key={contract.id} className="rounded border border-slate-300 p-3 dark:border-green-900/70">
+              <div className="text-sm font-semibold text-slate-900 dark:text-green-300">
+                Schema {contract.schema_version}
+                {contract.document_version_label
+                  ? ` · ${contract.document_version_label}`
+                  : " · Metadata"}
+              </div>
+              <p className="mt-1 text-xs text-slate-600 dark:text-green-600">
+                {new Date(contract.computed_at).toLocaleString()}
+              </p>
+              {typeof summary === "string" && (
+                <p className="mt-2 break-words text-sm text-slate-800 [overflow-wrap:anywhere] dark:text-green-200">
+                  {summary}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function VoteHistorySection({
+  votes,
+  selectedVote,
+  loadingVoteId,
+  onViewPositions,
+}: {
+  votes: VoteListItem[];
+  selectedVote: VoteDetailItem | null;
+  loadingVoteId: number | null;
+  onViewPositions: (voteId: number) => void;
+}) {
+  if (votes.length === 0) return null;
+  return (
+    <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
+      <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
+        Roll-call votes
+      </h2>
+      <ul className="divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
+        {votes.map((vote) => (
+          <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+            <div>
+              <p className="font-semibold text-slate-900 dark:text-green-300">
+                {vote.chamber} roll call {vote.roll_number}: {vote.result}
+              </p>
+              <p className="text-sm text-slate-600 dark:text-green-600">
+                Yes {vote.yeas} · No {vote.nays} · {new Date(vote.vote_date).toLocaleDateString()}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onViewPositions(vote.id)}
+              disabled={loadingVoteId === vote.id}
+              className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+            >
+              {loadingVoteId === vote.id ? "Loading positions..." : "View member positions"}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {selectedVote && (
+        <div className="mt-4">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-green-400">
+            Member positions
+          </h3>
+          <ul className="mt-2 divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
+            {selectedVote.records.map((record) => (
+              <li key={record.representative.id} className="flex justify-between gap-3 p-3 text-sm">
+                <span>{record.representative.name}</span>
+                <span className="font-semibold capitalize">{record.position}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function BillDetailInner() {
   const params = useParams();
   const id = parseInt(params?.id as string, 10);
@@ -89,6 +186,10 @@ function BillDetailInner() {
   const [isTracked, setIsTracked] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [contractHistory, setContractHistory] = useState<BillContractItem[] | null>(null);
+  const [votes, setVotes] = useState<VoteListItem[] | null>(null);
+  const [selectedVote, setSelectedVote] = useState<VoteDetailItem | null>(null);
+  const [loadingVoteId, setLoadingVoteId] = useState<number | null>(null);
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -106,6 +207,27 @@ function BillDetailInner() {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (Number.isNaN(id)) return;
+    let cancelled = false;
+    Promise.all([getContracts(id), getVotes(id)])
+      .then(([contracts, votePage]) => {
+        if (!cancelled) {
+          setContractHistory(contracts.results);
+          setVotes(votePage.results);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setContractHistory([]);
+          setVotes([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -155,6 +277,15 @@ function BillDetailInner() {
       );
     } finally {
       setTrackingLoading(false);
+    }
+  }
+
+  async function viewVotePositions(voteId: number) {
+    setLoadingVoteId(voteId);
+    try {
+      setSelectedVote(await getVote(voteId));
+    } finally {
+      setLoadingVoteId(null);
     }
   }
 
@@ -304,6 +435,16 @@ function BillDetailInner() {
               task runs, a structured summary will appear here.
             </p>
           </section>
+        )}
+
+        {contractHistory && <ContractHistorySection contracts={contractHistory} />}
+        {votes && (
+          <VoteHistorySection
+            votes={votes}
+            selectedVote={selectedVote}
+            loadingVoteId={loadingVoteId}
+            onViewPositions={viewVotePositions}
+          />
         )}
 
         <div className="mb-6">

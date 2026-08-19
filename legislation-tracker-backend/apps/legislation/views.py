@@ -10,8 +10,9 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .models import Bill, BillDocument, BillSimilarity, BillTopic, Topic
+from .models import Bill, BillContract, BillDocument, BillSimilarity, BillTopic, Topic
 from .serializers import (
+    BillContractSerializer,
     BillDetailSerializer,
     BillDocumentSerializer,
     BillListSerializer,
@@ -63,6 +64,29 @@ class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         if not text:
             raise NotFound("No extracted text is available.")
         return Response({"text": text})
+
+
+class BillContractViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public contract history for a bill, newest interpretation first."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = BillContractSerializer
+    queryset = (
+        BillContract.objects.select_related("bill", "document")
+        .prefetch_related("evidence_spans")
+        .order_by("-computed_at", "-id")
+    )
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bill = self.request.query_params.get("bill")
+        if bill:
+            try:
+                qs = qs.filter(bill_id=int(bill))
+            except ValueError:
+                pass
+        return qs
 
 
 class BillViewSet(viewsets.ReadOnlyModelViewSet):
