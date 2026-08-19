@@ -10,9 +10,11 @@ const {
   escapeHtml,
   formatPercent,
   getBillUrl,
+  getHealthPath,
   getTopicTrackingPath,
   normalizeBaseUrl,
   originPermissionForBaseUrl,
+  checkApiHealth,
 } = require("../extension-utils.js");
 
 describe("extension utilities", () => {
@@ -65,6 +67,33 @@ describe("extension utilities", () => {
 
   it("uses the tracking collection for topic follow actions", () => {
     assert.equal(getTopicTrackingPath(), "/api/tracking/topics/");
+  });
+
+  it("checks the deployed API health endpoint before saving a remote base URL", async () => {
+    assert.equal(getHealthPath(), "/health/");
+    const data = await checkApiHealth(
+      "https://api.example.com/",
+      async (url, init) => {
+        assert.equal(url, "https://api.example.com/health/");
+        assert.deepEqual(init, { method: "GET" });
+        return {
+          ok: true,
+          json: async () => ({ status: "ok" }),
+        };
+      },
+    );
+    assert.deepEqual(data, { status: "ok" });
+  });
+
+  it("rejects API endpoints that are reachable but not ready", async () => {
+    await assert.rejects(
+      checkApiHealth("https://api.example.com", async () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({ status: "unavailable" }),
+      })),
+      /not ready/,
+    );
   });
 
   it("escapes API-controlled text before rendering HTML", () => {

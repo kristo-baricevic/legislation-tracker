@@ -142,6 +142,7 @@ async function saveSettings(event) {
     if (!granted) {
       throw new Error("Allow access to the API host to use this endpoint.");
     }
+    await utils.checkApiHealth(nextApiBase);
     apiBase = nextApiBase;
     appBase = nextAppBase;
     topicCatalogBySlug = new Map();

@@ -46,6 +46,26 @@
     return "/api/tracking/topics/";
   }
 
+  function getHealthPath() {
+    return "/health/";
+  }
+
+  async function checkApiHealth(value, request = fetch) {
+    const apiBase = normalizeBaseUrl(value);
+    originPermissionForBaseUrl(apiBase);
+    let response;
+    try {
+      response = await request(`${apiBase}${getHealthPath()}`, { method: "GET" });
+    } catch {
+      throw new Error("Could not reach the API health endpoint.");
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.status !== "ok") {
+      throw new Error("The API is reachable but not ready.");
+    }
+    return body;
+  }
+
   function buildJsonRequest(method, body, token) {
     const headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -78,10 +98,12 @@
     SETTINGS_API_BASE_KEY,
     SETTINGS_APP_BASE_KEY,
     buildJsonRequest,
+    checkApiHealth,
     escapeHtml,
     formatPercent,
     getBillUrl,
     getBillsUrl,
+    getHealthPath,
     getLoginUrl,
     getTopicTrackingPath,
     normalizeBaseUrl,

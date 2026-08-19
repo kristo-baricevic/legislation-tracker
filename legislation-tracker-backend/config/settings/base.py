@@ -150,14 +150,13 @@ else:
         },
     }
 
-# CORS: allow the Next.js client and Chrome extension
+# CORS: allow explicit deployed app and extension origins only. A blanket
+# chrome-extension regex would allow every installed extension to call the API.
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=["http://localhost:3000", "http://127.0.0.1:3000"],
 )
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^chrome-extension://.*$",
-]
+CORS_ALLOWED_ORIGIN_REGEXES = env.list("CORS_ALLOWED_ORIGIN_REGEXES", default=[])
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
