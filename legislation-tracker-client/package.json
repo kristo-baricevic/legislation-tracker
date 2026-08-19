@@ -8,16 +8,18 @@
     "start": "next start",
     "test": "vitest run && pnpm run test:api",
     "test:api": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.ts",
+    "test:e2e": "playwright test",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint"
   },
   "dependencies": {
-    "next": "16.1.6",
+    "next": "16.3.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.0",
