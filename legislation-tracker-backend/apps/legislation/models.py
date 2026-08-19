@@ -57,8 +57,6 @@ class Bill(models.Model):
         related_name="+",
     )
     source_api_id = models.CharField(max_length=255, null=True, blank=True)
-    raw_text_url = models.URLField(max_length=1024, null=True, blank=True)
-    pdf_url = models.URLField(max_length=1024, null=True, blank=True)
     metadata_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

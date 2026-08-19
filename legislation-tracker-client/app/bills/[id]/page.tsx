@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   getBill,
+  getApiBase,
   getMyTracking,
   getStoredAccessToken,
   trackBill,
@@ -320,30 +321,6 @@ function BillDetailInner() {
                 </a>
               </li>
             )}
-            {bill.raw_text_url && (
-              <li>
-                <a
-                  href={bill.raw_text_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                >
-                  Raw text
-                </a>
-              </li>
-            )}
-            {bill.pdf_url && (
-              <li>
-                <a
-                  href={bill.pdf_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                >
-                  PDF
-                </a>
-              </li>
-            )}
           </ul>
         </div>
 
@@ -359,16 +336,38 @@ function BillDetailInner() {
                       <span className="ml-2 text-sm text-slate-600 dark:text-green-500">(active)</span>
                     )}
                   </span>
-                  {doc.source_url && (
-                    <a
-                      href={doc.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="cursor-pointer text-sm text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                    >
-                      Source →
-                    </a>
-                  )}
+                  <span className="flex shrink-0 flex-wrap gap-3 text-sm">
+                    {doc.download_url && (
+                      <a
+                        href={`${getApiBase()}${doc.download_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                      >
+                        Download
+                      </a>
+                    )}
+                    {doc.text_url && (
+                      <a
+                        href={`${getApiBase()}${doc.text_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                      >
+                        Read text
+                      </a>
+                    )}
+                    {doc.source_url && (
+                      <a
+                        href={doc.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                      >
+                        Source →
+                      </a>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>

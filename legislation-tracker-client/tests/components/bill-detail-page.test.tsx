@@ -16,6 +16,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/api", () => ({
   getBill: vi.fn(),
+  getApiBase: () => "http://localhost:8000",
   getStoredAccessToken: vi.fn(),
   getMyTracking: vi.fn(),
   trackBill: vi.fn(),
@@ -39,10 +40,20 @@ describe("BillDetailPage", () => {
       summary: null,
       processing_status: "complete",
       sponsor: null,
-      raw_text_url: null,
-      pdf_url: null,
       source_api_id: null,
-      documents: [],
+      documents: [
+        {
+          id: 9,
+          version_label: "Introduced",
+          is_active_version: true,
+          content_type: "application/pdf",
+          file_size_bytes: 123,
+          source_url: null,
+          downloaded_at: null,
+          download_url: "/api/documents/9/download/",
+          text_url: "/api/documents/9/text/",
+        },
+      ],
       congress_gov_url: null,
       latest_contract: null,
       created_at: "2026-08-19T00:00:00Z",
@@ -58,6 +69,14 @@ describe("BillDetailPage", () => {
     expect(screen.getByRole("link", { name: "Log in to track this bill" })).toHaveAttribute(
       "href",
       "/login",
+    );
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/api/documents/9/download/",
+    );
+    expect(screen.getByRole("link", { name: "Read text" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/api/documents/9/text/",
     );
   });
 });

@@ -7,12 +7,13 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.accounts.views import RegisterView, UserPreferenceViewSet
-from apps.legislation.views import BillViewSet, TopicViewSet
+from apps.legislation.views import BillDocumentViewSet, BillViewSet, TopicViewSet
 from apps.congress.views import RepresentativeViewSet
 from config import health
 
 router = DefaultRouter()
 router.register(r"bills", BillViewSet, basename="bill")
+router.register(r"documents", BillDocumentViewSet, basename="document")
 router.register(r"topics", TopicViewSet, basename="topic")
 router.register(r"representatives", RepresentativeViewSet, basename="representative")
 router.register(r"preferences", UserPreferenceViewSet, basename="preference")

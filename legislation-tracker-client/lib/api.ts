@@ -199,8 +199,12 @@ export interface BillDocumentItem {
   id: number;
   version_label: string;
   is_active_version: boolean;
+  content_type: string | null;
+  file_size_bytes: number | null;
   source_url: string | null;
   downloaded_at: string | null;
+  download_url: string | null;
+  text_url: string | null;
 }
 
 export interface EvidenceSpanItem {
@@ -226,8 +230,6 @@ export interface BillDetail extends BillListItem {
   summary: string | null;
   processing_status: string;
   sponsor: number | null;
-  raw_text_url: string | null;
-  pdf_url: string | null;
   source_api_id: string | null;
   documents: BillDocumentItem[];
   congress_gov_url: string | null;

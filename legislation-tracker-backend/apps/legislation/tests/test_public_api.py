@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
+from apps.legislation import views
 from apps.congress.models import Representative
 from apps.legislation.models import (
     Bill,
@@ -139,3 +140,68 @@ def test_bill_detail_exposes_evidence_span_offsets():
     assert evidence["start_char"] == 0
     assert evidence["end_char"] == 34
     assert evidence["quoted_text"] == "This bill creates a grant program."
+
+
+@pytest.mark.django_db
+def test_public_document_download_uses_the_stored_object_url(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 104",
+        title="Stored document bill",
+        status="introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        object_storage_key="bills/119/HR_104/Introduced.pdf",
+        content_type="application/pdf",
+        file_size_bytes=123,
+    )
+    monkeypatch.setattr(
+        views.default_storage,
+        "url",
+        lambda object_key: f"https://documents.example.com/{object_key}?signature=abc",
+    )
+
+    response = APIClient().get(f"/api/documents/{document.id}/download/")
+    detail = APIClient().get(f"/api/bills/{bill.id}/")
+
+    assert response.status_code == 302
+    assert response["Location"] == (
+        "https://documents.example.com/bills/119/HR_104/Introduced.pdf?signature=abc"
+    )
+    assert detail.json()["documents"] == [
+        {
+            "id": document.id,
+            "version_label": "Introduced",
+            "is_active_version": False,
+            "content_type": "application/pdf",
+            "file_size_bytes": 123,
+            "source_url": None,
+            "downloaded_at": None,
+            "download_url": f"/api/documents/{document.id}/download/",
+            "text_url": None,
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_public_document_text_endpoint_serves_extracted_or_raw_text():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 105",
+        title="Text document bill",
+        status="introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text="An accessible plain-text bill version.",
+    )
+
+    response = APIClient().get(f"/api/documents/{document.id}/text/")
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "An accessible plain-text bill version."}
