@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
+from apps.accounts.models import TrackedTopic, UserPreference
 from apps.legislation.models import Bill, BillTopic, Topic
 
 
@@ -144,6 +145,52 @@ def test_tracking_summary_includes_topics_and_legislators_for_current_user_only(
     assert [item["representative"]["id"] for item in summary.json()["legislators"]] == [
         representative.id
     ]
+    assert summary.json()["is_staff"] is False
+
+
+@pytest.mark.django_db
+def test_preference_follow_endpoints_use_the_tracking_topic_source_of_truth():
+    user = make_user("follower@example.com")
+    client = authenticated_client(user)
+    topic = Topic.objects.create(name="Health", slug="health")
+
+    followed = client.post(
+        "/api/preferences/follow-topic/", {"topic_id": topic.id}, format="json"
+    )
+    listed = client.get("/api/preferences/followed-topics/")
+    summary = client.get("/api/tracking/")
+
+    assert followed.status_code == 201
+    assert listed.json() == {"topic_ids": [topic.id]}
+    assert [item["topic"]["id"] for item in summary.json()["topics"]] == [topic.id]
+    assert TrackedTopic.objects.filter(user=user, topic=topic).exists()
+    assert not UserPreference.objects.filter(user=user, topic=topic).exists()
+
+    unfollowed = client.post(
+        "/api/preferences/unfollow-topic/", {"topic_id": topic.id}, format="json"
+    )
+
+    assert unfollowed.json() == {
+        "unfollowed": True,
+        "topic_id": topic.id,
+        "deleted": True,
+    }
+    assert not TrackedTopic.objects.filter(user=user, topic=topic).exists()
+
+
+@pytest.mark.django_db
+def test_generic_preferences_endpoint_rejects_topic_rows():
+    user = make_user("preferences@example.com")
+    client = authenticated_client(user)
+    topic = Topic.objects.create(name="Education", slug="education")
+
+    response = client.post("/api/preferences/", {"topic": topic.id}, format="json")
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "Use the topic tracking endpoints to follow topics."
+    }
+    assert not UserPreference.objects.filter(user=user, topic=topic).exists()
 
 
 @pytest.mark.django_db

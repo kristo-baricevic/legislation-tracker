@@ -70,6 +70,12 @@ class VoteRecord(models.Model):
 
     class Meta:
         db_table = "congress_voterecord"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["vote", "representative"],
+                name="congress_voterecord_vote_representative_uniq",
+            )
+        ]
         indexes = [
             models.Index(fields=["vote"]),
             models.Index(fields=["representative"]),

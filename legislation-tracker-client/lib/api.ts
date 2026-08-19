@@ -265,6 +265,14 @@ export interface GetBillsParams {
   topic_id?: number;
 }
 
+export function parseTopicIdFromSearchParam(
+  value: string | null | undefined,
+): number | undefined {
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const topicId = Number(value);
+  return Number.isSafeInteger(topicId) && topicId > 0 ? topicId : undefined;
+}
+
 export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   const sp = new URLSearchParams();
   if (params?.page != null) sp.set("page", String(params.page));
@@ -380,6 +388,7 @@ export interface TrackingSummary {
   bills: TrackedBillItem[];
   topics: TrackedTopicItem[];
   legislators: TrackedLegislatorItem[];
+  is_staff: boolean;
 }
 
 export interface TrackingFeedEntry {

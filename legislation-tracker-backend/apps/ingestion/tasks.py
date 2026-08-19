@@ -33,7 +33,7 @@ from apps.ingestion.document_download import (
 )
 from apps.ingestion.models import IngestionState, IngestionTaskFailure
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
-from apps.legislation.tasks import generate_contract
+from apps.legislation.tasks import generate_contract, generate_contract_for_bill
 
 logger = logging.getLogger(__name__)
 
@@ -103,12 +103,23 @@ def format_bill_number(bill_type, bill_number):
     return f"{t} {bill_number}"
 
 
-def compute_metadata_hash(status, title, summary, last_action_at):
+def compute_metadata_hash(
+    status,
+    title,
+    summary,
+    last_action_at,
+    introduced_at=None,
+    sponsor_id=None,
+    source_api_id=None,
+):
     raw = "|".join([
         (status or "").strip(),
         (title or "").strip(),
-        (summary or "").strip()[:2000],
+        (summary or "").strip(),
         str(last_action_at or ""),
+        str(introduced_at or ""),
+        str(sponsor_id or ""),
+        (source_api_id or "").strip(),
     ])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -133,10 +144,18 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
     if not bioguide_id:
         return None
     name = sponsor_blob.get("fullName") or sponsor_blob.get("name") or ""
-    state = (sponsor_blob.get("state") or "")[:2]
-    party = (sponsor_blob.get("party") or "")[:50]
+    raw_state = sponsor_blob.get("state")
+    state = (raw_state or "")[:2]
+    raw_party = sponsor_blob.get("party")
+    party = (raw_party or "")[:50]
     chamber = _infer_chamber(sponsor_blob)
-    district = str(sponsor_blob.get("district") or "")[:10] or None
+    raw_district = sponsor_blob.get("district")
+    district = str(raw_district or "")[:10] or None
+    chamber_is_supplied = bool(
+        sponsor_blob.get("chamber")
+        or name.startswith(("Sen.", "Sen ", "Rep.", "Rep "))
+        or raw_district is not None
+    )
     rep, created = Representative.objects.get_or_create(
         bioguide_id=bioguide_id,
         defaults={
@@ -147,9 +166,26 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
             "district": district,
         },
     )
-    if not created and rep.chamber != chamber:
-        rep.chamber = chamber
-        rep.save(update_fields=["chamber"])
+    if not created:
+        next_chamber = chamber if chamber_is_supplied else rep.chamber
+        next_district = (
+            district
+            if raw_district is not None or next_chamber == "senate"
+            else rep.district
+        )
+        updated_fields = []
+        for field, value in {
+            "name": name or rep.name,
+            "chamber": next_chamber,
+            "party": party if raw_party is not None else rep.party,
+            "state": state if raw_state is not None else rep.state,
+            "district": next_district,
+        }.items():
+            if getattr(rep, field) != value:
+                setattr(rep, field, value)
+                updated_fields.append(field)
+        if updated_fields:
+            rep.save(update_fields=updated_fields)
     return rep
 
 
@@ -225,13 +261,13 @@ def poll_congress(jurisdiction="federal", congress=119):
             if len(items) < page_limit:
                 break
             offset += page_limit
+    for key in all_bill_keys:
+        process_bill.apply_async(args=[key])
     now = timezone.now()
     state.last_polled_at = now
     if latest_update:
         state.last_bill_update_seen_at = latest_update
     state.save(update_fields=["last_polled_at", "last_bill_update_seen_at"])
-    for key in all_bill_keys:
-        process_bill.apply_async(args=[key])
     logger.info("poll_congress: done enqueued=%s last_bill_update_seen_at=%s", len(all_bill_keys), latest_update)
     return {"enqueued": len(all_bill_keys)}
 
@@ -304,7 +340,7 @@ def process_bill(self, bill_key_str):
         return _process_bill_impl(bill_key_str)
     except Exception as exc:
         logger.exception("process_bill failed: bill_key=%s retries=%s: %s", bill_key_str, self.request.retries, exc)
-        if self.request.retries >= self.max_retries:
+        if not isinstance(exc, CongressAPIError) or self.request.retries >= self.max_retries:
             if isinstance(bill_key_str, str):
                 try:
                     congress, bill_type, bill_number = parse_bill_key(bill_key_str)
@@ -359,7 +395,16 @@ def _process_bill_impl(bill_key_str):
                 last_action_at = timezone.make_aware(last_action_at)
         except Exception:
             pass
-    metadata_hash = compute_metadata_hash(status, title, summary, last_action_at)
+    source_api_id = str(detail.get("url") or bill_key_str)
+    metadata_hash = compute_metadata_hash(
+        status,
+        title,
+        summary,
+        last_action_at,
+        introduced_at,
+        sponsor.id if sponsor else None,
+        source_api_id,
+    )
     with transaction.atomic():
         bill, created = Bill.objects.get_or_create(
             session=congress,
@@ -373,7 +418,7 @@ def _process_bill_impl(bill_key_str):
                 "introduced_at": introduced_at,
                 "last_action_at": last_action_at,
                 "sponsor": sponsor,
-                "source_api_id": str(detail.get("url") or bill_key_str),
+                "source_api_id": source_api_id,
                 "metadata_hash": metadata_hash,
             },
         )
@@ -381,7 +426,9 @@ def _process_bill_impl(bill_key_str):
         if not created:
             if bill.metadata_hash == metadata_hash:
                 logger.info("process_bill: unchanged (hash match) bill_id=%s bill_key=%s", bill.id, bill_key_str)
-                # Still run document/votes pipeline if we never stored files (hash match skips the block below).
+                # Still run the document pipeline if we never stored files. Votes are
+                # refreshed independently because vote corrections can arrive without a
+                # bill metadata change.
                 needs_doc_pipeline = (
                     not bill.documents.exists()
                     or bill.documents.filter(downloaded_at__isnull=True).exists()
@@ -392,19 +439,20 @@ def _process_bill_impl(bill_key_str):
                     else ProcessingStatus.COMPLETE
                 )
                 bill.save(update_fields=["processing_status"])
-                if needs_doc_pipeline:
-                    try:
+                try:
+                    if needs_doc_pipeline:
                         process_bill_versions.apply_async(args=[bill.id])
-                        process_bill_votes.apply_async(args=[bill.id])
                         logger.info(
-                            "process_bill: enqueued versions+votes (documents missing or not downloaded) bill_id=%s",
+                            "process_bill: enqueued versions (documents missing or not downloaded) bill_id=%s",
                             bill.id,
                         )
-                    except Exception:
-                        logger.exception(
-                            "process_bill: failed to enqueue versions/votes bill_id=%s",
-                            bill.id,
-                        )
+                    process_bill_votes.apply_async(args=[bill.id])
+                except Exception:
+                    logger.exception(
+                        "process_bill: failed to enqueue versions/votes bill_id=%s",
+                        bill.id,
+                    )
+                    raise
                 return {"bill_id": bill.id, "unchanged": True}
             old_status = bill.status
             old_title = bill.title
@@ -415,6 +463,7 @@ def _process_bill_impl(bill_key_str):
             bill.introduced_at = introduced_at if introduced_at is not None else bill.introduced_at
             bill.last_action_at = last_action_at if last_action_at is not None else bill.last_action_at
             bill.sponsor = sponsor if sponsor is not None else bill.sponsor
+            bill.source_api_id = source_api_id
             bill.metadata_hash = metadata_hash
             bill.save()
             ChangeLog.objects.create(
@@ -475,7 +524,8 @@ def process_bill_versions(self, bill_id):
         raise
     if not versions:
         logger.info("process_bill_versions: bill_id=%s no versions returned", bill_id)
-        return
+        generate_contract_for_bill.apply_async(args=[bill.id])
+        return {"bill_id": bill_id, "versions": 0, "fallback_enqueued": True}
     # Mark one as active (e.g. last)
     for i, v in enumerate(versions):
         label = v.get("version_label") or v.get("url") or f"v{i}"
@@ -558,8 +608,6 @@ def process_bill_votes(self, bill_id):
         roll = ref.get("rollNumber") or ref.get("roll_number")
         if roll is None:
             continue
-        if Vote.objects.filter(bill=bill, chamber=chamber, roll_number=int(roll)).exists():
-            continue
         vote_data = vote_detail(congress, chamber, roll)
         vote_date = vote_data.get("date") or vote_data.get("voteDate")
         if isinstance(vote_date, str):
@@ -573,7 +621,7 @@ def process_bill_votes(self, bill_id):
         yeas = int(vote_data.get("yeas") or vote_data.get("total", {}).get("yeas") or 0)
         nays = int(vote_data.get("nays") or vote_data.get("total", {}).get("nays") or 0)
         with transaction.atomic():
-            vote, _ = Vote.objects.get_or_create(
+            vote, vote_created = Vote.objects.get_or_create(
                 bill=bill,
                 chamber=chamber,
                 roll_number=int(roll),
@@ -584,9 +632,37 @@ def process_bill_votes(self, bill_id):
                     "nays": nays,
                 },
             )
+            vote_updated = False
+            for field, value in {
+                "vote_date": vote_date or timezone.now(),
+                "result": result,
+                "yeas": yeas,
+                "nays": nays,
+            }.items():
+                if getattr(vote, field) != value:
+                    setattr(vote, field, value)
+                    vote_updated = True
+            if vote_updated:
+                vote.save(update_fields=["vote_date", "result", "yeas", "nays"])
             members = vote_data.get("members") or vote_data.get("votes") or {}
             if isinstance(members, dict):
-                members = members.get("yeas", []) + members.get("nays", []) + members.get("present", [])
+                grouped_members = []
+                for group_name, position in (
+                    ("yeas", "yes"),
+                    ("ayes", "yes"),
+                    ("nays", "no"),
+                    ("noes", "no"),
+                    ("present", "present"),
+                    ("abstain", "abstain"),
+                    ("notVoting", "not_voting"),
+                ):
+                    for member in members.get(group_name, []):
+                        if isinstance(member, dict):
+                            grouped_members.append(
+                                {**member, "position": member.get("position") or member.get("vote") or position}
+                            )
+                members = grouped_members
+            records_updated = False
             for m in members if isinstance(members, list) else []:
                 if not isinstance(m, dict):
                     continue
@@ -597,27 +673,38 @@ def process_bill_votes(self, bill_id):
                 state = (m.get("state") or "")[:2]
                 party = (m.get("party") or "")[:50]
                 chamber_m = (m.get("chamber") or chamber).lower()
-                rep, _ = Representative.objects.get_or_create(
-                    bioguide_id=bio,
-                    defaults={"name": name, "chamber": chamber_m, "party": party, "state": state},
+                rep = get_or_create_representative_from_sponsor(
+                    {
+                        "bioguideId": bio,
+                        "fullName": name,
+                        "chamber": chamber_m,
+                        "party": party,
+                        "state": state,
+                    }
                 )
                 pos = (m.get("position") or m.get("vote") or "yes").lower()[:20]
-                VoteRecord.objects.get_or_create(
+                record, record_created = VoteRecord.objects.get_or_create(
                     vote=vote,
                     representative=rep,
                     defaults={"position": pos or "yes"},
                 )
-            ChangeLog.objects.create(
-                bill=bill,
-                change_type="vote",
-                new_value={
-                    "vote_id": vote.id,
-                    "roll_number": vote.roll_number,
-                    "result": vote.result,
-                    "chamber": vote.chamber,
-                },
-            )
-            votes_created += 1
+                if not record_created and record.position != pos:
+                    record.position = pos
+                    record.save(update_fields=["position"])
+                    records_updated = True
+                records_updated = records_updated or record_created
+            if vote_created or vote_updated or records_updated:
+                ChangeLog.objects.create(
+                    bill=bill,
+                    change_type="vote",
+                    new_value={
+                        "vote_id": vote.id,
+                        "roll_number": vote.roll_number,
+                        "result": vote.result,
+                        "chamber": vote.chamber,
+                    },
+                )
+                votes_created += 1
     logger.info("process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created)
     return {"bill_id": bill_id, "votes_created": votes_created}
 

@@ -7,3 +7,45 @@ def test_celery_beat_schedules_tracked_bill_polling():
         "apps.ingestion.tasks.poll_tracked_bills"
     )
     assert schedule["poll-tracked-bills"]["schedule"] == 300.0
+
+
+def test_celery_beat_recomputes_similarity_for_the_entire_session():
+    from config.celery import app
+
+    schedule = app.conf.beat_schedule
+
+    assert schedule["recompute-similarity-batch"]["kwargs"] == {"session": 119}
+
+
+def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
+    from apps.ingestion import tasks
+    from config.celery import _on_task_failure
+
+    recorded = []
+    monkeypatch.setattr(
+        tasks,
+        "_record_task_failure",
+        lambda task_id, task_name, args, kwargs, bill_id, exc: recorded.append(
+            (task_id, task_name, args, kwargs, bill_id, str(exc))
+        ),
+    )
+
+    sender = type("Sender", (), {"name": "apps.legislation.tasks.generate_contract"})()
+    _on_task_failure(
+        sender=sender,
+        task_id="failed-task",
+        exception=RuntimeError("contract failed"),
+        args=(23,),
+        kwargs={},
+    )
+
+    assert recorded == [
+        (
+            "failed-task",
+            "apps.legislation.tasks.generate_contract",
+            (23,),
+            {},
+            None,
+            "contract failed",
+        )
+    ]

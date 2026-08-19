@@ -58,6 +58,21 @@
       <a id="open-app" href="http://localhost:3000/bills" target="_blank">
         Open Legislation Tracker
       </a>
+      <details class="settings">
+        <summary>Backend settings</summary>
+        <form id="settings-form" class="settings-form">
+          <label>
+            API URL
+            <input id="settings-api-base" type="url" inputmode="url" required>
+          </label>
+          <label>
+            App URL
+            <input id="settings-app-base" type="url" inputmode="url" required>
+          </label>
+          <button type="submit">Save endpoints</button>
+        </form>
+        <p id="settings-message" class="settings-message" hidden></p>
+      </details>
     </footer>
   </div>
 

@@ -224,10 +224,11 @@ def _contract_item(sentence, category):
     return {"text": sentence["text"], "category": category}
 
 
-def _add_evidence(evidence, field_path, quote, source_text):
+def _add_evidence(evidence, field_path, quote, source_text, start=None):
     if not quote:
         return
-    start = source_text.find(quote)
+    if start is None:
+        start = source_text.find(quote)
     if start < 0:
         return
     evidence.append(
@@ -291,26 +292,41 @@ def _build_contract(document: BillDocument, bill: Bill):
         ],
     }
     evidence = []
-    _add_evidence(evidence, "plain_summary", summary_text, source_text)
-    _add_evidence(evidence, "summary.text", summary_text, source_text)
-    _add_evidence(evidence, "source_excerpt", source_excerpt, source_text)
-    for index, item in enumerate(contract_json["key_points"]):
-        _add_evidence(evidence, f"key_points[{index}].text", item["text"], source_text)
-    for index, item in enumerate(contract_json["requirements"]):
-        _add_evidence(evidence, f"requirements[{index}].text", item["text"], source_text)
-    for index, item in enumerate(contract_json["funding_mentions"]):
+    summary_start = summary_sentence["start"] if summary_sentence else None
+    _add_evidence(evidence, "plain_summary", summary_text, source_text, summary_start)
+    _add_evidence(evidence, "summary.text", summary_text, source_text, summary_start)
+    _add_evidence(evidence, "source_excerpt", source_excerpt, source_text, 0)
+    for index, sentence in enumerate(key_sentences):
+        _add_evidence(
+            evidence,
+            f"key_points[{index}].text",
+            sentence["text"],
+            source_text,
+            sentence["start"],
+        )
+    for index, sentence in enumerate(requirement_sentences):
+        _add_evidence(
+            evidence,
+            f"requirements[{index}].text",
+            sentence["text"],
+            source_text,
+            sentence["start"],
+        )
+    for index, sentence in enumerate(funding_sentences):
         _add_evidence(
             evidence,
             f"funding_mentions[{index}].text",
-            item["text"],
+            sentence["text"],
             source_text,
+            sentence["start"],
         )
-    for index, item in enumerate(contract_json["effective_dates"]):
+    for index, sentence in enumerate(effective_date_sentences):
         _add_evidence(
             evidence,
             f"effective_dates[{index}].text",
-            item["text"],
+            sentence["text"],
             source_text,
+            sentence["start"],
         )
     return contract_json, evidence
 
@@ -340,6 +356,7 @@ def _build_metadata_contract(bill: Bill):
     return contract_json
 
 
+@shared_task
 def generate_contract_for_bill(bill_id):
     """
     Create a metadata-only contract when document text is not available yet.
@@ -353,7 +370,6 @@ def generate_contract_for_bill(bill_id):
     latest = bill.latest_contract
     if latest and latest.contract_hash == new_hash:
         update_topics.apply_async(kwargs={"bill_id": bill.id})
-        schedule_similarity_for_bill.apply_async(args=[bill.id])
         return {
             "bill_id": bill.id,
             "contract_id": latest.id,
@@ -361,12 +377,15 @@ def generate_contract_for_bill(bill_id):
         }
 
     with transaction.atomic():
-        contract = BillContract.objects.create(
+        contract, contract_created = BillContract.objects.get_or_create(
             bill=bill,
-            document=None,
-            schema_version=CONTRACT_SCHEMA_VERSION,
-            contract_json=contract_json,
+            document__isnull=True,
             contract_hash=new_hash,
+            defaults={
+                "document": None,
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "contract_json": contract_json,
+            },
         )
         bill.latest_contract = contract
         if bill.processing_status != ProcessingStatus.COMPLETE:
@@ -375,20 +394,20 @@ def generate_contract_for_bill(bill_id):
         else:
             bill.save(update_fields=["latest_contract"])
 
-        ChangeLog.objects.create(
-            bill=bill,
-            contract=contract,
-            change_type="contract_update",
-            old_value={"contract_hash": latest.contract_hash} if latest else None,
-            new_value={
-                "contract_id": contract.id,
-                "contract_hash": new_hash,
-                "schema_version": CONTRACT_SCHEMA_VERSION,
-            },
-        )
+        if contract_created:
+            ChangeLog.objects.create(
+                bill=bill,
+                contract=contract,
+                change_type="contract_update",
+                old_value={"contract_hash": latest.contract_hash} if latest else None,
+                new_value={
+                    "contract_id": contract.id,
+                    "contract_hash": new_hash,
+                    "schema_version": CONTRACT_SCHEMA_VERSION,
+                },
+            )
 
     update_topics.apply_async(kwargs={"bill_id": bill.id})
-    schedule_similarity_for_bill.apply_async(args=[bill.id])
     logger.info(
         "generate_contract_for_bill: bill_id=%s contract_id=%s",
         bill.id,
@@ -435,7 +454,6 @@ def generate_contract(document_id):
             else:
                 bill.save(update_fields=["latest_contract"])
         update_topics.apply_async(args=[latest.id])
-        schedule_similarity_for_bill.apply_async(args=[bill.id])
         logger.info(
             "generate_contract: unchanged hash for document_id=%s, skipping",
             document_id,
@@ -443,12 +461,14 @@ def generate_contract(document_id):
         return {"document_id": document_id, "contract_id": latest.id, "unchanged": True}
 
     with transaction.atomic():
-        contract = BillContract.objects.create(
+        contract, contract_created = BillContract.objects.get_or_create(
             bill=bill,
             document=document,
-            schema_version=CONTRACT_SCHEMA_VERSION,
-            contract_json=contract_json,
             contract_hash=new_hash,
+            defaults={
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "contract_json": contract_json,
+            },
         )
         if document.is_active_version:
             bill.latest_contract = contract
@@ -458,33 +478,33 @@ def generate_contract(document_id):
         document.contract_generated_at = now
         document.save(update_fields=["contract_generated_at"])
 
-        ChangeLog.objects.create(
-            bill=bill,
-            document=document,
-            contract=contract,
-            change_type="contract_update",
-            old_value={"contract_hash": latest.contract_hash} if latest else None,
-            new_value={
-                "contract_id": contract.id,
-                "contract_hash": new_hash,
-                "schema_version": CONTRACT_SCHEMA_VERSION,
-            },
-        )
-
-        for span in evidence_spans:
-            EvidenceSpan.objects.create(
+        if contract_created:
+            ChangeLog.objects.create(
                 bill=bill,
                 document=document,
                 contract=contract,
-                field_path=span["field_path"],
-                start_char=span["start_char"],
-                end_char=span["end_char"],
-                quoted_text=span["quoted_text"],
-                page_number=None,
+                change_type="contract_update",
+                old_value={"contract_hash": latest.contract_hash} if latest else None,
+                new_value={
+                    "contract_id": contract.id,
+                    "contract_hash": new_hash,
+                    "schema_version": CONTRACT_SCHEMA_VERSION,
+                },
             )
 
+            for span in evidence_spans:
+                EvidenceSpan.objects.create(
+                    bill=bill,
+                    document=document,
+                    contract=contract,
+                    field_path=span["field_path"],
+                    start_char=span["start_char"],
+                    end_char=span["end_char"],
+                    quoted_text=span["quoted_text"],
+                    page_number=None,
+                )
+
     update_topics.apply_async(args=[contract.id])
-    schedule_similarity_for_bill.apply_async(args=[bill.id])
 
     logger.info(
         "generate_contract: created contract_id=%s document_id=%s",
@@ -581,9 +601,10 @@ def update_topics(contract_id=None, bill_id=None):
     logger.info(
         "update_topics: success bill_id=%s contract_id=%s topics=%s",
         bill.id,
-        contract.id,
+        contract.id if contract else None,
         new_slugs,
     )
+    schedule_similarity_for_bill.apply_async(args=[bill.id])
     return {
         "contract_id": contract.id if contract else None,
         "bill_id": bill.id,
@@ -594,13 +615,17 @@ def update_topics(contract_id=None, bill_id=None):
 @shared_task
 def backfill_update_topics(session=None):
     """Enqueue topic inference for the latest contract on every matching bill."""
-    bills = Bill.objects.filter(contracts__isnull=False).distinct().order_by("id")
+    bills = (
+        Bill.objects.filter(latest_contract__isnull=False)
+        .select_related("latest_contract")
+        .order_by("id")
+    )
     if session is not None:
         bills = bills.filter(session=int(session))
 
     enqueued = 0
     for bill in bills:
-        contract = bill.contracts.order_by("-id").first()
+        contract = bill.latest_contract
         if not contract:
             continue
         update_topics.apply_async(args=[contract.id])

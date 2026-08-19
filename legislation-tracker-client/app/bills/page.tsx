@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import {
   getBillFilterOptions,
@@ -9,6 +10,7 @@ import {
   getMyTracking,
   getStoredAccessToken,
   getTopics,
+  parseTopicIdFromSearchParam,
   trackTopic,
   type BillListItem,
   type BillsPage,
@@ -19,6 +21,7 @@ import {
 const PAGE_SIZE = 20;
 
 function BillsTable() {
+  const searchParams = useSearchParams();
   const [page, setPage] = useState<BillsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +36,10 @@ function BillsTable() {
   const [jurisdictionFilter, setJurisdictionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sponsorFilter, setSponsorFilter] = useState("");
-  const [topicIdFilter, setTopicIdFilter] = useState<string>("");
+  const [topicIdFilter, setTopicIdFilter] = useState<string>(() => {
+    const topicId = parseTopicIdFromSearchParam(searchParams.get("topic_id"));
+    return topicId ? String(topicId) : "";
+  });
   const [topicFuzzyFilter, setTopicFuzzyFilter] = useState("");
   const [hasAccount, setHasAccount] = useState(false);
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
@@ -56,6 +62,13 @@ function BillsTable() {
   useEffect(() => {
     loadFilterMeta();
   }, [loadFilterMeta]);
+
+  const topicIdFromUrl = parseTopicIdFromSearchParam(searchParams.get("topic_id"));
+  useEffect(() => {
+    const nextTopicId = topicIdFromUrl ? String(topicIdFromUrl) : "";
+    setTopicIdFilter((current) => (current === nextTopicId ? current : nextTopicId));
+    setPageNum(1);
+  }, [topicIdFromUrl]);
 
   useEffect(() => {
     const signedIn = Boolean(getStoredAccessToken());
@@ -423,5 +436,15 @@ function BillsTable() {
 }
 
 export default function BillsPage() {
-  return <BillsTable />;
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[60vh] items-center justify-center font-mono text-slate-600 dark:text-green-500">
+          Loading bills…
+        </div>
+      }
+    >
+      <BillsTable />
+    </Suspense>
+  );
 }

@@ -11,6 +11,7 @@ const {
   formatPercent,
   getBillUrl,
   normalizeBaseUrl,
+  originPermissionForBaseUrl,
 } = require("../extension-utils.js");
 
 describe("extension utilities", () => {
@@ -28,6 +29,21 @@ describe("extension utilities", () => {
 
   it("builds app bill URLs without deriving the app origin from the API origin", () => {
     assert.equal(getBillUrl("https://app.example.com/", 42), "https://app.example.com/bills/42");
+  });
+
+  it("derives a Chrome host permission only for HTTP(S) API origins", () => {
+    assert.equal(
+      originPermissionForBaseUrl("https://api.example.com/v1/"),
+      "https://api.example.com/*",
+    );
+    assert.equal(
+      originPermissionForBaseUrl("http://localhost:8000"),
+      "http://localhost:8000/*",
+    );
+    assert.throws(
+      () => originPermissionForBaseUrl("javascript:alert(1)"),
+      /HTTP or HTTPS/,
+    );
   });
 
   it("builds JSON requests with optional bearer auth", () => {

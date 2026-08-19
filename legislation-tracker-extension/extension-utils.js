@@ -17,6 +17,19 @@
     return raw.replace(/\/+$/, "");
   }
 
+  function originPermissionForBaseUrl(value) {
+    let url;
+    try {
+      url = new URL(normalizeBaseUrl(value));
+    } catch {
+      throw new Error("Enter a valid HTTP or HTTPS URL.");
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("Enter a valid HTTP or HTTPS URL.");
+    }
+    return `${url.protocol}//${url.host}/*`;
+  }
+
   function getBillUrl(appBase, billId) {
     return `${normalizeBaseUrl(appBase, DEFAULT_APP_BASE)}/bills/${encodeURIComponent(String(billId))}`;
   }
@@ -67,5 +80,6 @@
     getBillsUrl,
     getLoginUrl,
     normalizeBaseUrl,
+    originPermissionForBaseUrl,
   };
 });

@@ -1,4 +1,5 @@
 import pytest
+from django.db import IntegrityError, transaction
 
 from apps.changelog.models import ChangeLog
 from apps.legislation.models import (
@@ -60,7 +61,7 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
     for span in spans:
         assert document.extracted_text[span.start_char:span.end_char] == span.quoted_text
     assert enqueued_topics == [([first["contract_id"]], None)]
-    assert enqueued_similarity == [([bill.id], None)]
+    assert enqueued_similarity == []
 
     second = tasks.generate_contract(document.id)
 
@@ -77,7 +78,7 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
         ([first["contract_id"]], None),
         ([first["contract_id"]], None),
     ]
-    assert enqueued_similarity == [([bill.id], None), ([bill.id], None)]
+    assert enqueued_similarity == []
 
 
 @pytest.mark.django_db
@@ -144,6 +145,40 @@ def test_generate_contract_builds_structured_contract_with_source_evidence(monke
 
 
 @pytest.mark.django_db
+def test_contract_evidence_uses_the_actual_repeated_sentence_location(monkeypatch):
+    monkeypatch.setattr(tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None)
+    monkeypatch.setattr(
+        tasks.schedule_similarity_for_bill,
+        "apply_async",
+        lambda args=None, kwargs=None: None,
+    )
+    source_text = "The agency must publish a report. The agency must publish a report."
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 62",
+        title="Reporting bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text=source_text,
+    )
+
+    result = tasks.generate_contract(document.id)
+
+    second_requirement = EvidenceSpan.objects.get(
+        contract_id=result["contract_id"],
+        field_path="requirements[1].text",
+    )
+    assert second_requirement.start_char == source_text.rfind(
+        "The agency must publish a report."
+    )
+
+
+@pytest.mark.django_db
 def test_generate_contract_for_inactive_document_does_not_replace_latest_contract(
     monkeypatch,
 ):
@@ -194,7 +229,12 @@ def test_generate_contract_for_inactive_document_does_not_replace_latest_contrac
 
 
 @pytest.mark.django_db
-def test_update_topics_infers_bill_topics_and_is_idempotent():
+def test_update_topics_infers_bill_topics_and_is_idempotent(monkeypatch):
+    monkeypatch.setattr(
+        tasks.schedule_similarity_for_bill,
+        "apply_async",
+        lambda args=None, kwargs=None: None,
+    )
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -249,6 +289,33 @@ def test_update_topics_infers_bill_topics_and_is_idempotent():
 
 
 @pytest.mark.django_db
+def test_update_topics_handles_a_bill_without_a_contract_and_then_updates_similarity(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 53",
+        title="Health care access bill",
+        summary="Improves hospital care and Medicare access.",
+        status="Introduced",
+    )
+    enqueued = []
+    monkeypatch.setattr(
+        tasks.schedule_similarity_for_bill,
+        "apply_async",
+        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
+    )
+
+    result = tasks.update_topics(bill_id=bill.id)
+
+    assert result["bill_id"] == bill.id
+    assert result["contract_id"] is None
+    assert "health" in result["topics"]
+    assert enqueued == [([bill.id], None)]
+
+
+@pytest.mark.django_db
 def test_backfill_update_topics_enqueues_latest_contracts(monkeypatch):
     first_bill = Bill.objects.create(
         jurisdiction="federal",
@@ -276,6 +343,8 @@ def test_backfill_update_topics_enqueues_latest_contracts(monkeypatch):
         contract_json={"plain_summary": "latest"},
         contract_hash="latest",
     )
+    first_bill.latest_contract = latest_contract
+    first_bill.save(update_fields=["latest_contract"])
     second_bill = Bill.objects.create(
         jurisdiction="federal",
         session=118,
@@ -308,6 +377,88 @@ def test_backfill_update_topics_enqueues_latest_contracts(monkeypatch):
     assert enqueued == [([latest_contract.id], None)]
     assert old_contract.id not in [args[0] for args, _kwargs in enqueued]
     assert other_contract.id not in [args[0] for args, _kwargs in enqueued]
+
+
+@pytest.mark.django_db
+def test_backfill_update_topics_uses_the_selected_latest_contract_not_highest_id(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 54",
+        title="Versioned bill",
+        status="Introduced",
+    )
+    active_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        is_active_version=True,
+    )
+    active_contract = BillContract.objects.create(
+        bill=bill,
+        document=active_document,
+        schema_version="1.0-stub",
+        contract_json={"plain_summary": "active"},
+        contract_hash="active",
+    )
+    inactive_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=False,
+    )
+    BillContract.objects.create(
+        bill=bill,
+        document=inactive_document,
+        schema_version="1.0-stub",
+        contract_json={"plain_summary": "obsolete"},
+        contract_hash="obsolete",
+    )
+    bill.latest_contract = active_contract
+    bill.save(update_fields=["latest_contract"])
+    enqueued = []
+    monkeypatch.setattr(
+        tasks.update_topics,
+        "apply_async",
+        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
+    )
+
+    tasks.backfill_update_topics(session=119)
+
+    assert enqueued == [([active_contract.id], None)]
+
+
+@pytest.mark.django_db
+def test_contract_and_topic_rows_have_database_uniqueness_guarantees():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 55",
+        title="Unique bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(bill=bill, version_label="Introduced")
+    topic = Topic.objects.create(name="Health", slug="health")
+    BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version="1.0-stub",
+        contract_json={},
+        contract_hash="same-document-hash",
+    )
+    BillTopic.objects.create(bill=bill, topic=topic)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        BillContract.objects.create(
+            bill=bill,
+            document=document,
+            schema_version="1.0-stub",
+            contract_json={},
+            contract_hash="same-document-hash",
+        )
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        BillTopic.objects.create(bill=bill, topic=topic)
 
 
 @pytest.mark.django_db

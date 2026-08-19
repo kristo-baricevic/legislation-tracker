@@ -93,13 +93,35 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def _topic_payload_error(self, request):
+        if "topic" in request.data:
+            return Response(
+                {"error": "Use the topic tracking endpoints to follow topics."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        if error_response := self._topic_payload_error(request):
+            return error_response
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if error_response := self._topic_payload_error(request):
+            return error_response
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if error_response := self._topic_payload_error(request):
+            return error_response
+        return super().partial_update(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"], url_path="followed-topics")
     def followed_topics(self, request):
         """List topic IDs the current user follows."""
         topic_ids = list(
-            UserPreference.objects.filter(
+            TrackedTopic.objects.filter(
                 user=request.user,
-                topic__isnull=False,
             ).values_list("topic_id", flat=True)
         )
         return Response({"topic_ids": topic_ids})
@@ -114,7 +136,7 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
         if error_response is not None:
             return error_response
         get_object_or_404(Topic, pk=topic_id)
-        _, created = UserPreference.objects.get_or_create(
+        _, created = TrackedTopic.objects.get_or_create(
             user=request.user,
             topic_id=topic_id,
         )
@@ -132,7 +154,7 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
         )
         if error_response is not None:
             return error_response
-        deleted, _ = UserPreference.objects.filter(
+        deleted, _ = TrackedTopic.objects.filter(
             user=request.user,
             topic_id=topic_id,
         ).delete()
@@ -160,6 +182,7 @@ class TrackingSummaryView(APIView):
                 "bills": TrackedBillSerializer(bills, many=True).data,
                 "topics": TrackedTopicSerializer(topics, many=True).data,
                 "legislators": TrackedLegislatorSerializer(legislators, many=True).data,
+                "is_staff": request.user.is_staff,
             }
         )
 
