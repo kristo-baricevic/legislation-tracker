@@ -32,6 +32,16 @@ def test_celery_beat_dispatches_and_recovers_durable_ingestion_work():
     }
 
 
+def test_celery_beat_syncs_the_full_current_representative_roster_daily():
+    from config.celery import app
+
+    assert app.conf.beat_schedule["sync-representatives"] == {
+        "task": "apps.ingestion.tasks.sync_representatives",
+        "schedule": 86400.0,
+        "kwargs": {"congress": 119},
+    }
+
+
 def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
     from apps.ingestion import tasks
     from config.celery import _on_task_failure

@@ -297,6 +297,11 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
                 "party": "Independent",
                 "state": "NY",
                 "district": None,
+                "first_name": "",
+                "last_name": "",
+                "official_website_url": None,
+                "image_url": None,
+                "is_current": True,
             },
             "position": "yes",
         }

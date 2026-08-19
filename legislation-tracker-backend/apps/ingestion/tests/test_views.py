@@ -126,6 +126,30 @@ def test_poll_congress_endpoint_enqueues_task_for_staff_user(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_sync_representatives_endpoint_enqueues_roster_sync_for_staff_user(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        views.sync_representatives,
+        "delay",
+        lambda **kwargs: calls.append(kwargs) or FakeAsyncResult(),
+    )
+
+    response = authenticated_client(is_staff=True).post(
+        "/api/ingestion/sync-representatives/",
+        {"congress": 118},
+        format="json",
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "task_id": "task-123",
+        "task_name": "sync_representatives",
+        "congress": 118,
+    }
+    assert calls == [{"congress": 118}]
+
+
+@pytest.mark.django_db
 def test_staff_can_list_dead_lettered_ingestion_work():
     work = IngestionWorkItem.objects.create(
         kind="bill",

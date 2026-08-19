@@ -376,6 +376,11 @@ export interface RepresentativeItem {
   party: string;
   state: string;
   district: string | null;
+  first_name: string;
+  last_name: string;
+  official_website_url: string | null;
+  image_url: string | null;
+  is_current: boolean;
 }
 
 export interface RepresentativesPage {

@@ -49,6 +49,11 @@ app.conf.beat_schedule = {
         "task": "apps.ingestion.tasks.recover_stale_ingestion_work",
         "schedule": 300.0,
     },
+    "sync-representatives": {
+        "task": "apps.ingestion.tasks.sync_representatives",
+        "schedule": 86400.0,
+        "kwargs": {"congress": 119},
+    },
 }
 
 

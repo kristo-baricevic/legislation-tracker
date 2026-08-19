@@ -15,6 +15,7 @@ from apps.ingestion.tasks import (
     bill_key,
     dispatch_ingestion_work,
     poll_congress,
+    sync_representatives,
 )
 from apps.legislation.models import Bill
 from apps.legislation.serializers import BillListSerializer
@@ -117,6 +118,30 @@ class PollCongressView(APIView):
                 "task_id": result.id,
                 "task_name": "poll_congress",
                 "jurisdiction": jurisdiction,
+                "congress": congress,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class SyncRepresentativesView(APIView):
+    """Enqueue a complete current-member roster refresh."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        congress, error_response = parse_int_param(
+            request.data.get("congress"),
+            "congress",
+            default=119,
+        )
+        if error_response is not None:
+            return error_response
+        result = sync_representatives.delay(congress=congress)
+        return Response(
+            {
+                "task_id": result.id,
+                "task_name": "sync_representatives",
                 "congress": congress,
             },
             status=status.HTTP_202_ACCEPTED,

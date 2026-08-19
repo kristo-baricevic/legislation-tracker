@@ -137,3 +137,25 @@ def vote_detail(congress, chamber, roll_number):
     data = _request("GET", f"vote/{congress}/{chamber}/{roll_number}")
     _throttle()
     return data.get("vote") or data
+
+
+def member_list(congress, current_member=True, limit=250, offset=0):
+    """List members serving in a Congress, with explicit offset pagination."""
+    params = {
+        "currentMember": "true" if current_member else "false",
+        "limit": limit,
+        "offset": offset,
+    }
+    data = _request("GET", f"member/congress/{congress}", params=params)
+    _throttle()
+    members = data.get("members") or []
+    if not isinstance(members, list):
+        raise CongressAPIError("Congress member list returned an invalid members payload")
+    return members
+
+
+def member_detail(bioguide_id):
+    """Return the rich member profile used to populate the complete roster."""
+    data = _request("GET", f"member/{bioguide_id}")
+    _throttle()
+    return data.get("member") or data

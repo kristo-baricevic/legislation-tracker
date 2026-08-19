@@ -692,3 +692,111 @@ def test_poll_tracked_bills_enqueues_unique_bills_matching_user_tracking(monkeyp
         ("119-hr-303",),
     }
     assert ("119-hr-404",) not in {tuple(args) for args, _kwargs in enqueued}
+
+
+@pytest.mark.django_db
+def test_sync_representatives_ingests_the_complete_current_roster_before_retiring_stale_rows(monkeypatch):
+    stale = Representative.objects.create(
+        bioguide_id="S000001",
+        name="Stale Member",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=True,
+    )
+    offsets = []
+
+    def fake_member_list(congress, current_member=True, limit=250, offset=0):
+        offsets.append(offset)
+        if offset == 0:
+            return [
+                {
+                    "bioguideId": "C000001",
+                    "name": "Doe, Jane",
+                    "partyName": "Independent",
+                    "state": "CA",
+                    "district": 12,
+                    "url": "https://api.congress.gov/v3/member/C000001",
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(tasks, "member_list", fake_member_list)
+    monkeypatch.setattr(
+        tasks,
+        "member_detail",
+        lambda bioguide_id: {
+            "bioguideId": bioguide_id,
+            "directOrderName": "Jane Doe",
+            "firstName": "Jane",
+            "lastName": "Doe",
+            "officialWebsiteUrl": "https://doe.house.gov",
+            "depiction": {"imageUrl": "https://images.example.com/doe.jpg"},
+            "terms": {"item": [{"chamber": "House"}]},
+            "currentMember": True,
+        },
+    )
+
+    result = tasks.sync_representatives(congress=119)
+
+    representative = Representative.objects.get(bioguide_id="C000001")
+    stale.refresh_from_db()
+    assert result == {"congress": 119, "members": 1, "created": 1, "updated": 0}
+    assert offsets == [0]
+    assert (
+        representative.name,
+        representative.first_name,
+        representative.last_name,
+        representative.chamber,
+        representative.party,
+        representative.state,
+        representative.district,
+        representative.official_website_url,
+        representative.image_url,
+        representative.source_api_url,
+        representative.is_current,
+    ) == (
+        "Jane Doe",
+        "Jane",
+        "Doe",
+        "house",
+        "Independent",
+        "CA",
+        "12",
+        "https://doe.house.gov",
+        "https://images.example.com/doe.jpg",
+        "https://api.congress.gov/v3/member/C000001",
+        True,
+    )
+    assert stale.is_current is False
+
+
+@pytest.mark.django_db
+def test_sync_representatives_does_not_retire_existing_members_after_an_incomplete_pull(monkeypatch):
+    stale = Representative.objects.create(
+        bioguide_id="S000001",
+        name="Stale Member",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=True,
+    )
+    monkeypatch.setattr(
+        tasks,
+        "member_list",
+        lambda congress, current_member=True, limit=250, offset=0: [
+            {"bioguideId": "C000001", "name": "Doe, Jane"}
+        ] if offset == 0 else [],
+    )
+    monkeypatch.setattr(
+        tasks,
+        "member_detail",
+        lambda bioguide_id: (_ for _ in ()).throw(CongressAPIError("member unavailable")),
+    )
+
+    with pytest.raises(CongressAPIError, match="member unavailable"):
+        tasks.sync_representatives(congress=119)
+
+    stale.refresh_from_db()
+    assert stale.is_current is True
+    assert not Representative.objects.filter(bioguide_id="C000001").exists()

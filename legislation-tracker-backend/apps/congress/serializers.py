@@ -14,6 +14,11 @@ class RepresentativeSerializer(serializers.ModelSerializer):
             "party",
             "state",
             "district",
+            "first_name",
+            "last_name",
+            "official_website_url",
+            "image_url",
+            "is_current",
         ]
 
 

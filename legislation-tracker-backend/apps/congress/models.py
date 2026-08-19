@@ -10,6 +10,12 @@ class Representative(models.Model):
     party = models.CharField(max_length=50)
     state = models.CharField(max_length=2)
     district = models.CharField(max_length=10, null=True, blank=True)  # House only
+    first_name = models.CharField(max_length=255, blank=True, default="")
+    last_name = models.CharField(max_length=255, blank=True, default="")
+    official_website_url = models.URLField(max_length=1024, null=True, blank=True)
+    image_url = models.URLField(max_length=1024, null=True, blank=True)
+    source_api_url = models.URLField(max_length=1024, null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
     is_current = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

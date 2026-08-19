@@ -21,6 +21,8 @@ from apps.ingestion.congress_client import (
     bill_detail,
     bill_list,
     bill_text_list,
+    member_detail,
+    member_list,
     vote_detail,
 )
 from apps.ingestion.document_download import (
@@ -198,6 +200,121 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
         if updated_fields:
             rep.save(update_fields=updated_fields)
     return rep
+
+
+def _member_chamber(member):
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    if isinstance(terms, list):
+        for term in reversed(terms):
+            if isinstance(term, dict) and term.get("chamber"):
+                return str(term["chamber"]).lower()
+    chamber = member.get("chamber") or ""
+    return str(chamber).lower() if chamber else "house"
+
+
+def _member_party(member):
+    party = member.get("partyName") or member.get("party")
+    if party:
+        return str(party)[:50]
+    history = member.get("partyHistory") or []
+    if isinstance(history, list):
+        for entry in reversed(history):
+            if isinstance(entry, dict) and entry.get("partyName"):
+                return str(entry["partyName"])[:50]
+    return ""
+
+
+def _member_profile(summary, detail):
+    member = dict(summary)
+    member.update(detail or {})
+    bioguide_id = member.get("bioguideId") or member.get("bioguide_id")
+    if not bioguide_id:
+        raise CongressAPIError("Congress member payload is missing bioguideId")
+    first_name = str(member.get("firstName") or "")[:255]
+    last_name = str(member.get("lastName") or "")[:255]
+    name = str(
+        member.get("directOrderName")
+        or member.get("fullName")
+        or member.get("name")
+        or " ".join(part for part in (first_name, last_name) if part)
+        or bioguide_id
+    )[:255]
+    depiction = member.get("depiction") or {}
+    image_url = depiction.get("imageUrl") if isinstance(depiction, dict) else None
+    district = member.get("district")
+    chamber = _member_chamber(member)
+    return {
+        "bioguide_id": str(bioguide_id)[:20],
+        "name": name,
+        "first_name": first_name,
+        "last_name": last_name,
+        "chamber": chamber if chamber in ("house", "senate") else "house",
+        "party": _member_party(member),
+        "state": str(member.get("state") or "")[:2],
+        "district": str(district)[:10] if district not in (None, "") else None,
+        "official_website_url": member.get("officialWebsiteUrl") or None,
+        "image_url": image_url or None,
+        "source_api_url": member.get("url") or None,
+        "is_current": bool(member.get("currentMember", True)),
+    }
+
+
+@shared_task
+def sync_representatives(congress=119):
+    """Synchronize the full current member roster without retiring on partial pulls."""
+    limit = 250
+    offset = 0
+    summaries = []
+    while True:
+        page = member_list(
+            congress,
+            current_member=True,
+            limit=limit,
+            offset=offset,
+        )
+        summaries.extend(page)
+        if len(page) < limit:
+            break
+        offset += limit
+
+    if not summaries:
+        raise CongressAPIError("Congress member roster was empty; refusing to retire members")
+
+    profiles = []
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            raise CongressAPIError("Congress member list contained an invalid member payload")
+        bioguide_id = summary.get("bioguideId") or summary.get("bioguide_id")
+        if not bioguide_id:
+            raise CongressAPIError("Congress member list entry is missing bioguideId")
+        profiles.append(_member_profile(summary, member_detail(bioguide_id)))
+
+    now = timezone.now()
+    created_count = 0
+    updated_count = 0
+    seen_ids = {profile["bioguide_id"] for profile in profiles}
+    with transaction.atomic():
+        for profile in profiles:
+            bioguide_id = profile.pop("bioguide_id")
+            profile["last_seen_at"] = now
+            _, created = Representative.objects.update_or_create(
+                bioguide_id=bioguide_id,
+                defaults=profile,
+            )
+            created_count += int(created)
+            updated_count += int(not created)
+        Representative.objects.filter(is_current=True).exclude(
+            bioguide_id__in=seen_ids
+        ).update(is_current=False)
+
+    return {
+        "congress": congress,
+        "members": len(profiles),
+        "created": created_count,
+        "updated": updated_count,
+    }
 
 
 @shared_task
