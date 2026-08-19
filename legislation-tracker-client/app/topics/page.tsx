@@ -4,11 +4,11 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   getTopics,
-  getFollowedTopics,
-  followTopic,
-  unfollowTopic,
+  getTrackedTopics,
   isLoggedIn,
+  trackTopic,
   type TopicItem,
+  untrackTopic,
 } from "@/lib/api";
 
 export default function TopicsPage() {
@@ -27,11 +27,11 @@ export default function TopicsPage() {
         const [allTopics, followed] = await Promise.all([
           getTopics(),
           authed
-            ? getFollowedTopics().catch(() => ({ topic_ids: [] }))
-            : Promise.resolve({ topic_ids: [] }),
+            ? getTrackedTopics().catch(() => [])
+            : Promise.resolve([]),
         ]);
         setTopics(allTopics);
-        setFollowedIds(new Set(followed.topic_ids));
+        setFollowedIds(new Set(followed.map((row) => row.topic.id)));
       } catch {
         // topics endpoint is public so this is unlikely
       } finally {
@@ -46,14 +46,14 @@ export default function TopicsPage() {
     setBusy(topicId);
     try {
       if (followedIds.has(topicId)) {
-        await unfollowTopic(topicId);
+        await untrackTopic(topicId);
         setFollowedIds((prev) => {
           const next = new Set(prev);
           next.delete(topicId);
           return next;
         });
       } else {
-        await followTopic(topicId);
+        await trackTopic(topicId);
         setFollowedIds((prev) => new Set(prev).add(topicId));
       }
     } catch {

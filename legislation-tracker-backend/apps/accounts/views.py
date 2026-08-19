@@ -116,53 +116,6 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
             return error_response
         return super().partial_update(request, *args, **kwargs)
 
-    @action(detail=False, methods=["get"], url_path="followed-topics")
-    def followed_topics(self, request):
-        """List topic IDs the current user follows."""
-        topic_ids = list(
-            TrackedTopic.objects.filter(
-                user=request.user,
-            ).values_list("topic_id", flat=True)
-        )
-        return Response({"topic_ids": topic_ids})
-
-    @action(detail=False, methods=["post"], url_path="follow-topic")
-    def follow_topic(self, request):
-        """Follow a topic. Body: { "topic_id": 5 }"""
-        topic_id, error_response = parse_required_int_param(
-            request.data.get("topic_id"),
-            "topic_id",
-        )
-        if error_response is not None:
-            return error_response
-        get_object_or_404(Topic, pk=topic_id)
-        _, created = TrackedTopic.objects.get_or_create(
-            user=request.user,
-            topic_id=topic_id,
-        )
-        return Response(
-            {"followed": True, "topic_id": topic_id, "already": not created},
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
-
-    @action(detail=False, methods=["post"], url_path="unfollow-topic")
-    def unfollow_topic(self, request):
-        """Unfollow a topic. Body: { "topic_id": 5 }"""
-        topic_id, error_response = parse_required_int_param(
-            request.data.get("topic_id"),
-            "topic_id",
-        )
-        if error_response is not None:
-            return error_response
-        deleted, _ = TrackedTopic.objects.filter(
-            user=request.user,
-            topic_id=topic_id,
-        ).delete()
-        return Response(
-            {"unfollowed": True, "topic_id": topic_id, "deleted": deleted > 0}
-        )
-
-
 class TrackingSummaryView(APIView):
     """Current user's tracked bills, topics, and legislators."""
 
@@ -259,6 +212,14 @@ class TrackedBillDetailView(APIView):
 
 class TrackedTopicView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        tracked_topics = (
+            TrackedTopic.objects.filter(user=request.user)
+            .select_related("topic")
+            .order_by("-created_at", "-id")
+        )
+        return Response(TrackedTopicSerializer(tracked_topics, many=True).data)
 
     def post(self, request: Request) -> Response:
         topic_id, error_response = parse_required_int_param(

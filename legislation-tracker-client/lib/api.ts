@@ -350,22 +350,6 @@ export async function getRepresentatives(params?: {
   return publicGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
 }
 
-export interface FollowedTopicsResponse {
-  topic_ids: number[];
-}
-
-export function getFollowedTopics(): Promise<FollowedTopicsResponse> {
-  return authGet<FollowedTopicsResponse>("/api/preferences/followed-topics/");
-}
-
-export function followTopic(topicId: number): Promise<unknown> {
-  return authPost("/api/preferences/follow-topic/", { topic_id: topicId });
-}
-
-export function unfollowTopic(topicId: number): Promise<unknown> {
-  return authPost("/api/preferences/unfollow-topic/", { topic_id: topicId });
-}
-
 export interface TrackedBillItem {
   id: number;
   bill: BillListItem;
@@ -376,6 +360,10 @@ export interface TrackedTopicItem {
   id: number;
   topic: TopicItem;
   created_at: string;
+}
+
+export function getTrackedTopics(): Promise<TrackedTopicItem[]> {
+  return authGet<TrackedTopicItem[]>("/api/tracking/topics/");
 }
 
 export interface TrackedLegislatorItem {

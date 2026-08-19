@@ -18,19 +18,12 @@ class User(AbstractUser):
 
 
 class UserPreference(models.Model):
-    """User preferences: followed topic, state, chamber. Multiple rows per user."""
+    """Non-tracking user preferences such as state and chamber."""
 
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name="preferences",
-    )
-    topic = models.ForeignKey(
-        "legislation.Topic",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="user_preferences",
     )
     state = models.CharField(max_length=2, null=True, blank=True)
     chamber = models.CharField(max_length=20, null=True, blank=True)
@@ -41,8 +34,6 @@ class UserPreference(models.Model):
 
     def __str__(self):
         parts = [f"User {self.user_id}"]
-        if self.topic_id:
-            parts.append(f"topic={self.topic_id}")
         if self.state:
             parts.append(f"state={self.state}")
         if self.chamber:

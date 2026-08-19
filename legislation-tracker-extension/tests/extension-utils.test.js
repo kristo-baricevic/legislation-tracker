@@ -10,6 +10,7 @@ const {
   escapeHtml,
   formatPercent,
   getBillUrl,
+  getTopicTrackingPath,
   normalizeBaseUrl,
   originPermissionForBaseUrl,
 } = require("../extension-utils.js");
@@ -60,6 +61,10 @@ describe("extension utilities", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic_id: 5 }),
     });
+  });
+
+  it("uses the tracking collection for topic follow actions", () => {
+    assert.equal(getTopicTrackingPath(), "/api/tracking/topics/");
   });
 
   it("escapes API-controlled text before rendering HTML", () => {

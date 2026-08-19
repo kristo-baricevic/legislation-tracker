@@ -42,6 +42,10 @@
     return `${normalizeBaseUrl(appBase, DEFAULT_APP_BASE)}/login`;
   }
 
+  function getTopicTrackingPath() {
+    return "/api/tracking/topics/";
+  }
+
   function buildJsonRequest(method, body, token) {
     const headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -79,6 +83,7 @@
     getBillUrl,
     getBillsUrl,
     getLoginUrl,
+    getTopicTrackingPath,
     normalizeBaseUrl,
     originPermissionForBaseUrl,
   };

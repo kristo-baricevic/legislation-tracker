@@ -363,7 +363,7 @@ async function handleResultAction(event) {
       button.textContent = "Tracked";
     } else if (button.dataset.action === "follow-topic") {
       const topicId = Number(button.dataset.topicId);
-      await authJson("/api/preferences/follow-topic/", "POST", { topic_id: topicId });
+      await authJson(utils.getTopicTrackingPath(), "POST", { topic: topicId });
       button.textContent = "Following";
     }
     button.classList.add("is-saved");

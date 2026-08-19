@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 
 import {
   getRelatedBills,
+  getTrackedTopics,
   getMyTracking,
   getTrackingFeed,
   ingestBill,
@@ -21,6 +22,20 @@ afterEach(() => {
 });
 
 describe("tracking API helpers", () => {
+  it("loads followed topics from the sole tracking collection", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "http://api.test";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return Response.json([{ id: 1, topic: { id: 7, name: "Health", slug: "health" } }]);
+    };
+
+    const result = await getTrackedTopics();
+
+    assert.deepEqual(result, [{ id: 1, topic: { id: 7, name: "Health", slug: "health" } }]);
+    assert.equal(requests[0].url, "http://api.test/api/tracking/topics/");
+  });
+
   it("loads related bills from the public bill endpoint", async () => {
     process.env.NEXT_PUBLIC_API_URL = "http://api.test";
     const requests: Array<{ url: string; init?: RequestInit }> = [];
