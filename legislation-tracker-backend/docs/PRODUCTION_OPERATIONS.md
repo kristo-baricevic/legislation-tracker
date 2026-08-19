@@ -24,6 +24,10 @@ CONGRESS_API_KEY=<congress-api-key>
 CORS_ALLOWED_ORIGINS=https://app.example.com
 ```
 
+For a production extension, add its fixed ID as a second explicit origin, for
+example `CORS_ALLOWED_ORIGINS=https://app.example.com,chrome-extension://<extension-id>`.
+Do not use a wildcard Chrome-extension origin.
+
 Optional but expected for document storage:
 
 ```bash
@@ -67,6 +71,22 @@ celery -A config beat -l info
 
 Do not run multiple Beat schedulers against the same environment unless you also add a distributed scheduler/lock. Multiple Beat instances can enqueue duplicate ingestion work.
 
+## Container deployment
+
+The repository root includes `docker-compose.production.yml`, which runs the
+API, worker, single Beat process, PostgreSQL, Redis, and the standalone Next.js
+client. Copy `.env.production.example` to `.env.production`, replace every
+placeholder, then run:
+
+```bash
+docker compose -f docker-compose.production.yml --env-file .env.production up -d --build
+```
+
+Run `python manage.py migrate` and `python manage.py collectstatic --noinput`
+as a one-off release job before sending traffic to a new version. The compose
+health check uses `/health/live/`; deploy/load-balancer readiness should use
+`/health/`, which verifies the database, Redis cache, and document storage.
+
 ## Scheduled Background Polling
 
 Celery Beat currently schedules:
@@ -75,6 +95,9 @@ Celery Beat currently schedules:
 | --- | --- | ---: | --- |
 | `poll-congress` | `apps.ingestion.tasks.poll_congress` | 10 minutes | Broad Congress.gov discovery for updated federal bills. |
 | `poll-tracked-bills` | `apps.ingestion.tasks.poll_tracked_bills` | 5 minutes | Direct refresh for bills already relevant to user tracking. |
+| `dispatch-ingestion-work` | `apps.ingestion.tasks.dispatch_ingestion_work` | 30 seconds | Sends durable discovered bill work to workers. |
+| `recover-stale-ingestion-work` | `apps.ingestion.tasks.recover_stale_ingestion_work` | 5 minutes | Releases work abandoned by a worker or broker failure. |
+| `sync-representatives` | `apps.ingestion.tasks.sync_representatives` | Daily | Refreshes the complete current congressional roster. |
 
 Both schedules enqueue normal ingestion tasks. They do not store user-specific feed rows. The durable history is written to the shared `ChangeLog` table by ingestion tasks such as `process_bill`, `process_bill_votes`, document processing, and contract generation.
 
@@ -90,6 +113,7 @@ These ingestion endpoints are staff-only in production and local development:
 
 ```text
 POST /api/ingestion/poll-congress/
+POST /api/ingestion/sync-representatives/
 POST /api/ingestion/backfill-documents/
 POST /api/ingestion/backfill-topics/
 POST /api/ingestion/bills/
