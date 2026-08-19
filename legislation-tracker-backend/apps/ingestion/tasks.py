@@ -3,7 +3,8 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 """
 import hashlib
 import logging
-from datetime import datetime, timezone as dt_timezone
+import uuid
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 import requests
 from django.utils import timezone
@@ -31,11 +32,21 @@ from apps.ingestion.document_download import (
     sha256_hex,
     upload_and_metadata,
 )
-from apps.ingestion.models import IngestionState, IngestionTaskFailure
+from apps.ingestion.models import (
+    IngestionState,
+    IngestionTaskFailure,
+    IngestionWorkItem,
+    IngestionWorkStatus,
+)
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
 from apps.legislation.tasks import generate_contract, generate_contract_for_bill
 
 logger = logging.getLogger(__name__)
+
+CURSOR_OVERLAP = timedelta(minutes=5)
+WORK_LEASE_DURATION = timedelta(minutes=10)
+MAX_INGESTION_WORK_ATTEMPTS = 5
+UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
 
 # Bill key format: "119-hr-1234" -> congress, bill_type, bill_number
 def parse_bill_key(bill_key):
@@ -192,7 +203,10 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
 @shared_task
 def poll_congress(jurisdiction="federal", congress=119):
     """
-    Fetch bill list from Congress API, update IngestionState, enqueue process_bill per bill.
+    Discover updated Congress bills and persist them before advancing the cursor.
+
+    The worker dispatcher is intentionally separate: a temporary broker outage
+    cannot lose a discovered bill or force the cursor to stay behind forever.
     """
     logger.info("poll_congress: starting jurisdiction=%s congress=%s", jurisdiction, congress)
     state, _ = IngestionState.objects.get_or_create(
@@ -202,12 +216,14 @@ def poll_congress(jurisdiction="federal", congress=119):
     )
     from_date_time = None
     if state.last_bill_update_seen_at:
-        from_date_time = state.last_bill_update_seen_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        from_date_time = (
+            _ensure_utc_aware(state.last_bill_update_seen_at) - CURSOR_OVERLAP
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         logger.info("poll_congress: incremental from_date_time=%s", from_date_time)
     else:
         logger.info("poll_congress: full fetch (no last_bill_update_seen_at)")
     bill_types = ["hr", "s"]
-    all_bill_keys = set()
+    discovered_bills = {}
     latest_update = _ensure_utc_aware(state.last_bill_update_seen_at)
     page_limit = 250
     for bt in bill_types:
@@ -254,22 +270,252 @@ def poll_congress(jurisdiction="federal", congress=119):
             previous_page_keys = page_keys
             for b in items:
                 key = bill_key(b["congress"], b["type"], b["number"])
-                all_bill_keys.add(key)
                 ud = _parse_congress_update_datetime(b.get("updateDate"))
+                source_updated_at = ud or UNKNOWN_SOURCE_UPDATED_AT
+                prior_update = discovered_bills.get(key)
+                if prior_update is None or source_updated_at > prior_update:
+                    discovered_bills[key] = source_updated_at
                 if ud and (latest_update is None or ud > latest_update):
                     latest_update = ud
             if len(items) < page_limit:
                 break
             offset += page_limit
-    for key in all_bill_keys:
-        process_bill.apply_async(args=[key])
     now = timezone.now()
-    state.last_polled_at = now
-    if latest_update:
-        state.last_bill_update_seen_at = latest_update
-    state.save(update_fields=["last_polled_at", "last_bill_update_seen_at"])
-    logger.info("poll_congress: done enqueued=%s last_bill_update_seen_at=%s", len(all_bill_keys), latest_update)
-    return {"enqueued": len(all_bill_keys)}
+    created_count = 0
+    with transaction.atomic():
+        # Concurrent polls may replay the same overlap. The uniqueness key makes
+        # that safe while this lock prevents either poll from moving the cursor
+        # backward after the other has committed its durable discoveries.
+        state = IngestionState.objects.select_for_update().get(pk=state.pk)
+        for key, source_updated_at in discovered_bills.items():
+            _, created = IngestionWorkItem.objects.get_or_create(
+                kind="bill",
+                dedupe_key=key,
+                source_updated_at=source_updated_at,
+                defaults={
+                    "jurisdiction": jurisdiction,
+                    "congress": congress,
+                    "payload_json": {"bill_key": key},
+                    "available_at": now,
+                },
+            )
+            created_count += int(created)
+        state.last_polled_at = now
+        if latest_update and (
+            state.last_bill_update_seen_at is None
+            or latest_update > _ensure_utc_aware(state.last_bill_update_seen_at)
+        ):
+            state.last_bill_update_seen_at = latest_update
+        state.save(update_fields=["last_polled_at", "last_bill_update_seen_at"])
+
+    try:
+        dispatch_ingestion_work.delay()
+    except Exception:
+        # Beat will pick up pending rows even if the broker is unavailable now.
+        logger.exception("poll_congress: could not trigger ingestion work dispatcher")
+
+    logger.info(
+        "poll_congress: done discovered=%s created=%s last_bill_update_seen_at=%s",
+        len(discovered_bills),
+        created_count,
+        latest_update,
+    )
+    return {"discovered": len(discovered_bills), "created": created_count}
+
+
+def _retry_delay(attempt_count):
+    """Bound exponential delay for persistent ingestion retries."""
+    return timedelta(seconds=min(60 * (2 ** max(attempt_count - 1, 0)), 3600))
+
+
+@shared_task
+def dispatch_ingestion_work(batch_size=100):
+    """Lease pending durable work and submit it to Celery without losing rows."""
+    now = timezone.now()
+    leased_items = []
+    with transaction.atomic():
+        candidates = list(
+            IngestionWorkItem.objects.select_for_update(skip_locked=True)
+            .filter(
+                status=IngestionWorkStatus.PENDING,
+                available_at__lte=now,
+            )
+            .order_by("available_at", "id")[:batch_size]
+        )
+        for work_item in candidates:
+            work_item.status = IngestionWorkStatus.DISPATCHED
+            work_item.lease_expires_at = now + WORK_LEASE_DURATION
+            work_item.celery_task_id = ""
+            work_item.dispatch_token = uuid.uuid4().hex
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "lease_expires_at",
+                    "celery_task_id",
+                    "dispatch_token",
+                    "updated_at",
+                ]
+            )
+            leased_items.append((work_item.id, work_item.dispatch_token))
+
+    dispatched = 0
+    for work_item_id, dispatch_token in leased_items:
+        try:
+            result = process_ingestion_work_item.apply_async(
+                args=[work_item_id, dispatch_token]
+            )
+        except Exception as exc:
+            # Leave it ready for the next dispatcher pass instead of dropping it.
+            IngestionWorkItem.objects.filter(
+                pk=work_item_id,
+                status=IngestionWorkStatus.DISPATCHED,
+            ).update(
+                status=IngestionWorkStatus.PENDING,
+                available_at=timezone.now() + timedelta(seconds=30),
+                lease_expires_at=None,
+                dispatch_token="",
+                last_error=str(exc)[:10000],
+            )
+            logger.exception(
+                "dispatch_ingestion_work: could not enqueue work_item=%s",
+                work_item_id,
+            )
+            continue
+
+        IngestionWorkItem.objects.filter(
+            pk=work_item_id,
+            status=IngestionWorkStatus.DISPATCHED,
+        ).update(celery_task_id=getattr(result, "id", "") or "")
+        dispatched += 1
+
+    return {"dispatched": dispatched}
+
+
+@shared_task(bind=True)
+def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
+    """Execute one durable work item and persist its terminal or retry state."""
+    now = timezone.now()
+    with transaction.atomic():
+        work_item = IngestionWorkItem.objects.select_for_update().filter(pk=work_item_id).first()
+        if work_item is None:
+            return {"work_item_id": work_item_id, "status": "missing"}
+        if work_item.status in (IngestionWorkStatus.SUCCEEDED, IngestionWorkStatus.DEAD):
+            return {"work_item_id": work_item.id, "status": work_item.status}
+        if dispatch_token and work_item.dispatch_token != dispatch_token:
+            return {"work_item_id": work_item.id, "status": "superseded"}
+        if work_item.status == IngestionWorkStatus.PROCESSING:
+            return {"work_item_id": work_item.id, "status": "processing"}
+        if work_item.status == IngestionWorkStatus.PENDING and work_item.available_at > now:
+            return {"work_item_id": work_item.id, "status": "not_ready"}
+
+        work_item.status = IngestionWorkStatus.PROCESSING
+        work_item.attempt_count += 1
+        work_item.lease_expires_at = now + WORK_LEASE_DURATION
+        work_item.celery_task_id = self.request.id or work_item.celery_task_id
+        work_item.save(
+            update_fields=[
+                "status",
+                "attempt_count",
+                "lease_expires_at",
+                "celery_task_id",
+                "updated_at",
+            ]
+        )
+
+    try:
+        if work_item.kind != "bill":
+            raise ValueError(f"Unsupported ingestion work kind: {work_item.kind}")
+        bill_key_str = work_item.payload_json.get("bill_key")
+        if not bill_key_str:
+            raise ValueError("Bill ingestion work is missing payload_json.bill_key")
+        _process_bill_impl(bill_key_str)
+    except Exception as exc:
+        error_message = str(exc)[:10000]
+        with transaction.atomic():
+            work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+            if work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS:
+                work_item.status = IngestionWorkStatus.DEAD
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.last_error = error_message
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                _record_task_failure(
+                    self.request.id,
+                    "process_ingestion_work_item",
+                    (work_item_id,),
+                    {},
+                    None,
+                    exc,
+                    work_item=work_item,
+                )
+                return {"work_item_id": work_item.id, "status": "dead"}
+
+            work_item.status = IngestionWorkStatus.PENDING
+            work_item.available_at = timezone.now() + _retry_delay(work_item.attempt_count)
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.last_error = error_message
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "available_at",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+        logger.warning(
+            "process_ingestion_work_item: retrying work_item=%s attempt=%s: %s",
+            work_item_id,
+            work_item.attempt_count,
+            exc,
+        )
+        return {"work_item_id": work_item_id, "status": "retrying"}
+
+    with transaction.atomic():
+        work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+        work_item.status = IngestionWorkStatus.SUCCEEDED
+        work_item.lease_expires_at = None
+        work_item.dispatch_token = ""
+        work_item.completed_at = timezone.now()
+        work_item.last_error = ""
+        work_item.save(
+            update_fields=[
+                "status",
+                "lease_expires_at",
+                "dispatch_token",
+                "completed_at",
+                "last_error",
+                "updated_at",
+            ]
+        )
+    return {"work_item_id": work_item_id, "status": "succeeded"}
+
+
+@shared_task
+def recover_stale_ingestion_work():
+    """Release worker leases left behind by a crash or a broker delivery loss."""
+    now = timezone.now()
+    recovered = IngestionWorkItem.objects.filter(
+        status__in=[IngestionWorkStatus.DISPATCHED, IngestionWorkStatus.PROCESSING],
+        lease_expires_at__lt=now,
+    ).update(
+        status=IngestionWorkStatus.PENDING,
+        available_at=now,
+        lease_expires_at=None,
+        celery_task_id="",
+        dispatch_token="",
+    )
+    return {"recovered": recovered}
 
 
 @shared_task
@@ -310,10 +556,11 @@ def poll_tracked_bills():
     return {"enqueued": len(set(keys))}
 
 
-def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc):
+def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc, work_item=None):
     try:
         IngestionTaskFailure.objects.create(
             task_id=task_id or "",
+            work_item=work_item,
             bill_id=bill_id,
             task_name=task_name or "",
             args_json={"args": list(args), "kwargs": kwargs},

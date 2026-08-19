@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from apps.accounts.models import TrackedBill
+from apps.ingestion.models import IngestionTaskFailure, IngestionWorkItem, IngestionWorkStatus
 from apps.ingestion import views
 from apps.legislation.models import Bill
 
@@ -122,6 +123,91 @@ def test_poll_congress_endpoint_enqueues_task_for_staff_user(monkeypatch):
         "congress": 118,
     }
     assert calls == [{"jurisdiction": "federal", "congress": 118}]
+
+
+@pytest.mark.django_db
+def test_staff_can_list_dead_lettered_ingestion_work():
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-42",
+        source_updated_at="2026-08-19T00:00:00Z",
+        payload_json={"bill_key": "119-hr-42"},
+        status=IngestionWorkStatus.DEAD,
+        last_error="Congress unavailable",
+    )
+    failure = IngestionTaskFailure.objects.create(
+        task_id="task-42",
+        task_name="process_ingestion_work_item",
+        work_item=work,
+        args_json={"args": [work.id], "kwargs": {}},
+        error_message="Congress unavailable",
+    )
+
+    response = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "count": 1,
+        "results": [
+            {
+                "id": failure.id,
+                "task_id": "task-42",
+                "task_name": "process_ingestion_work_item",
+                "work_item_id": work.id,
+                "bill_id": None,
+                "error_message": "Congress unavailable",
+                "replay_count": 0,
+            }
+        ],
+    }
+
+
+@pytest.mark.django_db
+def test_staff_can_replay_dead_lettered_ingestion_work(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-42",
+        source_updated_at="2026-08-19T00:00:00Z",
+        payload_json={"bill_key": "119-hr-42"},
+        status=IngestionWorkStatus.DEAD,
+        attempt_count=5,
+        last_error="Congress unavailable",
+    )
+    failure = IngestionTaskFailure.objects.create(
+        task_id="task-42",
+        task_name="process_ingestion_work_item",
+        work_item=work,
+        args_json={"args": [work.id], "kwargs": {}},
+        error_message="Congress unavailable",
+    )
+    calls = []
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work,
+        "delay",
+        lambda: calls.append(True) or FakeAsyncResult(),
+    )
+
+    response = authenticated_client(is_staff=True).post(
+        f"/api/ingestion/failures/{failure.id}/replay/",
+        {},
+        format="json",
+    )
+
+    work.refresh_from_db()
+    failure.refresh_from_db()
+    assert response.status_code == 202
+    assert response.json() == {
+        "id": failure.id,
+        "work_item_id": work.id,
+        "status": "pending",
+        "replay_count": 1,
+    }
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.attempt_count == 0
+    assert work.last_error == ""
+    assert failure.replay_count == 1
+    assert failure.last_replayed_at is not None
+    assert calls == [True]
 
 
 @pytest.mark.django_db

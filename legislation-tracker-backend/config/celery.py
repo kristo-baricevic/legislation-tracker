@@ -41,6 +41,14 @@ app.conf.beat_schedule = {
         "task": "apps.ingestion.tasks.poll_tracked_bills",
         "schedule": 300.0,  # every 5 minutes (in seconds)
     },
+    "dispatch-ingestion-work": {
+        "task": "apps.ingestion.tasks.dispatch_ingestion_work",
+        "schedule": 30.0,
+    },
+    "recover-stale-ingestion-work": {
+        "task": "apps.ingestion.tasks.recover_stale_ingestion_work",
+        "schedule": 300.0,
+    },
 }
 
 

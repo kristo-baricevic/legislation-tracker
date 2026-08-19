@@ -1,6 +1,8 @@
 import pytest
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
+from datetime import datetime, timedelta, timezone as dt_timezone
+
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
@@ -8,7 +10,12 @@ from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion import tasks
 from apps.ingestion.congress_client import CongressAPIError
-from apps.ingestion.models import IngestionState, IngestionTaskFailure
+from apps.ingestion.models import (
+    IngestionState,
+    IngestionTaskFailure,
+    IngestionWorkItem,
+    IngestionWorkStatus,
+)
 from apps.legislation.models import Bill, BillDocument, BillTopic, ProcessingStatus, Topic
 
 
@@ -46,7 +53,7 @@ def test_poll_congress_does_not_advance_cursor_or_enqueue_after_partial_failure(
 
 
 @pytest.mark.django_db
-def test_poll_congress_does_not_advance_cursor_when_enqueue_fails(monkeypatch):
+def test_poll_congress_persists_discovered_work_and_cursor_when_dispatch_fails(monkeypatch):
     state = IngestionState.objects.create(jurisdiction="federal", congress=119)
 
     monkeypatch.setattr(
@@ -66,17 +73,154 @@ def test_poll_congress_does_not_advance_cursor_when_enqueue_fails(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        tasks.process_bill,
-        "apply_async",
-        lambda args=None, kwargs=None: (_ for _ in ()).throw(RuntimeError("broker down")),
+        tasks.dispatch_ingestion_work,
+        "delay",
+        lambda: (_ for _ in ()).throw(RuntimeError("broker down")),
     )
 
-    with pytest.raises(RuntimeError, match="broker down"):
-        tasks.poll_congress(jurisdiction="federal", congress=119)
+    result = tasks.poll_congress(jurisdiction="federal", congress=119)
 
     state.refresh_from_db()
-    assert state.last_bill_update_seen_at is None
-    assert state.last_polled_at is None
+    assert result["discovered"] == 1
+    assert state.last_bill_update_seen_at.isoformat() == "2026-01-02T00:00:00+00:00"
+    assert state.last_polled_at is not None
+    work = IngestionWorkItem.objects.get()
+    assert (work.kind, work.dedupe_key, work.status) == (
+        "bill",
+        "119-hr-1",
+        IngestionWorkStatus.PENDING,
+    )
+
+
+@pytest.mark.django_db
+def test_poll_congress_replays_a_cursor_overlap_before_advancing(monkeypatch):
+    state = IngestionState.objects.create(
+        jurisdiction="federal",
+        congress=119,
+        last_bill_update_seen_at=datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+    )
+    observed_from_dates = []
+
+    def fake_bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
+        observed_from_dates.append((bill_type, from_date_time))
+        if bill_type == "hr":
+            return [
+                {
+                    "congress": congress,
+                    "type": bill_type,
+                    "number": "2",
+                    "updateDate": "2026-01-02T12:00:00Z",
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(tasks, "bill_list", fake_bill_list)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    tasks.poll_congress(jurisdiction="federal", congress=119)
+
+    assert observed_from_dates == [
+        ("hr", "2026-01-02T11:55:00Z"),
+        ("s", "2026-01-02T11:55:00Z"),
+    ]
+    assert IngestionWorkItem.objects.get().dedupe_key == "119-hr-2"
+
+
+@pytest.mark.django_db
+def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    enqueued = []
+
+    class Result:
+        id = "worker-task-1"
+
+    monkeypatch.setattr(
+        tasks.process_ingestion_work_item,
+        "apply_async",
+        lambda args=None, kwargs=None: enqueued.append((args, kwargs)) or Result(),
+    )
+
+    result = tasks.dispatch_ingestion_work()
+
+    work.refresh_from_db()
+    assert result == {"dispatched": 1}
+    assert enqueued == [([work.id, work.dispatch_token], None)]
+    assert work.status == IngestionWorkStatus.DISPATCHED
+    assert work.celery_task_id == "worker-task-1"
+    assert work.dispatch_token
+    assert work.lease_expires_at is not None
+
+
+@pytest.mark.django_db
+def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1,
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "_process_bill_impl",
+        lambda bill_key: (_ for _ in ()).throw(CongressAPIError("Congress unavailable")),
+    )
+
+    result = tasks.process_ingestion_work_item(work.id)
+
+    work.refresh_from_db()
+    assert result == {"work_item_id": work.id, "status": "dead"}
+    assert work.status == IngestionWorkStatus.DEAD
+    failure = IngestionTaskFailure.objects.get(work_item=work)
+    assert "Congress unavailable" in failure.error_message
+
+
+@pytest.mark.django_db
+def test_work_processor_rejects_a_stale_dispatch_token(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="current-lease",
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "_process_bill_impl",
+        lambda bill_key: (_ for _ in ()).throw(AssertionError("must not process")),
+    )
+
+    assert tasks.process_ingestion_work_item(work.id, "stale-lease") == {
+        "work_item_id": work.id,
+        "status": "superseded",
+    }
+
+
+@pytest.mark.django_db
+def test_recover_stale_ingestion_work_makes_expired_leases_dispatchable():
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.PROCESSING,
+        lease_expires_at=timezone.now() - timedelta(seconds=1),
+    )
+
+    assert tasks.recover_stale_ingestion_work() == {"recovered": 1}
+
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.lease_expires_at is None
 
 
 @pytest.mark.django_db

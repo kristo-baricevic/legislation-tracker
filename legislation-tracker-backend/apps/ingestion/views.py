@@ -2,14 +2,18 @@ from rest_framework import status
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.models import TrackedBill
 from apps.accounts.serializers import TrackedBillSerializer
 from apps.ingestion.congress_client import CongressAPIError
+from apps.ingestion.models import IngestionTaskFailure, IngestionWorkStatus
 from apps.ingestion.tasks import (
     _process_bill_impl,
     backfill_process_bill_versions_for_all_bills,
     bill_key,
+    dispatch_ingestion_work,
     poll_congress,
 )
 from apps.legislation.models import Bill
@@ -114,6 +118,100 @@ class PollCongressView(APIView):
                 "task_name": "poll_congress",
                 "jurisdiction": jurisdiction,
                 "congress": congress,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class IngestionFailureListView(APIView):
+    """Staff-only view of durable work that exhausted its retry budget."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        failures = (
+            IngestionTaskFailure.objects.select_related("work_item")
+            .filter(work_item__status=IngestionWorkStatus.DEAD)
+            .order_by("-created_at")
+        )
+        results = [
+            {
+                "id": failure.id,
+                "task_id": failure.task_id,
+                "task_name": failure.task_name,
+                "work_item_id": failure.work_item_id,
+                "bill_id": failure.bill_id,
+                "error_message": failure.error_message,
+                "replay_count": failure.replay_count,
+            }
+            for failure in failures
+        ]
+        return Response({"count": len(results), "results": results})
+
+
+class ReplayIngestionFailureView(APIView):
+    """Return one dead-lettered work item to the durable pending queue."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, failure_id):
+        with transaction.atomic():
+            failure = (
+                IngestionTaskFailure.objects.select_for_update()
+                .select_related("work_item")
+                .filter(pk=failure_id)
+                .first()
+            )
+            if failure is None:
+                return Response({"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND)
+            if failure.work_item is None:
+                return Response(
+                    {"error": "this legacy failure has no replayable work item"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            work_item = failure.work_item
+            if work_item.status != IngestionWorkStatus.DEAD:
+                return Response(
+                    {"error": "work item is not dead-lettered"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            work_item.status = IngestionWorkStatus.PENDING
+            work_item.attempt_count = 0
+            work_item.available_at = timezone.now()
+            work_item.lease_expires_at = None
+            work_item.celery_task_id = ""
+            work_item.dispatch_token = ""
+            work_item.last_error = ""
+            work_item.completed_at = None
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "attempt_count",
+                    "available_at",
+                    "lease_expires_at",
+                    "celery_task_id",
+                    "dispatch_token",
+                    "last_error",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
+            failure.replay_count += 1
+            failure.last_replayed_at = timezone.now()
+            failure.save(update_fields=["replay_count", "last_replayed_at"])
+
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            # The row is already durable and beat will dispatch it shortly.
+            pass
+        return Response(
+            {
+                "id": failure.id,
+                "work_item_id": work_item.id,
+                "status": IngestionWorkStatus.PENDING,
+                "replay_count": failure.replay_count,
             },
             status=status.HTTP_202_ACCEPTED,
         )

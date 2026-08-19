@@ -17,6 +17,21 @@ def test_celery_beat_recomputes_similarity_for_the_entire_session():
     assert schedule["recompute-similarity-batch"]["kwargs"] == {"session": 119}
 
 
+def test_celery_beat_dispatches_and_recovers_durable_ingestion_work():
+    from config.celery import app
+
+    schedule = app.conf.beat_schedule
+
+    assert schedule["dispatch-ingestion-work"] == {
+        "task": "apps.ingestion.tasks.dispatch_ingestion_work",
+        "schedule": 30.0,
+    }
+    assert schedule["recover-stale-ingestion-work"] == {
+        "task": "apps.ingestion.tasks.recover_stale_ingestion_work",
+        "schedule": 300.0,
+    }
+
+
 def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
     from apps.ingestion import tasks
     from config.celery import _on_task_failure
