@@ -1,6 +1,8 @@
 import pytest
+from django.db import connection
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from apps.congress.models import Vote, VoteRecord
@@ -308,6 +310,7 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
             "id": vote.id,
             "bill": bill.id,
             "chamber": "house",
+            "session_number": 1,
             "roll_number": 17,
             "vote_date": "2026-08-19T12:00:00Z",
             "result": "Passed",
@@ -335,3 +338,35 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
             "position": "yes",
         }
     ]
+
+
+@pytest.mark.django_db
+def test_vote_list_does_not_query_member_positions():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 108",
+        title="Vote list bill",
+        status="introduced",
+    )
+    representative = Representative.objects.create(
+        bioguide_id="V000002",
+        name="List Representative",
+        chamber="house",
+        party="Independent",
+        state="NY",
+    )
+    vote = Vote.objects.create(
+        bill=bill,
+        chamber="house",
+        roll_number=18,
+        vote_date="2026-08-20T12:00:00Z",
+        result="Passed",
+    )
+    VoteRecord.objects.create(vote=vote, representative=representative, position="yes")
+
+    with CaptureQueriesContext(connection) as queries:
+        response = APIClient().get(f"/api/votes/?bill={bill.id}")
+
+    assert response.status_code == 200
+    assert not any("congress_voterecord" in query["sql"] for query in queries.captured_queries)

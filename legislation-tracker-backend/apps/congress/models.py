@@ -40,6 +40,7 @@ class Vote(models.Model):
         related_name="votes",
     )
     chamber = models.CharField(max_length=20)
+    session_number = models.PositiveSmallIntegerField(default=1)
     roll_number = models.PositiveIntegerField()
     vote_date = models.DateTimeField()
     result = models.CharField(max_length=50)  # passed, failed, etc.
@@ -50,13 +51,13 @@ class Vote(models.Model):
         db_table = "congress_vote"
         constraints = [
             models.UniqueConstraint(
-                fields=["bill", "chamber", "roll_number"],
-                name="congress_vote_bill_chamber_roll_uniq",
+                fields=["bill", "chamber", "session_number", "roll_number"],
+                name="congress_vote_bill_chamber_session_roll_uniq",
             )
         ]
 
     def __str__(self):
-        return f"Vote {self.roll_number} on Bill {self.bill_id}"
+        return f"Vote {self.session_number}/{self.roll_number} on Bill {self.bill_id}"
 
 
 class VoteRecord(models.Model):

@@ -401,6 +401,44 @@ def test_process_bill_votes_updates_existing_vote_and_records(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_process_bill_votes_keeps_same_roll_number_from_two_sessions(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 3",
+        title="Two-session vote bill",
+        status="Introduced",
+    )
+    monkeypatch.setattr(
+        tasks,
+        "bill_actions",
+        lambda congress, bill_type, number: [
+            {
+                "recordedVotes": [
+                    {"chamber": "house", "rollNumber": 10, "sessionNumber": 1},
+                    {"chamber": "house", "rollNumber": 10, "sessionNumber": 2},
+                ]
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        tasks,
+        "vote_detail",
+        lambda congress, chamber, roll_number, *, session_number=None, source_url=None: {
+            "date": f"202{4 + session_number}-01-02T00:00:00Z",
+            "result": f"Session {session_number}",
+            "yeas": 1,
+            "nays": 0,
+            "members": [],
+        },
+    )
+
+    tasks.process_bill_votes(bill.id)
+
+    assert Vote.objects.filter(bill=bill, chamber="house", roll_number=10).count() == 2
+
+
+@pytest.mark.django_db
 def test_vote_records_are_unique_per_vote_and_representative():
     bill = Bill.objects.create(
         jurisdiction="federal",

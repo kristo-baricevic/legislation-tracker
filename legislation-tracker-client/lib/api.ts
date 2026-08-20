@@ -322,6 +322,7 @@ export interface VoteListItem {
   id: number;
   bill: number;
   chamber: string;
+  session_number: number;
   roll_number: number;
   vote_date: string;
   result: string;

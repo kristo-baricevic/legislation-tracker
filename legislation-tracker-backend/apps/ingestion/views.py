@@ -24,13 +24,21 @@ from apps.ingestion.tasks import (
 )
 from apps.legislation.models import Bill
 from apps.legislation.serializers import BillListSerializer
-from apps.legislation.tasks import backfill_update_topics
+from apps.legislation.tasks import (
+    backfill_update_topics,
+    generate_contract,
+    generate_contract_for_bill,
+    update_topics,
+)
 
 
 REPLAYABLE_STAGE_TASKS = {
     "apps.ingestion.tasks.process_bill_versions": process_bill_versions,
     "apps.ingestion.tasks.process_bill_votes": process_bill_votes,
     "apps.ingestion.tasks.download_document": download_document,
+    "apps.legislation.tasks.generate_contract": generate_contract,
+    "apps.legislation.tasks.generate_contract_for_bill": generate_contract_for_bill,
+    "apps.legislation.tasks.update_topics": update_topics,
 }
 
 
@@ -217,6 +225,11 @@ class ReplayIngestionFailureView(APIView):
             if failure is None:
                 return Response({"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND)
             if failure.work_item is None:
+                if failure.resolved_at is not None:
+                    return Response(
+                        {"error": "failure has already been replayed"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 stage_task = REPLAYABLE_STAGE_TASKS.get(failure.task_name)
                 stage_args = failure.args_json.get("args") or []
                 stage_kwargs = failure.args_json.get("kwargs") or {}
@@ -227,6 +240,12 @@ class ReplayIngestionFailureView(APIView):
                         {"error": "this failure has no replayable work item"},
                         status=status.HTTP_409_CONFLICT,
                     )
+                failure.replay_count += 1
+                failure.last_replayed_at = timezone.now()
+                failure.resolved_at = failure.last_replayed_at
+                failure.save(
+                    update_fields=["replay_count", "last_replayed_at", "resolved_at"]
+                )
             else:
                 work_item = failure.work_item
                 if work_item.status != IngestionWorkStatus.DEAD:
@@ -264,16 +283,11 @@ class ReplayIngestionFailureView(APIView):
             try:
                 result = stage_task.apply_async(args=stage_args, kwargs=stage_kwargs)
             except Exception as exc:
+                IngestionTaskFailure.objects.filter(pk=failure.id).update(resolved_at=None)
                 return Response(
                     {"error": f"unable to enqueue replay: {exc}"},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
-            failure.replay_count += 1
-            failure.last_replayed_at = timezone.now()
-            failure.resolved_at = timezone.now()
-            failure.save(
-                update_fields=["replay_count", "last_replayed_at", "resolved_at"]
-            )
             return Response(
                 {
                     "id": failure.id,

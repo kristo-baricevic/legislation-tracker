@@ -1029,11 +1029,16 @@ def process_bill_votes(self, bill_id):
         roll = ref.get("rollNumber") or ref.get("roll_number")
         if roll is None:
             continue
+        raw_session_number = ref.get("sessionNumber") or ref.get("session_number")
+        try:
+            session_number = int(raw_session_number)
+        except (TypeError, ValueError):
+            raise CongressAPIError("recorded vote is missing a valid session number")
         vote_data = vote_detail(
             congress,
             chamber,
             roll,
-            session_number=ref.get("sessionNumber") or ref.get("session_number"),
+            session_number=session_number,
             source_url=ref.get("url"),
         )
         vote_date = vote_data.get("date") or vote_data.get("voteDate")
@@ -1051,6 +1056,7 @@ def process_bill_votes(self, bill_id):
             vote, vote_created = Vote.objects.get_or_create(
                 bill=bill,
                 chamber=chamber,
+                session_number=session_number,
                 roll_number=int(roll),
                 defaults={
                     "vote_date": vote_date or timezone.now(),
@@ -1126,6 +1132,7 @@ def process_bill_votes(self, bill_id):
                     change_type="vote",
                     new_value={
                         "vote_id": vote.id,
+                        "session_number": vote.session_number,
                         "roll_number": vote.roll_number,
                         "result": vote.result,
                         "chamber": vote.chamber,

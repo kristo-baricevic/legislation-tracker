@@ -37,6 +37,7 @@ class VoteListSerializer(serializers.ModelSerializer):
             "id",
             "bill",
             "chamber",
+            "session_number",
             "roll_number",
             "vote_date",
             "result",

@@ -293,6 +293,115 @@ def test_staff_can_replay_a_dead_lettered_document_stage(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_staff_can_replay_a_dead_lettered_contract_stage(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 44",
+        title="Contract replay bill",
+        status="Introduced",
+    )
+    failure = IngestionTaskFailure.objects.create(
+        task_id="task-contract-44",
+        task_name="apps.legislation.tasks.generate_contract",
+        bill_id=bill.id,
+        args_json={"args": [44], "kwargs": {}},
+        error_message="contract generation failed",
+    )
+    calls = []
+    monkeypatch.setattr(
+        views.generate_contract,
+        "apply_async",
+        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+    )
+
+    listed = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
+    replayed = authenticated_client("contract-operator@example.com", is_staff=True).post(
+        f"/api/ingestion/failures/{failure.id}/replay/",
+        {},
+        format="json",
+    )
+
+    failure.refresh_from_db()
+    assert [item["id"] for item in listed.json()["results"]] == [failure.id]
+    assert replayed.status_code == 202
+    assert replayed.json()["task_name"] == "apps.legislation.tasks.generate_contract"
+    assert failure.resolved_at is not None
+    assert calls == [([44], {})]
+
+
+@pytest.mark.django_db
+def test_resolved_dead_lettered_stage_cannot_be_replayed_twice(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 45",
+        title="One-time replay bill",
+        status="Introduced",
+    )
+    failure = IngestionTaskFailure.objects.create(
+        task_id="task-document-45",
+        task_name="apps.ingestion.tasks.process_bill_versions",
+        bill_id=bill.id,
+        args_json={"args": [bill.id], "kwargs": {}},
+        error_message="temporary Congress failure",
+    )
+    calls = []
+    monkeypatch.setattr(
+        views.process_bill_versions,
+        "apply_async",
+        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        raising=False,
+    )
+    client = authenticated_client("one-time-operator@example.com", is_staff=True)
+
+    first = client.post(f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json")
+    second = client.post(f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json")
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert calls == [([bill.id], {})]
+
+
+@pytest.mark.django_db
+def test_failed_dead_letter_replay_releases_the_failure_for_retry(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 46",
+        title="Retryable replay bill",
+        status="Introduced",
+    )
+    failure = IngestionTaskFailure.objects.create(
+        task_id="task-document-46",
+        task_name="apps.ingestion.tasks.process_bill_versions",
+        bill_id=bill.id,
+        args_json={"args": [bill.id], "kwargs": {}},
+        error_message="temporary Congress failure",
+    )
+
+    def fail_enqueue(*args, **kwargs):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(
+        views.process_bill_versions,
+        "apply_async",
+        fail_enqueue,
+        raising=False,
+    )
+
+    response = authenticated_client("retry-operator@example.com", is_staff=True).post(
+        f"/api/ingestion/failures/{failure.id}/replay/",
+        {},
+        format="json",
+    )
+
+    failure.refresh_from_db()
+    assert response.status_code == 503
+    assert failure.resolved_at is None
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("path", "payload", "error"),
     [

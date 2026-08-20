@@ -33,17 +33,15 @@ class VoteViewSet(viewsets.ReadOnlyModelViewSet):
 
     authentication_classes = []
     permission_classes = [AllowAny]
-    queryset = (
-        Vote.objects.select_related("bill")
-        .prefetch_related("records__representative")
-        .order_by("-vote_date", "-id")
-    )
+    queryset = Vote.objects.select_related("bill").order_by("-vote_date", "-id")
 
     def get_serializer_class(self):
         return VoteListSerializer if self.action == "list" else VoteDetailSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.action == "retrieve":
+            qs = qs.prefetch_related("records__representative")
         bill = self.request.query_params.get("bill")
         if bill:
             try:

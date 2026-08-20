@@ -206,7 +206,7 @@ function VoteHistorySection({
           <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
             <div>
               <p className="font-semibold text-slate-900 dark:text-green-300">
-                {vote.chamber} roll call {vote.roll_number}: {vote.result}
+                {vote.chamber} session {vote.session_number} roll call {vote.roll_number}: {vote.result}
               </p>
               <p className="text-sm text-slate-600 dark:text-green-600">
                 Yes {vote.yeas} · No {vote.nays} · {new Date(vote.vote_date).toLocaleDateString()}
