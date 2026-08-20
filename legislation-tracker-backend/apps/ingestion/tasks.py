@@ -279,7 +279,12 @@ def _member_profile(summary, detail):
     }
 
 
-@shared_task
+@shared_task(
+    autoretry_for=(CongressAPIError,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=2,
+)
 def sync_representatives(congress=119):
     """Synchronize the full current member roster without retiring on partial pulls."""
     if congress != CURRENT_CONGRESS:

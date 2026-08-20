@@ -1,22 +1,25 @@
+import uuid
+from datetime import timedelta
+
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 
 from apps.accounts.models import TrackedBill
 from apps.accounts.serializers import TrackedBillSerializer
 from apps.ingestion.congress_client import CongressAPIError
 from apps.ingestion.models import IngestionTaskFailure, IngestionWorkStatus
 from apps.ingestion.tasks import (
+    CURRENT_CONGRESS,
     _process_bill_impl,
     backfill_process_bill_versions_for_all_bills,
     bill_key,
-    CURRENT_CONGRESS,
-    download_document,
     dispatch_ingestion_work,
+    download_document,
     poll_congress,
     process_bill_versions,
     process_bill_votes,
@@ -31,15 +34,16 @@ from apps.legislation.tasks import (
     update_topics,
 )
 
-
 REPLAYABLE_STAGE_TASKS = {
     "apps.ingestion.tasks.process_bill_versions": process_bill_versions,
     "apps.ingestion.tasks.process_bill_votes": process_bill_votes,
     "apps.ingestion.tasks.download_document": download_document,
+    "apps.ingestion.tasks.sync_representatives": sync_representatives,
     "apps.legislation.tasks.generate_contract": generate_contract,
     "apps.legislation.tasks.generate_contract_for_bill": generate_contract_for_bill,
     "apps.legislation.tasks.update_topics": update_topics,
 }
+REPLAY_CLAIM_DURATION = timedelta(minutes=5)
 
 
 def parse_int_param(raw_value, field_name, *, default=None):
@@ -215,6 +219,7 @@ class ReplayIngestionFailureView(APIView):
         stage_task = None
         stage_args = None
         stage_kwargs = None
+        replay_claim_token = None
         with transaction.atomic():
             failure = (
                 IngestionTaskFailure.objects.select_for_update()
@@ -230,6 +235,15 @@ class ReplayIngestionFailureView(APIView):
                         {"error": "failure has already been replayed"},
                         status=status.HTTP_409_CONFLICT,
                     )
+                now = timezone.now()
+                if (
+                    failure.replay_claim_expires_at is not None
+                    and failure.replay_claim_expires_at > now
+                ):
+                    return Response(
+                        {"error": "failure is already being replayed"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 stage_task = REPLAYABLE_STAGE_TASKS.get(failure.task_name)
                 stage_args = failure.args_json.get("args") or []
                 stage_kwargs = failure.args_json.get("kwargs") or {}
@@ -240,11 +254,11 @@ class ReplayIngestionFailureView(APIView):
                         {"error": "this failure has no replayable work item"},
                         status=status.HTTP_409_CONFLICT,
                     )
-                failure.replay_count += 1
-                failure.last_replayed_at = timezone.now()
-                failure.resolved_at = failure.last_replayed_at
+                replay_claim_token = uuid.uuid4().hex
+                failure.replay_claim_token = replay_claim_token
+                failure.replay_claim_expires_at = now + REPLAY_CLAIM_DURATION
                 failure.save(
-                    update_fields=["replay_count", "last_replayed_at", "resolved_at"]
+                    update_fields=["replay_claim_token", "replay_claim_expires_at"]
                 )
             else:
                 work_item = failure.work_item
@@ -283,11 +297,29 @@ class ReplayIngestionFailureView(APIView):
             try:
                 result = stage_task.apply_async(args=stage_args, kwargs=stage_kwargs)
             except Exception as exc:
-                IngestionTaskFailure.objects.filter(pk=failure.id).update(resolved_at=None)
+                IngestionTaskFailure.objects.filter(
+                    pk=failure.id,
+                    replay_claim_token=replay_claim_token,
+                    resolved_at__isnull=True,
+                ).update(replay_claim_token="", replay_claim_expires_at=None)
                 return Response(
                     {"error": f"unable to enqueue replay: {exc}"},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
+            replayed_at = timezone.now()
+            resolved = IngestionTaskFailure.objects.filter(
+                pk=failure.id,
+                replay_claim_token=replay_claim_token,
+                resolved_at__isnull=True,
+            ).update(
+                replay_count=failure.replay_count + 1,
+                last_replayed_at=replayed_at,
+                replay_claim_token="",
+                replay_claim_expires_at=None,
+                resolved_at=replayed_at,
+            )
+            if resolved:
+                failure.replay_count += 1
             return Response(
                 {
                     "id": failure.id,

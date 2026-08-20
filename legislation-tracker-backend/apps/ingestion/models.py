@@ -93,6 +93,8 @@ class IngestionTaskFailure(models.Model):
     error_message = models.TextField()
     replay_count = models.PositiveIntegerField(default=0)
     last_replayed_at = models.DateTimeField(null=True, blank=True)
+    replay_claim_token = models.CharField(max_length=32, blank=True, default="")
+    replay_claim_expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 

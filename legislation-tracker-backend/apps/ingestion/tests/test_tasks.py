@@ -19,6 +19,11 @@ from apps.ingestion.models import (
 from apps.legislation.models import Bill, BillDocument, BillTopic, ProcessingStatus, Topic
 
 
+def test_sync_representatives_has_bounded_congress_api_retries():
+    assert getattr(tasks.sync_representatives, "autoretry_for", ()) == (CongressAPIError,)
+    assert tasks.sync_representatives.max_retries == 2
+
+
 @pytest.mark.django_db
 def test_poll_congress_does_not_advance_cursor_or_enqueue_after_partial_failure(monkeypatch):
     state = IngestionState.objects.create(jurisdiction="federal", congress=119)
