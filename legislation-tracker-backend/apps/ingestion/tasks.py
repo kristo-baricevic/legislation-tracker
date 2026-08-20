@@ -1189,22 +1189,46 @@ def _process_bill_votes_impl(bill_id):
         result = (vote_data.get("result") or vote_data.get("question") or "unknown")[:50]
         yeas = int(vote_data.get("yeas") or vote_data.get("total", {}).get("yeas") or 0)
         nays = int(vote_data.get("nays") or vote_data.get("total", {}).get("nays") or 0)
+        effective_vote_date = vote_date or timezone.now()
         with transaction.atomic():
-            vote, vote_created = Vote.objects.get_or_create(
-                bill=bill,
-                chamber=chamber,
-                session_number=session_number,
-                roll_number=int(roll),
-                defaults={
-                    "vote_date": vote_date or timezone.now(),
-                    "result": result,
-                    "yeas": yeas,
-                    "nays": nays,
-                },
-            )
+            vote_lookup = {
+                "bill": bill,
+                "chamber": chamber,
+                "session_number": session_number,
+                "roll_number": int(roll),
+            }
+            vote = Vote.objects.select_for_update().filter(**vote_lookup).first()
+            vote_created = False
+            if vote is None:
+                # Pre-session-number rows remain explicitly unknown after migration.
+                # Adopt one only when the authoritative vote timestamp identifies it.
+                vote = (
+                    Vote.objects.select_for_update()
+                    .filter(
+                        bill=bill,
+                        chamber=chamber,
+                        session_number__isnull=True,
+                        roll_number=int(roll),
+                        vote_date=effective_vote_date,
+                    )
+                    .first()
+                )
+                if vote is not None:
+                    vote.session_number = session_number
+                    vote.save(update_fields=["session_number"])
+                else:
+                    vote, vote_created = Vote.objects.get_or_create(
+                        **vote_lookup,
+                        defaults={
+                            "vote_date": effective_vote_date,
+                            "result": result,
+                            "yeas": yeas,
+                            "nays": nays,
+                        },
+                    )
             vote_updated = False
             for field, value in {
-                "vote_date": vote_date or timezone.now(),
+                "vote_date": effective_vote_date,
                 "result": result,
                 "yeas": yeas,
                 "nays": nays,

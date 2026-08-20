@@ -40,7 +40,8 @@ class Vote(models.Model):
         related_name="votes",
     )
     chamber = models.CharField(max_length=20)
-    session_number = models.PositiveSmallIntegerField(default=1)
+    # Legacy rows predate authoritative Congress API session references.
+    session_number = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
     roll_number = models.PositiveIntegerField()
     vote_date = models.DateTimeField()
     result = models.CharField(max_length=50)  # passed, failed, etc.
@@ -53,7 +54,12 @@ class Vote(models.Model):
             models.UniqueConstraint(
                 fields=["bill", "chamber", "session_number", "roll_number"],
                 name="congress_vote_bill_chamber_session_roll_uniq",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["bill", "chamber", "roll_number"],
+                condition=models.Q(session_number__isnull=True),
+                name="congress_vote_unknown_session_roll_uniq",
+            ),
         ]
 
     def __str__(self):

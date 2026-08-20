@@ -293,6 +293,7 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
     vote = Vote.objects.create(
         bill=bill,
         chamber="house",
+        session_number=1,
         roll_number=17,
         vote_date="2026-08-19T12:00:00Z",
         result="Passed",

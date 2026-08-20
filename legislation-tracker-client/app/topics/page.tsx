@@ -17,6 +17,7 @@ export default function TopicsPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   useEffect(() => {
     const authed = isLoggedIn();
@@ -44,6 +45,7 @@ export default function TopicsPage() {
   const handleToggle = async (topicId: number) => {
     if (busy !== null) return;
     setBusy(topicId);
+    setTrackingError(null);
     try {
       if (followedIds.has(topicId)) {
         await untrackTopic(topicId);
@@ -56,8 +58,10 @@ export default function TopicsPage() {
         await trackTopic(topicId);
         setFollowedIds((prev) => new Set(prev).add(topicId));
       }
-    } catch {
-      // silently fail
+    } catch (error) {
+      setTrackingError(
+        error instanceof Error ? error.message : "Failed to update tracked topic",
+      );
     } finally {
       setBusy(null);
     }
@@ -82,6 +86,15 @@ export default function TopicsPage() {
           ? " Click to follow or unfollow topics you care about — followed topics appear first."
           : " Log in to follow topics and get personalized updates."}
       </p>
+
+      {trackingError && (
+        <p
+          role="alert"
+          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-mono text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+        >
+          {trackingError}
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[...topics]

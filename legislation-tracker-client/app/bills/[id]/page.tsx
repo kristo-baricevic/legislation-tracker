@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -208,7 +208,7 @@ function VoteHistorySection({
           <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
             <div>
               <p className="font-semibold text-slate-900 dark:text-green-300">
-                {vote.chamber} session {vote.session_number} roll call {vote.roll_number}: {vote.result}
+                {vote.chamber} session {vote.session_number ?? "unknown"} roll call {vote.roll_number}: {vote.result}
               </p>
               <p className="text-sm text-slate-600 dark:text-green-600">
                 Yes {vote.yeas} · No {vote.nays} · {new Date(vote.vote_date).toLocaleDateString()}
@@ -275,6 +275,7 @@ function BillDetailInner() {
   const [selectedVote, setSelectedVote] = useState<VoteDetailItem | null>(null);
   const [loadingVoteId, setLoadingVoteId] = useState<number | null>(null);
   const [voteError, setVoteError] = useState<string | null>(null);
+  const voteRequestId = useRef(0);
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -341,9 +342,11 @@ function BillDetailInner() {
   }, [id, votePage]);
 
   useEffect(() => {
+    voteRequestId.current += 1;
     setContractPage(1);
     setVotePage(1);
     setSelectedVote(null);
+    setLoadingVoteId(null);
     setVoteError(null);
   }, [id]);
 
@@ -394,16 +397,32 @@ function BillDetailInner() {
   }
 
   async function viewVotePositions(voteId: number) {
+    const requestId = ++voteRequestId.current;
     setLoadingVoteId(voteId);
     setVoteError(null);
     setSelectedVote(null);
     try {
-      setSelectedVote(await getVote(voteId));
+      const vote = await getVote(voteId);
+      if (requestId === voteRequestId.current) {
+        setSelectedVote(vote);
+      }
     } catch {
-      setVoteError("Could not load member positions. Try again.");
+      if (requestId === voteRequestId.current) {
+        setVoteError("Could not load member positions. Try again.");
+      }
     } finally {
-      setLoadingVoteId(null);
+      if (requestId === voteRequestId.current) {
+        setLoadingVoteId(null);
+      }
     }
+  }
+
+  function changeVoteHistoryPage(update: (current: number) => number) {
+    voteRequestId.current += 1;
+    setSelectedVote(null);
+    setLoadingVoteId(null);
+    setVoteError(null);
+    setVotePage(update);
   }
 
   if (loading) {
@@ -572,8 +591,10 @@ function BillDetailInner() {
             onViewPositions={viewVotePositions}
             page={votePage}
             hasNext={voteHasNext}
-            onPrevious={() => setVotePage((current) => Math.max(1, current - 1))}
-            onNext={() => setVotePage((current) => current + 1)}
+            onPrevious={() =>
+              changeVoteHistoryPage((current) => Math.max(1, current - 1))
+            }
+            onNext={() => changeVoteHistoryPage((current) => current + 1)}
           />
         )}
 

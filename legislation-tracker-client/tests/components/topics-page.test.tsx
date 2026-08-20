@@ -53,4 +53,20 @@ describe("TopicsPage", () => {
     });
     expect(trackTopic).toHaveBeenCalledWith(8);
   });
+
+  it("shows an error when a topic tracking request fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(trackTopic).mockRejectedValueOnce(
+      new Error("Tracking service unavailable"),
+    );
+    render(<TopicsPage />);
+
+    await screen.findByRole("button", { name: "Following" });
+    await user.click(screen.getByRole("button", { name: "Follow" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tracking service unavailable",
+    );
+    expect(screen.getByRole("button", { name: "Follow" })).toBeEnabled();
+  });
 });

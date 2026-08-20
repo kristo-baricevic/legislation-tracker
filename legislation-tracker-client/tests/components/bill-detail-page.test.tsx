@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,7 @@ import {
   getVote,
   getVotes,
   getStoredAccessToken,
+  type VoteDetailItem,
 } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
@@ -164,6 +165,31 @@ describe("BillDetailPage", () => {
     expect(await screen.findByText("Voting Representative")).toBeVisible();
   });
 
+  it("labels a legacy vote whose session is not known", async () => {
+    vi.mocked(getVotes).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [
+        {
+          id: 33,
+          bill: 10,
+          chamber: "house",
+          session_number: null,
+          roll_number: 17,
+          vote_date: "2026-01-02T00:00:00Z",
+          result: "Passed",
+          yeas: 220,
+          nays: 210,
+        },
+      ],
+    });
+
+    render(<BillDetailPage />);
+
+    expect(await screen.findByText(/house session unknown roll call 17/)).toBeVisible();
+  });
+
   it("shows a retryable error and clears stale positions when vote detail loading fails", async () => {
     const user = userEvent.setup();
     render(<BillDetailPage />);
@@ -182,6 +208,144 @@ describe("BillDetailPage", () => {
     );
     expect(screen.queryByText("Voting Representative")).not.toBeInTheDocument();
     expect(viewPositions).toBeEnabled();
+  });
+
+  it("ignores an older vote detail response that resolves after the active selection", async () => {
+    const user = userEvent.setup();
+    const firstVote = {
+      id: 33,
+      bill: 10,
+      chamber: "house",
+      session_number: 1,
+      roll_number: 17,
+      vote_date: "2026-08-19T00:00:00Z",
+      result: "Passed",
+      yeas: 220,
+      nays: 210,
+      records: [
+        {
+          representative: {
+            id: 1,
+            bioguide_id: "V000001",
+            name: "First Vote Representative",
+            chamber: "house",
+            party: "Independent",
+            state: "NY",
+            district: null,
+            first_name: "First",
+            last_name: "Representative",
+            official_website_url: null,
+            image_url: null,
+            is_current: true,
+          },
+          position: "yes",
+        },
+      ],
+    } satisfies VoteDetailItem;
+    const secondVote = {
+      ...firstVote,
+      id: 34,
+      roll_number: 18,
+      records: [
+        {
+          representative: {
+            ...firstVote.records[0].representative,
+            id: 2,
+            bioguide_id: "V000002",
+            name: "Second Vote Representative",
+            first_name: "Second",
+          },
+          position: "no",
+        },
+      ],
+    } satisfies VoteDetailItem;
+    let resolveFirst: (vote: VoteDetailItem) => void = () => undefined;
+    let resolveSecond: (vote: VoteDetailItem) => void = () => undefined;
+    const firstRequest = new Promise<VoteDetailItem>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondRequest = new Promise<VoteDetailItem>((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    vi.mocked(getVotes).mockResolvedValue({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [firstVote, secondVote],
+    });
+    vi.mocked(getVote)
+      .mockReturnValueOnce(firstRequest)
+      .mockReturnValueOnce(secondRequest);
+    render(<BillDetailPage />);
+
+    const buttons = await screen.findAllByRole("button", {
+      name: "View member positions",
+    });
+    await user.click(buttons[0]);
+    await user.click(buttons[1]);
+    resolveSecond(secondVote);
+    expect(await screen.findByText("Second Vote Representative")).toBeVisible();
+
+    await act(async () => {
+      resolveFirst(firstVote);
+      await firstRequest;
+    });
+    expect(screen.queryByText("First Vote Representative")).not.toBeInTheDocument();
+    expect(screen.getByText("Second Vote Representative")).toBeVisible();
+  });
+
+  it("clears selected member positions when the vote history page changes", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getVotes)
+      .mockResolvedValueOnce({
+        count: 21,
+        next: "http://localhost:8000/api/votes/?bill=10&page=2",
+        previous: null,
+        results: [
+          {
+            id: 33,
+            bill: 10,
+            chamber: "house",
+            session_number: 1,
+            roll_number: 17,
+            vote_date: "2026-08-19T00:00:00Z",
+            result: "Passed",
+            yeas: 220,
+            nays: 210,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        count: 21,
+        next: null,
+        previous: "http://localhost:8000/api/votes/?bill=10&page=1",
+        results: [
+          {
+            id: 32,
+            bill: 10,
+            chamber: "house",
+            session_number: 1,
+            roll_number: 16,
+            vote_date: "2026-08-18T00:00:00Z",
+            result: "Failed",
+            yeas: 210,
+            nays: 220,
+          },
+        ],
+      });
+    render(<BillDetailPage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "View member positions" }),
+    );
+    expect(await screen.findByText("Voting Representative")).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: "Next vote history page" }),
+    );
+    expect(await screen.findByText(/roll call 16: Failed/)).toBeVisible();
+    expect(screen.queryByText("Voting Representative")).not.toBeInTheDocument();
   });
 
   it("pages through contract and vote histories beyond the first result page", async () => {

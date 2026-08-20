@@ -12,7 +12,11 @@ from rest_framework.views import APIView
 from apps.accounts.models import TrackedBill
 from apps.accounts.serializers import TrackedBillSerializer
 from apps.ingestion.congress_client import CongressAPIError
-from apps.ingestion.models import IngestionTaskFailure, IngestionWorkStatus
+from apps.ingestion.models import (
+    IngestionTaskFailure,
+    IngestionWorkItem,
+    IngestionWorkStatus,
+)
 from apps.ingestion.tasks import (
     CURRENT_CONGRESS,
     _process_bill_impl,
@@ -186,7 +190,10 @@ class IngestionFailureListView(APIView):
         failures = (
             IngestionTaskFailure.objects.select_related("work_item")
             .filter(
-                Q(work_item__status=IngestionWorkStatus.DEAD)
+                Q(
+                    work_item__status=IngestionWorkStatus.DEAD,
+                    resolved_at__isnull=True,
+                )
                 | Q(
                     work_item__isnull=True,
                     task_name__in=REPLAYABLE_STAGE_TASKS,
@@ -221,20 +228,39 @@ class ReplayIngestionFailureView(APIView):
         stage_kwargs = None
         replay_claim_token = None
         with transaction.atomic():
+            failure_reference = (
+                IngestionTaskFailure.objects.filter(pk=failure_id)
+                .values("work_item_id")
+                .first()
+            )
+            if failure_reference is None:
+                return Response(
+                    {"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Lock the shared work item before any individual failure row. This
+            # serializes concurrent replay attempts for duplicate failure history.
+            work_item = None
+            referenced_work_item_id = failure_reference["work_item_id"]
+            if referenced_work_item_id is not None:
+                work_item = (
+                    IngestionWorkItem.objects.select_for_update()
+                    .filter(pk=referenced_work_item_id)
+                    .first()
+                )
             failure = (
                 IngestionTaskFailure.objects.select_for_update()
-                .select_related("work_item")
                 .filter(pk=failure_id)
                 .first()
             )
             if failure is None:
                 return Response({"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND)
-            if failure.work_item is None:
-                if failure.resolved_at is not None:
-                    return Response(
-                        {"error": "failure has already been replayed"},
-                        status=status.HTTP_409_CONFLICT,
-                    )
+            if failure.resolved_at is not None:
+                return Response(
+                    {"error": "failure has already been replayed"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if failure.work_item_id is None:
                 now = timezone.now()
                 if (
                     failure.replay_claim_expires_at is not None
@@ -261,7 +287,11 @@ class ReplayIngestionFailureView(APIView):
                     update_fields=["replay_claim_token", "replay_claim_expires_at"]
                 )
             else:
-                work_item = failure.work_item
+                if work_item is None or failure.work_item_id != work_item.id:
+                    return Response(
+                        {"error": "failure work item changed during replay"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 if work_item.status != IngestionWorkStatus.DEAD:
                     return Response(
                         {"error": "work item is not dead-lettered"},
@@ -289,9 +319,17 @@ class ReplayIngestionFailureView(APIView):
                         "updated_at",
                     ]
                 )
+                replayed_at = timezone.now()
+                IngestionTaskFailure.objects.filter(
+                    work_item=work_item,
+                    resolved_at__isnull=True,
+                ).update(resolved_at=replayed_at)
                 failure.replay_count += 1
-                failure.last_replayed_at = timezone.now()
-                failure.save(update_fields=["replay_count", "last_replayed_at"])
+                failure.last_replayed_at = replayed_at
+                failure.resolved_at = replayed_at
+                failure.save(
+                    update_fields=["replay_count", "last_replayed_at", "resolved_at"]
+                )
 
         if stage_task is not None:
             try:

@@ -263,6 +263,74 @@ def test_staff_can_replay_dead_lettered_ingestion_work(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_replayed_durable_failure_does_not_reappear_after_a_later_failure(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-99",
+        source_updated_at="2026-08-19T00:00:00Z",
+        payload_json={"bill_key": "119-hr-99"},
+        status=IngestionWorkStatus.DEAD,
+        attempt_count=5,
+        last_error="first failure",
+    )
+    first_failure = IngestionTaskFailure.objects.create(
+        task_id="task-first-99",
+        task_name="process_ingestion_work_item",
+        work_item=work,
+        args_json={"args": [work.id], "kwargs": {}},
+        error_message="first failure",
+    )
+    duplicate_failure = IngestionTaskFailure.objects.create(
+        task_id="task-first-99-duplicate",
+        task_name="process_ingestion_work_item",
+        work_item=work,
+        args_json={"args": [work.id], "kwargs": {}},
+        error_message="duplicate first failure",
+    )
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work,
+        "delay",
+        lambda: FakeAsyncResult(),
+    )
+    client = authenticated_client("replay-history@example.com", is_staff=True)
+
+    replayed = client.post(
+        f"/api/ingestion/failures/{first_failure.id}/replay/",
+        {},
+        format="json",
+    )
+    assert replayed.status_code == 202
+
+    first_failure.refresh_from_db()
+    duplicate_failure.refresh_from_db()
+    assert first_failure.resolved_at is not None
+    assert duplicate_failure.resolved_at is not None
+    work.status = IngestionWorkStatus.DEAD
+    work.last_error = "second failure"
+    work.save(update_fields=["status", "last_error"])
+    second_failure = IngestionTaskFailure.objects.create(
+        task_id="task-second-99",
+        task_name="process_ingestion_work_item",
+        work_item=work,
+        args_json={"args": [work.id], "kwargs": {}},
+        error_message="second failure",
+    )
+
+    listed = client.get("/api/ingestion/failures/")
+
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()["results"]] == [second_failure.id]
+    stale_replay = client.post(
+        f"/api/ingestion/failures/{duplicate_failure.id}/replay/",
+        {},
+        format="json",
+    )
+    work.refresh_from_db()
+    assert stale_replay.status_code == 409
+    assert work.status == IngestionWorkStatus.DEAD
+
+
+@pytest.mark.django_db
 def test_staff_can_replay_a_dead_lettered_document_stage(monkeypatch):
     bill = Bill.objects.create(
         jurisdiction="federal",

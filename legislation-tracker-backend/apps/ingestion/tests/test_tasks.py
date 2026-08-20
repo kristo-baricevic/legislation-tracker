@@ -664,6 +664,54 @@ def test_process_bill_votes_updates_existing_vote_and_records(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_process_bill_votes_adopts_a_legacy_vote_with_unknown_session(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 4",
+        title="Legacy vote bill",
+        status="Introduced",
+    )
+    legacy_vote = Vote.objects.create(
+        bill=bill,
+        chamber="house",
+        session_number=None,
+        roll_number=10,
+        vote_date=datetime(2025, 1, 3, tzinfo=dt_timezone.utc),
+        result="Unknown",
+    )
+    monkeypatch.setattr(
+        tasks,
+        "bill_actions",
+        lambda congress, bill_type, number: [
+            {
+                "recordedVotes": [
+                    {"chamber": "house", "rollNumber": 10, "sessionNumber": 1},
+                ]
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        tasks,
+        "vote_detail",
+        lambda congress, chamber, roll_number, *, session_number=None, source_url=None: {
+            "date": "2025-01-03T00:00:00Z",
+            "result": "Passed",
+            "yeas": 1,
+            "nays": 0,
+            "members": [],
+        },
+    )
+
+    tasks.process_bill_votes(bill.id)
+
+    assert Vote.objects.filter(bill=bill, chamber="house", roll_number=10).count() == 1
+    legacy_vote.refresh_from_db()
+    assert legacy_vote.session_number == 1
+    assert legacy_vote.result == "Passed"
+
+
+@pytest.mark.django_db
 def test_process_bill_votes_keeps_same_roll_number_from_two_sessions(monkeypatch):
     bill = Bill.objects.create(
         jurisdiction="federal",
