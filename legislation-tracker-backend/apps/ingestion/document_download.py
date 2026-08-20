@@ -40,6 +40,8 @@ _XML_PROVISION_TAGS = {
     "subsection",
 }
 _XML_TEXT_TAGS = {"after-quoted-block", "continuation-text", "text"}
+_QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
+_QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 
 
 class RetryableDocumentStorageError(Exception):
@@ -184,9 +186,15 @@ def _render_congress_xml_element(
         if child_tag in _XML_CONTAINER_TAGS or child_tag in _XML_PROVISION_TAGS:
             _render_congress_xml_element(child, lines)
         elif child_tag == "quoted-block":
+            lines.append(_QUOTED_BLOCK_START)
             for quoted_child in child:
                 if _xml_tag(quoted_child) in _XML_PROVISION_TAGS:
                     _render_congress_xml_element(quoted_child, lines)
+                elif _xml_tag(quoted_child) in _XML_TEXT_TAGS:
+                    value = _normalized_inline_text(quoted_child)
+                    if value:
+                        lines.append(value)
+            lines.append(_QUOTED_BLOCK_END)
         elif child_tag in _XML_TEXT_TAGS and tag not in _XML_PROVISION_TAGS:
             value = _normalized_inline_text(child)
             if value:

@@ -25,6 +25,10 @@ _SECTION_RANK = 5
 _SUBDIVISION_RANK = 6
 _HEADING_SEPARATOR_RE = re.compile(r"^(?P<heading>[^\n]{1,160}?)(?:\.—|\.—|—|\. -|\.―)")
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?=\s|$)")
+_STATUTORY_ABBREVIATION_RE = re.compile(
+    r"\b(?:U\.S\.C|U\.S|Sec|No|e\.g|i\.e)\.$",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -208,6 +212,9 @@ def sentence_spans(
     cursor = start
 
     for boundary in _SENTENCE_BOUNDARY_RE.finditer(source_text, start, end):
+        preceding_text = source_text[max(start, boundary.end() - 16) : boundary.end()]
+        if _STATUTORY_ABBREVIATION_RE.search(preceding_text):
+            continue
         sentence_start = cursor
         sentence_end = boundary.end()
         while sentence_start < sentence_end and source_text[sentence_start].isspace():

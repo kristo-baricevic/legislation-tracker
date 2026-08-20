@@ -26,6 +26,8 @@ _SECTION_DEFINITION_RE = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_RANGE_RE = re.compile(r'“[^”]*”|"[^"]*"|‘[^’]*’|\'[^\']*\'')
+_QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
+_QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 _AMENDMENT_INSTRUCTION_RE = re.compile(
     r"^\s*(?:by\s+)?(?:strik(?:e|ing)|insert(?:ing)?|replac(?:e|ing)|"
     r"redesignat(?:e|ing)|repeal(?:ing)?|amend(?:ing)?)\b",
@@ -203,10 +205,16 @@ def _definition_term(match: re.Match[str]) -> str:
 def _iter_operative_sentences(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> Iterator[tuple[StructuralSection, SourceSpan]]:
+    quoted_block_ranges = _quoted_block_ranges(source_text)
     for section in sections:
         if section.level not in {"section", "subdivision"}:
             continue
         for sentence in sentence_spans(section, source_text):
+            if any(
+                start <= sentence.start_char < end
+                for start, end in quoted_block_ranges
+            ):
+                continue
             yield section, sentence
 
 
@@ -222,6 +230,23 @@ def _heading_contains(
         and section.span.start_char < candidate.span.end_char
         for candidate in sections
     )
+
+
+def _quoted_block_ranges(source_text: str) -> tuple[tuple[int, int], ...]:
+    ranges = []
+    cursor = 0
+    while True:
+        start = source_text.find(_QUOTED_BLOCK_START, cursor)
+        if start < 0:
+            break
+        end = source_text.find(_QUOTED_BLOCK_END, start + len(_QUOTED_BLOCK_START))
+        if end < 0:
+            end = len(source_text)
+        else:
+            end += len(_QUOTED_BLOCK_END)
+        ranges.append((start, end))
+        cursor = end
+    return tuple(ranges)
 
 
 def _is_modal_excluded(
@@ -437,18 +462,57 @@ def _fiscal_years(text: str) -> list[int]:
     return [int(year_match.group("year"))] if year_match else []
 
 
-def _funding_purpose(text: str) -> str | None:
-    carry_out = re.search(r"\bto\s+(carry\s+out\b.+)$", text, re.IGNORECASE)
+def _funding_purpose(
+    text: str, *, normalize_whitespace: bool = False
+) -> str | None:
+    normalized_text = (
+        re.sub(r"\s+", " ", text).strip() if normalize_whitespace else text
+    )
+    carry_out = re.search(
+        r"\bto\s+(carry\s+out\b.+)$", normalized_text, re.IGNORECASE
+    )
     if carry_out is not None:
         return _strip_terminal_punctuation(carry_out.group(1))
     purposes = list(
-        re.finditer(r"\bfor\s+(?!fiscal\s+years?\b)(?P<purpose>.+)$", text, re.IGNORECASE)
+        re.finditer(
+            r"\bfor\s+(?!fiscal\s+years?\b)(?P<purpose>.+)$",
+            normalized_text,
+            re.IGNORECASE,
+        )
     )
     return (
-        _strip_terminal_punctuation(purposes[-1].group("purpose"))
+        (
+            _strip_list_connector(purposes[-1].group("purpose"))
+            if normalize_whitespace
+            else _strip_terminal_punctuation(purposes[-1].group("purpose"))
+        )
         if purposes
         else None
     )
+
+
+def _inherited_funding_context(
+    source_text: str,
+    section: StructuralSection,
+    sections: Sequence[StructuralSection],
+) -> tuple[SourceSpan, list[int], bool] | None:
+    parent = _parent_section(section, sections)
+    if parent is None:
+        return None
+    for sentence in reversed(sentence_spans(parent, source_text)):
+        if _NEGATIVE_FUNDING_RE.search(sentence.text) is not None:
+            continue
+        if (
+            _AFFIRMATIVE_FUNDING_RE.search(sentence.text) is None
+            and _OPERATIVE_FUNDING_RE.search(sentence.text) is None
+        ):
+            continue
+        return (
+            sentence,
+            _fiscal_years(sentence.text),
+            "authorized to be appropriated" in sentence.text.casefold(),
+        )
+    return None
 
 
 def extract_funding_claims(
@@ -460,17 +524,30 @@ def extract_funding_claims(
         lowered = text.casefold()
         such_sums = _SUCH_SUMS_RE.search(text) is not None
         money = _MONEY_RE.search(text)
-        if (
+        has_own_funding_context = not (
             _AFFIRMATIVE_FUNDING_RE.search(text) is None
             and _OPERATIVE_FUNDING_RE.search(text) is None
-        ) or (
-            _NEGATIVE_FUNDING_RE.search(text) is not None
-        ):
+        )
+        if _NEGATIVE_FUNDING_RE.search(text) is not None:
+            continue
+        inherited_context = (
+            None
+            if has_own_funding_context
+            else _inherited_funding_context(source_text, section, sections)
+        )
+        if not has_own_funding_context and inherited_context is None:
             continue
         if money is None and not such_sums:
             continue
 
-        authorization = "authorized to be appropriated" in lowered
+        context_sentence, inherited_fiscal_years, inherited_authorization = (
+            inherited_context if inherited_context else (None, [], False)
+        )
+        authorization = (
+            "authorized to be appropriated" in lowered
+            if has_own_funding_context
+            else inherited_authorization
+        )
         if such_sums:
             amount = None
             amount_type = "such_sums"
@@ -489,12 +566,23 @@ def extract_funding_claims(
                     "amount": amount,
                     "amount_type": amount_type,
                     "currency": currency,
-                    "fiscal_years": _fiscal_years(text),
-                    "purpose": _funding_purpose(text),
+                    "fiscal_years": _fiscal_years(text) or inherited_fiscal_years,
+                    "purpose": _funding_purpose(
+                        text,
+                        normalize_whitespace=context_sentence is not None,
+                    ),
                 },
                 section_label=section.label,
-                evidence=(sentence,),
-                rule_id=f"funding.{authority}{suffix}.v1",
+                evidence=(
+                    (context_sentence, sentence)
+                    if context_sentence is not None
+                    else (sentence,)
+                ),
+                rule_id=(
+                    f"funding.{authority}{suffix}.inherited.v1"
+                    if context_sentence is not None
+                    else f"funding.{authority}{suffix}.v1"
+                ),
             )
         )
     return tuple(claims)

@@ -313,6 +313,26 @@ def generate_contract(document_id):
     return _generate_contract_impl(document_id)
 
 
+def _replace_evidence_spans(*, bill, document, contract, evidence_spans):
+    """Replace one document contract's source offsets with the current extraction."""
+    EvidenceSpan.objects.filter(contract=contract, document=document).delete()
+    EvidenceSpan.objects.bulk_create(
+        [
+            EvidenceSpan(
+                bill=bill,
+                document=document,
+                contract=contract,
+                field_path=span.field_path,
+                start_char=span.start_char,
+                end_char=span.end_char,
+                quoted_text=span.quoted_text,
+                page_number=span.page_number,
+            )
+            for span in evidence_spans
+        ]
+    )
+
+
 def _generate_contract_impl(document_id):
     """
     Build or skip BillContract from BillDocument.extracted_text.
@@ -372,16 +392,22 @@ def _generate_contract_impl(document_id):
         .first()
     )
     if latest and latest.contract_hash == new_hash:
-        update_fields = ["contract_generated_at"]
-        document.contract_generated_at = timezone.now()
-        document.save(update_fields=update_fields)
-        if document.is_active_version:
-            bill.latest_contract = latest
-            if bill.processing_status != ProcessingStatus.COMPLETE:
-                bill.processing_status = ProcessingStatus.COMPLETE
-                bill.save(update_fields=["latest_contract", "processing_status"])
-            else:
-                bill.save(update_fields=["latest_contract"])
+        with transaction.atomic():
+            _replace_evidence_spans(
+                bill=bill,
+                document=document,
+                contract=latest,
+                evidence_spans=evidence_spans,
+            )
+            document.contract_generated_at = timezone.now()
+            document.save(update_fields=["contract_generated_at"])
+            if document.is_active_version:
+                bill.latest_contract = latest
+                if bill.processing_status != ProcessingStatus.COMPLETE:
+                    bill.processing_status = ProcessingStatus.COMPLETE
+                    bill.save(update_fields=["latest_contract", "processing_status"])
+                else:
+                    bill.save(update_fields=["latest_contract"])
         if document.is_active_version:
             enqueue_topic_update(contract=latest)
         logger.info(
@@ -408,7 +434,7 @@ def _generate_contract_impl(document_id):
         document.contract_generated_at = now
         document.save(update_fields=["contract_generated_at"])
 
-        if contract_created:
+        if contract_created and document.is_active_version:
             ChangeLog.objects.create(
                 bill=bill,
                 document=document,
@@ -421,18 +447,13 @@ def _generate_contract_impl(document_id):
                     "schema_version": extraction_result.schema_version,
                 },
             )
-
-            for span in evidence_spans:
-                EvidenceSpan.objects.create(
-                    bill=bill,
-                    document=document,
-                    contract=contract,
-                    field_path=span.field_path,
-                    start_char=span.start_char,
-                    end_char=span.end_char,
-                    quoted_text=span.quoted_text,
-                    page_number=span.page_number,
-                )
+        if contract_created:
+            _replace_evidence_spans(
+                bill=bill,
+                document=document,
+                contract=contract,
+                evidence_spans=evidence_spans,
+            )
 
     if document.is_active_version:
         enqueue_topic_update(contract=contract)
@@ -495,15 +516,49 @@ def _update_topics_impl(contract_id=None, bill_id=None):
             "reason": "not_found",
         }
 
-    old_slugs = list(
-        BillTopic.objects.filter(bill=bill)
-        .order_by("topic__slug")
-        .values_list("topic__slug", flat=True)
-    )
-    matches = infer_topic_matches(bill=bill, contract=contract)
-    new_slugs = [slug for slug, _confidence in matches]
-    confidence_by_slug = dict(matches)
     with transaction.atomic():
+        bill = (
+            Bill.objects.select_for_update()
+            .select_related("latest_contract")
+            .filter(pk=bill.pk)
+            .first()
+        )
+        if bill is None:
+            return {
+                "contract_id": contract_id,
+                "bill_id": bill_id,
+                "skipped": True,
+                "reason": "not_found",
+            }
+        if bill.latest_contract_id:
+            contract = bill.latest_contract
+        old_slugs = list(
+            BillTopic.objects.filter(bill=bill)
+            .order_by("topic__slug")
+            .values_list("topic__slug", flat=True)
+        )
+        matches = infer_topic_matches(bill=bill, contract=contract)
+        new_slugs = [slug for slug, _confidence in matches]
+        confidence_by_slug = dict(matches)
+        contract_id_before_match = contract.id if contract else None
+        bill.refresh_from_db(fields=["latest_contract"])
+        if (
+            bill.latest_contract_id is not None
+            and bill.latest_contract_id != contract_id_before_match
+        ):
+            logger.info(
+                "update_topics: contract superseded during matching bill_id=%s "
+                "contract_id=%s latest_contract_id=%s",
+                bill.id,
+                contract_id_before_match,
+                bill.latest_contract_id,
+            )
+            return {
+                "contract_id": contract_id_before_match,
+                "bill_id": bill.id,
+                "skipped": True,
+                "reason": "superseded",
+            }
         topics = []
         for slug in new_slugs:
             topic, _ = Topic.objects.get_or_create(

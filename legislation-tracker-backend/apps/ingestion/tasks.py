@@ -1386,7 +1386,14 @@ def _download_document_impl(document_id):
         any(kind in normalized_content_type for kind in ("xml", "html", "text/plain"))
         or ext in {".xml", ".html", ".htm", ".txt"}
     ):
-        extracted = extract_text_from_xml_or_html(data, content_type)
+        extraction_content_type = content_type
+        if "xml" not in normalized_content_type and ext == ".xml":
+            extraction_content_type = "application/xml"
+        elif "html" not in normalized_content_type and ext in {".html", ".htm"}:
+            extraction_content_type = "text/html"
+        elif "text/plain" not in normalized_content_type and ext == ".txt":
+            extraction_content_type = "text/plain"
+        extracted = extract_text_from_xml_or_html(data, extraction_content_type)
 
     now = timezone.now()
     doc.object_storage_key = saved_key

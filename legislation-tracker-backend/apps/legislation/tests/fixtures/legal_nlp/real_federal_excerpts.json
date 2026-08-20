@@ -817,6 +817,86 @@
       "source_locator": "Sec. 20006",
       "expected_claims": [
         {
+          "category": "funding_items",
+          "fields": {
+            "amount": "150000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2025
+            ],
+            "purpose": "business systems replacement to accelerate the audits of the financial statements of the Department of Defense pursuant to chapter 9A and section 2222 of title 10, United States Code"
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there are appropriated\nto the Secretary of Defense for fiscal year 2025, out of any money in\nthe Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--"
+            },
+            {
+              "quote": "$150,000,000 for business systems replacement to accelerate\nthe audits of the financial statements of the Department of Defense\npursuant to chapter 9A and section 2222 of title 10, United States\nCode;"
+            }
+          ]
+        },
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "200000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2025
+            ],
+            "purpose": "the deployment of automation and artificial intelligence to accelerate the audits of the financial statements of the Department of Defense pursuant to chapter 9A and section 2222 of title 10, United States Code"
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there are appropriated\nto the Secretary of Defense for fiscal year 2025, out of any money in\nthe Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--"
+            },
+            {
+              "quote": "$200,000,000 for the deployment of automation and\nartificial intelligence to accelerate the audits of the financial\nstatements of the Department of Defense pursuant to chapter 9A and\nsection 2222 of title 10, United States Code;"
+            }
+          ]
+        },
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "10000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2025
+            ],
+            "purpose": "the improvement of the budgetary and programmatic infrastructure of the Office of the Secretary of Defense"
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there are appropriated\nto the Secretary of Defense for fiscal year 2025, out of any money in\nthe Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--"
+            },
+            {
+              "quote": "$10,000,000 for the improvement of the budgetary and\nprogrammatic infrastructure of the Office of the Secretary of\nDefense; and"
+            }
+          ]
+        },
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "20000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2025
+            ],
+            "purpose": "defense cybersecurity programs of the Defense Advanced Research Projects Agency"
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there are appropriated\nto the Secretary of Defense for fiscal year 2025, out of any money in\nthe Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--"
+            },
+            {
+              "quote": "$20,000,000 for defense cybersecurity programs of the\nDefense Advanced Research Projects Agency."
+            }
+          ]
+        },
+        {
           "category": "timeline_items",
           "fields": {
             "timeline_type": "absolute",

@@ -285,6 +285,36 @@ There are authorized to be appropriated such sums as may be necessary for fiscal
     assert_exact_evidence(source, claims)
 
 
+def test_extract_funding_claims_inherits_a_hanging_appropriation_clause():
+    source = """SEC. 20006. DEFENSE RESOURCES
+In addition to amounts otherwise available, there are appropriated to the Secretary
+of Defense for fiscal year 2025, to remain available until September 30, 2029--
+(1) $150,000,000 for business systems replacement.
+(2) $200,000,000 for the deployment of automation.
+"""
+
+    claims = extract_funding_claims(source, parse_federal_structure(source))
+
+    assert [claim.fields for claim in claims] == [
+        {
+            "amount": "150000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [2025],
+            "purpose": "business systems replacement",
+        },
+        {
+            "amount": "200000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [2025],
+            "purpose": "the deployment of automation",
+        },
+    ]
+    assert [len(claim.evidence) for claim in claims] == [2, 2]
+    assert_exact_evidence(source, claims)
+
+
 @pytest.mark.parametrize(
     "provision",
     [
@@ -345,6 +375,19 @@ This Act takes effect on February 30, 2028.
         },
     ]
     assert_exact_evidence(source, claims)
+
+
+def test_extract_modality_claims_preserves_statutory_citations_in_evidence():
+    source = """SEC. 8. DUTIES
+The Secretary shall administer the program under 15 U.S.C. 78d.
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert claims[0].fields["action"] == "administer the program under 15 U.S.C. 78d"
+    assert claims[0].evidence[0].text == (
+        "The Secretary shall administer the program under 15 U.S.C. 78d."
+    )
 
 
 def test_extract_amendments_applies_precedence_and_captures_payloads():

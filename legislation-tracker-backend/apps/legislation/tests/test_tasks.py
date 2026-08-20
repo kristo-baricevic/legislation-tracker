@@ -114,6 +114,49 @@ def test_generate_contract_persists_v2_and_reuses_unchanged_result():
 
 
 @pytest.mark.django_db
+def test_generate_contract_refreshes_evidence_after_a_whitespace_only_source_update():
+    original_source = "SEC. 2. REPORTS\nThe Secretary shall publish a report."
+    reflowed_source = "SEC. 2. REPORTS\n\nThe Secretary shall publish a report."
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 200A",
+        title="Federal Reports Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text=original_source,
+    )
+
+    first = tasks.generate_contract(document.id)
+    contract = BillContract.objects.get(pk=first["contract_id"])
+    original_requirement = EvidenceSpan.objects.get(
+        contract=contract,
+        field_path="requirements[0].display_text",
+    )
+    document.extracted_text = reflowed_source
+    document.save(update_fields=["extracted_text"])
+
+    second = tasks.generate_contract(document.id)
+
+    refreshed_requirement = EvidenceSpan.objects.get(
+        contract=contract,
+        field_path="requirements[0].display_text",
+    )
+    assert second["unchanged"] is True
+    assert refreshed_requirement.start_char == original_requirement.start_char + 1
+    assert (
+        reflowed_source[
+            refreshed_requirement.start_char : refreshed_requirement.end_char
+        ]
+        == refreshed_requirement.quoted_text
+    )
+
+
+@pytest.mark.django_db
 def test_metadata_contract_generation_remains_legacy():
     bill = Bill.objects.create(
         jurisdiction="federal",
@@ -326,6 +369,7 @@ def test_generate_contract_for_inactive_document_does_not_replace_latest_contrac
     assert bill.processing_status == ProcessingStatus.COMPLETE
     assert inactive_document.contract_generated_at is not None
     assert not IngestionWorkItem.objects.filter(kind="topic_update").exists()
+    assert not ChangeLog.objects.filter(change_type="contract_update").exists()
 
 
 @pytest.mark.django_db
@@ -434,6 +478,63 @@ def test_update_topics_uses_latest_contract_when_queued_contract_is_stale():
     assert set(
         BillTopic.objects.filter(bill=bill).values_list("topic__slug", flat=True)
     ) == {"health"}
+
+
+@pytest.mark.django_db
+def test_update_topics_abandons_a_contract_superseded_while_matching(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 205",
+        title="Versioned program bill",
+        summary="",
+        status="Introduced",
+    )
+    older_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+    )
+    older_contract = BillContract.objects.create(
+        bill=bill,
+        document=older_document,
+        schema_version="1.0-stub",
+        contract_json={"plain_summary": "Funds renewable energy."},
+        contract_hash="older-energy",
+    )
+    newer_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        is_active_version=True,
+    )
+    newer_contract = BillContract.objects.create(
+        bill=bill,
+        document=newer_document,
+        schema_version="1.0-stub",
+        contract_json={"plain_summary": "Improves Medicare and hospital access."},
+        contract_hash="newer-health",
+    )
+    bill.latest_contract = older_contract
+    bill.save(update_fields=["latest_contract"])
+
+    def supersede_during_matching(*, bill, contract):
+        assert contract.id == older_contract.id
+        bill.latest_contract = newer_contract
+        bill.save(update_fields=["latest_contract"])
+        return [("energy", 1.0)]
+
+    monkeypatch.setattr(tasks, "infer_topic_matches", supersede_during_matching)
+
+    result = tasks.update_topics(older_contract.id)
+
+    assert result == {
+        "contract_id": older_contract.id,
+        "bill_id": bill.id,
+        "skipped": True,
+        "reason": "superseded",
+    }
+    assert not BillTopic.objects.filter(bill=bill).exists()
+    assert not ChangeLog.objects.filter(change_type="topic_update").exists()
 
 
 @pytest.mark.django_db
