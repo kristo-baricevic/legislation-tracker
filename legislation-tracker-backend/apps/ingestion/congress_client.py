@@ -28,12 +28,13 @@ def _request(method, path, params=None):
     base = "https://api.congress.gov/v3"
     url = f"{base.rstrip('/')}/{path.lstrip('/')}"
     api_key = _get_api_key()
+    params = dict(params or {})
+    params.setdefault("format", "json")
     if not api_key:
         logger.warning(
             "CONGRESS_API_KEY is not set. Set it in legislation-tracker-backend/.env and restart the Celery worker."
         )
     if api_key:
-        params = dict(params or {})
         params.setdefault("api_key", api_key)
     logger.debug("Congress API request: %s %s (params keys: %s)", method, path, list(params.keys()) if params else [])
     resp = requests.request(method, url, params=params, timeout=30)
@@ -130,13 +131,124 @@ def bill_text_list(congress, bill_type, bill_number):
     return result
 
 
-def vote_detail(congress, chamber, roll_number):
-    """GET /vote/{congress}/{chamber}/{rollNumber}. Returns vote and member positions."""
+def _as_list(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        for key in ("item", "results", "members"):
+            nested = value.get(key)
+            if isinstance(nested, list):
+                return nested
+    return []
+
+
+def _safe_int(value):
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _roll_call_member_results(payload, chamber):
+    body = payload.get(f"{chamber}RollCallVoteMemberVotes") or payload
+    return _as_list(body.get("results") if isinstance(body, dict) else [])
+
+
+def _roll_call_members(payload, chamber):
+    results = _roll_call_member_results(payload, chamber)
+    members = []
+    for member in results:
+        if not isinstance(member, dict):
+            continue
+        bioguide_id = member.get("bioguideId")
+        if not bioguide_id:
+            continue
+        first_name = str(member.get("firstName") or "").strip()
+        last_name = str(member.get("lastName") or "").strip()
+        name = " ".join(part for part in (first_name, last_name) if part) or str(
+            bioguide_id
+        )
+        vote_cast = str(member.get("voteCast") or "").lower()
+        position = {
+            "aye": "yes",
+            "yea": "yes",
+            "yes": "yes",
+            "nay": "no",
+            "no": "no",
+            "present": "present",
+            "not voting": "not_voting",
+        }.get(vote_cast, vote_cast or "not_voting")
+        members.append(
+            {
+                "bioguideId": str(bioguide_id),
+                "name": name,
+                "party": str(member.get("voteParty") or "")[:50],
+                "state": str(member.get("voteState") or "")[:2],
+                "chamber": chamber,
+                "position": position,
+            }
+        )
+    return members
+
+
+def vote_detail(congress, chamber, roll_number, *, session_number=None, source_url=None):
+    """Return a normalized House or Senate roll-call vote and member positions.
+
+    Congress.gov has no generic ``/vote`` route; each chamber exposes its own
+    session-scoped roll-call detail and member endpoints.
+    """
     chamber = (chamber or "house").lower()
-    logger.debug("vote_detail: congress=%s chamber=%s roll_number=%s", congress, chamber, roll_number)
-    data = _request("GET", f"vote/{congress}/{chamber}/{roll_number}")
+    if chamber not in ("house", "senate") or session_number in (None, ""):
+        source = f" ({source_url})" if source_url else ""
+        raise CongressAPIError(
+            "Congress.gov roll-call ingestion requires a House or Senate session number"
+            f"{source}"
+        )
+
+    path = f"{chamber}-vote/{congress}/{session_number}/{roll_number}"
+    logger.debug(
+        "vote_detail: congress=%s chamber=%s session=%s roll_number=%s",
+        congress,
+        chamber,
+        session_number,
+        roll_number,
+    )
+    detail_data = _request("GET", path)
+    members = []
+    offset = 0
+    page_size = 250
+    while True:
+        member_data = _request(
+            "GET",
+            f"{path}/members",
+            params={"limit": page_size, "offset": offset},
+        )
+        member_results = _roll_call_member_results(member_data, chamber)
+        members.extend(_roll_call_members(member_data, chamber))
+        if len(member_results) < page_size:
+            break
+        offset += page_size
     _throttle()
-    return data.get("vote") or data
+
+    detail = detail_data.get(f"{chamber}RollCallVote") or detail_data
+    party_totals = _as_list(
+        detail.get("votePartyTotal") if isinstance(detail, dict) else []
+    )
+    return {
+        "date": detail.get("startDate") or detail.get("updateDate"),
+        "result": detail.get("result") or detail.get("voteQuestion") or "unknown",
+        "yeas": sum(
+            _safe_int(total.get("yeaTotal"))
+            for total in party_totals
+            if isinstance(total, dict)
+        ),
+        "nays": sum(
+            _safe_int(total.get("nayTotal"))
+            for total in party_totals
+            if isinstance(total, dict)
+        ),
+        "members": members,
+    }
 
 
 def member_list(congress, current_member=True, limit=250, offset=0):

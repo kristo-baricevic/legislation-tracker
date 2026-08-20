@@ -241,7 +241,7 @@ def test_process_bill_votes_surfaces_vote_detail_failures_for_retry(monkeypatch)
         },
     )
 
-    def fail_vote_detail(congress, chamber, roll_number):
+    def fail_vote_detail(congress, chamber, roll_number, **kwargs):
         raise CongressAPIError("vote endpoint unavailable")
 
     monkeypatch.setattr(tasks, "vote_detail", fail_vote_detail)
@@ -266,13 +266,28 @@ def test_process_bill_votes_preserves_positions_from_grouped_member_payload(monk
         tasks,
         "bill_detail",
         lambda congress, bill_type, number: {
-            "votes": [{"chamber": "house", "rollNumber": 10}]
+            "votes": [
+                {
+                    "chamber": "house",
+                    "rollNumber": 10,
+                    "sessionNumber": 1,
+                    "url": "https://api.congress.gov/v3/house-vote/119/1/10",
+                }
+            ]
         },
     )
-    monkeypatch.setattr(
-        tasks,
-        "vote_detail",
-        lambda congress, chamber, roll_number: {
+    vote_calls = []
+
+    def fake_vote_detail(
+        congress,
+        chamber,
+        roll_number,
+        *,
+        session_number=None,
+        source_url=None,
+    ):
+        vote_calls.append((congress, chamber, roll_number, session_number, source_url))
+        return {
             "date": "2026-01-02T00:00:00Z",
             "result": "Passed",
             "yeas": 1,
@@ -282,7 +297,12 @@ def test_process_bill_votes_preserves_positions_from_grouped_member_payload(monk
                 "nays": [{"bioguideId": "B000002", "name": "No Member"}],
                 "present": [{"bioguideId": "C000003", "name": "Present Member"}],
             },
-        },
+        }
+
+    monkeypatch.setattr(
+        tasks,
+        "vote_detail",
+        fake_vote_detail,
     )
 
     tasks.process_bill_votes(bill.id)
@@ -297,6 +317,27 @@ def test_process_bill_votes_preserves_positions_from_grouped_member_payload(monk
         "B000002": "no",
         "C000003": "present",
     }
+    assert vote_calls == [
+        (
+            119,
+            "house",
+            10,
+            1,
+            "https://api.congress.gov/v3/house-vote/119/1/10",
+        )
+    ]
+
+
+@pytest.mark.django_db
+def test_sync_representatives_rejects_a_historical_congress(monkeypatch):
+    monkeypatch.setattr(
+        tasks,
+        "member_list",
+        lambda *args, **kwargs: pytest.fail("historical roster must not be fetched"),
+    )
+
+    with pytest.raises(ValueError, match="current Congress"):
+        tasks.sync_representatives(congress=118)
 
 
 @pytest.mark.django_db
@@ -322,7 +363,7 @@ def test_process_bill_votes_updates_existing_vote_and_records(monkeypatch):
         "nays": 0,
         "members": {"yeas": [{"bioguideId": "A000001", "name": "Member"}]},
     }
-    monkeypatch.setattr(tasks, "vote_detail", lambda *args: payload)
+    monkeypatch.setattr(tasks, "vote_detail", lambda *args, **kwargs: payload)
     tasks.process_bill_votes(bill.id)
 
     payload.update(

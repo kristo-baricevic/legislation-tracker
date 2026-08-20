@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill
@@ -13,13 +14,24 @@ from apps.ingestion.tasks import (
     _process_bill_impl,
     backfill_process_bill_versions_for_all_bills,
     bill_key,
+    CURRENT_CONGRESS,
+    download_document,
     dispatch_ingestion_work,
     poll_congress,
+    process_bill_versions,
+    process_bill_votes,
     sync_representatives,
 )
 from apps.legislation.models import Bill
 from apps.legislation.serializers import BillListSerializer
 from apps.legislation.tasks import backfill_update_topics
+
+
+REPLAYABLE_STAGE_TASKS = {
+    "apps.ingestion.tasks.process_bill_versions": process_bill_versions,
+    "apps.ingestion.tasks.process_bill_votes": process_bill_votes,
+    "apps.ingestion.tasks.download_document": download_document,
+}
 
 
 def parse_int_param(raw_value, field_name, *, default=None):
@@ -137,6 +149,11 @@ class SyncRepresentativesView(APIView):
         )
         if error_response is not None:
             return error_response
+        if congress != CURRENT_CONGRESS:
+            return Response(
+                {"error": f"congress must be the current Congress ({CURRENT_CONGRESS})"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         result = sync_representatives.delay(congress=congress)
         return Response(
             {
@@ -156,7 +173,14 @@ class IngestionFailureListView(APIView):
     def get(self, request):
         failures = (
             IngestionTaskFailure.objects.select_related("work_item")
-            .filter(work_item__status=IngestionWorkStatus.DEAD)
+            .filter(
+                Q(work_item__status=IngestionWorkStatus.DEAD)
+                | Q(
+                    work_item__isnull=True,
+                    task_name__in=REPLAYABLE_STAGE_TASKS,
+                    resolved_at__isnull=True,
+                )
+            )
             .order_by("-created_at")
         )
         results = [
@@ -180,6 +204,9 @@ class ReplayIngestionFailureView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request, failure_id):
+        stage_task = None
+        stage_args = None
+        stage_kwargs = None
         with transaction.atomic():
             failure = (
                 IngestionTaskFailure.objects.select_for_update()
@@ -190,41 +217,73 @@ class ReplayIngestionFailureView(APIView):
             if failure is None:
                 return Response({"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND)
             if failure.work_item is None:
-                return Response(
-                    {"error": "this legacy failure has no replayable work item"},
-                    status=status.HTTP_409_CONFLICT,
-                )
-            work_item = failure.work_item
-            if work_item.status != IngestionWorkStatus.DEAD:
-                return Response(
-                    {"error": "work item is not dead-lettered"},
-                    status=status.HTTP_409_CONFLICT,
-                )
+                stage_task = REPLAYABLE_STAGE_TASKS.get(failure.task_name)
+                stage_args = failure.args_json.get("args") or []
+                stage_kwargs = failure.args_json.get("kwargs") or {}
+                if stage_task is None or not isinstance(stage_args, list) or not isinstance(
+                    stage_kwargs, dict
+                ):
+                    return Response(
+                        {"error": "this failure has no replayable work item"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+            else:
+                work_item = failure.work_item
+                if work_item.status != IngestionWorkStatus.DEAD:
+                    return Response(
+                        {"error": "work item is not dead-lettered"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
 
-            work_item.status = IngestionWorkStatus.PENDING
-            work_item.attempt_count = 0
-            work_item.available_at = timezone.now()
-            work_item.lease_expires_at = None
-            work_item.celery_task_id = ""
-            work_item.dispatch_token = ""
-            work_item.last_error = ""
-            work_item.completed_at = None
-            work_item.save(
-                update_fields=[
-                    "status",
-                    "attempt_count",
-                    "available_at",
-                    "lease_expires_at",
-                    "celery_task_id",
-                    "dispatch_token",
-                    "last_error",
-                    "completed_at",
-                    "updated_at",
-                ]
-            )
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.attempt_count = 0
+                work_item.available_at = timezone.now()
+                work_item.lease_expires_at = None
+                work_item.celery_task_id = ""
+                work_item.dispatch_token = ""
+                work_item.last_error = ""
+                work_item.completed_at = None
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "attempt_count",
+                        "available_at",
+                        "lease_expires_at",
+                        "celery_task_id",
+                        "dispatch_token",
+                        "last_error",
+                        "completed_at",
+                        "updated_at",
+                    ]
+                )
+                failure.replay_count += 1
+                failure.last_replayed_at = timezone.now()
+                failure.save(update_fields=["replay_count", "last_replayed_at"])
+
+        if stage_task is not None:
+            try:
+                result = stage_task.apply_async(args=stage_args, kwargs=stage_kwargs)
+            except Exception as exc:
+                return Response(
+                    {"error": f"unable to enqueue replay: {exc}"},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             failure.replay_count += 1
             failure.last_replayed_at = timezone.now()
-            failure.save(update_fields=["replay_count", "last_replayed_at"])
+            failure.resolved_at = timezone.now()
+            failure.save(
+                update_fields=["replay_count", "last_replayed_at", "resolved_at"]
+            )
+            return Response(
+                {
+                    "id": failure.id,
+                    "task_id": result.id,
+                    "task_name": failure.task_name,
+                    "status": "requeued",
+                    "replay_count": failure.replay_count,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
 
         try:
             dispatch_ingestion_work.delay()

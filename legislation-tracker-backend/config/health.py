@@ -1,5 +1,6 @@
 """Small, dependency-aware health checks for container and extension clients."""
 import uuid
+from pathlib import Path
 
 from django.core.cache import cache
 from django.core.files.storage import default_storage
@@ -25,9 +26,21 @@ def check_cache():
 
 
 def check_storage():
-    # A read-only probe confirms the configured storage connection without
-    # leaving a health-check object in the documents bucket.
-    default_storage.exists("healthcheck/.probe")
+    """Verify the backing bucket or local storage root, not a missing object."""
+    connection = getattr(default_storage, "connection", None)
+    bucket_name = getattr(default_storage, "bucket_name", None)
+    client = getattr(getattr(connection, "meta", None), "client", None)
+    if client is not None and bucket_name:
+        client.head_bucket(Bucket=bucket_name)
+        return
+
+    location = getattr(default_storage, "location", None)
+    if location:
+        if not Path(location).is_dir():
+            raise RuntimeError("local document storage directory is unavailable")
+        return
+
+    raise RuntimeError("storage backend does not support a readiness probe")
 
 
 def live(request):

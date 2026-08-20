@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
-from apps.accounts.models import TrackedTopic
+from apps.accounts.models import TrackedTopic, UserPreference
 from apps.legislation.models import Bill, BillTopic, Topic
 
 
@@ -194,6 +194,20 @@ def test_generic_preferences_endpoint_rejects_topic_rows():
         "error": "Use the topic tracking endpoints to follow topics."
     }
     assert not TrackedTopic.objects.filter(user=user, topic=topic).exists()
+
+
+@pytest.mark.django_db
+def test_preferences_collection_returns_non_tracking_preferences():
+    user = make_user("preferences-list@example.com")
+    client = authenticated_client(user)
+    UserPreference.objects.create(user=user, state="NY", chamber="house")
+
+    response = client.get("/api/preferences/")
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {"id": UserPreference.objects.get(user=user).id, "state": "NY", "chamber": "house"}
+    ]
 
 
 @pytest.mark.django_db

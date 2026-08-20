@@ -84,11 +84,7 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
     serializer_class = UserPreferenceSerializer
 
     def get_queryset(self):
-        return (
-            UserPreference.objects.filter(user=self.request.user)
-            .select_related("topic")
-            .order_by("id")
-        )
+        return UserPreference.objects.filter(user=self.request.user).order_by("id")
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

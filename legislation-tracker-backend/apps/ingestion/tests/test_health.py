@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 from django.conf import settings
 from rest_framework.test import APIClient
 
@@ -38,6 +39,22 @@ def test_readiness_endpoint_is_unavailable_when_a_dependency_fails(monkeypatch):
         "status": "unavailable",
         "checks": {"database": "ok", "cache": "error", "storage": "ok"},
     }
+
+
+def test_storage_check_raises_when_the_bucket_probe_fails(monkeypatch):
+    class Client:
+        def head_bucket(self, **kwargs):
+            raise RuntimeError("bucket is unavailable")
+
+    storage = SimpleNamespace(
+        bucket_name="documents",
+        connection=SimpleNamespace(meta=SimpleNamespace(client=Client())),
+        exists=lambda name: False,
+    )
+    monkeypatch.setattr(health, "default_storage", storage)
+
+    with pytest.raises(RuntimeError, match="bucket is unavailable"):
+        health.check_storage()
 
 
 def test_cors_does_not_trust_every_chrome_extension_by_default():

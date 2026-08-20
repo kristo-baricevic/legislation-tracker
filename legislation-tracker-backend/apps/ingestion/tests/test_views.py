@@ -136,7 +136,7 @@ def test_sync_representatives_endpoint_enqueues_roster_sync_for_staff_user(monke
 
     response = authenticated_client(is_staff=True).post(
         "/api/ingestion/sync-representatives/",
-        {"congress": 118},
+        {"congress": 119},
         format="json",
     )
 
@@ -144,9 +144,27 @@ def test_sync_representatives_endpoint_enqueues_roster_sync_for_staff_user(monke
     assert response.json() == {
         "task_id": "task-123",
         "task_name": "sync_representatives",
-        "congress": 118,
+        "congress": 119,
     }
-    assert calls == [{"congress": 118}]
+    assert calls == [{"congress": 119}]
+
+
+@pytest.mark.django_db
+def test_sync_representatives_endpoint_rejects_a_historical_congress(monkeypatch):
+    monkeypatch.setattr(
+        views.sync_representatives,
+        "delay",
+        lambda **kwargs: pytest.fail("historical roster must not be queued"),
+    )
+
+    response = authenticated_client(is_staff=True).post(
+        "/api/ingestion/sync-representatives/",
+        {"congress": 118},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "congress must be the current Congress (119)"}
 
 
 @pytest.mark.django_db
@@ -232,6 +250,46 @@ def test_staff_can_replay_dead_lettered_ingestion_work(monkeypatch):
     assert failure.replay_count == 1
     assert failure.last_replayed_at is not None
     assert calls == [True]
+
+
+@pytest.mark.django_db
+def test_staff_can_replay_a_dead_lettered_document_stage(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 43",
+        title="Document replay bill",
+        status="Introduced",
+    )
+    failure = IngestionTaskFailure.objects.create(
+        task_id="task-document-43",
+        task_name="apps.ingestion.tasks.process_bill_versions",
+        bill_id=bill.id,
+        args_json={"args": [bill.id], "kwargs": {}},
+        error_message="temporary Congress failure",
+    )
+    calls = []
+    monkeypatch.setattr(
+        views.process_bill_versions,
+        "apply_async",
+        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        raising=False,
+    )
+
+    listed = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
+    replayed = authenticated_client("replay-operator@example.com", is_staff=True).post(
+        f"/api/ingestion/failures/{failure.id}/replay/",
+        {},
+        format="json",
+    )
+
+    failure.refresh_from_db()
+    assert listed.status_code == 200
+    assert listed.json()["results"][0]["id"] == failure.id
+    assert replayed.status_code == 202
+    assert replayed.json()["task_name"] == "apps.ingestion.tasks.process_bill_versions"
+    assert failure.resolved_at is not None
+    assert calls == [([bill.id], {})]
 
 
 @pytest.mark.django_db

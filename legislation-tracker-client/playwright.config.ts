@@ -12,10 +12,22 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
-  webServer: {
-    command: "pnpm exec next dev --hostname 127.0.0.1 --port 3100",
-    url: "http://127.0.0.1:3100",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "cd ../legislation-tracker-backend && bash scripts/start-e2e-api.sh",
+      url: "http://127.0.0.1:8000/api/topics/",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "pnpm exec next dev --hostname 127.0.0.1 --port 3100",
+      url: "http://127.0.0.1:3100",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_API_URL: "http://127.0.0.1:8000",
+      },
+    },
+  ],
 });

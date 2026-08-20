@@ -49,6 +49,7 @@ CURSOR_OVERLAP = timedelta(minutes=5)
 WORK_LEASE_DURATION = timedelta(minutes=10)
 MAX_INGESTION_WORK_ATTEMPTS = 5
 UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
+CURRENT_CONGRESS = 119
 
 # Bill key format: "119-hr-1234" -> congress, bill_type, bill_number
 def parse_bill_key(bill_key):
@@ -264,6 +265,10 @@ def _member_profile(summary, detail):
 @shared_task
 def sync_representatives(congress=119):
     """Synchronize the full current member roster without retiring on partial pulls."""
+    if congress != CURRENT_CONGRESS:
+        raise ValueError(
+            f"Representative roster sync only supports the current Congress ({CURRENT_CONGRESS})"
+        )
     limit = 250
     offset = 0
     summaries = []
@@ -972,7 +977,13 @@ def process_bill_votes(self, bill_id):
         roll = ref.get("rollNumber") or ref.get("roll_number")
         if roll is None:
             continue
-        vote_data = vote_detail(congress, chamber, roll)
+        vote_data = vote_detail(
+            congress,
+            chamber,
+            roll,
+            session_number=ref.get("sessionNumber") or ref.get("session_number"),
+            source_url=ref.get("url"),
+        )
         vote_date = vote_data.get("date") or vote_data.get("voteDate")
         if isinstance(vote_date, str):
             try:
