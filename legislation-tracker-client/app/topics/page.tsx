@@ -4,11 +4,11 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   getTopics,
-  getFollowedTopics,
-  followTopic,
-  unfollowTopic,
+  getTrackedTopics,
   isLoggedIn,
+  trackTopic,
   type TopicItem,
+  untrackTopic,
 } from "@/lib/api";
 
 export default function TopicsPage() {
@@ -17,6 +17,7 @@ export default function TopicsPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   useEffect(() => {
     const authed = isLoggedIn();
@@ -27,11 +28,11 @@ export default function TopicsPage() {
         const [allTopics, followed] = await Promise.all([
           getTopics(),
           authed
-            ? getFollowedTopics().catch(() => ({ topic_ids: [] }))
-            : Promise.resolve({ topic_ids: [] }),
+            ? getTrackedTopics().catch(() => [])
+            : Promise.resolve([]),
         ]);
         setTopics(allTopics);
-        setFollowedIds(new Set(followed.topic_ids));
+        setFollowedIds(new Set(followed.map((row) => row.topic.id)));
       } catch {
         // topics endpoint is public so this is unlikely
       } finally {
@@ -44,20 +45,23 @@ export default function TopicsPage() {
   const handleToggle = async (topicId: number) => {
     if (busy !== null) return;
     setBusy(topicId);
+    setTrackingError(null);
     try {
       if (followedIds.has(topicId)) {
-        await unfollowTopic(topicId);
+        await untrackTopic(topicId);
         setFollowedIds((prev) => {
           const next = new Set(prev);
           next.delete(topicId);
           return next;
         });
       } else {
-        await followTopic(topicId);
+        await trackTopic(topicId);
         setFollowedIds((prev) => new Set(prev).add(topicId));
       }
-    } catch {
-      // silently fail
+    } catch (error) {
+      setTrackingError(
+        error instanceof Error ? error.message : "Failed to update tracked topic",
+      );
     } finally {
       setBusy(null);
     }
@@ -82,6 +86,15 @@ export default function TopicsPage() {
           ? " Click to follow or unfollow topics you care about — followed topics appear first."
           : " Log in to follow topics and get personalized updates."}
       </p>
+
+      {trackingError && (
+        <p
+          role="alert"
+          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-mono text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+        >
+          {trackingError}
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[...topics]

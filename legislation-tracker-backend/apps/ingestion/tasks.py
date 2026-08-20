@@ -3,7 +3,8 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 """
 import hashlib
 import logging
-from datetime import datetime, timezone as dt_timezone
+import uuid
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 import requests
 from django.utils import timezone
@@ -17,25 +18,73 @@ from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion.congress_client import (
     CongressAPIError,
+    bill_actions,
     bill_detail,
     bill_list,
     bill_text_list,
+    member_detail,
+    member_list,
+    state_code,
     vote_detail,
 )
 from apps.ingestion.document_download import (
+    RetryableDocumentStorageError,
     build_object_key,
     download_url,
     extract_text_from_pdf,
     extract_text_from_xml_or_html,
     guess_extension,
+    retryable_storage_error,
     sha256_hex,
     upload_and_metadata,
 )
-from apps.ingestion.models import IngestionState, IngestionTaskFailure
+from apps.ingestion.models import (
+    IngestionState,
+    IngestionTaskFailure,
+    IngestionWorkItem,
+    IngestionWorkStatus,
+)
+from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
-from apps.legislation.tasks import generate_contract
 
 logger = logging.getLogger(__name__)
+
+CURSOR_OVERLAP = timedelta(minutes=5)
+TRACKED_REFRESH_INTERVAL = timedelta(minutes=5)
+WORK_LEASE_DURATION = timedelta(minutes=10)
+MAX_INGESTION_WORK_ATTEMPTS = 5
+UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
+CURRENT_CONGRESS = 119
+
+WORK_KIND_BILL = "bill"
+WORK_KIND_BILL_VERSIONS = "bill_versions"
+WORK_KIND_BILL_VOTES = "bill_votes"
+WORK_KIND_DOCUMENT_DOWNLOAD = "document_download"
+
+
+def _queue_bill_stage(bill, kind, *, source_updated_at=None):
+    return enqueue_ingestion_work(
+        kind=kind,
+        dedupe_key=str(bill.id),
+        source_updated_at=source_updated_at or bill.updated_at or timezone.now(),
+        payload_json={"bill_id": bill.id},
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
+
+
+def _queue_document_download(document):
+    source_fingerprint = hashlib.sha256(
+        (document.source_url or "").encode("utf-8")
+    ).hexdigest()
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_DOCUMENT_DOWNLOAD,
+        dedupe_key=f"{document.id}:{source_fingerprint}",
+        source_updated_at=document.created_at or timezone.now(),
+        payload_json={"document_id": document.id},
+        jurisdiction=document.bill.jurisdiction,
+        congress=document.bill.session,
+    )
 
 # Bill key format: "119-hr-1234" -> congress, bill_type, bill_number
 def parse_bill_key(bill_key):
@@ -103,12 +152,23 @@ def format_bill_number(bill_type, bill_number):
     return f"{t} {bill_number}"
 
 
-def compute_metadata_hash(status, title, summary, last_action_at):
+def compute_metadata_hash(
+    status,
+    title,
+    summary,
+    last_action_at,
+    introduced_at=None,
+    sponsor_id=None,
+    source_api_id=None,
+):
     raw = "|".join([
         (status or "").strip(),
         (title or "").strip(),
-        (summary or "").strip()[:2000],
+        (summary or "").strip(),
         str(last_action_at or ""),
+        str(introduced_at or ""),
+        str(sponsor_id or ""),
+        (source_api_id or "").strip(),
     ])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -133,10 +193,18 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
     if not bioguide_id:
         return None
     name = sponsor_blob.get("fullName") or sponsor_blob.get("name") or ""
-    state = (sponsor_blob.get("state") or "")[:2]
-    party = (sponsor_blob.get("party") or "")[:50]
+    raw_state = sponsor_blob.get("state")
+    state = (raw_state or "")[:2]
+    raw_party = sponsor_blob.get("party")
+    party = (raw_party or "")[:50]
     chamber = _infer_chamber(sponsor_blob)
-    district = str(sponsor_blob.get("district") or "")[:10] or None
+    raw_district = sponsor_blob.get("district")
+    district = str(raw_district or "")[:10] or None
+    chamber_is_supplied = bool(
+        sponsor_blob.get("chamber")
+        or name.startswith(("Sen.", "Sen ", "Rep.", "Rep "))
+        or raw_district is not None
+    )
     rep, created = Representative.objects.get_or_create(
         bioguide_id=bioguide_id,
         defaults={
@@ -147,16 +215,174 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
             "district": district,
         },
     )
-    if not created and rep.chamber != chamber:
-        rep.chamber = chamber
-        rep.save(update_fields=["chamber"])
+    if not created:
+        next_chamber = chamber if chamber_is_supplied else rep.chamber
+        next_district = (
+            district
+            if raw_district is not None or next_chamber == "senate"
+            else rep.district
+        )
+        updated_fields = []
+        for field, value in {
+            "name": name or rep.name,
+            "chamber": next_chamber,
+            "party": party if raw_party is not None else rep.party,
+            "state": state if raw_state is not None else rep.state,
+            "district": next_district,
+        }.items():
+            if getattr(rep, field) != value:
+                setattr(rep, field, value)
+                updated_fields.append(field)
+        if updated_fields:
+            rep.save(update_fields=updated_fields)
     return rep
+
+
+def _member_chamber(member):
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    if isinstance(terms, list):
+        for term in reversed(terms):
+            if isinstance(term, dict) and term.get("chamber"):
+                return str(term["chamber"]).lower()
+    chamber = member.get("chamber") or ""
+    return str(chamber).lower() if chamber else "house"
+
+
+def _member_party(member):
+    party = member.get("partyName") or member.get("party")
+    if party:
+        return str(party)[:50]
+    history = member.get("partyHistory") or []
+    if isinstance(history, list):
+        for entry in reversed(history):
+            if isinstance(entry, dict) and entry.get("partyName"):
+                return str(entry["partyName"])[:50]
+    return ""
+
+
+def _member_state_code(member):
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    if isinstance(terms, list):
+        for term in reversed(terms):
+            if not isinstance(term, dict):
+                continue
+            term_state_code = term.get("stateCode")
+            if term_state_code:
+                return state_code(term_state_code)
+    return state_code(member.get("state"))
+
+
+def _member_profile(summary, detail):
+    member = dict(summary)
+    member.update(detail or {})
+    bioguide_id = member.get("bioguideId") or member.get("bioguide_id")
+    if not bioguide_id:
+        raise CongressAPIError("Congress member payload is missing bioguideId")
+    first_name = str(member.get("firstName") or "")[:255]
+    last_name = str(member.get("lastName") or member.get("lastname") or "")[:255]
+    name = str(
+        member.get("directOrderName")
+        or member.get("fullName")
+        or member.get("name")
+        or " ".join(part for part in (first_name, last_name) if part)
+        or bioguide_id
+    )[:255]
+    depiction = member.get("depiction") or {}
+    image_url = depiction.get("imageUrl") if isinstance(depiction, dict) else None
+    district = member.get("district")
+    chamber = _member_chamber(member)
+    return {
+        "bioguide_id": str(bioguide_id)[:20],
+        "name": name,
+        "first_name": first_name,
+        "last_name": last_name,
+        "chamber": chamber if chamber in ("house", "senate") else "house",
+        "party": _member_party(member),
+        "state": _member_state_code(member),
+        "district": str(district)[:10] if district not in (None, "") else None,
+        "official_website_url": member.get("officialWebsiteUrl") or None,
+        "image_url": image_url or None,
+        "source_api_url": member.get("url") or None,
+        "is_current": bool(member.get("currentMember", True)),
+    }
+
+
+@shared_task(
+    autoretry_for=(CongressAPIError,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=2,
+)
+def sync_representatives(congress=119):
+    """Synchronize the full current member roster without retiring on partial pulls."""
+    if congress != CURRENT_CONGRESS:
+        raise ValueError(
+            f"Representative roster sync only supports the current Congress ({CURRENT_CONGRESS})"
+        )
+    limit = 250
+    offset = 0
+    summaries = []
+    while True:
+        page = member_list(
+            congress,
+            current_member=True,
+            limit=limit,
+            offset=offset,
+        )
+        summaries.extend(page)
+        if len(page) < limit:
+            break
+        offset += limit
+
+    if not summaries:
+        raise CongressAPIError("Congress member roster was empty; refusing to retire members")
+
+    profiles = []
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            raise CongressAPIError("Congress member list contained an invalid member payload")
+        bioguide_id = summary.get("bioguideId") or summary.get("bioguide_id")
+        if not bioguide_id:
+            raise CongressAPIError("Congress member list entry is missing bioguideId")
+        profiles.append(_member_profile(summary, member_detail(bioguide_id)))
+
+    now = timezone.now()
+    created_count = 0
+    updated_count = 0
+    seen_ids = {profile["bioguide_id"] for profile in profiles}
+    with transaction.atomic():
+        for profile in profiles:
+            bioguide_id = profile.pop("bioguide_id")
+            profile["last_seen_at"] = now
+            _, created = Representative.objects.update_or_create(
+                bioguide_id=bioguide_id,
+                defaults=profile,
+            )
+            created_count += int(created)
+            updated_count += int(not created)
+        Representative.objects.filter(is_current=True).exclude(
+            bioguide_id__in=seen_ids
+        ).update(is_current=False)
+
+    return {
+        "congress": congress,
+        "members": len(profiles),
+        "created": created_count,
+        "updated": updated_count,
+    }
 
 
 @shared_task
 def poll_congress(jurisdiction="federal", congress=119):
     """
-    Fetch bill list from Congress API, update IngestionState, enqueue process_bill per bill.
+    Discover updated Congress bills and persist them before advancing the cursor.
+
+    The worker dispatcher is intentionally separate: a temporary broker outage
+    cannot lose a discovered bill or force the cursor to stay behind forever.
     """
     logger.info("poll_congress: starting jurisdiction=%s congress=%s", jurisdiction, congress)
     state, _ = IngestionState.objects.get_or_create(
@@ -166,12 +392,14 @@ def poll_congress(jurisdiction="federal", congress=119):
     )
     from_date_time = None
     if state.last_bill_update_seen_at:
-        from_date_time = state.last_bill_update_seen_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        from_date_time = (
+            _ensure_utc_aware(state.last_bill_update_seen_at) - CURSOR_OVERLAP
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         logger.info("poll_congress: incremental from_date_time=%s", from_date_time)
     else:
         logger.info("poll_congress: full fetch (no last_bill_update_seen_at)")
     bill_types = ["hr", "s"]
-    all_bill_keys = set()
+    discovered_bills = {}
     latest_update = _ensure_utc_aware(state.last_bill_update_seen_at)
     page_limit = 250
     for bt in bill_types:
@@ -209,31 +437,354 @@ def poll_congress(jurisdiction="federal", congress=119):
                 )
             )
             if offset > 0 and previous_page_keys == page_keys:
-                logger.warning(
-                    "poll_congress: bill_type=%s offset=%s repeated same page (API may not support offset); stopping pagination",
-                    bt,
-                    offset,
+                raise CongressAPIError(
+                    f"poll_congress: bill_type={bt} offset={offset} repeated same page "
+                    "(API may not support offset); refusing to advance cursor"
                 )
-                break
             previous_page_keys = page_keys
             for b in items:
                 key = bill_key(b["congress"], b["type"], b["number"])
-                all_bill_keys.add(key)
                 ud = _parse_congress_update_datetime(b.get("updateDate"))
+                source_updated_at = ud or UNKNOWN_SOURCE_UPDATED_AT
+                prior_update = discovered_bills.get(key)
+                if prior_update is None or source_updated_at > prior_update:
+                    discovered_bills[key] = source_updated_at
                 if ud and (latest_update is None or ud > latest_update):
                     latest_update = ud
             if len(items) < page_limit:
                 break
             offset += page_limit
     now = timezone.now()
-    state.last_polled_at = now
-    if latest_update:
-        state.last_bill_update_seen_at = latest_update
-    state.save(update_fields=["last_polled_at", "last_bill_update_seen_at"])
-    for key in all_bill_keys:
-        process_bill.apply_async(args=[key])
-    logger.info("poll_congress: done enqueued=%s last_bill_update_seen_at=%s", len(all_bill_keys), latest_update)
-    return {"enqueued": len(all_bill_keys)}
+    created_count = 0
+    with transaction.atomic():
+        # Concurrent polls may replay the same overlap. The uniqueness key makes
+        # that safe while this lock prevents either poll from moving the cursor
+        # backward after the other has committed its durable discoveries.
+        state = IngestionState.objects.select_for_update().get(pk=state.pk)
+        for key, source_updated_at in discovered_bills.items():
+            _, created = IngestionWorkItem.objects.get_or_create(
+                kind="bill",
+                dedupe_key=key,
+                source_updated_at=source_updated_at,
+                defaults={
+                    "jurisdiction": jurisdiction,
+                    "congress": congress,
+                    "payload_json": {"bill_key": key},
+                    "available_at": now,
+                },
+            )
+            created_count += int(created)
+        state.last_polled_at = now
+        if latest_update and (
+            state.last_bill_update_seen_at is None
+            or latest_update > _ensure_utc_aware(state.last_bill_update_seen_at)
+        ):
+            state.last_bill_update_seen_at = latest_update
+        state.save(update_fields=["last_polled_at", "last_bill_update_seen_at"])
+
+    try:
+        dispatch_ingestion_work.delay()
+    except Exception:
+        # Beat will pick up pending rows even if the broker is unavailable now.
+        logger.exception("poll_congress: could not trigger ingestion work dispatcher")
+
+    logger.info(
+        "poll_congress: done discovered=%s created=%s last_bill_update_seen_at=%s",
+        len(discovered_bills),
+        created_count,
+        latest_update,
+    )
+    return {"discovered": len(discovered_bills), "created": created_count}
+
+
+def _retry_delay(attempt_count):
+    """Bound exponential delay for persistent ingestion retries."""
+    return timedelta(seconds=min(60 * (2 ** max(attempt_count - 1, 0)), 3600))
+
+
+def _tracked_refresh_bucket(now):
+    interval_seconds = int(TRACKED_REFRESH_INTERVAL.total_seconds())
+    timestamp = int(_ensure_utc_aware(now).timestamp())
+    return datetime.fromtimestamp(
+        timestamp - (timestamp % interval_seconds),
+        tz=dt_timezone.utc,
+    )
+
+
+@shared_task
+def dispatch_ingestion_work(batch_size=100):
+    """Lease pending durable work and submit it to Celery without losing rows."""
+    now = timezone.now()
+    leased_items = []
+    with transaction.atomic():
+        candidates = list(
+            IngestionWorkItem.objects.select_for_update(skip_locked=True)
+            .filter(
+                status=IngestionWorkStatus.PENDING,
+                available_at__lte=now,
+            )
+            .order_by("available_at", "id")[:batch_size]
+        )
+        for work_item in candidates:
+            work_item.status = IngestionWorkStatus.DISPATCHED
+            work_item.lease_expires_at = now + WORK_LEASE_DURATION
+            work_item.celery_task_id = ""
+            work_item.dispatch_token = uuid.uuid4().hex
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "lease_expires_at",
+                    "celery_task_id",
+                    "dispatch_token",
+                    "updated_at",
+                ]
+            )
+            leased_items.append((work_item.id, work_item.dispatch_token))
+
+    dispatched = 0
+    for work_item_id, dispatch_token in leased_items:
+        try:
+            result = process_ingestion_work_item.apply_async(
+                args=[work_item_id, dispatch_token]
+            )
+        except Exception as exc:
+            # Leave it ready for the next dispatcher pass instead of dropping it.
+            IngestionWorkItem.objects.filter(
+                pk=work_item_id,
+                status=IngestionWorkStatus.DISPATCHED,
+                dispatch_token=dispatch_token,
+            ).update(
+                status=IngestionWorkStatus.PENDING,
+                available_at=timezone.now() + timedelta(seconds=30),
+                lease_expires_at=None,
+                dispatch_token="",
+                last_error=str(exc)[:10000],
+            )
+            logger.exception(
+                "dispatch_ingestion_work: could not enqueue work_item=%s",
+                work_item_id,
+            )
+            continue
+
+        updated = IngestionWorkItem.objects.filter(
+            pk=work_item_id,
+            status=IngestionWorkStatus.DISPATCHED,
+            dispatch_token=dispatch_token,
+        ).update(celery_task_id=getattr(result, "id", "") or "")
+        dispatched += int(bool(updated))
+
+    return {"dispatched": dispatched}
+
+
+@shared_task(bind=True)
+def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
+    """Execute one durable work item and persist its terminal or retry state."""
+    now = timezone.now()
+    claimed_dispatch_token = ""
+    with transaction.atomic():
+        work_item = IngestionWorkItem.objects.select_for_update().filter(pk=work_item_id).first()
+        if work_item is None:
+            return {"work_item_id": work_item_id, "status": "missing"}
+        if work_item.status in (IngestionWorkStatus.SUCCEEDED, IngestionWorkStatus.DEAD):
+            return {"work_item_id": work_item.id, "status": work_item.status}
+        if dispatch_token and work_item.dispatch_token != dispatch_token:
+            return {"work_item_id": work_item.id, "status": "superseded"}
+        if work_item.status == IngestionWorkStatus.PROCESSING:
+            return {"work_item_id": work_item.id, "status": "processing"}
+        if work_item.status == IngestionWorkStatus.PENDING and work_item.available_at > now:
+            return {"work_item_id": work_item.id, "status": "not_ready"}
+
+        work_item.status = IngestionWorkStatus.PROCESSING
+        work_item.attempt_count += 1
+        work_item.lease_expires_at = now + WORK_LEASE_DURATION
+        work_item.celery_task_id = self.request.id or work_item.celery_task_id
+        claimed_dispatch_token = work_item.dispatch_token
+        work_item.save(
+            update_fields=[
+                "status",
+                "attempt_count",
+                "lease_expires_at",
+                "celery_task_id",
+                "updated_at",
+            ]
+        )
+
+    try:
+        _process_durable_work(work_item)
+    except Exception as exc:
+        error_message = str(exc)[:10000]
+        with transaction.atomic():
+            work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+            if (
+                work_item.status != IngestionWorkStatus.PROCESSING
+                or work_item.dispatch_token != claimed_dispatch_token
+            ):
+                return {"work_item_id": work_item.id, "status": "superseded"}
+            if work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS:
+                work_item.status = IngestionWorkStatus.DEAD
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.last_error = error_message
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                _record_task_failure(
+                    self.request.id,
+                    "process_ingestion_work_item",
+                    (work_item_id,),
+                    {},
+                    None,
+                    exc,
+                    work_item=work_item,
+                )
+                return {"work_item_id": work_item.id, "status": "dead"}
+
+            work_item.status = IngestionWorkStatus.PENDING
+            work_item.available_at = timezone.now() + _retry_delay(work_item.attempt_count)
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.last_error = error_message
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "available_at",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+        logger.warning(
+            "process_ingestion_work_item: retrying work_item=%s attempt=%s: %s",
+            work_item_id,
+            work_item.attempt_count,
+            exc,
+        )
+        return {"work_item_id": work_item_id, "status": "retrying"}
+
+    with transaction.atomic():
+        work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+        if (
+            work_item.status != IngestionWorkStatus.PROCESSING
+            or work_item.dispatch_token != claimed_dispatch_token
+        ):
+            return {"work_item_id": work_item.id, "status": "superseded"}
+        work_item.status = IngestionWorkStatus.SUCCEEDED
+        work_item.lease_expires_at = None
+        work_item.dispatch_token = ""
+        work_item.completed_at = timezone.now()
+        work_item.last_error = ""
+        work_item.save(
+            update_fields=[
+                "status",
+                "lease_expires_at",
+                "dispatch_token",
+                "completed_at",
+                "last_error",
+                "updated_at",
+            ]
+        )
+    return {"work_item_id": work_item_id, "status": "succeeded"}
+
+
+def _process_durable_work(work_item):
+    """Run one durable pipeline stage without publishing another broker message."""
+    payload = work_item.payload_json
+    if work_item.kind == WORK_KIND_BILL:
+        bill_key_str = payload.get("bill_key")
+        if not bill_key_str:
+            raise ValueError("Bill ingestion work is missing payload_json.bill_key")
+        return _process_bill_impl(bill_key_str)
+    if work_item.kind == WORK_KIND_BILL_VERSIONS:
+        return _process_bill_versions_impl(payload["bill_id"])
+    if work_item.kind == WORK_KIND_BILL_VOTES:
+        return _process_bill_votes_impl(payload["bill_id"])
+    if work_item.kind == WORK_KIND_DOCUMENT_DOWNLOAD:
+        return _download_document_impl(payload["document_id"])
+
+    # Import lazily to avoid loading the legislation task module while Celery
+    # discovers ingestion tasks.
+    from apps.legislation import tasks as legislation_tasks
+
+    if work_item.kind == legislation_tasks.WORK_KIND_DOCUMENT_CONTRACT:
+        return legislation_tasks._generate_contract_impl(payload["document_id"])
+    if work_item.kind == legislation_tasks.WORK_KIND_METADATA_CONTRACT:
+        return legislation_tasks._generate_contract_for_bill_impl(payload["bill_id"])
+    if work_item.kind == legislation_tasks.WORK_KIND_TOPIC_UPDATE:
+        return legislation_tasks._update_topics_impl(
+            contract_id=payload.get("contract_id"),
+            bill_id=payload.get("bill_id"),
+        )
+    if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
+        return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
+    raise ValueError(f"Unsupported ingestion work kind: {work_item.kind}")
+
+
+@shared_task
+def recover_stale_ingestion_work():
+    """Release worker leases left behind by a crash or a broker delivery loss."""
+    now = timezone.now()
+    with transaction.atomic():
+        stale_items = list(
+            IngestionWorkItem.objects.select_for_update().filter(
+                status__in=[IngestionWorkStatus.DISPATCHED, IngestionWorkStatus.PROCESSING],
+                lease_expires_at__lt=now,
+            )
+        )
+        exhausted_items = [
+            item
+            for item in stale_items
+            if item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
+        ]
+        for work_item in exhausted_items:
+            error_message = (
+                "Ingestion work lease expired after exhausting the retry budget"
+            )
+            work_item.status = IngestionWorkStatus.DEAD
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.last_error = error_message
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+            _record_task_failure(
+                work_item.celery_task_id,
+                "process_ingestion_work_item",
+                (work_item.id,),
+                {},
+                None,
+                RuntimeError(error_message),
+                work_item=work_item,
+            )
+
+        recovered = len(stale_items) - len(exhausted_items)
+        if recovered:
+            IngestionWorkItem.objects.filter(
+                pk__in=[
+                    item.id
+                    for item in stale_items
+                    if item.attempt_count < MAX_INGESTION_WORK_ATTEMPTS
+                ]
+            ).update(
+                status=IngestionWorkStatus.PENDING,
+                available_at=now,
+                lease_expires_at=None,
+                celery_task_id="",
+                dispatch_token="",
+            )
+    return {"recovered": recovered}
 
 
 @shared_task
@@ -257,27 +808,48 @@ def poll_tracked_bills():
             | Q(bill_topics__topic_id__in=topic_ids)
             | Q(sponsor_id__in=representative_ids)
         )
-        .only("id", "session", "bill_number")
+        .only("id", "jurisdiction", "session", "bill_number")
         .order_by("id")
         .distinct()
     )
-    keys = []
-    for bill in bills:
-        key = bill_to_bill_key(bill)
-        if key:
-            keys.append(key)
+    now = timezone.now()
+    source_updated_at = _tracked_refresh_bucket(now)
+    created_count = 0
+    with transaction.atomic():
+        for bill in bills:
+            key = bill_to_bill_key(bill)
+            if not key:
+                continue
+            _, created = IngestionWorkItem.objects.get_or_create(
+                kind="bill",
+                dedupe_key=key,
+                source_updated_at=source_updated_at,
+                defaults={
+                    "jurisdiction": bill.jurisdiction,
+                    "congress": bill.session,
+                    "payload_json": {"bill_key": key},
+                    "available_at": now,
+                },
+            )
+            created_count += int(created)
 
-    for key in sorted(set(keys)):
-        process_bill.apply_async(args=[key])
+    if created_count:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception(
+                "poll_tracked_bills: could not trigger ingestion work dispatcher"
+            )
 
-    logger.info("poll_tracked_bills: enqueued=%s", len(set(keys)))
-    return {"enqueued": len(set(keys))}
+    logger.info("poll_tracked_bills: enqueued=%s", created_count)
+    return {"enqueued": created_count}
 
 
-def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc):
+def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc, work_item=None):
     try:
         IngestionTaskFailure.objects.create(
             task_id=task_id or "",
+            work_item=work_item,
             bill_id=bill_id,
             task_name=task_name or "",
             args_json={"args": list(args), "kwargs": kwargs},
@@ -304,7 +876,7 @@ def process_bill(self, bill_key_str):
         return _process_bill_impl(bill_key_str)
     except Exception as exc:
         logger.exception("process_bill failed: bill_key=%s retries=%s: %s", bill_key_str, self.request.retries, exc)
-        if self.request.retries >= self.max_retries:
+        if not isinstance(exc, CongressAPIError) or self.request.retries >= self.max_retries:
             if isinstance(bill_key_str, str):
                 try:
                     congress, bill_type, bill_number = parse_bill_key(bill_key_str)
@@ -359,7 +931,16 @@ def _process_bill_impl(bill_key_str):
                 last_action_at = timezone.make_aware(last_action_at)
         except Exception:
             pass
-    metadata_hash = compute_metadata_hash(status, title, summary, last_action_at)
+    source_api_id = str(detail.get("url") or bill_key_str)
+    metadata_hash = compute_metadata_hash(
+        status,
+        title,
+        summary,
+        last_action_at,
+        introduced_at,
+        sponsor.id if sponsor else None,
+        source_api_id,
+    )
     with transaction.atomic():
         bill, created = Bill.objects.get_or_create(
             session=congress,
@@ -373,7 +954,7 @@ def _process_bill_impl(bill_key_str):
                 "introduced_at": introduced_at,
                 "last_action_at": last_action_at,
                 "sponsor": sponsor,
-                "source_api_id": str(detail.get("url") or bill_key_str),
+                "source_api_id": source_api_id,
                 "metadata_hash": metadata_hash,
             },
         )
@@ -381,7 +962,9 @@ def _process_bill_impl(bill_key_str):
         if not created:
             if bill.metadata_hash == metadata_hash:
                 logger.info("process_bill: unchanged (hash match) bill_id=%s bill_key=%s", bill.id, bill_key_str)
-                # Still run document/votes pipeline if we never stored files (hash match skips the block below).
+                # Still run the document pipeline if we never stored files. Votes are
+                # refreshed independently because vote corrections can arrive without a
+                # bill metadata change.
                 needs_doc_pipeline = (
                     not bill.documents.exists()
                     or bill.documents.filter(downloaded_at__isnull=True).exists()
@@ -392,19 +975,20 @@ def _process_bill_impl(bill_key_str):
                     else ProcessingStatus.COMPLETE
                 )
                 bill.save(update_fields=["processing_status"])
-                if needs_doc_pipeline:
-                    try:
-                        process_bill_versions.apply_async(args=[bill.id])
-                        process_bill_votes.apply_async(args=[bill.id])
+                try:
+                    if needs_doc_pipeline:
+                        _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
                         logger.info(
-                            "process_bill: enqueued versions+votes (documents missing or not downloaded) bill_id=%s",
+                            "process_bill: enqueued versions (documents missing or not downloaded) bill_id=%s",
                             bill.id,
                         )
-                    except Exception:
-                        logger.exception(
-                            "process_bill: failed to enqueue versions/votes bill_id=%s",
-                            bill.id,
-                        )
+                    _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
+                except Exception:
+                    logger.exception(
+                        "process_bill: failed to enqueue versions/votes bill_id=%s",
+                        bill.id,
+                    )
+                    raise
                 return {"bill_id": bill.id, "unchanged": True}
             old_status = bill.status
             old_title = bill.title
@@ -415,6 +999,7 @@ def _process_bill_impl(bill_key_str):
             bill.introduced_at = introduced_at if introduced_at is not None else bill.introduced_at
             bill.last_action_at = last_action_at if last_action_at is not None else bill.last_action_at
             bill.sponsor = sponsor if sponsor is not None else bill.sponsor
+            bill.source_api_id = source_api_id
             bill.metadata_hash = metadata_hash
             bill.save()
             ChangeLog.objects.create(
@@ -431,8 +1016,8 @@ def _process_bill_impl(bill_key_str):
                 new_value={"status": status, "title": title},
             )
     try:
-        process_bill_versions.apply_async(args=[bill.id])
-        process_bill_votes.apply_async(args=[bill.id])
+        _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
+        _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
     except Exception:
         bill.processing_status = ProcessingStatus.FAILED
         bill.save(update_fields=["processing_status"])
@@ -449,6 +1034,10 @@ def _process_bill_impl(bill_key_str):
     max_retries=2,
 )
 def process_bill_versions(self, bill_id):
+    return _process_bill_versions_impl(bill_id)
+
+
+def _process_bill_versions_impl(bill_id):
     """Fetch bill text versions, create/update BillDocument, enqueue download_document."""
     logger.info("process_bill_versions: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
@@ -475,7 +1064,10 @@ def process_bill_versions(self, bill_id):
         raise
     if not versions:
         logger.info("process_bill_versions: bill_id=%s no versions returned", bill_id)
-        return
+        from apps.legislation.tasks import enqueue_metadata_contract
+
+        enqueue_metadata_contract(bill)
+        return {"bill_id": bill_id, "versions": 0, "fallback_enqueued": True}
     # Mark one as active (e.g. last)
     for i, v in enumerate(versions):
         label = v.get("version_label") or v.get("url") or f"v{i}"
@@ -500,7 +1092,7 @@ def process_bill_versions(self, bill_id):
             or doc.downloaded_at is None
         )
         if needs_download:
-            download_document.apply_async(args=[doc.id])
+            _queue_document_download(doc)
     logger.info("process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions))
     return {"bill_id": bill_id, "versions": len(versions)}
 
@@ -517,8 +1109,14 @@ def backfill_process_bill_versions_for_all_bills(session=None):
     if session is not None:
         qs = qs.filter(session=int(session))
     enqueued = 0
+    backfill_requested_at = timezone.now()
     for bid in qs.values_list("id", flat=True):
-        process_bill_versions.apply_async(args=[bid])
+        bill = Bill.objects.get(pk=bid)
+        _queue_bill_stage(
+            bill,
+            WORK_KIND_BILL_VERSIONS,
+            source_updated_at=backfill_requested_at,
+        )
         enqueued += 1
     logger.info(
         "backfill_process_bill_versions_for_all_bills: enqueued=%s (session=%s)",
@@ -536,6 +1134,10 @@ def backfill_process_bill_versions_for_all_bills(session=None):
     max_retries=2,
 )
 def process_bill_votes(self, bill_id):
+    return _process_bill_votes_impl(bill_id)
+
+
+def _process_bill_votes_impl(bill_id):
     """Fetch vote refs from bill detail, create Vote/VoteRecord/Representative, insert ChangeLog(vote)."""
     logger.info("process_bill_votes: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
@@ -546,10 +1148,16 @@ def process_bill_votes(self, bill_id):
     bill_type = (parts[0].lower() if parts else "hr").replace("hr", "hr").replace("s", "s")
     num = parts[1] if len(parts) >= 2 else bill.bill_number.replace(" ", "")
     congress = bill.session
-    detail = bill_detail(congress, bill_type, num)
-    votes_refs = detail.get("votes") or []
-    if isinstance(votes_refs, dict):
-        votes_refs = votes_refs.get("rollCalls") or votes_refs.get("votes") or []
+    actions = bill_actions(congress, bill_type, num)
+    votes_refs = []
+    for action in actions:
+        recorded_votes = action.get("recordedVotes") or []
+        if isinstance(recorded_votes, list):
+            votes_refs.extend(
+                recorded_vote
+                for recorded_vote in recorded_votes
+                if isinstance(recorded_vote, dict)
+            )
     votes_created = 0
     for ref in votes_refs:
         if not isinstance(ref, dict):
@@ -558,9 +1166,18 @@ def process_bill_votes(self, bill_id):
         roll = ref.get("rollNumber") or ref.get("roll_number")
         if roll is None:
             continue
-        if Vote.objects.filter(bill=bill, chamber=chamber, roll_number=int(roll)).exists():
-            continue
-        vote_data = vote_detail(congress, chamber, roll)
+        raw_session_number = ref.get("sessionNumber") or ref.get("session_number")
+        try:
+            session_number = int(raw_session_number)
+        except (TypeError, ValueError):
+            raise CongressAPIError("recorded vote is missing a valid session number")
+        vote_data = vote_detail(
+            congress,
+            chamber,
+            roll,
+            session_number=session_number,
+            source_url=ref.get("url"),
+        )
         vote_date = vote_data.get("date") or vote_data.get("voteDate")
         if isinstance(vote_date, str):
             try:
@@ -572,21 +1189,74 @@ def process_bill_votes(self, bill_id):
         result = (vote_data.get("result") or vote_data.get("question") or "unknown")[:50]
         yeas = int(vote_data.get("yeas") or vote_data.get("total", {}).get("yeas") or 0)
         nays = int(vote_data.get("nays") or vote_data.get("total", {}).get("nays") or 0)
+        effective_vote_date = vote_date or timezone.now()
         with transaction.atomic():
-            vote, _ = Vote.objects.get_or_create(
-                bill=bill,
-                chamber=chamber,
-                roll_number=int(roll),
-                defaults={
-                    "vote_date": vote_date or timezone.now(),
-                    "result": result,
-                    "yeas": yeas,
-                    "nays": nays,
-                },
-            )
+            vote_lookup = {
+                "bill": bill,
+                "chamber": chamber,
+                "session_number": session_number,
+                "roll_number": int(roll),
+            }
+            vote = Vote.objects.select_for_update().filter(**vote_lookup).first()
+            vote_created = False
+            if vote is None:
+                # Pre-session-number rows remain explicitly unknown after migration.
+                # Adopt one only when the authoritative vote timestamp identifies it.
+                vote = (
+                    Vote.objects.select_for_update()
+                    .filter(
+                        bill=bill,
+                        chamber=chamber,
+                        session_number__isnull=True,
+                        roll_number=int(roll),
+                        vote_date=effective_vote_date,
+                    )
+                    .first()
+                )
+                if vote is not None:
+                    vote.session_number = session_number
+                    vote.save(update_fields=["session_number"])
+                else:
+                    vote, vote_created = Vote.objects.get_or_create(
+                        **vote_lookup,
+                        defaults={
+                            "vote_date": effective_vote_date,
+                            "result": result,
+                            "yeas": yeas,
+                            "nays": nays,
+                        },
+                    )
+            vote_updated = False
+            for field, value in {
+                "vote_date": effective_vote_date,
+                "result": result,
+                "yeas": yeas,
+                "nays": nays,
+            }.items():
+                if getattr(vote, field) != value:
+                    setattr(vote, field, value)
+                    vote_updated = True
+            if vote_updated:
+                vote.save(update_fields=["vote_date", "result", "yeas", "nays"])
             members = vote_data.get("members") or vote_data.get("votes") or {}
             if isinstance(members, dict):
-                members = members.get("yeas", []) + members.get("nays", []) + members.get("present", [])
+                grouped_members = []
+                for group_name, position in (
+                    ("yeas", "yes"),
+                    ("ayes", "yes"),
+                    ("nays", "no"),
+                    ("noes", "no"),
+                    ("present", "present"),
+                    ("abstain", "abstain"),
+                    ("notVoting", "not_voting"),
+                ):
+                    for member in members.get(group_name, []):
+                        if isinstance(member, dict):
+                            grouped_members.append(
+                                {**member, "position": member.get("position") or member.get("vote") or position}
+                            )
+                members = grouped_members
+            records_updated = False
             for m in members if isinstance(members, list) else []:
                 if not isinstance(m, dict):
                     continue
@@ -597,39 +1267,59 @@ def process_bill_votes(self, bill_id):
                 state = (m.get("state") or "")[:2]
                 party = (m.get("party") or "")[:50]
                 chamber_m = (m.get("chamber") or chamber).lower()
-                rep, _ = Representative.objects.get_or_create(
-                    bioguide_id=bio,
-                    defaults={"name": name, "chamber": chamber_m, "party": party, "state": state},
+                rep = get_or_create_representative_from_sponsor(
+                    {
+                        "bioguideId": bio,
+                        "fullName": name,
+                        "chamber": chamber_m,
+                        "party": party,
+                        "state": state,
+                    }
                 )
                 pos = (m.get("position") or m.get("vote") or "yes").lower()[:20]
-                VoteRecord.objects.get_or_create(
+                record, record_created = VoteRecord.objects.get_or_create(
                     vote=vote,
                     representative=rep,
                     defaults={"position": pos or "yes"},
                 )
-            ChangeLog.objects.create(
-                bill=bill,
-                change_type="vote",
-                new_value={
-                    "vote_id": vote.id,
-                    "roll_number": vote.roll_number,
-                    "result": vote.result,
-                    "chamber": vote.chamber,
-                },
-            )
-            votes_created += 1
+                if not record_created and record.position != pos:
+                    record.position = pos
+                    record.save(update_fields=["position"])
+                    records_updated = True
+                records_updated = records_updated or record_created
+            if vote_created or vote_updated or records_updated:
+                ChangeLog.objects.create(
+                    bill=bill,
+                    change_type="vote",
+                    new_value={
+                        "vote_id": vote.id,
+                        "session_number": vote.session_number,
+                        "roll_number": vote.roll_number,
+                        "result": vote.result,
+                        "chamber": vote.chamber,
+                    },
+                )
+                votes_created += 1
     logger.info("process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created)
     return {"bill_id": bill_id, "votes_created": votes_created}
 
 
 @shared_task(
     bind=True,
-    autoretry_for=(requests.RequestException, OSError),
+    autoretry_for=(
+        requests.RequestException,
+        OSError,
+        RetryableDocumentStorageError,
+    ),
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=3,
 )
 def download_document(self, document_id):
+    return _download_document_impl(document_id)
+
+
+def _download_document_impl(document_id):
     """
     Download file from BillDocument.source_url, upload to storage (MinIO/S3 or local_media),
     set content_hash, extracted_text when PDF/XML/HTML, enqueue generate_contract.
@@ -658,7 +1348,9 @@ def download_document(self, document_id):
         )
         doc.downloaded_at = timezone.now()
         doc.save(update_fields=["downloaded_at"])
-        generate_contract.apply_async(args=[document_id])
+        from apps.legislation.tasks import enqueue_document_contract
+
+        enqueue_document_contract(doc)
         return {"document_id": document_id, "unchanged": True}
 
     ext = ""
@@ -678,7 +1370,13 @@ def download_document(self, document_id):
         ext,
     )
 
-    saved_key, size = upload_and_metadata(object_key, data, content_type)
+    try:
+        saved_key, size = upload_and_metadata(object_key, data, content_type)
+    except Exception as exc:
+        retryable_error = retryable_storage_error(exc)
+        if retryable_error:
+            raise retryable_error from exc
+        raise
 
     extracted = ""
     if content_type and "pdf" in content_type.lower():
@@ -711,5 +1409,7 @@ def download_document(self, document_id):
         saved_key,
         size,
     )
-    generate_contract.apply_async(args=[document_id])
+    from apps.legislation.tasks import enqueue_document_contract
+
+    enqueue_document_contract(doc)
     return {"document_id": document_id, "object_storage_key": saved_key, "size": size}

@@ -10,7 +10,12 @@ const {
   escapeHtml,
   formatPercent,
   getBillUrl,
+  getHealthPath,
+  getTopicTrackingPath,
   normalizeBaseUrl,
+  originPermissionForBaseUrl,
+  requestHostPermission,
+  checkApiHealth,
 } = require("../extension-utils.js");
 
 describe("extension utilities", () => {
@@ -30,6 +35,39 @@ describe("extension utilities", () => {
     assert.equal(getBillUrl("https://app.example.com/", 42), "https://app.example.com/bills/42");
   });
 
+  it("derives a Chrome host permission only for HTTP(S) API origins", () => {
+    assert.equal(
+      originPermissionForBaseUrl("https://api.example.com/v1/"),
+      "https://api.example.com/*",
+    );
+    assert.equal(
+      originPermissionForBaseUrl("http://localhost:8000"),
+      "http://localhost:8000/*",
+    );
+    assert.throws(
+      () => originPermissionForBaseUrl("javascript:alert(1)"),
+      /HTTP or HTTPS/,
+    );
+  });
+
+  it("requests the exact permission for a custom localhost API port", async () => {
+    let requestedOptions;
+    const granted = await requestHostPermission(
+      "http://localhost:18000/*",
+      {
+        request(options, callback) {
+          requestedOptions = options;
+          callback(true);
+        },
+      },
+    );
+
+    assert.equal(granted, true);
+    assert.deepEqual(requestedOptions, {
+      origins: ["http://localhost:18000/*"],
+    });
+  });
+
   it("builds JSON requests with optional bearer auth", () => {
     assert.deepEqual(buildJsonRequest("POST", { bill: 42 }, "token-123"), {
       method: "POST",
@@ -44,6 +82,37 @@ describe("extension utilities", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic_id: 5 }),
     });
+  });
+
+  it("uses the tracking collection for topic follow actions", () => {
+    assert.equal(getTopicTrackingPath(), "/api/tracking/topics/");
+  });
+
+  it("checks the deployed API health endpoint before saving a remote base URL", async () => {
+    assert.equal(getHealthPath(), "/health/");
+    const data = await checkApiHealth(
+      "https://api.example.com/",
+      async (url, init) => {
+        assert.equal(url, "https://api.example.com/health/");
+        assert.deepEqual(init, { method: "GET" });
+        return {
+          ok: true,
+          json: async () => ({ status: "ok" }),
+        };
+      },
+    );
+    assert.deepEqual(data, { status: "ok" });
+  });
+
+  it("rejects API endpoints that are reachable but not ready", async () => {
+    await assert.rejects(
+      checkApiHealth("https://api.example.com", async () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({ status: "unavailable" }),
+      })),
+      /not ready/,
+    );
   });
 
   it("escapes API-controlled text before rendering HTML", () => {

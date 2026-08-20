@@ -1,15 +1,21 @@
 import re
 from collections import Counter
 
+from django.core.files.storage import FileSystemStorage
+from django.core.files.storage import default_storage
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect
 from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .models import Bill, BillSimilarity, BillTopic, Topic
+from .models import Bill, BillContract, BillDocument, BillSimilarity, BillTopic, Topic
 from .serializers import (
+    BillContractSerializer,
     BillDetailSerializer,
+    BillDocumentSerializer,
     BillListSerializer,
     TopicSerializer,
 )
@@ -24,6 +30,74 @@ class TopicViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Topic.objects.all().order_by("name")
     serializer_class = TopicSerializer
     pagination_class = None
+
+
+class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public access to the stored original and extracted text for a bill version."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    queryset = BillDocument.objects.select_related("bill").order_by("id")
+    serializer_class = BillDocumentSerializer
+
+    @action(detail=True, methods=["get"])
+    def download(self, request, pk=None):
+        document = self.get_object()
+        if document.object_storage_key:
+            if isinstance(default_storage, FileSystemStorage):
+                if not default_storage.exists(document.object_storage_key):
+                    raise NotFound("The stored document is unavailable.")
+                response = FileResponse(
+                    default_storage.open(document.object_storage_key, "rb"),
+                    content_type=document.content_type or "application/octet-stream",
+                )
+                response["Content-Disposition"] = (
+                    f'attachment; filename="bill-{document.bill_id}-{document.version_label}"'
+                )
+                return response
+            # S3-backed storage yields its configured signed/public object URL
+            # without exposing the internal object key in API payloads.
+            return HttpResponseRedirect(default_storage.url(document.object_storage_key))
+
+        text = document.raw_text or document.extracted_text
+        if not text:
+            raise NotFound("No stored document content is available.")
+        response = HttpResponse(text, content_type="text/plain; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="bill-{document.bill_id}-{document.version_label}.txt"'
+        )
+        return response
+
+    @action(detail=True, methods=["get"])
+    def text(self, request, pk=None):
+        document = self.get_object()
+        text = document.raw_text or document.extracted_text
+        if not text:
+            raise NotFound("No extracted text is available.")
+        return Response({"text": text})
+
+
+class BillContractViewSet(viewsets.ReadOnlyModelViewSet):
+    """Public contract history for a bill, newest interpretation first."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = BillContractSerializer
+    queryset = (
+        BillContract.objects.select_related("bill", "document")
+        .prefetch_related("evidence_spans")
+        .order_by("-computed_at", "-id")
+    )
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bill = self.request.query_params.get("bill")
+        if bill:
+            try:
+                qs = qs.filter(bill_id=int(bill))
+            except ValueError:
+                pass
+        return qs
 
 
 class BillViewSet(viewsets.ReadOnlyModelViewSet):
@@ -115,8 +189,6 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
     def documents(self, request, pk=None):
         """List documents for this bill."""
         bill = self.get_object()
-        from .serializers import BillDocumentSerializer
-
         return Response(BillDocumentSerializer(bill.documents.all(), many=True).data)
 
     @action(

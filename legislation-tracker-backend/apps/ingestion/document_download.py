@@ -13,12 +13,44 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
-from botocore.exceptions import ClientError
+from boto3.exceptions import S3UploadFailedError
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
 logger = logging.getLogger(__name__)
+
+
+class RetryableDocumentStorageError(Exception):
+    """A transient object-storage failure that should use the Celery retry policy."""
+
+
+_RETRYABLE_STORAGE_ERROR_CODES = {
+    "InternalError",
+    "RequestLimitExceeded",
+    "RequestTimeout",
+    "RequestTimeoutException",
+    "ServiceUnavailable",
+    "SlowDown",
+    "Throttling",
+    "ThrottlingException",
+}
+
+
+def retryable_storage_error(exc: Exception) -> RetryableDocumentStorageError | None:
+    """Return a retry marker for transient Boto errors, otherwise ``None``."""
+    if isinstance(exc, (BotoCoreError, S3UploadFailedError)):
+        return RetryableDocumentStorageError(str(exc))
+    if not isinstance(exc, ClientError):
+        return None
+
+    response = exc.response or {}
+    error_code = response.get("Error", {}).get("Code", "")
+    status_code = response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
+    if status_code == 429 or status_code >= 500 or error_code in _RETRYABLE_STORAGE_ERROR_CODES:
+        return RetryableDocumentStorageError(str(exc))
+    return None
 
 
 def sha256_hex(data: bytes) -> str:
@@ -110,6 +142,9 @@ def ensure_s3_bucket_exists() -> None:
         if code in ("404", "NoSuchBucket", "NotFound"):
             logger.info("Creating S3 bucket: %s", bucket)
             if endpoint:
+                client.create_bucket(Bucket=bucket)
+            elif settings.AWS_S3_REGION_NAME == "us-east-1":
+                # S3's default region rejects an explicit LocationConstraint.
                 client.create_bucket(Bucket=bucket)
             else:
                 client.create_bucket(

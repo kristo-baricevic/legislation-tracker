@@ -30,6 +30,10 @@ const $loginPassword = document.getElementById("login-password");
 const $authSignedOut = document.getElementById("auth-signed-out");
 const $authSignedIn = document.getElementById("auth-signed-in");
 const $logoutButton = document.getElementById("logout-button");
+const $settingsForm = document.getElementById("settings-form");
+const $settingsApiBase = document.getElementById("settings-api-base");
+const $settingsAppBase = document.getElementById("settings-app-base");
+const $settingsMessage = document.getElementById("settings-message");
 
 function storageGet(keys) {
   return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -41,6 +45,10 @@ function storageSet(items) {
 
 function storageRemove(keys) {
   return new Promise((resolve) => chrome.storage.local.remove(keys, resolve));
+}
+
+function requestApiHostPermission(origin) {
+  return utils.requestHostPermission(origin, chrome.permissions);
 }
 
 function queryActiveTab() {
@@ -112,8 +120,39 @@ async function loadSettingsAndAuth() {
   appBase = utils.normalizeBaseUrl(stored[utils.SETTINGS_APP_BASE_KEY], utils.DEFAULT_APP_BASE);
   accessToken = stored[utils.AUTH_TOKEN_KEY] || "";
   refreshToken = stored[utils.AUTH_REFRESH_KEY] || "";
+  $settingsApiBase.value = apiBase;
+  $settingsAppBase.value = appBase;
   updateLinks();
   updateAuthUi();
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  $settingsMessage.hidden = true;
+  try {
+    const nextApiBase = utils.normalizeBaseUrl($settingsApiBase.value);
+    const nextAppBase = utils.normalizeBaseUrl($settingsAppBase.value);
+    const apiOrigin = utils.originPermissionForBaseUrl(nextApiBase);
+    utils.originPermissionForBaseUrl(nextAppBase);
+    const granted = await requestApiHostPermission(apiOrigin);
+    if (!granted) {
+      throw new Error("Allow access to the API host to use this endpoint.");
+    }
+    await utils.checkApiHealth(nextApiBase);
+    apiBase = nextApiBase;
+    appBase = nextAppBase;
+    topicCatalogBySlug = new Map();
+    await storageSet({
+      [utils.SETTINGS_API_BASE_KEY]: apiBase,
+      [utils.SETTINGS_APP_BASE_KEY]: appBase,
+    });
+    updateLinks();
+    $settingsMessage.textContent = "Endpoints saved.";
+    $settingsMessage.hidden = false;
+  } catch (err) {
+    $settingsMessage.textContent = err.message || "Could not save endpoints.";
+    $settingsMessage.hidden = false;
+  }
 }
 
 async function saveTokens(access, refresh) {
@@ -321,7 +360,7 @@ async function handleResultAction(event) {
       button.textContent = "Tracked";
     } else if (button.dataset.action === "follow-topic") {
       const topicId = Number(button.dataset.topicId);
-      await authJson("/api/preferences/follow-topic/", "POST", { topic_id: topicId });
+      await authJson(utils.getTopicTrackingPath(), "POST", { topic: topicId });
       button.textContent = "Following";
     }
     button.classList.add("is-saved");
@@ -377,6 +416,7 @@ async function run() {
 }
 
 $loginForm.addEventListener("submit", handleLogin);
+$settingsForm.addEventListener("submit", saveSettings);
 $logoutButton.addEventListener("click", async () => {
   await clearTokens();
   if (latestMatchData) showResults(latestMatchData);

@@ -84,62 +84,33 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
     serializer_class = UserPreferenceSerializer
 
     def get_queryset(self):
-        return (
-            UserPreference.objects.filter(user=self.request.user)
-            .select_related("topic")
-            .order_by("id")
-        )
+        return UserPreference.objects.filter(user=self.request.user).order_by("id")
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    @action(detail=False, methods=["get"], url_path="followed-topics")
-    def followed_topics(self, request):
-        """List topic IDs the current user follows."""
-        topic_ids = list(
-            UserPreference.objects.filter(
-                user=request.user,
-                topic__isnull=False,
-            ).values_list("topic_id", flat=True)
-        )
-        return Response({"topic_ids": topic_ids})
+    def _topic_payload_error(self, request):
+        if "topic" in request.data:
+            return Response(
+                {"error": "Use the topic tracking endpoints to follow topics."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
 
-    @action(detail=False, methods=["post"], url_path="follow-topic")
-    def follow_topic(self, request):
-        """Follow a topic. Body: { "topic_id": 5 }"""
-        topic_id, error_response = parse_required_int_param(
-            request.data.get("topic_id"),
-            "topic_id",
-        )
-        if error_response is not None:
+    def create(self, request, *args, **kwargs):
+        if error_response := self._topic_payload_error(request):
             return error_response
-        get_object_or_404(Topic, pk=topic_id)
-        _, created = UserPreference.objects.get_or_create(
-            user=request.user,
-            topic_id=topic_id,
-        )
-        return Response(
-            {"followed": True, "topic_id": topic_id, "already": not created},
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
+        return super().create(request, *args, **kwargs)
 
-    @action(detail=False, methods=["post"], url_path="unfollow-topic")
-    def unfollow_topic(self, request):
-        """Unfollow a topic. Body: { "topic_id": 5 }"""
-        topic_id, error_response = parse_required_int_param(
-            request.data.get("topic_id"),
-            "topic_id",
-        )
-        if error_response is not None:
+    def update(self, request, *args, **kwargs):
+        if error_response := self._topic_payload_error(request):
             return error_response
-        deleted, _ = UserPreference.objects.filter(
-            user=request.user,
-            topic_id=topic_id,
-        ).delete()
-        return Response(
-            {"unfollowed": True, "topic_id": topic_id, "deleted": deleted > 0}
-        )
+        return super().update(request, *args, **kwargs)
 
+    def partial_update(self, request, *args, **kwargs):
+        if error_response := self._topic_payload_error(request):
+            return error_response
+        return super().partial_update(request, *args, **kwargs)
 
 class TrackingSummaryView(APIView):
     """Current user's tracked bills, topics, and legislators."""
@@ -160,6 +131,7 @@ class TrackingSummaryView(APIView):
                 "bills": TrackedBillSerializer(bills, many=True).data,
                 "topics": TrackedTopicSerializer(topics, many=True).data,
                 "legislators": TrackedLegislatorSerializer(legislators, many=True).data,
+                "is_staff": request.user.is_staff,
             }
         )
 
@@ -236,6 +208,14 @@ class TrackedBillDetailView(APIView):
 
 class TrackedTopicView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        tracked_topics = (
+            TrackedTopic.objects.filter(user=request.user)
+            .select_related("topic")
+            .order_by("-created_at", "-id")
+        )
+        return Response(TrackedTopicSerializer(tracked_topics, many=True).data)
 
     def post(self, request: Request) -> Response:
         topic_id, error_response = parse_required_int_param(

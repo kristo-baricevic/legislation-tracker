@@ -17,6 +17,25 @@
     return raw.replace(/\/+$/, "");
   }
 
+  function originPermissionForBaseUrl(value) {
+    let url;
+    try {
+      url = new URL(normalizeBaseUrl(value));
+    } catch {
+      throw new Error("Enter a valid HTTP or HTTPS URL.");
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("Enter a valid HTTP or HTTPS URL.");
+    }
+    return `${url.protocol}//${url.host}/*`;
+  }
+
+  function requestHostPermission(origin, permissions) {
+    return new Promise((resolve) => {
+      permissions.request({ origins: [origin] }, resolve);
+    });
+  }
+
   function getBillUrl(appBase, billId) {
     return `${normalizeBaseUrl(appBase, DEFAULT_APP_BASE)}/bills/${encodeURIComponent(String(billId))}`;
   }
@@ -27,6 +46,30 @@
 
   function getLoginUrl(appBase) {
     return `${normalizeBaseUrl(appBase, DEFAULT_APP_BASE)}/login`;
+  }
+
+  function getTopicTrackingPath() {
+    return "/api/tracking/topics/";
+  }
+
+  function getHealthPath() {
+    return "/health/";
+  }
+
+  async function checkApiHealth(value, request = fetch) {
+    const apiBase = normalizeBaseUrl(value);
+    originPermissionForBaseUrl(apiBase);
+    let response;
+    try {
+      response = await request(`${apiBase}${getHealthPath()}`, { method: "GET" });
+    } catch {
+      throw new Error("Could not reach the API health endpoint.");
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.status !== "ok") {
+      throw new Error("The API is reachable but not ready.");
+    }
+    return body;
   }
 
   function buildJsonRequest(method, body, token) {
@@ -61,11 +104,16 @@
     SETTINGS_API_BASE_KEY,
     SETTINGS_APP_BASE_KEY,
     buildJsonRequest,
+    checkApiHealth,
     escapeHtml,
     formatPercent,
     getBillUrl,
     getBillsUrl,
+    getHealthPath,
     getLoginUrl,
+    getTopicTrackingPath,
     normalizeBaseUrl,
+    originPermissionForBaseUrl,
+    requestHostPermission,
   };
 });

@@ -35,21 +35,38 @@ app.conf.beat_schedule = {
     "recompute-similarity-batch": {
         "task": "apps.legislation.tasks.recompute_similarity_batch",
         "schedule": 3600.0,  # every hour
-        "kwargs": {"session": 119, "batch_size": 500},
+        "kwargs": {"session": 119},
     },
     "poll-tracked-bills": {
         "task": "apps.ingestion.tasks.poll_tracked_bills",
         "schedule": 300.0,  # every 5 minutes (in seconds)
+    },
+    "dispatch-ingestion-work": {
+        "task": "apps.ingestion.tasks.dispatch_ingestion_work",
+        "schedule": 30.0,
+    },
+    "recover-stale-ingestion-work": {
+        "task": "apps.ingestion.tasks.recover_stale_ingestion_work",
+        "schedule": 300.0,
+    },
+    "sync-representatives": {
+        "task": "apps.ingestion.tasks.sync_representatives",
+        "schedule": 86400.0,
+        "kwargs": {"congress": 119},
     },
 }
 
 
 @task_failure.connect
 def _on_task_failure(sender, task_id, exception, args, kwargs, **kw):
-    """Record final task failure to IngestionTaskFailure for ingestion tasks (except process_bill which records itself)."""
+    """Record failures from ingestion and legislation tasks (process_bill records itself)."""
     from apps.ingestion.tasks import _record_task_failure
     task_name = getattr(sender, "name", str(sender))
-    if not task_name or "ingestion" not in task_name or task_name.endswith("process_bill"):
+    if (
+        not task_name
+        or not task_name.startswith(("apps.ingestion.tasks.", "apps.legislation.tasks."))
+        or task_name.endswith("process_bill")
+    ):
         return
     bill_id = None
     if args and (task_name.endswith("process_bill_versions") or task_name.endswith("process_bill_votes")):

@@ -57,8 +57,6 @@ class Bill(models.Model):
         related_name="+",
     )
     source_api_id = models.CharField(max_length=255, null=True, blank=True)
-    raw_text_url = models.URLField(max_length=1024, null=True, blank=True)
-    pdf_url = models.URLField(max_length=1024, null=True, blank=True)
     metadata_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -142,6 +140,18 @@ class BillContract(models.Model):
 
     class Meta:
         db_table = "legislation_billcontract"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "contract_hash"],
+                condition=models.Q(document__isnull=False),
+                name="legislation_contract_document_hash_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["bill", "contract_hash"],
+                condition=models.Q(document__isnull=True),
+                name="legislation_metadata_contract_hash_uniq",
+            ),
+        ]
         indexes = [
             models.Index(fields=["bill"]),
             models.Index(fields=["contract_hash"]),
@@ -203,6 +213,12 @@ class BillTopic(models.Model):
 
     class Meta:
         db_table = "legislation_billtopic"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bill", "topic"],
+                name="legislation_billtopic_bill_topic_uniq",
+            )
+        ]
         indexes = [
             models.Index(fields=["topic"]),
             models.Index(fields=["bill"]),

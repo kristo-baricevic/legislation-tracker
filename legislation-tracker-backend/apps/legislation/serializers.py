@@ -24,15 +24,32 @@ class BillTopicSerializer(serializers.ModelSerializer):
 
 
 class BillDocumentSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+    text_url = serializers.SerializerMethodField()
+
     class Meta:
         model = BillDocument
         fields = [
             "id",
             "version_label",
             "is_active_version",
+            "content_type",
+            "file_size_bytes",
             "source_url",
             "downloaded_at",
+            "download_url",
+            "text_url",
         ]
+
+    def get_download_url(self, obj):
+        if not (obj.object_storage_key or obj.raw_text or obj.extracted_text):
+            return None
+        return f"/api/documents/{obj.id}/download/"
+
+    def get_text_url(self, obj):
+        if not (obj.raw_text or obj.extracted_text):
+            return None
+        return f"/api/documents/{obj.id}/text/"
 
 
 class EvidenceSpanSerializer(serializers.ModelSerializer):
@@ -116,8 +133,6 @@ class BillDetailSerializer(serializers.ModelSerializer):
             "sponsor_name",
             "introduced_at",
             "last_action_at",
-            "raw_text_url",
-            "pdf_url",
             "source_api_id",
             "documents",
             "congress_gov_url",

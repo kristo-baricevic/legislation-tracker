@@ -29,9 +29,12 @@ export default function Dashboard() {
   const [trackingFeedError, setTrackingFeedError] = React.useState<string | null>(
     null,
   );
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
 
   React.useEffect(() => {
-    if (!getStoredAccessToken()) return;
+    const signedIn = Boolean(getStoredAccessToken());
+    setIsAuthenticated(signedIn);
+    if (!signedIn) return;
     let cancelled = false;
     getMyTracking()
       .then((summary) => {
@@ -98,6 +101,7 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {trackingSummary?.is_staff && (
       <section className="mb-8">
         <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
           Queue workflows
@@ -160,17 +164,29 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+      )}
 
       <section className="mb-8">
         <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
           My tracked
         </h2>
+        {!isAuthenticated && (
+          <p className="text-sm text-slate-600 dark:text-green-500">
+            <Link
+              href="/login"
+              className="text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+            >
+              Log in
+            </Link>{" "}
+            to track bills, topics, and legislators.
+          </p>
+        )}
         {trackingSummaryError && (
           <div className="mb-3 border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             {trackingSummaryError}
           </div>
         )}
-        {!trackingSummary && !trackingSummaryError && (
+        {isAuthenticated && !trackingSummary && !trackingSummaryError && (
           <p className="text-sm text-slate-600 dark:text-green-500">
             Loading tracked items...
           </p>
@@ -244,12 +260,17 @@ export default function Dashboard() {
         <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
           Recent tracked changes
         </h2>
+        {!isAuthenticated && (
+          <p className="text-sm text-slate-600 dark:text-green-500">
+            Log in to see changes to the bills, topics, and legislators you follow.
+          </p>
+        )}
         {trackingFeedError && (
           <div className="mb-3 border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             {trackingFeedError}
           </div>
         )}
-        {!trackingFeed && !trackingFeedError && (
+        {isAuthenticated && !trackingFeed && !trackingFeedError && (
           <p className="text-sm text-slate-600 dark:text-green-500">
             Loading tracked changes...
           </p>

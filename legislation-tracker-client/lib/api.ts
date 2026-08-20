@@ -199,8 +199,12 @@ export interface BillDocumentItem {
   id: number;
   version_label: string;
   is_active_version: boolean;
+  content_type: string | null;
+  file_size_bytes: number | null;
   source_url: string | null;
   downloaded_at: string | null;
+  download_url: string | null;
+  text_url: string | null;
 }
 
 export interface EvidenceSpanItem {
@@ -222,12 +226,17 @@ export interface BillContractItem {
   evidence_spans: EvidenceSpanItem[];
 }
 
+export interface BillContractsPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: BillContractItem[];
+}
+
 export interface BillDetail extends BillListItem {
   summary: string | null;
   processing_status: string;
   sponsor: number | null;
-  raw_text_url: string | null;
-  pdf_url: string | null;
   source_api_id: string | null;
   documents: BillDocumentItem[];
   congress_gov_url: string | null;
@@ -265,6 +274,14 @@ export interface GetBillsParams {
   topic_id?: number;
 }
 
+export function parseTopicIdFromSearchParam(
+  value: string | null | undefined,
+): number | undefined {
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const topicId = Number(value);
+  return Number.isSafeInteger(topicId) && topicId > 0 ? topicId : undefined;
+}
+
 export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   const sp = new URLSearchParams();
   if (params?.page != null) sp.set("page", String(params.page));
@@ -290,6 +307,56 @@ export async function getBillFilterOptions(): Promise<BillFilterOptions> {
 
 export async function getBill(id: number): Promise<BillDetail> {
   return publicGet<BillDetail>(`/api/bills/${id}/`);
+}
+
+export async function getContracts(
+  billId: number,
+  params?: { page?: number },
+): Promise<BillContractsPage> {
+  const search = new URLSearchParams({ bill: String(billId) });
+  if (params?.page != null) search.set("page", String(params.page));
+  return publicGet<BillContractsPage>(`/api/contracts/?${search}`);
+}
+
+export interface VoteListItem {
+  id: number;
+  bill: number;
+  chamber: string;
+  session_number: number | null;
+  roll_number: number;
+  vote_date: string;
+  result: string;
+  yeas: number;
+  nays: number;
+}
+
+export interface VoteRecordItem {
+  representative: RepresentativeItem;
+  position: string;
+}
+
+export interface VoteDetailItem extends VoteListItem {
+  records: VoteRecordItem[];
+}
+
+export interface VotesPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: VoteListItem[];
+}
+
+export async function getVotes(
+  billId: number,
+  params?: { page?: number },
+): Promise<VotesPage> {
+  const search = new URLSearchParams({ bill: String(billId) });
+  if (params?.page != null) search.set("page", String(params.page));
+  return publicGet<VotesPage>(`/api/votes/?${search}`);
+}
+
+export async function getVote(voteId: number): Promise<VoteDetailItem> {
+  return publicGet<VoteDetailItem>(`/api/votes/${voteId}/`);
 }
 
 export interface RelatedBillItem {
@@ -320,6 +387,11 @@ export interface RepresentativeItem {
   party: string;
   state: string;
   district: string | null;
+  first_name: string;
+  last_name: string;
+  official_website_url: string | null;
+  image_url: string | null;
+  is_current: boolean;
 }
 
 export interface RepresentativesPage {
@@ -342,22 +414,6 @@ export async function getRepresentatives(params?: {
   return publicGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
 }
 
-export interface FollowedTopicsResponse {
-  topic_ids: number[];
-}
-
-export function getFollowedTopics(): Promise<FollowedTopicsResponse> {
-  return authGet<FollowedTopicsResponse>("/api/preferences/followed-topics/");
-}
-
-export function followTopic(topicId: number): Promise<unknown> {
-  return authPost("/api/preferences/follow-topic/", { topic_id: topicId });
-}
-
-export function unfollowTopic(topicId: number): Promise<unknown> {
-  return authPost("/api/preferences/unfollow-topic/", { topic_id: topicId });
-}
-
 export interface TrackedBillItem {
   id: number;
   bill: BillListItem;
@@ -370,6 +426,10 @@ export interface TrackedTopicItem {
   created_at: string;
 }
 
+export function getTrackedTopics(): Promise<TrackedTopicItem[]> {
+  return authGet<TrackedTopicItem[]>("/api/tracking/topics/");
+}
+
 export interface TrackedLegislatorItem {
   id: number;
   representative: RepresentativeItem;
@@ -380,6 +440,7 @@ export interface TrackingSummary {
   bills: TrackedBillItem[];
   topics: TrackedTopicItem[];
   legislators: TrackedLegislatorItem[];
+  is_staff: boolean;
 }
 
 export interface TrackingFeedEntry {

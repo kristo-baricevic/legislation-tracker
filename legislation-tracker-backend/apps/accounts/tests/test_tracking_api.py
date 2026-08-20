@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
+from apps.accounts.models import TrackedTopic, UserPreference
 from apps.legislation.models import Bill, BillTopic, Topic
 
 
@@ -143,6 +144,69 @@ def test_tracking_summary_includes_topics_and_legislators_for_current_user_only(
     assert [item["topic"]["id"] for item in summary.json()["topics"]] == [topic.id]
     assert [item["representative"]["id"] for item in summary.json()["legislators"]] == [
         representative.id
+    ]
+    assert summary.json()["is_staff"] is False
+
+
+@pytest.mark.django_db
+def test_tracking_topics_collection_lists_the_current_users_followed_topics():
+    user = make_user("follower@example.com")
+    client = authenticated_client(user)
+    topic = Topic.objects.create(name="Health", slug="health")
+
+    created = client.post(
+        "/api/tracking/topics/", {"topic": topic.id}, format="json"
+    )
+    listed = client.get("/api/tracking/topics/")
+
+    assert created.status_code == 201
+    assert listed.status_code == 200
+    assert [item["topic"]["id"] for item in listed.json()] == [topic.id]
+    assert TrackedTopic.objects.filter(user=user, topic=topic).exists()
+
+
+@pytest.mark.django_db
+def test_legacy_preference_topic_endpoints_cannot_change_topic_tracking():
+    user = make_user("legacy-topic@example.com")
+    client = authenticated_client(user)
+    topic = Topic.objects.create(name="Education", slug="education")
+
+    assert client.get("/api/preferences/followed-topics/").status_code in (404, 405)
+    assert client.post(
+        "/api/preferences/follow-topic/", {"topic_id": topic.id}, format="json"
+    ).status_code in (404, 405)
+    assert client.post(
+        "/api/preferences/unfollow-topic/", {"topic_id": topic.id}, format="json"
+    ).status_code in (404, 405)
+    assert not TrackedTopic.objects.filter(user=user, topic=topic).exists()
+
+
+@pytest.mark.django_db
+def test_generic_preferences_endpoint_rejects_topic_rows():
+    user = make_user("preferences@example.com")
+    client = authenticated_client(user)
+    topic = Topic.objects.create(name="Education", slug="education")
+
+    response = client.post("/api/preferences/", {"topic": topic.id}, format="json")
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "Use the topic tracking endpoints to follow topics."
+    }
+    assert not TrackedTopic.objects.filter(user=user, topic=topic).exists()
+
+
+@pytest.mark.django_db
+def test_preferences_collection_returns_non_tracking_preferences():
+    user = make_user("preferences-list@example.com")
+    client = authenticated_client(user)
+    UserPreference.objects.create(user=user, state="NY", chamber="house")
+
+    response = client.get("/api/preferences/")
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {"id": UserPreference.objects.get(user=user).id, "state": "NY", "chamber": "house"}
     ]
 
 

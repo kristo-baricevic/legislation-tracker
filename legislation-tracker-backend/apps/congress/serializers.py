@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Representative
+from .models import Representative, Vote, VoteRecord
 
 
 class RepresentativeSerializer(serializers.ModelSerializer):
@@ -14,4 +14,40 @@ class RepresentativeSerializer(serializers.ModelSerializer):
             "party",
             "state",
             "district",
+            "first_name",
+            "last_name",
+            "official_website_url",
+            "image_url",
+            "is_current",
         ]
+
+
+class VoteRecordSerializer(serializers.ModelSerializer):
+    representative = RepresentativeSerializer(read_only=True)
+
+    class Meta:
+        model = VoteRecord
+        fields = ["representative", "position"]
+
+
+class VoteListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Vote
+        fields = [
+            "id",
+            "bill",
+            "chamber",
+            "session_number",
+            "roll_number",
+            "vote_date",
+            "result",
+            "yeas",
+            "nays",
+        ]
+
+
+class VoteDetailSerializer(VoteListSerializer):
+    records = VoteRecordSerializer(many=True, read_only=True)
+
+    class Meta(VoteListSerializer.Meta):
+        fields = VoteListSerializer.Meta.fields + ["records"]

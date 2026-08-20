@@ -7,9 +7,10 @@ Usage:
     python manage.py backfill_topics --session 119 # filter by congress session
 """
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from apps.legislation.models import Bill
-from apps.legislation.tasks import update_topics
+from apps.legislation.tasks import enqueue_topic_update, update_topics
 
 
 class Command(BaseCommand):
@@ -37,15 +38,19 @@ class Command(BaseCommand):
         self.stdout.write(f"Found {len(bill_ids)} bills to process.")
 
         processed = 0
+        backfill_requested_at = timezone.now()
         for bid in bill_ids:
             if options["sync"]:
                 result = update_topics(bill_id=bid)
                 self.stdout.write(f"  bill_id={bid} -> {result}")
             else:
-                update_topics.apply_async(kwargs={"bill_id": bid})
+                enqueue_topic_update(
+                    bill=Bill.objects.get(pk=bid),
+                    source_updated_at=backfill_requested_at,
+                )
             processed += 1
 
-        mode = "sync" if options["sync"] else "async (Celery)"
+        mode = "sync" if options["sync"] else "async (durable work queue)"
         self.stdout.write(
             self.style.SUCCESS(f"Done: {processed} bills processed ({mode}).")
         )

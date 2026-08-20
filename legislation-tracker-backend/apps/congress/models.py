@@ -10,6 +10,12 @@ class Representative(models.Model):
     party = models.CharField(max_length=50)
     state = models.CharField(max_length=2)
     district = models.CharField(max_length=10, null=True, blank=True)  # House only
+    first_name = models.CharField(max_length=255, blank=True, default="")
+    last_name = models.CharField(max_length=255, blank=True, default="")
+    official_website_url = models.URLField(max_length=1024, null=True, blank=True)
+    image_url = models.URLField(max_length=1024, null=True, blank=True)
+    source_api_url = models.URLField(max_length=1024, null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
     is_current = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -34,6 +40,8 @@ class Vote(models.Model):
         related_name="votes",
     )
     chamber = models.CharField(max_length=20)
+    # Legacy rows predate authoritative Congress API session references.
+    session_number = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
     roll_number = models.PositiveIntegerField()
     vote_date = models.DateTimeField()
     result = models.CharField(max_length=50)  # passed, failed, etc.
@@ -44,13 +52,18 @@ class Vote(models.Model):
         db_table = "congress_vote"
         constraints = [
             models.UniqueConstraint(
+                fields=["bill", "chamber", "session_number", "roll_number"],
+                name="congress_vote_bill_chamber_session_roll_uniq",
+            ),
+            models.UniqueConstraint(
                 fields=["bill", "chamber", "roll_number"],
-                name="congress_vote_bill_chamber_roll_uniq",
-            )
+                condition=models.Q(session_number__isnull=True),
+                name="congress_vote_unknown_session_roll_uniq",
+            ),
         ]
 
     def __str__(self):
-        return f"Vote {self.roll_number} on Bill {self.bill_id}"
+        return f"Vote {self.session_number}/{self.roll_number} on Bill {self.bill_id}"
 
 
 class VoteRecord(models.Model):
@@ -70,6 +83,12 @@ class VoteRecord(models.Model):
 
     class Meta:
         db_table = "congress_voterecord"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["vote", "representative"],
+                name="congress_voterecord_vote_representative_uniq",
+            )
+        ]
         indexes = [
             models.Index(fields=["vote"]),
             models.Index(fields=["representative"]),

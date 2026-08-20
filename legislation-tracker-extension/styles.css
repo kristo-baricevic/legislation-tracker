@@ -293,3 +293,48 @@ footer {
 footer a {
   font-size: 12px;
 }
+
+.settings {
+  margin-top: 10px;
+  text-align: left;
+}
+
+.settings summary {
+  color: #5d6b82;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.settings-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 3px;
+  color: #5d6b82;
+  font-size: 11px;
+}
+
+.settings-form input {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid #b7c2d4;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+}
+
+.settings-form button {
+  justify-self: start;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.settings-message {
+  margin-top: 7px;
+  color: #195b3f;
+  font-size: 11px;
+}

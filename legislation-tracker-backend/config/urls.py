@@ -7,17 +7,23 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.accounts.views import RegisterView, UserPreferenceViewSet
-from apps.legislation.views import BillViewSet, TopicViewSet
-from apps.congress.views import RepresentativeViewSet
+from apps.legislation.views import BillContractViewSet, BillDocumentViewSet, BillViewSet, TopicViewSet
+from apps.congress.views import RepresentativeViewSet, VoteViewSet
+from config import health
 
 router = DefaultRouter()
 router.register(r"bills", BillViewSet, basename="bill")
+router.register(r"documents", BillDocumentViewSet, basename="document")
+router.register(r"contracts", BillContractViewSet, basename="contract")
 router.register(r"topics", TopicViewSet, basename="topic")
 router.register(r"representatives", RepresentativeViewSet, basename="representative")
+router.register(r"votes", VoteViewSet, basename="vote")
 router.register(r"preferences", UserPreferenceViewSet, basename="preference")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("health/live/", health.live, name="health-live"),
+    path("health/", health.ready, name="health-ready"),
     # Auth: JWT (use "username" = email, "password"); refresh with "refresh" token
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
