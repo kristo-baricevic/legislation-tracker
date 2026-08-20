@@ -35,6 +35,7 @@ vi.mock("@/lib/api", () => ({
 
 describe("BillDetailPage", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(getStoredAccessToken).mockReturnValue(null);
     vi.mocked(getBill).mockResolvedValue({
       id: 10,
@@ -159,5 +160,94 @@ describe("BillDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "View member positions" }));
     await waitFor(() => expect(getVote).toHaveBeenCalledWith(33));
     expect(await screen.findByText("Voting Representative")).toBeVisible();
+  });
+
+  it("pages through contract and vote histories beyond the first result page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getContracts)
+      .mockResolvedValueOnce({
+        count: 21,
+        next: "http://localhost:8000/api/contracts/?bill=10&page=2",
+        previous: null,
+        results: [
+          {
+            id: 4,
+            schema_version: "1.1",
+            contract_json: { plain_summary: "Newest contract revision" },
+            contract_hash: "hash",
+            computed_at: "2026-08-19T00:00:00Z",
+            document: null,
+            document_version_label: null,
+            evidence_spans: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        count: 21,
+        next: null,
+        previous: "http://localhost:8000/api/contracts/?bill=10&page=1",
+        results: [
+          {
+            id: 3,
+            schema_version: "1.0",
+            contract_json: { plain_summary: "Older contract revision" },
+            contract_hash: "older-hash",
+            computed_at: "2026-08-18T00:00:00Z",
+            document: null,
+            document_version_label: null,
+            evidence_spans: [],
+          },
+        ],
+      });
+    vi.mocked(getVotes)
+      .mockResolvedValueOnce({
+        count: 21,
+        next: "http://localhost:8000/api/votes/?bill=10&page=2",
+        previous: null,
+        results: [
+          {
+            id: 33,
+            bill: 10,
+            chamber: "house",
+            roll_number: 17,
+            vote_date: "2026-08-19T00:00:00Z",
+            result: "Passed",
+            yeas: 220,
+            nays: 210,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        count: 21,
+        next: null,
+        previous: "http://localhost:8000/api/votes/?bill=10&page=1",
+        results: [
+          {
+            id: 32,
+            bill: 10,
+            chamber: "house",
+            roll_number: 16,
+            vote_date: "2026-08-18T00:00:00Z",
+            result: "Failed",
+            yeas: 210,
+            nays: 220,
+          },
+        ],
+      });
+
+    render(<BillDetailPage />);
+
+    expect(await screen.findByText("Newest contract revision")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "Next contract history page" }),
+    );
+    expect(await screen.findByText("Older contract revision")).toBeVisible();
+    expect(getContracts).toHaveBeenLastCalledWith(10, { page: 2 });
+
+    await user.click(
+      screen.getByRole("button", { name: "Next vote history page" }),
+    );
+    expect(await screen.findByText(/roll call 16: Failed/)).toBeVisible();
+    expect(getVotes).toHaveBeenLastCalledWith(10, { page: 2 });
   });
 });

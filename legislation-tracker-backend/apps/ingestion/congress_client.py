@@ -6,6 +6,7 @@ import logging
 import time
 import unicodedata
 from datetime import datetime, timezone
+from functools import lru_cache
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
@@ -278,6 +279,56 @@ def _senate_bioguide_ids(root):
     )
 
 
+@lru_cache(maxsize=16)
+def _historical_senate_bioguide_ids(congress):
+    """Map former members of a Congress to Bioguide IDs for Senate votes."""
+    exact_matches = {}
+    fallback_matches = {}
+    ambiguous_fallbacks = set()
+    offset = 0
+    page_size = 250
+
+    while True:
+        page = member_list(
+            congress,
+            current_member=False,
+            limit=page_size,
+            offset=offset,
+        )
+        for member in page:
+            if not isinstance(member, dict):
+                continue
+            chamber = str(member.get("chamber") or "").casefold()
+            if chamber and chamber != "senate":
+                continue
+            first_name = str(member.get("firstName") or "").strip()
+            last_name = str(member.get("lastName") or "").strip()
+            state = str(member.get("state") or "").strip()
+            bioguide_id = str(member.get("bioguideId") or "").strip()
+            key = _senate_member_key(first_name, last_name, state)
+            if not all(key) or not bioguide_id:
+                continue
+            exact_matches[key] = bioguide_id
+            fallback_key = _senate_member_fallback_key(last_name, state)
+            previous_bioguide_id = fallback_matches.get(fallback_key)
+            if previous_bioguide_id and previous_bioguide_id != bioguide_id:
+                ambiguous_fallbacks.add(fallback_key)
+            else:
+                fallback_matches[fallback_key] = bioguide_id
+        if len(page) < page_size:
+            break
+        offset += page_size
+
+    return (
+        exact_matches,
+        {
+            key: bioguide_id
+            for key, bioguide_id in fallback_matches.items()
+            if key not in ambiguous_fallbacks
+        },
+    )
+
+
 def _parse_senate_vote_date(value):
     try:
         local_time = datetime.strptime(
@@ -305,21 +356,31 @@ def _senate_vote_detail(congress, session_number, roll_number):
     bioguide_ids, fallback_bioguide_ids = _senate_bioguide_ids(
         current_members_root
     )
+    historical_bioguide_ids = None
     members = []
     for member in vote_root.findall("./members/member"):
         first_name = _xml_text(member, "first_name")
         last_name = _xml_text(member, "last_name")
         state = _xml_text(member, "state")[:2]
         vote_cast = _xml_text(member, "vote_cast").lower()
+        bioguide_id = bioguide_ids.get(
+            _senate_member_key(first_name, last_name, state),
+        ) or fallback_bioguide_ids.get(
+            _senate_member_fallback_key(last_name, state),
+        )
+        if not bioguide_id:
+            if historical_bioguide_ids is None:
+                historical_bioguide_ids = _historical_senate_bioguide_ids(congress)
+            historical_exact_ids, historical_fallback_ids = historical_bioguide_ids
+            bioguide_id = historical_exact_ids.get(
+                _senate_member_key(first_name, last_name, state),
+            ) or historical_fallback_ids.get(
+                _senate_member_fallback_key(last_name, state),
+                "",
+            )
         members.append(
             {
-                "bioguideId": bioguide_ids.get(
-                    _senate_member_key(first_name, last_name, state),
-                )
-                or fallback_bioguide_ids.get(
-                    _senate_member_fallback_key(last_name, state),
-                    "",
-                ),
+                "bioguideId": bioguide_id,
                 "name": " ".join(part for part in (first_name, last_name) if part)
                 or _xml_text(member, "member_full"),
                 "party": _xml_text(member, "party")[:50],

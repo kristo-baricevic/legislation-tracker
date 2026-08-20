@@ -84,7 +84,58 @@ function ContractSection({ contract }: { contract: BillContractItem }) {
   );
 }
 
-function ContractHistorySection({ contracts }: { contracts: BillContractItem[] }) {
+function HistoryPagination({
+  page,
+  hasNext,
+  onPrevious,
+  onNext,
+  historyName,
+}: {
+  page: number;
+  hasNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  historyName: string;
+}) {
+  if (page === 1 && !hasNext) return null;
+  return (
+    <nav className="mt-4 flex items-center justify-between gap-3" aria-label={`${historyName} pagination`}>
+      <button
+        type="button"
+        onClick={onPrevious}
+        disabled={page === 1}
+        aria-label={`Previous ${historyName} page`}
+        className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+      >
+        Previous
+      </button>
+      <span className="text-sm text-slate-600 dark:text-green-600">Page {page}</span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={!hasNext}
+        aria-label={`Next ${historyName} page`}
+        className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+      >
+        Next
+      </button>
+    </nav>
+  );
+}
+
+function ContractHistorySection({
+  contracts,
+  page,
+  hasNext,
+  onPrevious,
+  onNext,
+}: {
+  contracts: BillContractItem[];
+  page: number;
+  hasNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
   if (contracts.length === 0) return null;
   return (
     <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
@@ -114,6 +165,13 @@ function ContractHistorySection({ contracts }: { contracts: BillContractItem[] }
           );
         })}
       </ul>
+      <HistoryPagination
+        page={page}
+        hasNext={hasNext}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        historyName="contract history"
+      />
     </section>
   );
 }
@@ -123,11 +181,19 @@ function VoteHistorySection({
   selectedVote,
   loadingVoteId,
   onViewPositions,
+  page,
+  hasNext,
+  onPrevious,
+  onNext,
 }: {
   votes: VoteListItem[];
   selectedVote: VoteDetailItem | null;
   loadingVoteId: number | null;
   onViewPositions: (voteId: number) => void;
+  page: number;
+  hasNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
 }) {
   if (votes.length === 0) return null;
   return (
@@ -157,6 +223,13 @@ function VoteHistorySection({
           </li>
         ))}
       </ul>
+      <HistoryPagination
+        page={page}
+        hasNext={hasNext}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        historyName="vote history"
+      />
       {selectedVote && (
         <div className="mt-4">
           <h3 className="text-base font-semibold text-slate-900 dark:text-green-400">
@@ -187,7 +260,11 @@ function BillDetailInner() {
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [contractHistory, setContractHistory] = useState<BillContractItem[] | null>(null);
+  const [contractPage, setContractPage] = useState(1);
+  const [contractHasNext, setContractHasNext] = useState(false);
   const [votes, setVotes] = useState<VoteListItem[] | null>(null);
+  const [votePage, setVotePage] = useState(1);
+  const [voteHasNext, setVoteHasNext] = useState(false);
   const [selectedVote, setSelectedVote] = useState<VoteDetailItem | null>(null);
   const [loadingVoteId, setLoadingVoteId] = useState<number | null>(null);
 
@@ -216,22 +293,49 @@ function BillDetailInner() {
   useEffect(() => {
     if (Number.isNaN(id)) return;
     let cancelled = false;
-    Promise.all([getContracts(id), getVotes(id)])
-      .then(([contracts, votePage]) => {
+    getContracts(id, { page: contractPage })
+      .then((contracts) => {
         if (!cancelled) {
           setContractHistory(contracts.results);
-          setVotes(votePage.results);
+          setContractHasNext(Boolean(contracts.next));
         }
       })
       .catch(() => {
         if (!cancelled) {
           setContractHistory([]);
-          setVotes([]);
+          setContractHasNext(false);
         }
       });
     return () => {
       cancelled = true;
     };
+  }, [contractPage, id]);
+
+  useEffect(() => {
+    if (Number.isNaN(id)) return;
+    let cancelled = false;
+    getVotes(id, { page: votePage })
+      .then((voteResult) => {
+        if (!cancelled) {
+          setVotes(voteResult.results);
+          setVoteHasNext(Boolean(voteResult.next));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVotes([]);
+          setVoteHasNext(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, votePage]);
+
+  useEffect(() => {
+    setContractPage(1);
+    setVotePage(1);
+    setSelectedVote(null);
   }, [id]);
 
   useEffect(() => {
@@ -437,13 +541,25 @@ function BillDetailInner() {
           </section>
         )}
 
-        {contractHistory && <ContractHistorySection contracts={contractHistory} />}
+        {contractHistory && (
+          <ContractHistorySection
+            contracts={contractHistory}
+            page={contractPage}
+            hasNext={contractHasNext}
+            onPrevious={() => setContractPage((current) => Math.max(1, current - 1))}
+            onNext={() => setContractPage((current) => current + 1)}
+          />
+        )}
         {votes && (
           <VoteHistorySection
             votes={votes}
             selectedVote={selectedVote}
             loadingVoteId={loadingVoteId}
             onViewPositions={viewVotePositions}
+            page={votePage}
+            hasNext={voteHasNext}
+            onPrevious={() => setVotePage((current) => Math.max(1, current - 1))}
+            onNext={() => setVotePage((current) => current + 1)}
           />
         )}
 

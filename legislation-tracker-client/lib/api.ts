@@ -309,8 +309,13 @@ export async function getBill(id: number): Promise<BillDetail> {
   return publicGet<BillDetail>(`/api/bills/${id}/`);
 }
 
-export async function getContracts(billId: number): Promise<BillContractsPage> {
-  return publicGet<BillContractsPage>(`/api/contracts/?bill=${billId}`);
+export async function getContracts(
+  billId: number,
+  params?: { page?: number },
+): Promise<BillContractsPage> {
+  const search = new URLSearchParams({ bill: String(billId) });
+  if (params?.page != null) search.set("page", String(params.page));
+  return publicGet<BillContractsPage>(`/api/contracts/?${search}`);
 }
 
 export interface VoteListItem {
@@ -340,8 +345,13 @@ export interface VotesPage {
   results: VoteListItem[];
 }
 
-export async function getVotes(billId: number): Promise<VotesPage> {
-  return publicGet<VotesPage>(`/api/votes/?bill=${billId}`);
+export async function getVotes(
+  billId: number,
+  params?: { page?: number },
+): Promise<VotesPage> {
+  const search = new URLSearchParams({ bill: String(billId) });
+  if (params?.page != null) search.set("page", String(params.page));
+  return publicGet<VotesPage>(`/api/votes/?${search}`);
 }
 
 export async function getVote(voteId: number): Promise<VoteDetailItem> {

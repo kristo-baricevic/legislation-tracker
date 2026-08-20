@@ -197,6 +197,59 @@ def test_senate_vote_detail_uses_official_senate_xml_with_bioguide_ids(monkeypat
     }
 
 
+def test_senate_vote_detail_resolves_former_senators_from_congress_history(
+    monkeypatch,
+):
+    class Response:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def __init__(self, content):
+            self.content = content
+
+    vote_xml = b"""
+        <roll_call_vote>
+          <vote_date>January 3, 2026, 10:35 AM</vote_date>
+          <vote_result>Agreed to</vote_result>
+          <count><yeas>60</yeas><nays>40</nays></count>
+          <members>
+            <member>
+              <first_name>Former</first_name><last_name>Senator</last_name>
+              <party>I</party><state>VT</state><vote_cast>Yea</vote_cast>
+              <lis_member_id>S999</lis_member_id>
+            </member>
+          </members>
+        </roll_call_vote>
+    """
+    current_members_xml = b"<contact_information />"
+
+    def fake_get(url, timeout=None):
+        return Response(
+            vote_xml if "roll_call_votes" in url else current_members_xml
+        )
+
+    monkeypatch.setattr(congress_client.requests, "get", fake_get)
+    monkeypatch.setattr(
+        congress_client,
+        "member_list",
+        lambda congress, current_member, limit, offset: [
+            {
+                "bioguideId": "S000999",
+                "firstName": "Former",
+                "lastName": "Senator",
+                "state": "VT",
+                "chamber": "Senate",
+            }
+        ],
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    vote = congress_client.vote_detail(119, "senate", 7, session_number=1)
+
+    assert vote["members"][0]["bioguideId"] == "S000999"
+
+
 def test_bill_text_list_preserves_top_level_version_url(monkeypatch):
     def fake_request(method, path, params=None):
         return {
