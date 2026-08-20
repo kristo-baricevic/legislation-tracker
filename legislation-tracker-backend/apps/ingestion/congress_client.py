@@ -314,7 +314,7 @@ def _senate_member_fallback_key(last_name, state):
     )
 
 
-def _state_code(value):
+def state_code(value):
     state = str(value or "").strip()
     if len(state) == 2:
         return state.upper()
@@ -410,7 +410,7 @@ def _historical_senate_bioguide_ids(congress):
             if not _member_summary_is_senator(member):
                 continue
             first_name, last_name = _member_summary_name_parts(member)
-            state = _state_code(member.get("state"))
+            state = state_code(member.get("state"))
             bioguide_id = str(member.get("bioguideId") or "").strip()
             key = _senate_member_key(first_name, last_name, state)
             if not all(key) or not bioguide_id:

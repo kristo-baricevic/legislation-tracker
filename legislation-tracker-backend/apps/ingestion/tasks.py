@@ -24,6 +24,7 @@ from apps.ingestion.congress_client import (
     bill_text_list,
     member_detail,
     member_list,
+    state_code,
     vote_detail,
 )
 from apps.ingestion.document_download import (
@@ -229,6 +230,20 @@ def _member_party(member):
     return ""
 
 
+def _member_state_code(member):
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    if isinstance(terms, list):
+        for term in reversed(terms):
+            if not isinstance(term, dict):
+                continue
+            term_state_code = term.get("stateCode")
+            if term_state_code:
+                return state_code(term_state_code)
+    return state_code(member.get("state"))
+
+
 def _member_profile(summary, detail):
     member = dict(summary)
     member.update(detail or {})
@@ -236,7 +251,7 @@ def _member_profile(summary, detail):
     if not bioguide_id:
         raise CongressAPIError("Congress member payload is missing bioguideId")
     first_name = str(member.get("firstName") or "")[:255]
-    last_name = str(member.get("lastName") or "")[:255]
+    last_name = str(member.get("lastName") or member.get("lastname") or "")[:255]
     name = str(
         member.get("directOrderName")
         or member.get("fullName")
@@ -255,7 +270,7 @@ def _member_profile(summary, detail):
         "last_name": last_name,
         "chamber": chamber if chamber in ("house", "senate") else "house",
         "party": _member_party(member),
-        "state": str(member.get("state") or "")[:2],
+        "state": _member_state_code(member),
         "district": str(district)[:10] if district not in (None, "") else None,
         "official_website_url": member.get("officialWebsiteUrl") or None,
         "image_url": image_url or None,

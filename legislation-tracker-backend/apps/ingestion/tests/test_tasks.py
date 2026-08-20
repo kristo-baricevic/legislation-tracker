@@ -796,7 +796,7 @@ def test_sync_representatives_ingests_the_complete_current_roster_before_retirin
                     "bioguideId": "C000001",
                     "name": "Doe, Jane",
                     "partyName": "Independent",
-                    "state": "CA",
+                    "state": "California",
                     "district": 12,
                     "url": "https://api.congress.gov/v3/member/C000001",
                 }
@@ -811,10 +811,11 @@ def test_sync_representatives_ingests_the_complete_current_roster_before_retirin
             "bioguideId": bioguide_id,
             "directOrderName": "Jane Doe",
             "firstName": "Jane",
-            "lastName": "Doe",
+            "lastname": "Doe",
+            "state": "California",
             "officialWebsiteUrl": "https://doe.house.gov",
             "depiction": {"imageUrl": "https://images.example.com/doe.jpg"},
-            "terms": {"item": [{"chamber": "House"}]},
+            "terms": [{"chamber": "House of Representatives", "stateCode": "CA"}],
             "currentMember": True,
         },
     )
