@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This app is the **core “what is a bill?”** data model. It stores the official text and metadata for bills, optional AI-style summaries (**contracts**), and how bills relate to **topics** and each other (**similarity**). Think of it as the library catalog for legislation the system tracks.
+This app is the **core “what is a bill?”** data model. It stores the official text and metadata for bills, deterministic evidence-backed summaries (**contracts**), and how bills relate to **topics** and each other (**similarity**). Think of it as the library catalog for legislation the system tracks.
 
 ## How it works (plain English + tech)
 
@@ -18,7 +18,7 @@ The **Django REST Framework (DRF)** exposes read-only **list/detail APIs** for b
 
 **Phase 4 — document files:** **`download_document`** (Celery, in `ingestion` app) saves bytes to **django-storages** targeting **MinIO** (local, free) or **filesystem** (`USE_LOCAL_DOCUMENT_STORAGE=True`).
 
-**Phase 5 — contract layer:** **`generate_contract`** builds deterministic structured summaries from bill text, hashes them with **`contract_json.canonical_json_string`**, creates **`BillContract`** / **`EvidenceSpan`** / **`ChangeLog`**, and enqueues topic and similarity recomputation. Full write-up: **[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
+**Phase 5 — contract layer:** **`generate_contract`** selects the federal `2.0-legal-nlp` rules pipeline or the compatible `1.1-deterministic` fallback, hashes the result with **`contract_json.canonical_json_string`**, creates **`BillContract`** / **`EvidenceSpan`** / **`ChangeLog`**, and enqueues topic and similarity recomputation. V2 validates its JSON Schema and every exact source span before persistence. Full write-up: **[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
 
 ## What you’ll find here
 
@@ -30,6 +30,17 @@ The **Django REST Framework (DRF)** exposes read-only **list/detail APIs** for b
 | `EvidenceSpan` | Links contract fields to source text. |
 | `Topic`, `BillTopic` | Policy tags. |
 | `BillSimilarity` | Pairwise similarity between bills. |
+
+Key contract files:
+
+| File | Role |
+|---|---|
+| `extraction/federal_structure.py` | Offset-preserving federal structure parser. |
+| `extraction/legal_rules.py` | Deterministic legal claim rules. |
+| `extraction/renderer.py` | Controlled v2 language and evidence paths. |
+| `extraction/schema.py` | Contract and evidence validation. |
+| `extraction/service.py` | V2 selection and expected v1 fallback. |
+| `management/commands/backfill_contracts.py` | Preview-first durable backfill. |
 
 ## Who should read this
 
