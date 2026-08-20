@@ -1,5 +1,12 @@
 # Phase 5.3 — Schema, extraction pipeline, and evidence (plan)
 
+> **Superseded on 2026-08-20.** The implemented direction is the provider-free
+> [`2.0-legal-nlp` deterministic design](../../docs/superpowers/specs/2026-08-20-deterministic-legal-nlp-v2-design.md)
+> and its [implementation plan](../../docs/superpowers/plans/2026-08-20-deterministic-legal-nlp-v2.md).
+> The LLM/provider, chunking, embedding, and model-serving work described below
+> is deferred and remains unimplemented. This document is retained only as
+> historical design context.
+
 This document expands **Phase 5.3** from [PHASE_5_CONTRACT.md](PHASE_5_CONTRACT.md): a **versioned `contract_json` schema**, how to **fill it** (LLM / classical / hybrid + **chunk → extract → merge**), and how **`EvidenceSpan`** rows anchor claims to **`BillDocument.extracted_text`**.
 
 Implementation still uses the same tables: **`BillContract`**, **`EvidenceSpan`** ([`apps/legislation/models.py`](../apps/legislation/models.py)). No new models are required for the core design.

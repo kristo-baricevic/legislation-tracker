@@ -17,6 +17,7 @@ from apps.ingestion.models import (
     IngestionWorkItem,
     IngestionWorkStatus,
 )
+from apps.legislation.extraction.service import extract_contract
 from apps.legislation.models import Bill, BillDocument, BillTopic, ProcessingStatus, Topic
 
 
@@ -1044,6 +1045,240 @@ def test_download_document_marks_retryable_s3_failures_for_celery_retry(monkeypa
         error.__name__ == "RetryableDocumentStorageError"
         for error in tasks.download_document.autoretry_for
     )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("content_type", "payload"),
+    [
+        (
+            "application/xml",
+            b"<bill><legis-body><section><enum>2.</enum><header>Reports</header>"
+            b"<text>The Secretary shall publish a report.</text>"
+            b"</section></legis-body></bill>",
+        ),
+        (
+            "text/html",
+            b"<html><body><p>SEC. 2. REPORTS</p>"
+            b"<p>The Secretary shall publish a report.</p></body></html>",
+        ),
+        (
+            "text/plain",
+            b"SEC. 2. REPORTS\nThe Secretary shall publish a report.",
+        ),
+    ],
+)
+def test_downloaded_congress_text_reaches_legal_nlp_v2(
+    monkeypatch, content_type, payload
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr1",
+    )
+    monkeypatch.setattr(tasks, "download_url", lambda *args: (payload, content_type))
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-1/introduced", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
+    assert result.contract_json["requirements"][0]["action"] == "publish a report"
+
+
+@pytest.mark.django_db
+def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
+    payload = (
+        b"<bill><legis-body><division><enum>A</enum><header>Programs</header>"
+        b"<subchapter><enum>I</enum><header>Reports</header><section>"
+        b"<enum>2.</enum><header>Duties</header><subparagraph><enum>(1)</enum>"
+        b"<subitem><enum>(AA)</enum><text>The Secretary shall publish a grant "
+        b"report.</text></subitem></subparagraph></section></subchapter>"
+        b"</division></legis-body></bill>"
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 5",
+        title="Nested hierarchy test bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr5.xml",
+    )
+    monkeypatch.setattr(
+        tasks, "download_url", lambda *args: (payload, "application/xml")
+    )
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-5/introduced.xml", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert "DIVISION A Programs" in document.extracted_text
+    assert "SUBCHAPTER I Reports" in document.extracted_text
+    assert (
+        "(AA) The Secretary shall publish a grant report."
+        in document.extracted_text
+    )
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
+    assert result.contract_json["requirements"][0]["action"] == (
+        "publish a grant report"
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("content_type", [None, "application/octet-stream"])
+def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_type(
+    monkeypatch, content_type
+):
+    payload = (
+        b"<bill><legis-body><section><enum>2.</enum><header>Reports</header>"
+        b"<text>The Secretary shall publish a report.</text>"
+        b"</section></legis-body></bill>"
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 2",
+        title="Test bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr2.xml",
+    )
+    monkeypatch.setattr(tasks, "download_url", lambda *args: (payload, content_type))
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-2/introduced.xml", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert document.extracted_text == (
+        "SEC. 2. Reports\nThe Secretary shall publish a report."
+    )
+    assert result.schema_version == "2.0-legal-nlp"
+
+
+@pytest.mark.django_db
+def test_downloaded_xml_quoted_amendment_payload_is_not_a_current_requirement(
+    monkeypatch,
+):
+    payload = (
+        b"<bill><legis-body><section><enum>2.</enum><header>Amendments</header>"
+        b"<paragraph><enum>(a)</enum><text>Section 3 of the Food Act is amended "
+        b"by striking subsection (u) and inserting the following:</text>"
+        b"<quoted-block><subsection><enum>(u)</enum><header>Plan</header>"
+        b"<paragraph><enum>(1)</enum><text>The Secretary shall change the market "
+        b"baskets.</text></paragraph></subsection></quoted-block></paragraph>"
+        b"</section></legis-body></bill>"
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 3",
+        title="Food Amendment Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr3.xml",
+    )
+    monkeypatch.setattr(
+        tasks, "download_url", lambda *args: (payload, "application/xml")
+    )
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-3/introduced.xml", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["requirements"] == []
+
+
+@pytest.mark.django_db
+def test_downloaded_xml_direct_quoted_funding_is_not_current_funding(monkeypatch):
+    payload = (
+        b"<bill><legis-body><section><enum>2.</enum><header>Amendments</header>"
+        b"<paragraph><enum>(a)</enum><text>Section 3 of the Food Act is amended "
+        b"by inserting the following:</text><quoted-block><text>There are "
+        b"appropriated $100,000 for fiscal year 2027.</text></quoted-block>"
+        b"</paragraph></section></legis-body></bill>"
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 4",
+        title="Food Amendment Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr4.xml",
+    )
+    monkeypatch.setattr(
+        tasks, "download_url", lambda *args: (payload, "application/xml")
+    )
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-4/introduced.xml", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["funding_items"] == []
 
 
 @pytest.mark.django_db

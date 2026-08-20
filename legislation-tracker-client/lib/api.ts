@@ -3,6 +3,10 @@
  * Set NEXT_PUBLIC_API_URL in .env.local (e.g. http://localhost:8000).
  */
 
+import type { ContractJson, EvidenceSpanItem } from "./contracts";
+
+export type { EvidenceSpanItem } from "./contracts";
+
 const getApiUrl = () =>
   typeof window !== "undefined"
     ? (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
@@ -207,18 +211,10 @@ export interface BillDocumentItem {
   text_url: string | null;
 }
 
-export interface EvidenceSpanItem {
-  field_path: string;
-  start_char: number;
-  end_char: number;
-  quoted_text: string;
-  page_number: number | null;
-}
-
 export interface BillContractItem {
   id: number;
   schema_version: string;
-  contract_json: Record<string, unknown>;
+  contract_json: ContractJson;
   contract_hash: string;
   computed_at: string;
   document: number | null;

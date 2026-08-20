@@ -13,3 +13,4 @@ gunicorn>=21.0
 whitenoise>=6.8
 requests>=2.31
 pypdf>=4.0
+jsonschema>=4.23,<5

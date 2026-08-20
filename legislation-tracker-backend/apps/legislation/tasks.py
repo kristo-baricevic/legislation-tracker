@@ -3,13 +3,22 @@ Celery tasks: BillContract generation plus topic and similarity updates.
 """
 import logging
 import re
+import time
 
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
 from apps.changelog.models import ChangeLog
+from apps.ingestion.document_download import reextract_stored_document_text
+from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.contract_json import contract_hash_from_dict
+from apps.legislation.extraction.legacy import (
+    LEGACY_SCHEMA_VERSION,
+    build_legacy_metadata_contract,
+)
+from apps.legislation.extraction.service import extract_contract
+from apps.legislation.extraction.types import EXTRACTOR_VERSION
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -21,11 +30,10 @@ from apps.legislation.models import (
     Topic,
 )
 from apps.legislation.topic_taxonomy import TOPICS
-from apps.ingestion.work_queue import enqueue_ingestion_work
 
 logger = logging.getLogger(__name__)
 
-CONTRACT_SCHEMA_VERSION = "1.1-deterministic"
+CONTRACT_SCHEMA_VERSION = LEGACY_SCHEMA_VERSION
 STUB_SCHEMA_VERSION = CONTRACT_SCHEMA_VERSION
 SIMILARITY_METHOD = "deterministic-v1"
 SIMILARITY_MIN_SCORE = 0.2
@@ -34,6 +42,7 @@ WORK_KIND_DOCUMENT_CONTRACT = "document_contract"
 WORK_KIND_METADATA_CONTRACT = "metadata_contract"
 WORK_KIND_TOPIC_UPDATE = "topic_update"
 WORK_KIND_SIMILARITY = "similarity"
+SOURCE_REEXTRACTION_VERSION = "structured-source-1.0.0"
 
 _TAXONOMY_BY_SLUG = {entry["slug"]: entry for entry in TOPICS}
 _KEYWORD_INDEX = [
@@ -43,12 +52,21 @@ _KEYWORD_INDEX = [
 GENERIC_SINGLE_HIT_KEYWORDS = {"infrastructure"}
 
 
-def enqueue_document_contract(document):
+def enqueue_document_contract(document, *, reextract_source=False):
+    reextraction_suffix = (
+        f":{SOURCE_REEXTRACTION_VERSION}" if reextract_source else ""
+    )
     return enqueue_ingestion_work(
         kind=WORK_KIND_DOCUMENT_CONTRACT,
-        dedupe_key=f"{document.id}:{document.content_hash or 'pending'}",
+        dedupe_key=(
+            f"{document.id}:{document.content_hash or 'pending'}:{EXTRACTOR_VERSION}"
+            f"{reextraction_suffix}"
+        ),
         source_updated_at=document.created_at or timezone.now(),
-        payload_json={"document_id": document.id},
+        payload_json={
+            "document_id": document.id,
+            **({"reextract_source": True} if reextract_source else {}),
+        },
         jurisdiction=document.bill.jurisdiction,
         congress=document.bill.session,
     )
@@ -235,193 +253,6 @@ def infer_topic_slugs(contract):
     return [slug for slug, _confidence in infer_topic_matches(bill=contract.bill, contract=contract)]
 
 
-def _source_text(document: BillDocument, bill: Bill):
-    text = (document.extracted_text or "").strip()
-    if text:
-        return text
-    return (bill.summary or bill.title or "").strip()
-
-
-def _sentence_spans(text):
-    spans = []
-    for match in re.finditer(r"[^.!?]+[.!?]", text):
-        raw = match.group()
-        leading = len(raw) - len(raw.lstrip())
-        sentence = raw.strip()
-        if not sentence:
-            continue
-        start = match.start() + leading
-        spans.append({"text": sentence, "start": start, "end": start + len(sentence)})
-    trailing_start = spans[-1]["end"] if spans else 0
-    trailing = text[trailing_start:].strip()
-    if trailing:
-        start = text.find(trailing, trailing_start)
-        spans.append({"text": trailing, "start": start, "end": start + len(trailing)})
-    return spans
-
-
-def _is_heading(sentence):
-    return bool(re.fullmatch(r"(section|sec)\.?\s+[0-9a-zA-Z-]+\.?", sentence.lower()))
-
-
-def _first_meaningful_sentence(sentences):
-    for sentence in sentences:
-        if not _is_heading(sentence["text"]):
-            return sentence
-    return sentences[0] if sentences else None
-
-
-def _matches_any(sentence, keywords):
-    text = sentence["text"].lower()
-    return any(re.search(rf"\b{re.escape(keyword)}\b", text) for keyword in keywords)
-
-
-def _matching_sentences(sentences, keywords, limit=5):
-    matches = []
-    for sentence in sentences:
-        if _matches_any(sentence, keywords):
-            matches.append(sentence)
-        if len(matches) >= limit:
-            break
-    return matches
-
-
-def _contract_item(sentence, category):
-    return {"text": sentence["text"], "category": category}
-
-
-def _add_evidence(evidence, field_path, quote, source_text, start=None):
-    if not quote:
-        return
-    if start is None:
-        start = source_text.find(quote)
-    if start < 0:
-        return
-    evidence.append(
-        {
-            "field_path": field_path,
-            "quoted_text": quote,
-            "start_char": start,
-            "end_char": start + len(quote),
-        }
-    )
-
-
-def _build_contract(document: BillDocument, bill: Bill):
-    """Build deterministic structured contract JSON and exact source citations."""
-    source_text = _source_text(document, bill)
-    sentences = _sentence_spans(source_text)
-    summary_sentence = _first_meaningful_sentence(sentences)
-    key_sentences = [s for s in sentences if not _is_heading(s["text"])][:5]
-    if summary_sentence and summary_sentence not in key_sentences:
-        key_sentences.insert(0, summary_sentence)
-    key_sentences = key_sentences[:5]
-    requirement_sentences = _matching_sentences(
-        sentences,
-        {"shall", "must", "require", "requires", "required", "prohibit", "prohibits"},
-    )
-    funding_sentences = _matching_sentences(
-        sentences,
-        {"appropriated", "authorization", "authorized", "fund", "funding", "grant", "$"},
-    )
-    effective_date_sentences = _matching_sentences(
-        sentences,
-        {"effective", "takes effect", "enactment"},
-    )
-    summary_text = (
-        summary_sentence["text"]
-        if summary_sentence
-        else (bill.summary or bill.title or "")
-    )
-    source_excerpt = source_text[:500]
-    contract_json = {
-        "schema_version": CONTRACT_SCHEMA_VERSION,
-        "title": bill.title,
-        "version_label": document.version_label,
-        # Compatibility for the current client.
-        "plain_summary": summary_text,
-        "source_excerpt": source_excerpt,
-        "summary": {"text": summary_text, "basis": "first substantive source sentence"},
-        "key_points": [_contract_item(sentence, "key_point") for sentence in key_sentences],
-        "requirements": [
-            _contract_item(sentence, "requirement") for sentence in requirement_sentences
-        ],
-        "funding_mentions": [
-            _contract_item(sentence, "funding") for sentence in funding_sentences
-        ],
-        "effective_dates": [
-            _contract_item(sentence, "effective_date")
-            for sentence in effective_date_sentences
-        ],
-        "limitations": [
-            "This deterministic summary cites exact source sentences and is not legal advice."
-        ],
-    }
-    evidence = []
-    summary_start = summary_sentence["start"] if summary_sentence else None
-    _add_evidence(evidence, "plain_summary", summary_text, source_text, summary_start)
-    _add_evidence(evidence, "summary.text", summary_text, source_text, summary_start)
-    _add_evidence(evidence, "source_excerpt", source_excerpt, source_text, 0)
-    for index, sentence in enumerate(key_sentences):
-        _add_evidence(
-            evidence,
-            f"key_points[{index}].text",
-            sentence["text"],
-            source_text,
-            sentence["start"],
-        )
-    for index, sentence in enumerate(requirement_sentences):
-        _add_evidence(
-            evidence,
-            f"requirements[{index}].text",
-            sentence["text"],
-            source_text,
-            sentence["start"],
-        )
-    for index, sentence in enumerate(funding_sentences):
-        _add_evidence(
-            evidence,
-            f"funding_mentions[{index}].text",
-            sentence["text"],
-            source_text,
-            sentence["start"],
-        )
-    for index, sentence in enumerate(effective_date_sentences):
-        _add_evidence(
-            evidence,
-            f"effective_dates[{index}].text",
-            sentence["text"],
-            source_text,
-            sentence["start"],
-        )
-    return contract_json, evidence
-
-
-def _build_metadata_contract(bill: Bill):
-    summary_text = (bill.summary or bill.title or "").strip()
-    contract_json = {
-        "schema_version": CONTRACT_SCHEMA_VERSION,
-        "title": bill.title,
-        "version_label": "metadata",
-        "plain_summary": summary_text,
-        "source_excerpt": summary_text[:500],
-        "summary": {
-            "text": summary_text,
-            "basis": "bill metadata from source API",
-        },
-        "key_points": (
-            [{"text": summary_text, "category": "key_point"}] if summary_text else []
-        ),
-        "requirements": [],
-        "funding_mentions": [],
-        "effective_dates": [],
-        "limitations": [
-            "This deterministic summary cites available metadata and is not legal advice."
-        ],
-    }
-    return contract_json
-
-
 @shared_task
 def generate_contract_for_bill(bill_id):
     return _generate_contract_for_bill_impl(bill_id)
@@ -435,7 +266,7 @@ def _generate_contract_for_bill_impl(bill_id):
     if not bill:
         return {"bill_id": bill_id, "skipped": True, "reason": "no_bill"}
 
-    contract_json = _build_metadata_contract(bill)
+    contract_json = build_legacy_metadata_contract(bill)
     new_hash = contract_hash_from_dict(contract_json)
     latest = bill.latest_contract
     if latest and latest.contract_hash == new_hash:
@@ -487,11 +318,34 @@ def _generate_contract_for_bill_impl(bill_id):
 
 
 @shared_task
-def generate_contract(document_id):
-    return _generate_contract_impl(document_id)
+def generate_contract(document_id, reextract_source=False):
+    return _generate_contract_impl(
+        document_id,
+        reextract_source=reextract_source,
+    )
 
 
-def _generate_contract_impl(document_id):
+def _replace_evidence_spans(*, bill, document, contract, evidence_spans):
+    """Replace one document contract's source offsets with the current extraction."""
+    EvidenceSpan.objects.filter(contract=contract, document=document).delete()
+    EvidenceSpan.objects.bulk_create(
+        [
+            EvidenceSpan(
+                bill=bill,
+                document=document,
+                contract=contract,
+                field_path=span.field_path,
+                start_char=span.start_char,
+                end_char=span.end_char,
+                quoted_text=span.quoted_text,
+                page_number=span.page_number,
+            )
+            for span in evidence_spans
+        ]
+    )
+
+
+def _generate_contract_impl(document_id, *, reextract_source=False):
     """
     Build or skip BillContract from BillDocument.extracted_text.
     Sets Bill.latest_contract, ChangeLog(contract_update), EvidenceSpan rows;
@@ -507,8 +361,48 @@ def _generate_contract_impl(document_id):
         logger.warning("generate_contract: BillDocument %s not found", document_id)
         return {"document_id": document_id, "skipped": True, "reason": "no_document"}
 
+    if reextract_source:
+        refreshed_text = reextract_stored_document_text(document)
+        if refreshed_text != (document.extracted_text or ""):
+            document.extracted_text = refreshed_text or None
+            document.parsed_at = timezone.now() if refreshed_text else None
+            document.save(update_fields=["extracted_text", "parsed_at"])
+
     bill = document.bill
-    contract_json, evidence_spans = _build_contract(document, bill)
+    extraction_started = time.monotonic()
+    extraction_result = extract_contract(document=document, bill=bill)
+    duration_ms = int((time.monotonic() - extraction_started) * 1_000)
+    contract_json = extraction_result.contract_json
+    evidence_spans = extraction_result.evidence
+    extraction_metadata = contract_json.get("extraction", {})
+    logger.info(
+        "contract_extraction_completed",
+        extra={
+            "extraction_document_id": document.id,
+            "extraction_bill_id": bill.id,
+            "extraction_schema": extraction_result.schema_version,
+            "extraction_method": extraction_result.method,
+            "extraction_parser_version": extraction_metadata.get("parser_version"),
+            "extraction_category_counts": {
+                category: len(contract_json.get(category, []))
+                for category in (
+                    "requirements",
+                    "funding_items",
+                    "timeline_items",
+                    "definitions",
+                    "applicability",
+                    "amendment_operations",
+                )
+            },
+            "extraction_sections_seen": extraction_metadata.get("sections_seen"),
+            "extraction_sections_with_claims": extraction_metadata.get(
+                "sections_with_claims"
+            ),
+            "extraction_warnings": extraction_metadata.get("warnings", []),
+            "extraction_fallback_reason": extraction_result.fallback_reason,
+            "extraction_duration_ms": duration_ms,
+        },
+    )
     new_hash = contract_hash_from_dict(contract_json)
 
     latest = (
@@ -517,17 +411,24 @@ def _generate_contract_impl(document_id):
         .first()
     )
     if latest and latest.contract_hash == new_hash:
-        update_fields = ["contract_generated_at"]
-        document.contract_generated_at = timezone.now()
-        document.save(update_fields=update_fields)
+        with transaction.atomic():
+            _replace_evidence_spans(
+                bill=bill,
+                document=document,
+                contract=latest,
+                evidence_spans=evidence_spans,
+            )
+            document.contract_generated_at = timezone.now()
+            document.save(update_fields=["contract_generated_at"])
+            if document.is_active_version:
+                bill.latest_contract = latest
+                if bill.processing_status != ProcessingStatus.COMPLETE:
+                    bill.processing_status = ProcessingStatus.COMPLETE
+                    bill.save(update_fields=["latest_contract", "processing_status"])
+                else:
+                    bill.save(update_fields=["latest_contract"])
         if document.is_active_version:
-            bill.latest_contract = latest
-            if bill.processing_status != ProcessingStatus.COMPLETE:
-                bill.processing_status = ProcessingStatus.COMPLETE
-                bill.save(update_fields=["latest_contract", "processing_status"])
-            else:
-                bill.save(update_fields=["latest_contract"])
-        enqueue_topic_update(contract=latest)
+            enqueue_topic_update(contract=latest)
         logger.info(
             "generate_contract: unchanged hash for document_id=%s, skipping",
             document_id,
@@ -540,7 +441,7 @@ def _generate_contract_impl(document_id):
             document=document,
             contract_hash=new_hash,
             defaults={
-                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "schema_version": extraction_result.schema_version,
                 "contract_json": contract_json,
             },
         )
@@ -552,7 +453,7 @@ def _generate_contract_impl(document_id):
         document.contract_generated_at = now
         document.save(update_fields=["contract_generated_at"])
 
-        if contract_created:
+        if contract_created and document.is_active_version:
             ChangeLog.objects.create(
                 bill=bill,
                 document=document,
@@ -562,23 +463,18 @@ def _generate_contract_impl(document_id):
                 new_value={
                     "contract_id": contract.id,
                     "contract_hash": new_hash,
-                    "schema_version": CONTRACT_SCHEMA_VERSION,
+                    "schema_version": extraction_result.schema_version,
                 },
             )
+        _replace_evidence_spans(
+            bill=bill,
+            document=document,
+            contract=contract,
+            evidence_spans=evidence_spans,
+        )
 
-            for span in evidence_spans:
-                EvidenceSpan.objects.create(
-                    bill=bill,
-                    document=document,
-                    contract=contract,
-                    field_path=span["field_path"],
-                    start_char=span["start_char"],
-                    end_char=span["end_char"],
-                    quoted_text=span["quoted_text"],
-                    page_number=None,
-                )
-
-    enqueue_topic_update(contract=contract)
+    if document.is_active_version:
+        enqueue_topic_update(contract=contract)
 
     logger.info(
         "generate_contract: created contract_id=%s document_id=%s",
@@ -616,6 +512,11 @@ def _update_topics_impl(contract_id=None, bill_id=None):
         )
         if contract:
             bill = contract.bill
+            if (
+                bill.latest_contract_id is not None
+                and bill.latest_contract_id != contract.id
+            ):
+                contract = bill.latest_contract
     if bill is None and bill_id:
         bill = Bill.objects.filter(pk=bill_id).first()
         if bill and bill.latest_contract_id:
@@ -633,15 +534,49 @@ def _update_topics_impl(contract_id=None, bill_id=None):
             "reason": "not_found",
         }
 
-    old_slugs = list(
-        BillTopic.objects.filter(bill=bill)
-        .order_by("topic__slug")
-        .values_list("topic__slug", flat=True)
-    )
-    matches = infer_topic_matches(bill=bill, contract=contract)
-    new_slugs = [slug for slug, _confidence in matches]
-    confidence_by_slug = dict(matches)
     with transaction.atomic():
+        bill = (
+            Bill.objects.select_for_update()
+            .select_related("latest_contract")
+            .filter(pk=bill.pk)
+            .first()
+        )
+        if bill is None:
+            return {
+                "contract_id": contract_id,
+                "bill_id": bill_id,
+                "skipped": True,
+                "reason": "not_found",
+            }
+        if bill.latest_contract_id:
+            contract = bill.latest_contract
+        old_slugs = list(
+            BillTopic.objects.filter(bill=bill)
+            .order_by("topic__slug")
+            .values_list("topic__slug", flat=True)
+        )
+        matches = infer_topic_matches(bill=bill, contract=contract)
+        new_slugs = [slug for slug, _confidence in matches]
+        confidence_by_slug = dict(matches)
+        contract_id_before_match = contract.id if contract else None
+        bill.refresh_from_db(fields=["latest_contract"])
+        if (
+            bill.latest_contract_id is not None
+            and bill.latest_contract_id != contract_id_before_match
+        ):
+            logger.info(
+                "update_topics: contract superseded during matching bill_id=%s "
+                "contract_id=%s latest_contract_id=%s",
+                bill.id,
+                contract_id_before_match,
+                bill.latest_contract_id,
+            )
+            return {
+                "contract_id": contract_id_before_match,
+                "bill_id": bill.id,
+                "skipped": True,
+                "reason": "superseded",
+            }
         topics = []
         for slug in new_slugs:
             topic, _ = Topic.objects.get_or_create(

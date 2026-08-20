@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -18,71 +18,8 @@ import {
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
-
-function ContractSection({ contract }: { contract: BillContractItem }) {
-  const j = contract.contract_json;
-  const plain =
-    typeof j.plain_summary === "string" ? j.plain_summary : null;
-  const excerpt =
-    typeof j.source_excerpt === "string" ? j.source_excerpt : null;
-  const versionLabel =
-    typeof j.version_label === "string"
-      ? j.version_label
-      : contract.document_version_label;
-
-  return (
-    <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
-      <h2 className="mb-1 text-lg font-semibold text-slate-900 dark:text-green-400">
-        Plain-language summary{" "}
-        <span className="text-sm font-normal text-slate-600 dark:text-green-600">(beta)</span>
-      </h2>
-      <p className="mb-3 text-xs text-slate-600 dark:text-green-600">
-        Schema {contract.schema_version}
-        {versionLabel ? ` · Version: ${versionLabel}` : ""}
-        {contract.computed_at
-          ? ` · Generated ${new Date(contract.computed_at).toLocaleString()}`
-          : ""}
-      </p>
-      {plain ? (
-        <p className="w-full break-words whitespace-pre-wrap leading-relaxed text-slate-800 [overflow-wrap:anywhere] dark:text-green-100">
-          {plain}
-        </p>
-      ) : (
-        <p className="text-sm text-slate-600 dark:text-green-500">No summary text in contract yet.</p>
-      )}
-      {excerpt && excerpt !== plain && (
-        <div className="mt-4">
-          <h3 className="mb-1 text-sm text-slate-600 dark:text-green-500">Source excerpt</h3>
-          <p className="w-full break-words whitespace-pre-wrap text-sm text-slate-700 [overflow-wrap:anywhere] dark:text-green-300/90">
-            {excerpt}
-          </p>
-        </div>
-      )}
-      {contract.evidence_spans.length > 0 && (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-sm text-slate-600 dark:text-green-500">
-            Evidence spans ({contract.evidence_spans.length})
-          </summary>
-          <ul className="mt-2 space-y-2 text-sm text-slate-800 dark:text-green-400/90">
-            {contract.evidence_spans.map((ev, i) => (
-              <li
-                key={`${ev.field_path}-${i}`}
-                className="border-l-2 border-slate-400 pl-3 dark:border-green-800"
-              >
-                <div className="font-mono text-xs text-slate-600 dark:text-green-500">
-                  {ev.field_path}
-                </div>
-                <div className="mt-1 line-clamp-4 break-words text-slate-700 [overflow-wrap:anywhere] dark:text-green-300/80">
-                  {ev.quoted_text}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </section>
-  );
-}
+import { getContractSummary } from "@/lib/contracts";
+import { ContractSection } from "./contract-section";
 
 function HistoryPagination({
   page,
@@ -144,7 +81,7 @@ function ContractHistorySection({
       </h2>
       <ul className="space-y-3">
         {contracts.map((contract) => {
-          const summary = contract.contract_json.plain_summary;
+          const summary = getContractSummary(contract.contract_json);
           return (
             <li key={contract.id} className="rounded border border-slate-300 p-3 dark:border-green-900/70">
               <div className="text-sm font-semibold text-slate-900 dark:text-green-300">
@@ -156,7 +93,7 @@ function ContractHistorySection({
               <p className="mt-1 text-xs text-slate-600 dark:text-green-600">
                 {new Date(contract.computed_at).toLocaleString()}
               </p>
-              {typeof summary === "string" && (
+              {summary && (
                 <p className="mt-2 break-words text-sm text-slate-800 [overflow-wrap:anywhere] dark:text-green-200">
                   {summary}
                 </p>
