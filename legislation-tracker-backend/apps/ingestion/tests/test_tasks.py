@@ -59,6 +59,41 @@ def test_poll_congress_does_not_advance_cursor_or_enqueue_after_partial_failure(
 
 
 @pytest.mark.django_db
+def test_poll_congress_keeps_cursor_when_offset_pagination_repeats(monkeypatch):
+    initial_cursor = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+    state = IngestionState.objects.create(
+        jurisdiction="federal",
+        congress=119,
+        last_bill_update_seen_at=initial_cursor,
+    )
+    repeated_page = [
+        {
+            "congress": 119,
+            "type": "hr",
+            "number": str(number),
+            "updateDate": "2026-01-02T00:00:00Z",
+        }
+        for number in range(1, 251)
+    ]
+
+    def fake_bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
+        if bill_type == "hr" and offset in (0, 250):
+            return repeated_page
+        return []
+
+    monkeypatch.setattr(tasks, "bill_list", fake_bill_list)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    with pytest.raises(CongressAPIError, match="repeated same page"):
+        tasks.poll_congress(jurisdiction="federal", congress=119)
+
+    state.refresh_from_db()
+    assert state.last_bill_update_seen_at == initial_cursor
+    assert state.last_polled_at is None
+    assert not IngestionWorkItem.objects.exists()
+
+
+@pytest.mark.django_db
 def test_poll_congress_persists_discovered_work_and_cursor_when_dispatch_fails(monkeypatch):
     state = IngestionState.objects.create(jurisdiction="federal", congress=119)
 
@@ -160,6 +195,75 @@ def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(mo
     assert work.celery_task_id == "worker-task-1"
     assert work.dispatch_token
     assert work.lease_expires_at is not None
+
+
+@pytest.mark.django_db
+def test_dispatch_does_not_release_a_replacement_lease_after_enqueue_failure(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-2",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-2"},
+    )
+
+    def replace_lease_then_fail(args=None, kwargs=None):
+        IngestionWorkItem.objects.filter(pk=work.pk).update(
+            status=IngestionWorkStatus.DISPATCHED,
+            dispatch_token="replacement-lease",
+            celery_task_id="replacement-task",
+            lease_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        raise RuntimeError("stale dispatcher failed")
+
+    monkeypatch.setattr(
+        tasks.process_ingestion_work_item,
+        "apply_async",
+        replace_lease_then_fail,
+    )
+
+    result = tasks.dispatch_ingestion_work()
+
+    work.refresh_from_db()
+    assert result == {"dispatched": 0}
+    assert work.status == IngestionWorkStatus.DISPATCHED
+    assert work.dispatch_token == "replacement-lease"
+    assert work.celery_task_id == "replacement-task"
+
+
+@pytest.mark.django_db
+def test_dispatch_does_not_overwrite_a_replacement_lease_task_id(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-3",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-3"},
+    )
+
+    class Result:
+        id = "stale-task"
+
+    def replace_lease_then_return(args=None, kwargs=None):
+        IngestionWorkItem.objects.filter(pk=work.pk).update(
+            status=IngestionWorkStatus.DISPATCHED,
+            dispatch_token="replacement-lease",
+            celery_task_id="replacement-task",
+            lease_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        return Result()
+
+    monkeypatch.setattr(
+        tasks.process_ingestion_work_item,
+        "apply_async",
+        replace_lease_then_return,
+    )
+
+    result = tasks.dispatch_ingestion_work()
+
+    work.refresh_from_db()
+    assert result == {"dispatched": 0}
+    assert work.status == IngestionWorkStatus.DISPATCHED
+    assert work.dispatch_token == "replacement-lease"
+    assert work.celery_task_id == "replacement-task"
 
 
 @pytest.mark.django_db

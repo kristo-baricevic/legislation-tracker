@@ -437,12 +437,10 @@ def poll_congress(jurisdiction="federal", congress=119):
                 )
             )
             if offset > 0 and previous_page_keys == page_keys:
-                logger.warning(
-                    "poll_congress: bill_type=%s offset=%s repeated same page (API may not support offset); stopping pagination",
-                    bt,
-                    offset,
+                raise CongressAPIError(
+                    f"poll_congress: bill_type={bt} offset={offset} repeated same page "
+                    "(API may not support offset); refusing to advance cursor"
                 )
-                break
             previous_page_keys = page_keys
             for b in items:
                 key = bill_key(b["congress"], b["type"], b["number"])
@@ -554,6 +552,7 @@ def dispatch_ingestion_work(batch_size=100):
             IngestionWorkItem.objects.filter(
                 pk=work_item_id,
                 status=IngestionWorkStatus.DISPATCHED,
+                dispatch_token=dispatch_token,
             ).update(
                 status=IngestionWorkStatus.PENDING,
                 available_at=timezone.now() + timedelta(seconds=30),
@@ -567,11 +566,12 @@ def dispatch_ingestion_work(batch_size=100):
             )
             continue
 
-        IngestionWorkItem.objects.filter(
+        updated = IngestionWorkItem.objects.filter(
             pk=work_item_id,
             status=IngestionWorkStatus.DISPATCHED,
+            dispatch_token=dispatch_token,
         ).update(celery_task_id=getattr(result, "id", "") or "")
-        dispatched += 1
+        dispatched += int(bool(updated))
 
     return {"dispatched": dispatched}
 
