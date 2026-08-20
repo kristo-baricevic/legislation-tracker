@@ -1,13 +1,12 @@
 import pytest
-from django.db import connection
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
+from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
-from apps.congress.models import Vote, VoteRecord
+from apps.congress.models import Representative, Vote, VoteRecord
 from apps.legislation import views
-from apps.congress.models import Representative
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -272,6 +271,79 @@ def test_contract_history_list_and_detail_are_public_and_filtered_by_bill():
     assert response.json()["results"][1]["document_version_label"] == "Introduced"
     assert detail.status_code == 200
     assert detail.json()["contract_json"] == {"plain_summary": "Updated summary"}
+
+
+@pytest.mark.django_db
+def test_public_api_serializes_mixed_v1_and_v2_contract_history():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 109",
+        title="Mixed contract history bill",
+        status="introduced",
+    )
+    old_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text="Original source sentence.",
+    )
+    new_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        extracted_text="The Secretary shall report.",
+    )
+    old_contract = BillContract.objects.create(
+        bill=bill,
+        document=old_document,
+        schema_version="1.1-deterministic",
+        contract_json={
+            "schema_version": "1.1-deterministic",
+            "plain_summary": "Original source sentence.",
+        },
+        contract_hash="mixed-old",
+    )
+    new_contract = BillContract.objects.create(
+        bill=bill,
+        document=new_document,
+        schema_version="2.0-legal-nlp",
+        contract_json={
+            "schema_version": "2.0-legal-nlp",
+            "plain_summary": "The Secretary is required to report.",
+        },
+        contract_hash="mixed-new",
+    )
+    EvidenceSpan.objects.create(
+        bill=bill,
+        document=new_document,
+        contract=new_contract,
+        field_path="plain_summary",
+        start_char=0,
+        end_char=len(new_document.extracted_text),
+        quoted_text=new_document.extracted_text,
+    )
+    bill.latest_contract = new_contract
+    bill.save(update_fields=["latest_contract"])
+
+    bill_detail = APIClient().get(f"/api/bills/{bill.id}/")
+    history = APIClient().get(f"/api/contracts/?bill={bill.id}")
+
+    assert bill_detail.status_code == 200
+    latest = bill_detail.json()["latest_contract"]
+    assert latest["schema_version"] == "2.0-legal-nlp"
+    assert latest["contract_json"]["schema_version"] == latest["schema_version"]
+    assert latest["evidence_spans"][0]["quoted_text"] == new_document.extracted_text
+    assert history.status_code == 200
+    versions = {
+        item["id"]: (
+            item["schema_version"],
+            item["contract_json"]["schema_version"],
+        )
+        for item in history.json()["results"]
+    }
+    assert versions == {
+        new_contract.id: ("2.0-legal-nlp", "2.0-legal-nlp"),
+        old_contract.id: ("1.1-deterministic", "1.1-deterministic"),
+    }
 
 
 @pytest.mark.django_db

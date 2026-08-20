@@ -3,6 +3,7 @@ Celery tasks: BillContract generation plus topic and similarity updates.
 """
 import logging
 import re
+import time
 
 from celery import shared_task
 from django.db import transaction
@@ -13,9 +14,10 @@ from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.contract_json import contract_hash_from_dict
 from apps.legislation.extraction.legacy import (
     LEGACY_SCHEMA_VERSION,
-    build_legacy_document_contract,
     build_legacy_metadata_contract,
 )
+from apps.legislation.extraction.service import extract_contract
+from apps.legislation.extraction.types import EXTRACTOR_VERSION
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -51,7 +53,9 @@ GENERIC_SINGLE_HIT_KEYWORDS = {"infrastructure"}
 def enqueue_document_contract(document):
     return enqueue_ingestion_work(
         kind=WORK_KIND_DOCUMENT_CONTRACT,
-        dedupe_key=f"{document.id}:{document.content_hash or 'pending'}",
+        dedupe_key=(
+            f"{document.id}:{document.content_hash or 'pending'}:{EXTRACTOR_VERSION}"
+        ),
         source_updated_at=document.created_at or timezone.now(),
         payload_json={"document_id": document.id},
         jurisdiction=document.bill.jurisdiction,
@@ -326,9 +330,40 @@ def _generate_contract_impl(document_id):
         return {"document_id": document_id, "skipped": True, "reason": "no_document"}
 
     bill = document.bill
-    extraction_result = build_legacy_document_contract(document, bill)
+    extraction_started = time.monotonic()
+    extraction_result = extract_contract(document=document, bill=bill)
+    duration_ms = int((time.monotonic() - extraction_started) * 1_000)
     contract_json = extraction_result.contract_json
     evidence_spans = extraction_result.evidence
+    extraction_metadata = contract_json.get("extraction", {})
+    logger.info(
+        "contract_extraction_completed",
+        extra={
+            "extraction_document_id": document.id,
+            "extraction_bill_id": bill.id,
+            "extraction_schema": extraction_result.schema_version,
+            "extraction_method": extraction_result.method,
+            "extraction_parser_version": extraction_metadata.get("parser_version"),
+            "extraction_category_counts": {
+                category: len(contract_json.get(category, []))
+                for category in (
+                    "requirements",
+                    "funding_items",
+                    "timeline_items",
+                    "definitions",
+                    "applicability",
+                    "amendment_operations",
+                )
+            },
+            "extraction_sections_seen": extraction_metadata.get("sections_seen"),
+            "extraction_sections_with_claims": extraction_metadata.get(
+                "sections_with_claims"
+            ),
+            "extraction_warnings": extraction_metadata.get("warnings", []),
+            "extraction_fallback_reason": extraction_result.fallback_reason,
+            "extraction_duration_ms": duration_ms,
+        },
+    )
     new_hash = contract_hash_from_dict(contract_json)
 
     latest = (
@@ -360,7 +395,7 @@ def _generate_contract_impl(document_id):
             document=document,
             contract_hash=new_hash,
             defaults={
-                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "schema_version": extraction_result.schema_version,
                 "contract_json": contract_json,
             },
         )
@@ -382,7 +417,7 @@ def _generate_contract_impl(document_id):
                 new_value={
                     "contract_id": contract.id,
                     "contract_hash": new_hash,
-                    "schema_version": CONTRACT_SCHEMA_VERSION,
+                    "schema_version": extraction_result.schema_version,
                 },
             )
 

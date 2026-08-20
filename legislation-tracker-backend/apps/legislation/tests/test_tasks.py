@@ -4,6 +4,8 @@ from django.db import IntegrityError, transaction
 from apps.changelog.models import ChangeLog
 from apps.ingestion import tasks as ingestion_tasks
 from apps.ingestion.models import IngestionWorkItem
+from apps.legislation import tasks
+from apps.legislation.extraction.types import EXTRACTOR_VERSION
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -14,7 +16,6 @@ from apps.legislation.models import (
     ProcessingStatus,
     Topic,
 )
-from apps.legislation import tasks
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +73,108 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
     document.refresh_from_db()
     assert document.contract_generated_at is not None
     assert IngestionWorkItem.objects.filter(kind="topic_update").count() == 1
+
+
+@pytest.mark.django_db
+def test_generate_contract_persists_v2_and_reuses_unchanged_result():
+    source_text = "SEC. 2. REPORTS\nThe Secretary shall publish a report."
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 200",
+        title="Federal Reports Act",
+        status="Introduced",
+        processing_status=ProcessingStatus.PROCESSING,
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text=source_text,
+        content_hash="v2-source",
+    )
+
+    first = tasks.generate_contract(document.id)
+    contract = BillContract.objects.get(pk=first["contract_id"])
+
+    assert contract.schema_version == "2.0-legal-nlp"
+    assert contract.contract_json["schema_version"] == contract.schema_version
+    evidence_count = EvidenceSpan.objects.filter(contract=contract).count()
+    assert evidence_count > 0
+    for span in EvidenceSpan.objects.filter(contract=contract):
+        assert source_text[span.start_char : span.end_char] == span.quoted_text
+
+    second = tasks.generate_contract(document.id)
+
+    assert second["contract_id"] == first["contract_id"]
+    assert second["unchanged"] is True
+    assert BillContract.objects.count() == 1
+    assert ChangeLog.objects.filter(contract=contract).count() == 1
+    assert EvidenceSpan.objects.filter(contract=contract).count() == evidence_count
+
+
+@pytest.mark.django_db
+def test_metadata_contract_generation_remains_legacy():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 201",
+        title="Metadata Act",
+        summary="Metadata-only summary.",
+        status="Introduced",
+    )
+
+    result = tasks.generate_contract_for_bill(bill.id)
+    contract = BillContract.objects.get(pk=result["contract_id"])
+
+    assert contract.schema_version == "1.1-deterministic"
+    assert contract.contract_json["schema_version"] == "1.1-deterministic"
+
+
+@pytest.mark.django_db
+def test_document_contract_work_is_versioned_by_extractor():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202",
+        title="Queued Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+        content_hash="content-hash",
+    )
+
+    work = tasks.enqueue_document_contract(document)
+
+    assert work.dedupe_key == f"{document.id}:content-hash:{EXTRACTOR_VERSION}"
+
+
+@pytest.mark.django_db
+def test_unexpected_extraction_error_propagates_for_durable_retry(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 203",
+        title="Retry Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+
+    monkeypatch.setattr(
+        tasks,
+        "extract_contract",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("extractor failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="extractor failed"):
+        tasks._generate_contract_impl(document.id)
 
 
 @pytest.mark.django_db
@@ -208,12 +311,15 @@ def test_generate_contract_for_inactive_document_does_not_replace_latest_contrac
         bill=bill,
         version_label="Introduced",
         is_active_version=False,
-        extracted_text="This older introduced version is not active.",
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
     )
 
     result = tasks.generate_contract(inactive_document.id)
 
     assert result["contract_id"] != active_contract.id
+    assert BillContract.objects.get(pk=result["contract_id"]).schema_version == (
+        "2.0-legal-nlp"
+    )
     bill.refresh_from_db()
     inactive_document.refresh_from_db()
     assert bill.latest_contract_id == active_contract.id
