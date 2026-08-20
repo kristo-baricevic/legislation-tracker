@@ -668,7 +668,7 @@ def test_sparse_representative_payloads_do_not_erase_existing_profile_data():
 
 
 @pytest.mark.django_db
-def test_poll_tracked_bills_enqueues_unique_bills_matching_user_tracking(monkeypatch):
+def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
     user = get_user_model().objects.create_user(
         username="owner@example.com",
         email="owner@example.com",
@@ -716,23 +716,46 @@ def test_poll_tracked_bills_enqueues_unique_bills_matching_user_tracking(monkeyp
     TrackedBill.objects.create(user=user, bill=direct_bill)
     TrackedTopic.objects.create(user=user, topic=topic)
     TrackedLegislator.objects.create(user=user, representative=representative)
-    enqueued = []
-
+    dispatched = []
+    now = datetime(2026, 1, 2, 12, 3, tzinfo=dt_timezone.utc)
+    monkeypatch.setattr(tasks.timezone, "now", lambda: now)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: dispatched.append(True))
     monkeypatch.setattr(
         tasks.process_bill,
         "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
+        lambda *args, **kwargs: pytest.fail(
+            "tracked refreshes must use durable work, not direct Celery tasks"
+        ),
     )
 
     result = tasks.poll_tracked_bills()
 
     assert result == {"enqueued": 3}
-    assert {tuple(args) for args, _kwargs in enqueued} == {
-        ("119-hr-101",),
-        ("119-s-202",),
-        ("119-hr-303",),
-    }
-    assert ("119-hr-404",) not in {tuple(args) for args, _kwargs in enqueued}
+    assert dispatched == [True]
+    work_items = list(IngestionWorkItem.objects.order_by("dedupe_key"))
+    assert [
+        (work.dedupe_key, work.status, work.source_updated_at, work.payload_json)
+        for work in work_items
+    ] == [
+        (
+            "119-hr-101",
+            IngestionWorkStatus.PENDING,
+            datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+            {"bill_key": "119-hr-101"},
+        ),
+        (
+            "119-hr-303",
+            IngestionWorkStatus.PENDING,
+            datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+            {"bill_key": "119-hr-303"},
+        ),
+        (
+            "119-s-202",
+            IngestionWorkStatus.PENDING,
+            datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+            {"bill_key": "119-s-202"},
+        ),
+    ]
 
 
 @pytest.mark.django_db

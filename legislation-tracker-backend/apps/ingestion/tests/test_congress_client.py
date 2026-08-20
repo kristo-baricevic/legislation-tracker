@@ -1,3 +1,5 @@
+import pytest
+
 from apps.ingestion import congress_client
 
 
@@ -122,45 +124,63 @@ def test_house_vote_detail_paginates_all_member_positions(monkeypatch):
     assert vote["members"][-1]["position"] == "no"
 
 
-def test_senate_vote_detail_uses_the_session_scoped_senate_endpoints(monkeypatch):
+def test_senate_vote_detail_uses_official_senate_xml_with_bioguide_ids(monkeypatch):
     calls = []
 
-    def fake_request(method, path, params=None):
-        calls.append((method, path, params))
-        if path.endswith("/members"):
-            return {
-                "senateRollCallVoteMemberVotes": {
-                    "results": [
-                        {
-                            "bioguideId": "S000001",
-                            "firstName": "Sam",
-                            "lastName": "Senator",
-                            "voteCast": "Not Voting",
-                            "voteParty": "I",
-                            "voteState": "VT",
-                        }
-                    ]
-                }
-            }
-        return {
-            "senateRollCallVote": {
-                "startDate": "2026-01-03T00:00:00Z",
-                "result": "Agreed to",
-                "votePartyTotal": [{"yeaTotal": 60, "nayTotal": 40}],
-            }
-        }
+    class Response:
+        ok = True
+        status_code = 200
+        text = ""
 
-    monkeypatch.setattr(congress_client, "_request", fake_request)
-    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+        def __init__(self, content):
+            self.content = content
+
+    vote_xml = b"""
+        <roll_call_vote>
+          <vote_date>January 3, 2026, 10:35 AM</vote_date>
+          <vote_result>Agreed to</vote_result>
+          <count><yeas>60</yeas><nays>40</nays></count>
+          <members>
+            <member>
+              <first_name>Sam</first_name><last_name>Senator</last_name>
+              <party>I</party><state>VT</state><vote_cast>Not Voting</vote_cast>
+            </member>
+          </members>
+        </roll_call_vote>
+    """
+    members_xml = b"""
+        <contact_information>
+          <member>
+            <first_name>Samuel</first_name><last_name>Senator</last_name>
+            <state>VT</state><bioguide_id>S000001</bioguide_id>
+          </member>
+        </contact_information>
+    """
+
+    def fake_get(url, timeout=None):
+        calls.append((url, timeout))
+        return Response(
+            vote_xml
+            if "roll_call_votes" in url
+            else members_xml
+        )
+
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *args, **kwargs: pytest.fail("Senate votes must not use Congress.gov"),
+    )
+    monkeypatch.setattr(congress_client.requests, "get", fake_get)
 
     vote = congress_client.vote_detail(119, "senate", 7, session_number=1)
 
-    assert [call[1] for call in calls] == [
-        "senate-vote/119/1/7",
-        "senate-vote/119/1/7/members",
+    assert [call[0] for call in calls] == [
+        "https://www.senate.gov/legislative/LIS/roll_call_votes/"
+        "vote1191/vote_119_1_00007.xml",
+        "https://www.senate.gov/general/contact_information/senators_cfm.xml",
     ]
     assert vote == {
-        "date": "2026-01-03T00:00:00Z",
+        "date": "2026-01-03T15:35:00+00:00",
         "result": "Agreed to",
         "yeas": 60,
         "nays": 40,

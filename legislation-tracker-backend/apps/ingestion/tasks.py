@@ -46,6 +46,7 @@ from apps.legislation.tasks import generate_contract, generate_contract_for_bill
 logger = logging.getLogger(__name__)
 
 CURSOR_OVERLAP = timedelta(minutes=5)
+TRACKED_REFRESH_INTERVAL = timedelta(minutes=5)
 WORK_LEASE_DURATION = timedelta(minutes=10)
 MAX_INGESTION_WORK_ATTEMPTS = 5
 UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
@@ -450,6 +451,15 @@ def _retry_delay(attempt_count):
     return timedelta(seconds=min(60 * (2 ** max(attempt_count - 1, 0)), 3600))
 
 
+def _tracked_refresh_bucket(now):
+    interval_seconds = int(TRACKED_REFRESH_INTERVAL.total_seconds())
+    timestamp = int(_ensure_utc_aware(now).timestamp())
+    return datetime.fromtimestamp(
+        timestamp - (timestamp % interval_seconds),
+        tz=dt_timezone.utc,
+    )
+
+
 @shared_task
 def dispatch_ingestion_work(batch_size=100):
     """Lease pending durable work and submit it to Celery without losing rows."""
@@ -661,21 +671,41 @@ def poll_tracked_bills():
             | Q(bill_topics__topic_id__in=topic_ids)
             | Q(sponsor_id__in=representative_ids)
         )
-        .only("id", "session", "bill_number")
+        .only("id", "jurisdiction", "session", "bill_number")
         .order_by("id")
         .distinct()
     )
-    keys = []
-    for bill in bills:
-        key = bill_to_bill_key(bill)
-        if key:
-            keys.append(key)
+    now = timezone.now()
+    source_updated_at = _tracked_refresh_bucket(now)
+    created_count = 0
+    with transaction.atomic():
+        for bill in bills:
+            key = bill_to_bill_key(bill)
+            if not key:
+                continue
+            _, created = IngestionWorkItem.objects.get_or_create(
+                kind="bill",
+                dedupe_key=key,
+                source_updated_at=source_updated_at,
+                defaults={
+                    "jurisdiction": bill.jurisdiction,
+                    "congress": bill.session,
+                    "payload_json": {"bill_key": key},
+                    "available_at": now,
+                },
+            )
+            created_count += int(created)
 
-    for key in sorted(set(keys)):
-        process_bill.apply_async(args=[key])
+    if created_count:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception(
+                "poll_tracked_bills: could not trigger ingestion work dispatcher"
+            )
 
-    logger.info("poll_tracked_bills: enqueued=%s", len(set(keys)))
-    return {"enqueued": len(set(keys))}
+    logger.info("poll_tracked_bills: enqueued=%s", created_count)
+    return {"enqueued": created_count}
 
 
 def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc, work_item=None):

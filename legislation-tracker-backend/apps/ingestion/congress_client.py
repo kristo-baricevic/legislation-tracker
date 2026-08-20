@@ -4,11 +4,23 @@ Uses CONGRESS_API_KEY from Django settings. Base URL: https://api.congress.gov/v
 """
 import logging
 import time
+import unicodedata
+from datetime import datetime, timezone
+from xml.etree import ElementTree
+from zoneinfo import ZoneInfo
 
 import requests
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+SENATE_VOTE_URL_TEMPLATE = (
+    "https://www.senate.gov/legislative/LIS/roll_call_votes/"
+    "vote{congress}{session}/vote_{congress}_{session}_{roll_number:05d}.xml"
+)
+SENATE_CURRENT_MEMBERS_URL = (
+    "https://www.senate.gov/general/contact_information/senators_cfm.xml"
+)
 
 
 class CongressAPIError(Exception):
@@ -191,11 +203,158 @@ def _roll_call_members(payload, chamber):
     return members
 
 
+def _request_senate_xml(url):
+    response = requests.get(url, timeout=30)
+    if not response.ok:
+        raise CongressAPIError(
+            f"Senate roll-call source error: {response.status_code}",
+            status_code=response.status_code,
+            response_text=(response.text or "")[:500],
+        )
+    try:
+        return ElementTree.fromstring(response.content)
+    except ElementTree.ParseError as exc:
+        raise CongressAPIError("Senate roll-call source returned invalid XML") from exc
+
+
+def _xml_text(element, tag):
+    value = element.findtext(tag)
+    return value.strip() if value else ""
+
+
+def _senate_member_key(first_name, last_name, state):
+    first = _normalized_member_name(first_name).split()
+    return (
+        (first[0] if first else "").lower(),
+        _normalized_member_name(last_name),
+        (state or "").strip().upper(),
+    )
+
+
+def _senate_member_fallback_key(last_name, state):
+    return (
+        _normalized_member_name(last_name),
+        (state or "").strip().upper(),
+    )
+
+
+def _normalized_member_name(value):
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value or "")
+        if not unicodedata.combining(char)
+    ).strip().casefold()
+
+
+def _senate_bioguide_ids(root):
+    exact_matches = {}
+    fallback_matches = {}
+    ambiguous_fallbacks = set()
+    for member in root.findall("./member"):
+        first_name = _xml_text(member, "first_name")
+        last_name = _xml_text(member, "last_name")
+        state = _xml_text(member, "state")
+        key = _senate_member_key(
+            first_name,
+            last_name,
+            state,
+        )
+        bioguide_id = _xml_text(member, "bioguide_id")
+        if all(key) and bioguide_id:
+            exact_matches[key] = bioguide_id
+            fallback_key = _senate_member_fallback_key(last_name, state)
+            previous_bioguide_id = fallback_matches.get(fallback_key)
+            if previous_bioguide_id and previous_bioguide_id != bioguide_id:
+                ambiguous_fallbacks.add(fallback_key)
+            else:
+                fallback_matches[fallback_key] = bioguide_id
+    return (
+        exact_matches,
+        {
+            key: bioguide_id
+            for key, bioguide_id in fallback_matches.items()
+            if key not in ambiguous_fallbacks
+        },
+    )
+
+
+def _parse_senate_vote_date(value):
+    try:
+        local_time = datetime.strptime(
+            " ".join(value.split()),
+            "%B %d, %Y, %I:%M %p",
+        ).replace(tzinfo=ZoneInfo("America/New_York"))
+    except ValueError:
+        return value
+    return local_time.astimezone(timezone.utc).isoformat()
+
+
+def _senate_vote_detail(congress, session_number, roll_number):
+    try:
+        vote_number = int(roll_number)
+    except (TypeError, ValueError) as exc:
+        raise CongressAPIError("Senate roll-call number must be an integer") from exc
+
+    vote_url = SENATE_VOTE_URL_TEMPLATE.format(
+        congress=congress,
+        session=session_number,
+        roll_number=vote_number,
+    )
+    vote_root = _request_senate_xml(vote_url)
+    current_members_root = _request_senate_xml(SENATE_CURRENT_MEMBERS_URL)
+    bioguide_ids, fallback_bioguide_ids = _senate_bioguide_ids(
+        current_members_root
+    )
+    members = []
+    for member in vote_root.findall("./members/member"):
+        first_name = _xml_text(member, "first_name")
+        last_name = _xml_text(member, "last_name")
+        state = _xml_text(member, "state")[:2]
+        vote_cast = _xml_text(member, "vote_cast").lower()
+        members.append(
+            {
+                "bioguideId": bioguide_ids.get(
+                    _senate_member_key(first_name, last_name, state),
+                )
+                or fallback_bioguide_ids.get(
+                    _senate_member_fallback_key(last_name, state),
+                    "",
+                ),
+                "name": " ".join(part for part in (first_name, last_name) if part)
+                or _xml_text(member, "member_full"),
+                "party": _xml_text(member, "party")[:50],
+                "state": state,
+                "chamber": "senate",
+                "position": {
+                    "aye": "yes",
+                    "yea": "yes",
+                    "yes": "yes",
+                    "nay": "no",
+                    "no": "no",
+                    "present": "present",
+                    "not voting": "not_voting",
+                }.get(vote_cast, vote_cast or "not_voting"),
+            }
+        )
+
+    count = vote_root.find("count")
+    _throttle()
+    return {
+        "date": _parse_senate_vote_date(_xml_text(vote_root, "vote_date")),
+        "result": _xml_text(vote_root, "vote_result")
+        or _xml_text(vote_root, "vote_question_text")
+        or "unknown",
+        "yeas": _safe_int(_xml_text(count, "yeas") if count is not None else 0),
+        "nays": _safe_int(_xml_text(count, "nays") if count is not None else 0),
+        "members": members,
+    }
+
+
 def vote_detail(congress, chamber, roll_number, *, session_number=None, source_url=None):
     """Return a normalized House or Senate roll-call vote and member positions.
 
-    Congress.gov has no generic ``/vote`` route; each chamber exposes its own
-    session-scoped roll-call detail and member endpoints.
+    Congress.gov provides House roll-call endpoints. Senate roll calls are
+    normalized from the official Senate XML feed.
     """
     chamber = (chamber or "house").lower()
     if chamber not in ("house", "senate") or session_number in (None, ""):
@@ -205,7 +364,10 @@ def vote_detail(congress, chamber, roll_number, *, session_number=None, source_u
             f"{source}"
         )
 
-    path = f"{chamber}-vote/{congress}/{session_number}/{roll_number}"
+    if chamber == "senate":
+        return _senate_vote_detail(congress, session_number, roll_number)
+
+    path = f"house-vote/{congress}/{session_number}/{roll_number}"
     logger.debug(
         "vote_detail: congress=%s chamber=%s session=%s roll_number=%s",
         congress,

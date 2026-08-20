@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:18000";
 
 test("an authenticated user follows a topic and the live API persists it", async ({
   page,
