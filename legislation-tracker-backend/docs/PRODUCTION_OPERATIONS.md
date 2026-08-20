@@ -74,18 +74,27 @@ Do not run multiple Beat schedulers against the same environment unless you also
 ## Container deployment
 
 The repository root includes `docker-compose.production.yml`, which runs the
-API, worker, single Beat process, PostgreSQL, Redis, and the standalone Next.js
-client. Copy `.env.production.example` to `.env.production`, replace every
-placeholder, then run:
+API, worker, single Beat process, PostgreSQL, Redis, the standalone Next.js
+client, and a one-shot migration job. Copy `.env.production.example` to
+`.env.production`, replace every placeholder, then run:
 
 ```bash
 docker compose -f docker-compose.production.yml --env-file .env.production up -d --build
 ```
 
-Run `python manage.py migrate` and `python manage.py collectstatic --noinput`
-as a one-off release job before sending traffic to a new version. The compose
-health check uses `/health/live/`; deploy/load-balancer readiness should use
-`/health/`, which verifies the database, Redis cache, and document storage.
+The migration job runs `python manage.py migrate --noinput` after PostgreSQL
+and Redis are healthy. The API, worker, and Beat wait for it to finish
+successfully, so they cannot start against an unmigrated schema. Static files
+are collected while building the backend image. If the migration job fails,
+inspect it with:
+
+```bash
+docker compose -f docker-compose.production.yml --env-file .env.production logs migrate
+```
+
+Fix the failure, then rerun the deployment command. The compose health check
+uses `/health/live/`; deploy/load-balancer readiness should use `/health/`,
+which verifies the database, Redis cache, and document storage.
 
 ## Scheduled Background Polling
 

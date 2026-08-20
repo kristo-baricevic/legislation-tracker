@@ -23,6 +23,23 @@ services:
       timeout: 3s
       retries: 5
 
+  migrate:
+    build: ./legislation-tracker-backend
+    command: python manage.py migrate --noinput
+    restart: "no"
+    env_file:
+      - ${ENV_FILE:-.env.production}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DATABASE_URL: postgresql://${POSTGRES_USER:-legislation}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-legislation}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   api:
     build: ./legislation-tracker-backend
     restart: unless-stopped
@@ -38,6 +55,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -64,6 +83,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - document_media:/app/local_media
 
@@ -83,6 +104,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   client:
     build:
