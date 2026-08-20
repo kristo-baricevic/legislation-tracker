@@ -18,6 +18,7 @@ import {
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
+import { getContractSummary } from "@/lib/contracts";
 import { ContractSection } from "./contract-section";
 
 function HistoryPagination({
@@ -80,7 +81,7 @@ function ContractHistorySection({
       </h2>
       <ul className="space-y-3">
         {contracts.map((contract) => {
-          const summary = contract.contract_json.plain_summary;
+          const summary = getContractSummary(contract.contract_json);
           return (
             <li key={contract.id} className="rounded border border-slate-300 p-3 dark:border-green-900/70">
               <div className="text-sm font-semibold text-slate-900 dark:text-green-300">
@@ -92,7 +93,7 @@ function ContractHistorySection({
               <p className="mt-1 text-xs text-slate-600 dark:text-green-600">
                 {new Date(contract.computed_at).toLocaleString()}
               </p>
-              {typeof summary === "string" && (
+              {summary && (
                 <p className="mt-2 break-words text-sm text-slate-800 [overflow-wrap:anywhere] dark:text-green-200">
                   {summary}
                 </p>

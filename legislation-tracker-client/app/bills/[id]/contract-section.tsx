@@ -161,14 +161,17 @@ function ClaimGroup({
 }
 
 function ExtractionWarnings({ warnings }: { warnings: readonly string[] }) {
-  const messages = warnings
-    .filter((warning) => warning.startsWith("item_limit_reached:"))
-    .map((warning) => {
-      const category = warning.slice("item_limit_reached:".length).replaceAll("_", " ");
-      return `Some ${category} were omitted because this contract reached the 100-item display limit.`;
-    });
-  if (warnings.some((warning) => !warning.startsWith("item_limit_reached:"))) {
-    messages.push("Some extraction details need review.");
+  const warningCopy: Record<string, string> = {
+    "item_limit_reached:requirements":
+      "Only the first 100 extracted requirements are shown.",
+    "item_limit_reached:funding_items":
+      "Only the first 100 extracted funding items are shown.",
+  };
+  const messages = warnings.flatMap((warning) =>
+    warningCopy[warning] ? [warningCopy[warning]] : [],
+  );
+  if (warnings.some((warning) => !warningCopy[warning])) {
+    messages.push("Some provisions could not be represented in this automated summary.");
   }
   if (messages.length === 0) return null;
   return (

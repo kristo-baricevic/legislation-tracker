@@ -141,8 +141,12 @@ describe("ContractSection", () => {
     );
     expect(screen.getByText("The Secretary shall report.")).toBeVisible();
     expect(screen.getByText("The report covers grants.")).toBeVisible();
-    expect(screen.getByText(/Some requirements were omitted/)).toBeVisible();
-    expect(screen.getByText("Some extraction details need review.")).toBeVisible();
+    expect(screen.getByText("Only the first 100 extracted requirements are shown.")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Some provisions could not be represented in this automated summary.",
+      ),
+    ).toBeVisible();
     expect(screen.queryByText("future_warning")).not.toBeInTheDocument();
   });
 
