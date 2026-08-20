@@ -5,6 +5,7 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = True
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
+WHITENOISE_AUTOREFRESH = True
 
 # Optional: less strict auth in dev
 REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"] = [

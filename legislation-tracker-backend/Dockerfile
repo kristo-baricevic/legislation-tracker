@@ -12,7 +12,9 @@ COPY requirements/base.txt requirements/base.txt
 RUN pip install --upgrade pip && pip install -r requirements/base.txt
 
 COPY . .
-RUN mkdir -p /app/staticfiles /app/local_media && chown -R app:app /app
+RUN python manage.py collectstatic --noinput \
+    && mkdir -p /app/local_media \
+    && chown -R app:app /app
 
 USER app
 

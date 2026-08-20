@@ -35,6 +35,16 @@ def test_request_wraps_transport_errors_as_retryable_congress_api_errors(monkeyp
         congress_client._request("GET", "member/congress/119")
 
 
+def test_senate_xml_transport_errors_are_retryable_congress_api_errors(monkeypatch):
+    def fake_get(*args, **kwargs):
+        raise congress_client.requests.ConnectionError("Senate is unavailable")
+
+    monkeypatch.setattr(congress_client.requests, "get", fake_get)
+
+    with pytest.raises(congress_client.CongressAPIError, match="Senate roll-call source failed"):
+        congress_client._request_senate_xml("https://www.senate.gov/example.xml")
+
+
 def test_bill_actions_pages_through_recorded_vote_references(monkeypatch):
     calls = []
     expected_actions = [

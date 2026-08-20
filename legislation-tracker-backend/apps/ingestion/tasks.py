@@ -28,11 +28,13 @@ from apps.ingestion.congress_client import (
     vote_detail,
 )
 from apps.ingestion.document_download import (
+    RetryableDocumentStorageError,
     build_object_key,
     download_url,
     extract_text_from_pdf,
     extract_text_from_xml_or_html,
     guess_extension,
+    retryable_storage_error,
     sha256_hex,
     upload_and_metadata,
 )
@@ -42,8 +44,8 @@ from apps.ingestion.models import (
     IngestionWorkItem,
     IngestionWorkStatus,
 )
+from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
-from apps.legislation.tasks import generate_contract, generate_contract_for_bill
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,36 @@ WORK_LEASE_DURATION = timedelta(minutes=10)
 MAX_INGESTION_WORK_ATTEMPTS = 5
 UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
 CURRENT_CONGRESS = 119
+
+WORK_KIND_BILL = "bill"
+WORK_KIND_BILL_VERSIONS = "bill_versions"
+WORK_KIND_BILL_VOTES = "bill_votes"
+WORK_KIND_DOCUMENT_DOWNLOAD = "document_download"
+
+
+def _queue_bill_stage(bill, kind, *, source_updated_at=None):
+    return enqueue_ingestion_work(
+        kind=kind,
+        dedupe_key=str(bill.id),
+        source_updated_at=source_updated_at or bill.updated_at or timezone.now(),
+        payload_json={"bill_id": bill.id},
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
+
+
+def _queue_document_download(document):
+    source_fingerprint = hashlib.sha256(
+        (document.source_url or "").encode("utf-8")
+    ).hexdigest()
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_DOCUMENT_DOWNLOAD,
+        dedupe_key=f"{document.id}:{source_fingerprint}",
+        source_updated_at=document.created_at or timezone.now(),
+        payload_json={"document_id": document.id},
+        jurisdiction=document.bill.jurisdiction,
+        congress=document.bill.session,
+    )
 
 # Bill key format: "119-hr-1234" -> congress, bill_type, bill_number
 def parse_bill_key(bill_key):
@@ -576,12 +608,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         )
 
     try:
-        if work_item.kind != "bill":
-            raise ValueError(f"Unsupported ingestion work kind: {work_item.kind}")
-        bill_key_str = work_item.payload_json.get("bill_key")
-        if not bill_key_str:
-            raise ValueError("Bill ingestion work is missing payload_json.bill_key")
-        _process_bill_impl(bill_key_str)
+        _process_durable_work(work_item)
     except Exception as exc:
         error_message = str(exc)[:10000]
         with transaction.atomic():
@@ -652,6 +679,39 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             ]
         )
     return {"work_item_id": work_item_id, "status": "succeeded"}
+
+
+def _process_durable_work(work_item):
+    """Run one durable pipeline stage without publishing another broker message."""
+    payload = work_item.payload_json
+    if work_item.kind == WORK_KIND_BILL:
+        bill_key_str = payload.get("bill_key")
+        if not bill_key_str:
+            raise ValueError("Bill ingestion work is missing payload_json.bill_key")
+        return _process_bill_impl(bill_key_str)
+    if work_item.kind == WORK_KIND_BILL_VERSIONS:
+        return _process_bill_versions_impl(payload["bill_id"])
+    if work_item.kind == WORK_KIND_BILL_VOTES:
+        return _process_bill_votes_impl(payload["bill_id"])
+    if work_item.kind == WORK_KIND_DOCUMENT_DOWNLOAD:
+        return _download_document_impl(payload["document_id"])
+
+    # Import lazily to avoid loading the legislation task module while Celery
+    # discovers ingestion tasks.
+    from apps.legislation import tasks as legislation_tasks
+
+    if work_item.kind == legislation_tasks.WORK_KIND_DOCUMENT_CONTRACT:
+        return legislation_tasks._generate_contract_impl(payload["document_id"])
+    if work_item.kind == legislation_tasks.WORK_KIND_METADATA_CONTRACT:
+        return legislation_tasks._generate_contract_for_bill_impl(payload["bill_id"])
+    if work_item.kind == legislation_tasks.WORK_KIND_TOPIC_UPDATE:
+        return legislation_tasks._update_topics_impl(
+            contract_id=payload.get("contract_id"),
+            bill_id=payload.get("bill_id"),
+        )
+    if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
+        return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
+    raise ValueError(f"Unsupported ingestion work kind: {work_item.kind}")
 
 
 @shared_task
@@ -861,12 +921,12 @@ def _process_bill_impl(bill_key_str):
                 bill.save(update_fields=["processing_status"])
                 try:
                     if needs_doc_pipeline:
-                        process_bill_versions.apply_async(args=[bill.id])
+                        _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
                         logger.info(
                             "process_bill: enqueued versions (documents missing or not downloaded) bill_id=%s",
                             bill.id,
                         )
-                    process_bill_votes.apply_async(args=[bill.id])
+                    _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
                 except Exception:
                     logger.exception(
                         "process_bill: failed to enqueue versions/votes bill_id=%s",
@@ -900,8 +960,8 @@ def _process_bill_impl(bill_key_str):
                 new_value={"status": status, "title": title},
             )
     try:
-        process_bill_versions.apply_async(args=[bill.id])
-        process_bill_votes.apply_async(args=[bill.id])
+        _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
+        _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
     except Exception:
         bill.processing_status = ProcessingStatus.FAILED
         bill.save(update_fields=["processing_status"])
@@ -918,6 +978,10 @@ def _process_bill_impl(bill_key_str):
     max_retries=2,
 )
 def process_bill_versions(self, bill_id):
+    return _process_bill_versions_impl(bill_id)
+
+
+def _process_bill_versions_impl(bill_id):
     """Fetch bill text versions, create/update BillDocument, enqueue download_document."""
     logger.info("process_bill_versions: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
@@ -944,7 +1008,9 @@ def process_bill_versions(self, bill_id):
         raise
     if not versions:
         logger.info("process_bill_versions: bill_id=%s no versions returned", bill_id)
-        generate_contract_for_bill.apply_async(args=[bill.id])
+        from apps.legislation.tasks import enqueue_metadata_contract
+
+        enqueue_metadata_contract(bill)
         return {"bill_id": bill_id, "versions": 0, "fallback_enqueued": True}
     # Mark one as active (e.g. last)
     for i, v in enumerate(versions):
@@ -970,7 +1036,7 @@ def process_bill_versions(self, bill_id):
             or doc.downloaded_at is None
         )
         if needs_download:
-            download_document.apply_async(args=[doc.id])
+            _queue_document_download(doc)
     logger.info("process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions))
     return {"bill_id": bill_id, "versions": len(versions)}
 
@@ -987,8 +1053,14 @@ def backfill_process_bill_versions_for_all_bills(session=None):
     if session is not None:
         qs = qs.filter(session=int(session))
     enqueued = 0
+    backfill_requested_at = timezone.now()
     for bid in qs.values_list("id", flat=True):
-        process_bill_versions.apply_async(args=[bid])
+        bill = Bill.objects.get(pk=bid)
+        _queue_bill_stage(
+            bill,
+            WORK_KIND_BILL_VERSIONS,
+            source_updated_at=backfill_requested_at,
+        )
         enqueued += 1
     logger.info(
         "backfill_process_bill_versions_for_all_bills: enqueued=%s (session=%s)",
@@ -1006,6 +1078,10 @@ def backfill_process_bill_versions_for_all_bills(session=None):
     max_retries=2,
 )
 def process_bill_votes(self, bill_id):
+    return _process_bill_votes_impl(bill_id)
+
+
+def _process_bill_votes_impl(bill_id):
     """Fetch vote refs from bill detail, create Vote/VoteRecord/Representative, insert ChangeLog(vote)."""
     logger.info("process_bill_votes: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
@@ -1150,12 +1226,20 @@ def process_bill_votes(self, bill_id):
 
 @shared_task(
     bind=True,
-    autoretry_for=(requests.RequestException, OSError),
+    autoretry_for=(
+        requests.RequestException,
+        OSError,
+        RetryableDocumentStorageError,
+    ),
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=3,
 )
 def download_document(self, document_id):
+    return _download_document_impl(document_id)
+
+
+def _download_document_impl(document_id):
     """
     Download file from BillDocument.source_url, upload to storage (MinIO/S3 or local_media),
     set content_hash, extracted_text when PDF/XML/HTML, enqueue generate_contract.
@@ -1184,7 +1268,9 @@ def download_document(self, document_id):
         )
         doc.downloaded_at = timezone.now()
         doc.save(update_fields=["downloaded_at"])
-        generate_contract.apply_async(args=[document_id])
+        from apps.legislation.tasks import enqueue_document_contract
+
+        enqueue_document_contract(doc)
         return {"document_id": document_id, "unchanged": True}
 
     ext = ""
@@ -1204,7 +1290,13 @@ def download_document(self, document_id):
         ext,
     )
 
-    saved_key, size = upload_and_metadata(object_key, data, content_type)
+    try:
+        saved_key, size = upload_and_metadata(object_key, data, content_type)
+    except Exception as exc:
+        retryable_error = retryable_storage_error(exc)
+        if retryable_error:
+            raise retryable_error from exc
+        raise
 
     extracted = ""
     if content_type and "pdf" in content_type.lower():
@@ -1237,5 +1329,7 @@ def download_document(self, document_id):
         saved_key,
         size,
     )
-    generate_contract.apply_async(args=[document_id])
+    from apps.legislation.tasks import enqueue_document_contract
+
+    enqueue_document_contract(doc)
     return {"document_id": document_id, "object_storage_key": saved_key, "size": size}

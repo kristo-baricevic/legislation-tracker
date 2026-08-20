@@ -284,7 +284,11 @@ def _roll_call_members(payload, chamber):
 
 
 def _request_senate_xml(url):
-    response = requests.get(url, timeout=30)
+    try:
+        response = requests.get(url, timeout=30)
+    except requests.RequestException as exc:
+        logger.warning("Senate roll-call source request failed: %s", exc)
+        raise CongressAPIError(f"Senate roll-call source failed: {exc}") from exc
     if not response.ok:
         raise CongressAPIError(
             f"Senate roll-call source error: {response.status_code}",

@@ -21,6 +21,7 @@ from apps.legislation.models import (
     Topic,
 )
 from apps.legislation.topic_taxonomy import TOPICS
+from apps.ingestion.work_queue import enqueue_ingestion_work
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,77 @@ STUB_SCHEMA_VERSION = CONTRACT_SCHEMA_VERSION
 SIMILARITY_METHOD = "deterministic-v1"
 SIMILARITY_MIN_SCORE = 0.2
 
+WORK_KIND_DOCUMENT_CONTRACT = "document_contract"
+WORK_KIND_METADATA_CONTRACT = "metadata_contract"
+WORK_KIND_TOPIC_UPDATE = "topic_update"
+WORK_KIND_SIMILARITY = "similarity"
+
 _TAXONOMY_BY_SLUG = {entry["slug"]: entry for entry in TOPICS}
 _KEYWORD_INDEX = [
     (entry["slug"], [keyword.lower() for keyword in entry["keywords"]])
     for entry in TOPICS
 ]
 GENERIC_SINGLE_HIT_KEYWORDS = {"infrastructure"}
+
+
+def enqueue_document_contract(document):
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_DOCUMENT_CONTRACT,
+        dedupe_key=f"{document.id}:{document.content_hash or 'pending'}",
+        source_updated_at=document.created_at or timezone.now(),
+        payload_json={"document_id": document.id},
+        jurisdiction=document.bill.jurisdiction,
+        congress=document.bill.session,
+    )
+
+
+def enqueue_metadata_contract(bill):
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_METADATA_CONTRACT,
+        dedupe_key=f"{bill.id}:{bill.metadata_hash or 'metadata'}",
+        source_updated_at=bill.updated_at or timezone.now(),
+        payload_json={"bill_id": bill.id},
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
+
+
+def enqueue_topic_update(*, contract=None, bill=None, source_updated_at=None):
+    if contract:
+        bill = contract.bill
+        dedupe_key = f"contract:{contract.id}:{contract.contract_hash}"
+        source_updated_at = source_updated_at or contract.computed_at or timezone.now()
+        payload_json = {"contract_id": contract.id}
+    elif bill:
+        dedupe_key = f"bill:{bill.id}:{bill.metadata_hash or 'metadata'}"
+        source_updated_at = source_updated_at or bill.updated_at or timezone.now()
+        payload_json = {"bill_id": bill.id}
+    else:
+        raise ValueError("A contract or bill is required for topic work")
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_TOPIC_UPDATE,
+        dedupe_key=dedupe_key,
+        source_updated_at=source_updated_at,
+        payload_json=payload_json,
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
+
+
+def enqueue_similarity(bill, *, source_updated_at=None):
+    contract = bill.latest_contract
+    fingerprint = contract.contract_hash if contract else bill.metadata_hash or "metadata"
+    source_updated_at = source_updated_at or (
+        contract.computed_at if contract and contract.computed_at else bill.updated_at
+    ) or timezone.now()
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_SIMILARITY,
+        dedupe_key=f"{bill.id}:{fingerprint}",
+        source_updated_at=source_updated_at,
+        payload_json={"bill_id": bill.id},
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
 
 
 def _topic_name(slug):
@@ -358,6 +424,10 @@ def _build_metadata_contract(bill: Bill):
 
 @shared_task
 def generate_contract_for_bill(bill_id):
+    return _generate_contract_for_bill_impl(bill_id)
+
+
+def _generate_contract_for_bill_impl(bill_id):
     """
     Create a metadata-only contract when document text is not available yet.
     """
@@ -369,7 +439,7 @@ def generate_contract_for_bill(bill_id):
     new_hash = contract_hash_from_dict(contract_json)
     latest = bill.latest_contract
     if latest and latest.contract_hash == new_hash:
-        update_topics.apply_async(kwargs={"bill_id": bill.id})
+        enqueue_topic_update(bill=bill)
         return {
             "bill_id": bill.id,
             "contract_id": latest.id,
@@ -407,7 +477,7 @@ def generate_contract_for_bill(bill_id):
                 },
             )
 
-    update_topics.apply_async(kwargs={"bill_id": bill.id})
+    enqueue_topic_update(bill=bill)
     logger.info(
         "generate_contract_for_bill: bill_id=%s contract_id=%s",
         bill.id,
@@ -418,6 +488,10 @@ def generate_contract_for_bill(bill_id):
 
 @shared_task
 def generate_contract(document_id):
+    return _generate_contract_impl(document_id)
+
+
+def _generate_contract_impl(document_id):
     """
     Build or skip BillContract from BillDocument.extracted_text.
     Sets Bill.latest_contract, ChangeLog(contract_update), EvidenceSpan rows;
@@ -453,7 +527,7 @@ def generate_contract(document_id):
                 bill.save(update_fields=["latest_contract", "processing_status"])
             else:
                 bill.save(update_fields=["latest_contract"])
-        update_topics.apply_async(args=[latest.id])
+        enqueue_topic_update(contract=latest)
         logger.info(
             "generate_contract: unchanged hash for document_id=%s, skipping",
             document_id,
@@ -504,7 +578,7 @@ def generate_contract(document_id):
                     page_number=None,
                 )
 
-    update_topics.apply_async(args=[contract.id])
+    enqueue_topic_update(contract=contract)
 
     logger.info(
         "generate_contract: created contract_id=%s document_id=%s",
@@ -520,6 +594,10 @@ def generate_contract(document_id):
 
 @shared_task
 def update_topics(contract_id=None, bill_id=None):
+    return _update_topics_impl(contract_id=contract_id, bill_id=bill_id)
+
+
+def _update_topics_impl(contract_id=None, bill_id=None):
     """
     Infer Topic tags from a BillContract or Bill and update BillTopic.
     """
@@ -604,7 +682,7 @@ def update_topics(contract_id=None, bill_id=None):
         contract.id if contract else None,
         new_slugs,
     )
-    schedule_similarity_for_bill.apply_async(args=[bill.id])
+    enqueue_similarity(bill)
     return {
         "contract_id": contract.id if contract else None,
         "bill_id": bill.id,
@@ -624,11 +702,15 @@ def backfill_update_topics(session=None):
         bills = bills.filter(session=int(session))
 
     enqueued = 0
+    backfill_requested_at = timezone.now()
     for bill in bills:
         contract = bill.latest_contract
         if not contract:
             continue
-        update_topics.apply_async(args=[contract.id])
+        enqueue_topic_update(
+            contract=contract,
+            source_updated_at=backfill_requested_at,
+        )
         enqueued += 1
 
     logger.info(
@@ -641,6 +723,10 @@ def backfill_update_topics(session=None):
 
 @shared_task
 def schedule_similarity_for_bill(bill_id):
+    return _schedule_similarity_for_bill_impl(bill_id)
+
+
+def _schedule_similarity_for_bill_impl(bill_id):
     """
     Phase 6: recompute deterministic BillSimilarity rows for one bill.
     """
@@ -700,8 +786,10 @@ def recompute_similarity_batch(session=None, batch_size=None):
     if batch_size is not None:
         bill_ids = bill_ids[: int(batch_size)]
     enqueued = 0
+    recompute_requested_at = timezone.now()
     for bill_id in bill_ids:
-        schedule_similarity_for_bill.apply_async(args=[bill_id])
+        bill = Bill.objects.get(pk=bill_id)
+        enqueue_similarity(bill, source_updated_at=recompute_requested_at)
         enqueued += 1
     logger.info(
         "recompute_similarity_batch: enqueued=%s (session=%s batch_size=%s)",

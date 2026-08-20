@@ -2,6 +2,8 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from apps.changelog.models import ChangeLog
+from apps.ingestion import tasks as ingestion_tasks
+from apps.ingestion.models import IngestionWorkItem
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -15,21 +17,13 @@ from apps.legislation.models import (
 from apps.legislation import tasks
 
 
+@pytest.fixture(autouse=True)
+def prevent_broker_publish(monkeypatch):
+    monkeypatch.setattr(ingestion_tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+
 @pytest.mark.django_db
 def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeypatch):
-    enqueued_topics = []
-    enqueued_similarity = []
-    monkeypatch.setattr(
-        tasks.update_topics,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued_topics.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
-        tasks.schedule_similarity_for_bill,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued_similarity.append((args, kwargs)),
-    )
-
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -60,8 +54,11 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
     assert spans.count() > 0
     for span in spans:
         assert document.extracted_text[span.start_char:span.end_char] == span.quoted_text
-    assert enqueued_topics == [([first["contract_id"]], None)]
-    assert enqueued_similarity == []
+    assert list(
+        IngestionWorkItem.objects.filter(kind="topic_update").values_list(
+            "payload_json", flat=True
+        )
+    ) == [{"contract_id": first["contract_id"]}]
 
     second = tasks.generate_contract(document.id)
 
@@ -74,11 +71,7 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
     assert ChangeLog.objects.filter(change_type="contract_update").count() == 1
     document.refresh_from_db()
     assert document.contract_generated_at is not None
-    assert enqueued_topics == [
-        ([first["contract_id"]], None),
-        ([first["contract_id"]], None),
-    ]
-    assert enqueued_similarity == []
+    assert IngestionWorkItem.objects.filter(kind="topic_update").count() == 1
 
 
 @pytest.mark.django_db
@@ -300,19 +293,16 @@ def test_update_topics_handles_a_bill_without_a_contract_and_then_updates_simila
         summary="Improves hospital care and Medicare access.",
         status="Introduced",
     )
-    enqueued = []
-    monkeypatch.setattr(
-        tasks.schedule_similarity_for_bill,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
-    )
-
     result = tasks.update_topics(bill_id=bill.id)
 
     assert result["bill_id"] == bill.id
     assert result["contract_id"] is None
     assert "health" in result["topics"]
-    assert enqueued == [([bill.id], None)]
+    assert list(
+        IngestionWorkItem.objects.filter(kind="similarity").values_list(
+            "payload_json", flat=True
+        )
+    ) == [{"bill_id": bill.id}]
 
 
 @pytest.mark.django_db
@@ -364,19 +354,26 @@ def test_backfill_update_topics_enqueues_latest_contracts(monkeypatch):
         contract_json={"plain_summary": "other"},
         contract_hash="other",
     )
-    enqueued = []
-    monkeypatch.setattr(
-        tasks.update_topics,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
-    )
-
     result = tasks.backfill_update_topics(session=119)
 
     assert result == {"enqueued": 1, "session": 119}
-    assert enqueued == [([latest_contract.id], None)]
-    assert old_contract.id not in [args[0] for args, _kwargs in enqueued]
-    assert other_contract.id not in [args[0] for args, _kwargs in enqueued]
+    assert list(
+        IngestionWorkItem.objects.filter(kind="topic_update").values_list(
+            "payload_json", flat=True
+        )
+    ) == [{"contract_id": latest_contract.id}]
+    assert old_contract.id not in [
+        item["contract_id"]
+        for item in IngestionWorkItem.objects.filter(kind="topic_update").values_list(
+            "payload_json", flat=True
+        )
+    ]
+    assert other_contract.id not in [
+        item["contract_id"]
+        for item in IngestionWorkItem.objects.filter(kind="topic_update").values_list(
+            "payload_json", flat=True
+        )
+    ]
 
 
 @pytest.mark.django_db
@@ -416,16 +413,13 @@ def test_backfill_update_topics_uses_the_selected_latest_contract_not_highest_id
     )
     bill.latest_contract = active_contract
     bill.save(update_fields=["latest_contract"])
-    enqueued = []
-    monkeypatch.setattr(
-        tasks.update_topics,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
-    )
-
     tasks.backfill_update_topics(session=119)
 
-    assert enqueued == [([active_contract.id], None)]
+    assert list(
+        IngestionWorkItem.objects.filter(kind="topic_update").values_list(
+            "payload_json", flat=True
+        )
+    ) == [{"contract_id": active_contract.id}]
 
 
 @pytest.mark.django_db
@@ -526,14 +520,11 @@ def test_recompute_similarity_batch_enqueues_all_bills(monkeypatch):
         title="Second bill",
         status="Introduced",
     )
-    enqueued = []
-    monkeypatch.setattr(
-        tasks.schedule_similarity_for_bill,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
-    )
-
     result = tasks.recompute_similarity_batch(session=119)
 
     assert result == {"enqueued": 2, "session": 119}
-    assert enqueued == [([first.id], None), ([second.id], None)]
+    assert list(
+        IngestionWorkItem.objects.filter(kind="similarity")
+        .order_by("payload_json__bill_id")
+        .values_list("payload_json", flat=True)
+    ) == [{"bill_id": first.id}, {"bill_id": second.id}]

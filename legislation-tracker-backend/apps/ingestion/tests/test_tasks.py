@@ -1,4 +1,5 @@
 import pytest
+from botocore.exceptions import ClientError
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -159,6 +160,72 @@ def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(mo
     assert work.celery_task_id == "worker-task-1"
     assert work.dispatch_token
     assert work.lease_expires_at is not None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("kind", "payload", "target_module", "target_name"),
+    [
+        ("bill_versions", {"bill_id": 1}, "ingestion", "_process_bill_versions_impl"),
+        ("bill_votes", {"bill_id": 1}, "ingestion", "_process_bill_votes_impl"),
+        (
+            "document_download",
+            {"document_id": 1},
+            "ingestion",
+            "_download_document_impl",
+        ),
+        (
+            "document_contract",
+            {"document_id": 1},
+            "legislation",
+            "_generate_contract_impl",
+        ),
+        (
+            "metadata_contract",
+            {"bill_id": 1},
+            "legislation",
+            "_generate_contract_for_bill_impl",
+        ),
+        (
+            "topic_update",
+            {"bill_id": 1},
+            "legislation",
+            "_update_topics_impl",
+        ),
+        (
+            "similarity",
+            {"bill_id": 1},
+            "legislation",
+            "_schedule_similarity_for_bill_impl",
+        ),
+    ],
+)
+def test_durable_worker_routes_each_pipeline_stage(
+    monkeypatch, kind, payload, target_module, target_name
+):
+    from apps.legislation import tasks as legislation_tasks
+
+    called = []
+    module = tasks if target_module == "ingestion" else legislation_tasks
+    monkeypatch.setattr(
+        module,
+        target_name,
+        lambda *args, **kwargs: called.append((args, kwargs)),
+    )
+    work = IngestionWorkItem.objects.create(
+        kind=kind,
+        dedupe_key=f"{kind}-1",
+        source_updated_at=timezone.now(),
+        payload_json=payload,
+        status=IngestionWorkStatus.DISPATCHED,
+    )
+
+    result = tasks.process_ingestion_work_item(work.id)
+
+    work.refresh_from_db()
+    assert result == {"work_item_id": work.id, "status": "succeeded"}
+    assert work.status == IngestionWorkStatus.SUCCEEDED
+    assert called
 
 
 @pytest.mark.django_db
@@ -474,8 +541,6 @@ def test_vote_records_are_unique_per_vote_and_representative():
 
 @pytest.mark.django_db
 def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(monkeypatch):
-    enqueued = []
-
     monkeypatch.setattr(
         tasks,
         "bill_detail",
@@ -489,24 +554,17 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(mon
             "url": "https://api.congress.gov/v3/bill/119/hr/1",
         },
     )
-    monkeypatch.setattr(
-        tasks.process_bill_versions,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append(("versions", args, kwargs)),
-    )
-    monkeypatch.setattr(
-        tasks.process_bill_votes,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append(("votes", args, kwargs)),
-    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks._process_bill_impl("119-hr-1")
 
     bill = Bill.objects.get(pk=result["bill_id"])
     assert bill.processing_status == ProcessingStatus.PROCESSING
-    assert enqueued == [
-        ("versions", [bill.id], None),
-        ("votes", [bill.id], None),
+    assert list(
+        IngestionWorkItem.objects.order_by("kind").values_list("kind", "payload_json")
+    ) == [
+        ("bill_versions", {"bill_id": bill.id}),
+        ("bill_votes", {"bill_id": bill.id}),
     ]
 
 
@@ -528,7 +586,6 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
         object_storage_key="documents/hr-1.xml",
         downloaded_at=timezone.now(),
     )
-    enqueued = []
     monkeypatch.setattr(
         tasks,
         "bill_detail",
@@ -538,21 +595,14 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
             "url": "119-hr-1",
         },
     )
-    monkeypatch.setattr(
-        tasks.process_bill_versions,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append(("versions", args)),
-    )
-    monkeypatch.setattr(
-        tasks.process_bill_votes,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append(("votes", args)),
-    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks._process_bill_impl("119-hr-1")
 
     assert result == {"bill_id": bill.id, "unchanged": True}
-    assert enqueued == [("votes", [bill.id])]
+    assert list(IngestionWorkItem.objects.values_list("kind", "payload_json")) == [
+        ("bill_votes", {"bill_id": bill.id})
+    ]
 
 
 @pytest.mark.django_db
@@ -598,7 +648,6 @@ def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_documen
         title="Test bill",
         status="Introduced",
     )
-    enqueued = []
 
     monkeypatch.setattr(
         tasks,
@@ -610,29 +659,27 @@ def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_documen
             }
         ],
     )
-    monkeypatch.setattr(
-        tasks.download_document,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
-    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     first_result = tasks.process_bill_versions(bill.id)
 
     doc = BillDocument.objects.get(bill=bill, version_label="Introduced")
     assert first_result == {"bill_id": bill.id, "versions": 1}
-    assert enqueued == [([doc.id], None)]
+    assert list(
+        IngestionWorkItem.objects.filter(kind="document_download").values_list(
+            "payload_json", flat=True
+        )
+    ) == [{"document_id": doc.id}]
 
     doc.object_storage_key = "congress/119/hr-1/introduced.xml"
     doc.downloaded_at = timezone.now()
     doc.save(update_fields=["object_storage_key", "downloaded_at"])
-    enqueued.clear()
-
     second_result = tasks.process_bill_versions(bill.id)
 
     assert second_result == {"bill_id": bill.id, "versions": 1}
     assert BillDocument.objects.filter(bill=bill, version_label="Introduced").count() == 1
     assert BillDocument.objects.filter(bill=bill, is_active_version=True).count() == 1
-    assert enqueued == []
+    assert IngestionWorkItem.objects.filter(kind="document_download").count() == 1
 
 
 @pytest.mark.django_db
@@ -645,18 +692,119 @@ def test_process_bill_versions_enqueues_metadata_contract_when_no_text_versions_
         status="Introduced",
         processing_status=ProcessingStatus.PROCESSING,
     )
-    enqueued = []
     monkeypatch.setattr(tasks, "bill_text_list", lambda *args: [])
-    monkeypatch.setattr(
-        tasks.generate_contract_for_bill,
-        "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)),
-    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks.process_bill_versions(bill.id)
 
     assert result == {"bill_id": bill.id, "versions": 0, "fallback_enqueued": True}
-    assert enqueued == [([bill.id], None)]
+    assert list(
+        IngestionWorkItem.objects.filter(kind="metadata_contract").values_list(
+            "payload_json", flat=True
+        )
+    ) == [{"bill_id": bill.id}]
+
+
+@pytest.mark.django_db
+def test_document_backfill_creates_fresh_work_after_a_previous_run(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        status="Introduced",
+    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    tasks.backfill_process_bill_versions_for_all_bills(session=119)
+    first_work = IngestionWorkItem.objects.get(kind="bill_versions")
+    first_work.status = IngestionWorkStatus.SUCCEEDED
+    first_work.save(update_fields=["status"])
+
+    tasks.backfill_process_bill_versions_for_all_bills(session=119)
+
+    assert list(
+        IngestionWorkItem.objects.filter(kind="bill_versions")
+        .order_by("id")
+        .values_list("payload_json", "status")
+    ) == [
+        ({"bill_id": bill.id}, IngestionWorkStatus.SUCCEEDED),
+        ({"bill_id": bill.id}, IngestionWorkStatus.PENDING),
+    ]
+
+
+@pytest.mark.django_db
+def test_process_bill_versions_persists_document_work_before_dispatch(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        status="Introduced",
+    )
+    monkeypatch.setattr(
+        tasks,
+        "bill_text_list",
+        lambda *args: [
+            {
+                "version_label": "Introduced",
+                "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.xml",
+            }
+        ],
+    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+    monkeypatch.setattr(
+        tasks.download_document,
+        "apply_async",
+        lambda *args, **kwargs: pytest.fail(
+            "document work must be persisted before any broker publish"
+        ),
+    )
+
+    tasks.process_bill_versions(bill.id)
+
+    document = BillDocument.objects.get(bill=bill, version_label="Introduced")
+    work = IngestionWorkItem.objects.get(kind="document_download")
+    assert work.payload_json == {"document_id": document.id}
+    assert work.status == IngestionWorkStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_download_document_marks_retryable_s3_failures_for_celery_retry(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr1.xml",
+    )
+    storage_error = ClientError(
+        {
+            "Error": {"Code": "ServiceUnavailable", "Message": "Try again"},
+            "ResponseMetadata": {"HTTPStatusCode": 503},
+        },
+        "PutObject",
+    )
+    monkeypatch.setattr(tasks, "download_url", lambda *args: (b"<bill />", "application/xml"))
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: (_ for _ in ()).throw(storage_error),
+    )
+
+    with pytest.raises(Exception) as raised:
+        tasks.download_document(document.id)
+
+    assert raised.type.__name__ == "RetryableDocumentStorageError"
+    assert any(
+        error.__name__ == "RetryableDocumentStorageError"
+        for error in tasks.download_document.autoretry_for
+    )
 
 
 @pytest.mark.django_db
