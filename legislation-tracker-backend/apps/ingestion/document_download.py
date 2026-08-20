@@ -24,22 +24,47 @@ from django.core.files.storage import default_storage
 logger = logging.getLogger(__name__)
 
 _STRUCTURAL_MARKUP_TAG_RE = re.compile(
-    r"</?(?:article|body|br|chapter|div|header|item|li|p|paragraph|part|"
-    r"section|subsection|table|td|text|th|title|tr)\b[^>]*>",
+    r"</?(?:account|appropriations-para|article|body|br|chapter|clause|"
+    r"constitution-article|div|division|header|item|li|p|paragraph|part|"
+    r"section|subaccount|subchapter|subclause|subdivision|subitem|"
+    r"subparagraph|subpart|subsection|subsubaccount|subsubsubaccount|"
+    r"subtitle|table|td|text|th|title|tr)\b[^>]*>",
     re.IGNORECASE,
 )
 _MARKUP_TAG_RE = re.compile(r"<[^>]+>")
-_XML_CONTAINER_TAGS = {"chapter", "part", "subpart", "subtitle", "title"}
+_XML_CONTAINER_TAGS = {
+    "account",
+    "chapter",
+    "constitution-article",
+    "division",
+    "part",
+    "subaccount",
+    "subchapter",
+    "subdivision",
+    "subpart",
+    "subsubaccount",
+    "subsubsubaccount",
+    "subtitle",
+    "title",
+}
 _XML_PROVISION_TAGS = {
+    "appropriations-para",
     "clause",
     "item",
     "paragraph",
     "section",
     "subclause",
+    "subitem",
     "subparagraph",
     "subsection",
 }
-_XML_TEXT_TAGS = {"after-quoted-block", "continuation-text", "text"}
+_XML_STRUCTURAL_TAGS = _XML_CONTAINER_TAGS | _XML_PROVISION_TAGS
+_XML_TEXT_TAGS = {
+    "after-quoted-block",
+    "continuation-text",
+    "quoted-block-continuation-text",
+    "text",
+}
 _QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
 _QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 
@@ -183,12 +208,12 @@ def _render_congress_xml_element(
 
     for child in element:
         child_tag = _xml_tag(child)
-        if child_tag in _XML_CONTAINER_TAGS or child_tag in _XML_PROVISION_TAGS:
+        if child_tag in _XML_STRUCTURAL_TAGS:
             _render_congress_xml_element(child, lines)
         elif child_tag == "quoted-block":
             lines.append(_QUOTED_BLOCK_START)
             for quoted_child in child:
-                if _xml_tag(quoted_child) in _XML_PROVISION_TAGS:
+                if _xml_tag(quoted_child) in _XML_STRUCTURAL_TAGS:
                     _render_congress_xml_element(quoted_child, lines)
                 elif _xml_tag(quoted_child) in _XML_TEXT_TAGS:
                     value = _normalized_inline_text(quoted_child)
@@ -214,7 +239,7 @@ def _extract_congress_xml(text: str) -> str | None:
         return None
     lines: list[str] = []
     for child in legislative_body:
-        if _xml_tag(child) in _XML_CONTAINER_TAGS or _xml_tag(child) in _XML_PROVISION_TAGS:
+        if _xml_tag(child) in _XML_STRUCTURAL_TAGS:
             _render_congress_xml_element(child, lines)
     return "\n".join(line for line in lines if line).strip()
 
@@ -230,7 +255,7 @@ def extract_text_from_xml_or_html(data: bytes, content_type: str | None) -> str:
     if "xml" in content_type:
         structured_text = _extract_congress_xml(text)
         if structured_text:
-            return structured_text[:500_000]
+            return structured_text
     if "xml" in content_type or "html" in content_type:
         text = _STRUCTURAL_MARKUP_TAG_RE.sub("\n", text)
         text = _MARKUP_TAG_RE.sub("", text)

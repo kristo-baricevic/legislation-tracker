@@ -1103,6 +1103,57 @@ def test_downloaded_congress_text_reaches_legal_nlp_v2(
 
 
 @pytest.mark.django_db
+def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
+    payload = (
+        b"<bill><legis-body><division><enum>A</enum><header>Programs</header>"
+        b"<subchapter><enum>I</enum><header>Reports</header><section>"
+        b"<enum>2.</enum><header>Duties</header><subparagraph><enum>(1)</enum>"
+        b"<subitem><enum>(AA)</enum><text>The Secretary shall publish a grant "
+        b"report.</text></subitem></subparagraph></section></subchapter>"
+        b"</division></legis-body></bill>"
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 5",
+        title="Nested hierarchy test bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr5.xml",
+    )
+    monkeypatch.setattr(
+        tasks, "download_url", lambda *args: (payload, "application/xml")
+    )
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-5/introduced.xml", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert "DIVISION A Programs" in document.extracted_text
+    assert "SUBCHAPTER I Reports" in document.extracted_text
+    assert (
+        "(AA) The Secretary shall publish a grant report."
+        in document.extracted_text
+    )
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
+    assert result.contract_json["requirements"][0]["action"] == (
+        "publish a grant report"
+    )
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("content_type", [None, "application/octet-stream"])
 def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_type(
     monkeypatch, content_type
