@@ -164,6 +164,26 @@ describe("BillDetailPage", () => {
     expect(await screen.findByText("Voting Representative")).toBeVisible();
   });
 
+  it("shows a retryable error and clears stale positions when vote detail loading fails", async () => {
+    const user = userEvent.setup();
+    render(<BillDetailPage />);
+
+    const viewPositions = await screen.findByRole("button", {
+      name: "View member positions",
+    });
+    await user.click(viewPositions);
+    expect(await screen.findByText("Voting Representative")).toBeVisible();
+
+    vi.mocked(getVote).mockRejectedValueOnce(new Error("Vote detail unavailable"));
+    await user.click(viewPositions);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load member positions. Try again.",
+    );
+    expect(screen.queryByText("Voting Representative")).not.toBeInTheDocument();
+    expect(viewPositions).toBeEnabled();
+  });
+
   it("pages through contract and vote histories beyond the first result page", async () => {
     const user = userEvent.setup();
     vi.mocked(getContracts)

@@ -180,6 +180,7 @@ function VoteHistorySection({
   votes,
   selectedVote,
   loadingVoteId,
+  voteError,
   onViewPositions,
   page,
   hasNext,
@@ -189,6 +190,7 @@ function VoteHistorySection({
   votes: VoteListItem[];
   selectedVote: VoteDetailItem | null;
   loadingVoteId: number | null;
+  voteError: string | null;
   onViewPositions: (voteId: number) => void;
   page: number;
   hasNext: boolean;
@@ -230,6 +232,11 @@ function VoteHistorySection({
         onNext={onNext}
         historyName="vote history"
       />
+      {voteError && (
+        <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">
+          {voteError}
+        </p>
+      )}
       {selectedVote && (
         <div className="mt-4">
           <h3 className="text-base font-semibold text-slate-900 dark:text-green-400">
@@ -267,6 +274,7 @@ function BillDetailInner() {
   const [voteHasNext, setVoteHasNext] = useState(false);
   const [selectedVote, setSelectedVote] = useState<VoteDetailItem | null>(null);
   const [loadingVoteId, setLoadingVoteId] = useState<number | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -336,6 +344,7 @@ function BillDetailInner() {
     setContractPage(1);
     setVotePage(1);
     setSelectedVote(null);
+    setVoteError(null);
   }, [id]);
 
   useEffect(() => {
@@ -386,8 +395,12 @@ function BillDetailInner() {
 
   async function viewVotePositions(voteId: number) {
     setLoadingVoteId(voteId);
+    setVoteError(null);
+    setSelectedVote(null);
     try {
       setSelectedVote(await getVote(voteId));
+    } catch {
+      setVoteError("Could not load member positions. Try again.");
     } finally {
       setLoadingVoteId(null);
     }
@@ -555,6 +568,7 @@ function BillDetailInner() {
             votes={votes}
             selectedVote={selectedVote}
             loadingVoteId={loadingVoteId}
+            voteError={voteError}
             onViewPositions={viewVotePositions}
             page={votePage}
             hasNext={voteHasNext}
