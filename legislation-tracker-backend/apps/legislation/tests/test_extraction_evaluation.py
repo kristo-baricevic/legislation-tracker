@@ -94,6 +94,7 @@ def test_legal_nlp_evaluation_corpus_meets_release_gates():
     by_category = defaultdict(Counter)
     expected_by_category = Counter()
     forbidden_false_positives = []
+    missing_expected_evidence = []
     all_contracts_valid = True
     all_evidence_exact = True
 
@@ -132,6 +133,24 @@ def test_legal_nlp_evaluation_corpus_meets_release_gates():
             claim_key(claim["category"], claim["fields"])
             for claim in fixture["forbidden_claims"]
         }
+        evidence_by_path = defaultdict(list)
+        for span in result.evidence:
+            evidence_by_path[span.field_path].append((span.start_char, span.end_char))
+        actual_evidence = Counter()
+        for category in CORE_FIELDS:
+            for index, item in enumerate(result.contract_json.get(category, [])):
+                key = claim_key(category, item)
+                for offsets in evidence_by_path[f"{category}[{index}].display_text"]:
+                    actual_evidence[(key, offsets)] += 1
+        expected_evidence = Counter(
+            (claim_key(claim["category"], claim["fields"]), offsets)
+            for claim in fixture["expected_claims"]
+            for offsets in claim["offsets"]
+        )
+        if not expected_evidence <= actual_evidence:
+            missing_expected_evidence.append(
+                (fixture["name"], expected_evidence - actual_evidence)
+            )
 
         for key in actual.keys() | expected.keys():
             true_positive = min(actual[key], expected[key])
@@ -153,6 +172,7 @@ def test_legal_nlp_evaluation_corpus_meets_release_gates():
     }
     assert all_contracts_valid, diagnostics
     assert all_evidence_exact, diagnostics
+    assert not missing_expected_evidence, missing_expected_evidence
     assert all(expected_by_category[category] >= 3 for category in CORE_FIELDS), (
         expected_by_category
     )

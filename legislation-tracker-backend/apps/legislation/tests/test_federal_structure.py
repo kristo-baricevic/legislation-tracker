@@ -66,6 +66,50 @@ def test_parse_federal_structure_rejects_unstructured_text():
     assert exc_info.value.reason == "unrecognized_federal_structure"
 
 
+def test_parse_federal_structure_supports_container_heading_on_next_line():
+    source = """TITLE II
+HEALTH PROGRAMS
+SECTION 201. DUTIES
+The Secretary shall administer the program.
+"""
+
+    sections = parse_federal_structure(source)
+
+    assert sections[0].level == "title"
+    assert sections[0].label == "Title II"
+    assert sections[0].heading == "HEALTH PROGRAMS"
+    assert sections[1].parent_label == "Title II"
+    for section in sections:
+        assert source[section.span.start_char : section.span.end_char] == section.span.text
+
+
+def test_container_heading_does_not_jump_across_a_blank_line():
+    source = """TITLE II
+
+SECTION 201. DUTIES
+The Secretary shall administer the program.
+"""
+
+    sections = parse_federal_structure(source)
+
+    assert sections[0].label == "Title II"
+    assert sections[0].heading is None
+    assert sections[1].label == "Section 201"
+
+
+def test_container_does_not_treat_the_next_structural_marker_as_its_heading():
+    source = """TITLE II
+SECTION 201. DUTIES
+The Secretary shall administer the program.
+"""
+
+    sections = parse_federal_structure(source)
+
+    assert sections[0].label == "Title II"
+    assert sections[0].heading is None
+    assert sections[1].label == "Section 201"
+
+
 def test_expected_rejection_accepts_only_approved_reasons():
     rejection = ExpectedExtractionRejection("missing_source_text")
     assert rejection.reason == "missing_source_text"

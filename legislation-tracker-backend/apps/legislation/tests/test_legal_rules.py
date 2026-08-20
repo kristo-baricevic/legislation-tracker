@@ -55,6 +55,22 @@ The Administrator is authorized to award grants, subject to available funds.
     assert_exact_evidence(source, claims)
 
 
+def test_extract_modality_claims_separates_leading_conditions_from_actor():
+    source = """SEC. 2. APPROVALS
+If an application is complete, the Secretary shall approve it.
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert claims[0].fields == {
+        "modality": "required",
+        "actor": "the Secretary",
+        "action": "approve it",
+        "object": None,
+        "conditions": ["If an application is complete"],
+    }
+
+
 def test_extract_definitions_requires_explicit_syntax_or_definition_context():
     source = '''SEC. 3. DEFINITIONS
 The term "covered entity" means a rural hospital.
@@ -82,6 +98,22 @@ Coverage means access to insurance.
         "definition.section_includes.v1",
     ]
     assert_exact_evidence(source, claims)
+
+
+def test_single_quoted_explicit_definition_is_not_an_operative_requirement():
+    source = """SEC. 3. TERMS
+The term ‘requirement’ means a rule that shall apply to covered entities.
+"""
+    sections = parse_federal_structure(source)
+
+    definitions = extract_definition_claims(source, sections)
+
+    assert definitions[0].fields == {
+        "term": "requirement",
+        "definition": "a rule that shall apply to covered entities",
+        "definition_type": "means",
+    }
+    assert not extract_modality_claims(source, sections)
 
 
 def test_extract_applicability_claims_uses_only_explicit_relationships():
@@ -158,6 +190,22 @@ def test_nested_subdivision_claim_is_emitted_once_with_full_sentence_evidence():
     assert_exact_evidence(source, claims)
 
 
+def test_repeated_subdivision_labels_do_not_cross_section_ancestor_context():
+    source = """SEC. 2. DUTIES
+(a) IN GENERAL.—
+(1) REPORT.—The Secretary shall publish a report.
+SEC. 3. DEFINITIONS
+(a) COVERED TERM.—
+“Covered report” means an annual report.
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert len(claims) == 1
+    assert claims[0].fields["actor"] == "The Secretary"
+    assert claims[0].section_label == "(1)"
+
+
 def test_normalize_usd_amount_uses_decimal_scaling():
     assert normalize_usd_amount("$25,000,000") == "25000000.00"
     assert normalize_usd_amount("$1.5 million") == "1500000.00"
@@ -206,6 +254,7 @@ Not later than 90 days after enactment, the Secretary shall publish a report.
 A review shall occur 2 years after the date of enactment.
 This Act takes effect on March 3, 2028.
 The invalid period begins on February 30, 2028.
+This Act takes effect on February 30, 2028.
 """
 
     claims = extract_timeline_claims(source, parse_federal_structure(source))

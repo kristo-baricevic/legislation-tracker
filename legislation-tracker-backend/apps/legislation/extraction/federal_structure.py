@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from .types import ExpectedExtractionRejection, SourceSpan, StructuralSection
 
 SECTION_RE = re.compile(
-    r"(?im)^(?P<indent>[ \t]*)(?P<kind>SEC\.|SECTION)\s+"
-    r"(?P<label>[0-9]+[A-Z]?(?:-[0-9A-Z]+)*)\.\s*(?P<heading>[^\n]*)$"
+    r"(?im)^(?P<indent>[ \t]*)(?P<kind>SEC\.|SECTION)[ \t]+"
+    r"(?P<label>[0-9]+[A-Z]?(?:-[0-9A-Z]+)*)\.[ \t]*(?P<heading>[^\n]*)$"
 )
 CONTAINER_RE = re.compile(
-    r"(?im)^[ \t]*(?P<kind>TITLE|SUBTITLE|PART|SUBPART|CHAPTER)\s+"
-    r"(?P<label>[IVXLCDM0-9A-Z-]+)(?:[.—-]\s*|\s+)(?P<heading>[^\n]*)$"
+    r"(?im)^[ \t]*(?P<kind>TITLE|SUBTITLE|PART|SUBPART|CHAPTER)[ \t]+"
+    r"(?P<label>[IVXLCDM0-9A-Z-]+)"
+    r"(?:(?:[.—-][ \t]*|[ \t]+)(?P<heading>[^\n]*))?[ \t]*$"
 )
 SUBDIVISION_RE = re.compile(r"(?m)^[ \t]*(?P<label>\([a-z0-9A-Zivxlcdm]+\))\s*")
 
@@ -29,12 +30,10 @@ _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?=\s|$)")
 @dataclass
 class _Marker:
     start: int
-    marker_end: int
     rank: int
     level: str
     label: str
     heading: str | None
-    content_start: int
 
 
 def _line_end(source_text: str, start: int) -> int:
@@ -45,6 +44,12 @@ def _line_end(source_text: str, start: int) -> int:
 def _looks_like_next_line_heading(value: str) -> bool:
     heading = value.strip()
     if not heading or len(heading) > 160 or len(heading.split()) > 18:
+        return False
+    if (
+        SECTION_RE.fullmatch(heading)
+        or CONTAINER_RE.fullmatch(heading)
+        or SUBDIVISION_RE.match(heading)
+    ):
         return False
     if heading.endswith((".", ";", ":", "?", "!")):
         return False
@@ -80,19 +85,16 @@ def _container_markers(source_text: str) -> list[_Marker]:
     for match in CONTAINER_RE.finditer(source_text):
         kind = match.group("kind").lower()
         line_end = _line_end(source_text, match.start())
-        heading = match.group("heading").strip() or None
-        content_start = line_end
+        heading = (match.group("heading") or "").strip() or None
         if heading is None:
-            heading, content_start = _next_line_heading(source_text, line_end)
+            heading, _ = _next_line_heading(source_text, line_end)
         markers.append(
             _Marker(
                 start=match.start(),
-                marker_end=line_end,
                 rank=_CONTAINER_RANKS[kind],
                 level=kind,
                 label=f"{kind.title()} {match.group('label').upper()}",
                 heading=heading,
-                content_start=content_start,
             )
         )
     return markers
@@ -103,19 +105,16 @@ def _section_markers(source_text: str) -> list[_Marker]:
     for match in SECTION_RE.finditer(source_text):
         line_end = _line_end(source_text, match.start())
         heading = match.group("heading").strip() or None
-        content_start = line_end
         if heading is None:
-            heading, content_start = _next_line_heading(source_text, line_end)
+            heading, _ = _next_line_heading(source_text, line_end)
         label_prefix = "Sec." if match.group("kind").upper() == "SEC." else "Section"
         markers.append(
             _Marker(
                 start=match.start(),
-                marker_end=line_end,
                 rank=_SECTION_RANK,
                 level="section",
                 label=f"{label_prefix} {match.group('label').upper()}",
                 heading=heading,
-                content_start=content_start,
             )
         )
     return markers
@@ -129,16 +128,13 @@ def _subdivision_markers(source_text: str, prior: list[_Marker]) -> list[_Marker
         remainder = source_text[remainder_start:line_end].rstrip("\r\n")
         separator = _HEADING_SEPARATOR_RE.match(remainder)
         heading = separator.group("heading").strip() if separator else None
-        content_start = remainder_start + separator.end() if separator else remainder_start
         markers.append(
             _Marker(
                 start=match.start(),
-                marker_end=line_end,
                 rank=_subdivision_rank(match.group("label"), prior + markers),
                 level="subdivision",
                 label=match.group("label"),
                 heading=heading,
-                content_start=content_start,
             )
         )
     return markers

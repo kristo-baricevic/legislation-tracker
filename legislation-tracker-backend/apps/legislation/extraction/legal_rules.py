@@ -11,13 +11,17 @@ MODAL_RE = re.compile(
     r"is authorized to|shall|must|may)\b",
     re.IGNORECASE,
 )
+_QUOTED_TERM_RE = (
+    r"(?:[\"“](?P<term_double>[^\"”]+)[\"”]|"
+    r"[‘'](?P<term_single>[^’']+)[’'])"
+)
 _EXPLICIT_DEFINITION_RE = re.compile(
-    r"\bThe\s+term\s+[\"“](?P<term>[^\"”]+)[\"”]\s+"
+    rf"\bThe\s+term\s+{_QUOTED_TERM_RE}\s+"
     r"(?P<kind>means|includes)\s+(?P<definition>.+)",
     re.IGNORECASE,
 )
 _SECTION_DEFINITION_RE = re.compile(
-    r"^[\"“](?P<term>[^\"”]+)[\"”]\s+"
+    rf"^{_QUOTED_TERM_RE}\s+"
     r"(?P<kind>means|includes)\s+(?P<definition>.+)",
     re.IGNORECASE,
 )
@@ -27,6 +31,11 @@ _AMENDMENT_INSTRUCTION_RE = re.compile(
 )
 _CONDITION_RE = re.compile(
     r"(?:,\s*|\s+)(?P<condition>(?:if|when|unless|subject\s+to)\b.+)$",
+    re.IGNORECASE,
+)
+_LEADING_CONDITION_RE = re.compile(
+    r"^(?P<condition>(?:if|when|unless|subject\s+to)\b.*?),\s*"
+    r"(?P<actor>.+)$",
     re.IGNORECASE,
 )
 _DOES_NOT_APPLY_RE = re.compile(
@@ -119,6 +128,10 @@ def _strip_terminal_punctuation(value: str) -> str:
     return value.strip().rstrip(".;:").strip()
 
 
+def _definition_term(match: re.Match[str]) -> str:
+    return (match.group("term_double") or match.group("term_single")).strip()
+
+
 def _iter_operative_sentences(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> Iterator[tuple[StructuralSection, SourceSpan]]:
@@ -132,31 +145,26 @@ def _iter_operative_sentences(
 def _heading_contains(
     section: StructuralSection,
     phrase: str,
-    sections_by_label: dict[str, StructuralSection],
+    sections: Sequence[StructuralSection],
 ) -> bool:
-    current: StructuralSection | None = section
-    visited = set()
-    while current is not None and current.label not in visited:
-        visited.add(current.label)
-        if current.heading and phrase in current.heading.casefold():
-            return True
-        current = (
-            sections_by_label.get(current.parent_label)
-            if current.parent_label is not None
-            else None
-        )
-    return False
+    return any(
+        candidate.heading
+        and phrase in candidate.heading.casefold()
+        and candidate.span.start_char <= section.span.start_char
+        and section.span.start_char < candidate.span.end_char
+        for candidate in sections
+    )
 
 
 def _is_modal_excluded(
     sentence: SourceSpan,
     modal_start: int,
     section: StructuralSection,
-    sections_by_label: dict[str, StructuralSection],
+    sections: Sequence[StructuralSection],
 ) -> bool:
-    if _heading_contains(section, "table of contents", sections_by_label):
+    if _heading_contains(section, "table of contents", sections):
         return True
-    if _heading_contains(section, "definition", sections_by_label):
+    if _heading_contains(section, "definition", sections):
         return True
     if _EXPLICIT_DEFINITION_RE.search(sentence.text):
         return True
@@ -181,18 +189,23 @@ def extract_modality_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    sections_by_label = {section.label: section for section in sections}
     for section, sentence in _iter_operative_sentences(source_text, sections):
         for modal_match in MODAL_RE.finditer(sentence.text):
-            if _is_modal_excluded(
-                sentence, modal_match.start(), section, sections_by_label
-            ):
+            if _is_modal_excluded(sentence, modal_match.start(), section, sections):
                 continue
 
             actor = _strip_terminal_punctuation(sentence.text[: modal_match.start()])
             action = _strip_terminal_punctuation(sentence.text[modal_match.end() :])
-            condition_match = _CONDITION_RE.search(action)
             conditions = []
+            leading_condition = _LEADING_CONDITION_RE.match(actor)
+            if leading_condition is not None:
+                conditions.append(
+                    _strip_terminal_punctuation(
+                        leading_condition.group("condition")
+                    )
+                )
+                actor = _strip_terminal_punctuation(leading_condition.group("actor"))
+            condition_match = _CONDITION_RE.search(action)
             if condition_match is not None:
                 conditions.append(
                     _strip_terminal_punctuation(condition_match.group("condition"))
@@ -228,18 +241,17 @@ def extract_definition_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    sections_by_label = {section.label: section for section in sections}
     for section, sentence in _iter_operative_sentences(source_text, sections):
         match = _EXPLICIT_DEFINITION_RE.search(sentence.text)
         explicit = match is not None
-        if match is None and _heading_contains(section, "definition", sections_by_label):
+        if match is None and _heading_contains(section, "definition", sections):
             match = _SECTION_DEFINITION_RE.search(sentence.text)
         if match is None:
             continue
 
         definition_type = match.group("kind").casefold()
         definition = _strip_terminal_punctuation(match.group("definition"))
-        term = match.group("term").strip()
+        term = _definition_term(match)
         if not term or not definition:
             continue
         context = "term" if explicit else "section"
@@ -408,6 +420,8 @@ def extract_timeline_claims(
         effective = bool(
             re.search(r"\b(?:takes\s+effect|effective\s+on)\b", sentence.text, re.IGNORECASE)
         )
+        if effective and date_match is not None and normalized_date is None:
+            continue
 
         if relative is not None:
             fields = {

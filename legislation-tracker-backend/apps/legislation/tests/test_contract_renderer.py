@@ -200,3 +200,38 @@ def test_render_contract_deduplicates_then_caps_categories_deterministically():
     assert result.contract_json["extraction"]["warnings"] == [
         "item_limit_reached:requirements"
     ]
+
+
+def test_render_amendment_omits_missing_optional_payloads():
+    source = "Section 5 is replaced."
+    section = StructuralSection(
+        label="Sec. 2",
+        heading="Amendment",
+        level="section",
+        span=SourceSpan(source, 0, len(source)),
+        parent_label=None,
+    )
+    claim = make_claim(
+        "amendment_operations",
+        {
+            "target": "section 5",
+            "operation": "replace",
+            "removed_text": None,
+            "inserted_text": None,
+        },
+        source,
+        source,
+        "amendment.replace.v1",
+    )
+
+    result = render_contract(
+        title="Amendment Act",
+        version_label="Introduced",
+        sections=(section,),
+        claims=(claim,),
+        source_text=source,
+    )
+
+    display = result.contract_json["amendment_operations"][0]["display_text"]
+    assert display == "section 5 is replaced."
+    assert "None" not in display

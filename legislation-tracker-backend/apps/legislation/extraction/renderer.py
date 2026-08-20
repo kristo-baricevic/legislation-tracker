@@ -120,14 +120,25 @@ def _render_amendment(fields: dict[str, object]) -> str:
     removed = fields.get("removed_text")
     inserted = fields.get("inserted_text")
     if operation == "replace":
-        text = f"{prefix}replaces {_quoted(removed)} with {_quoted(inserted)}"
+        if removed and inserted:
+            text = f"{prefix}replaces {_quoted(removed)} with {_quoted(inserted)}"
+        elif inserted:
+            text = f"{prefix}replaces text with {_quoted(inserted)}"
+        elif removed:
+            text = f"{prefix}replaces {_quoted(removed)}"
+        else:
+            text = f"{prefix}is replaced"
     elif operation == "strike_and_insert":
-        text = f"{prefix}strikes {_quoted(removed)} and inserts {_quoted(inserted)}"
+        if removed and inserted:
+            text = f"{prefix}strikes {_quoted(removed)} and inserts {_quoted(inserted)}"
+        else:
+            text = f"{prefix}strikes and inserts text"
     elif operation == "strike":
-        text = f"{prefix}strikes {_quoted(removed)}"
+        text = f"{prefix}strikes {_quoted(removed)}" if removed else f"{prefix}strikes text"
     elif operation in {"add", "insert"}:
         verb = "adds" if operation == "add" else "inserts"
-        text = f"{prefix}{verb} {_quoted(inserted)}"
+        payload = _quoted(inserted) if inserted else "text"
+        text = f"{prefix}{verb} {payload}"
     elif operation == "redesignate":
         text = f"{prefix}is redesignated"
     elif operation == "repeal":
