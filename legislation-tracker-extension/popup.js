@@ -48,11 +48,7 @@ function storageRemove(keys) {
 }
 
 function requestApiHostPermission(origin) {
-  const host = new URL(origin).hostname;
-  if (host === "localhost" || host === "127.0.0.1") return Promise.resolve(true);
-  return new Promise((resolve) => {
-    chrome.permissions.request({ origins: [origin] }, resolve);
-  });
+  return utils.requestHostPermission(origin, chrome.permissions);
 }
 
 function queryActiveTab() {

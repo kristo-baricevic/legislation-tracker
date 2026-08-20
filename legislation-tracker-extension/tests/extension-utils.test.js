@@ -14,6 +14,7 @@ const {
   getTopicTrackingPath,
   normalizeBaseUrl,
   originPermissionForBaseUrl,
+  requestHostPermission,
   checkApiHealth,
 } = require("../extension-utils.js");
 
@@ -47,6 +48,24 @@ describe("extension utilities", () => {
       () => originPermissionForBaseUrl("javascript:alert(1)"),
       /HTTP or HTTPS/,
     );
+  });
+
+  it("requests the exact permission for a custom localhost API port", async () => {
+    let requestedOptions;
+    const granted = await requestHostPermission(
+      "http://localhost:18000/*",
+      {
+        request(options, callback) {
+          requestedOptions = options;
+          callback(true);
+        },
+      },
+    );
+
+    assert.equal(granted, true);
+    assert.deepEqual(requestedOptions, {
+      origins: ["http://localhost:18000/*"],
+    });
   });
 
   it("builds JSON requests with optional bearer auth", () => {

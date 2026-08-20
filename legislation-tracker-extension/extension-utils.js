@@ -30,6 +30,12 @@
     return `${url.protocol}//${url.host}/*`;
   }
 
+  function requestHostPermission(origin, permissions) {
+    return new Promise((resolve) => {
+      permissions.request({ origins: [origin] }, resolve);
+    });
+  }
+
   function getBillUrl(appBase, billId) {
     return `${normalizeBaseUrl(appBase, DEFAULT_APP_BASE)}/bills/${encodeURIComponent(String(billId))}`;
   }
@@ -108,5 +114,6 @@
     getTopicTrackingPath,
     normalizeBaseUrl,
     originPermissionForBaseUrl,
+    requestHostPermission,
   };
 });
