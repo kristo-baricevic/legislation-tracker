@@ -129,3 +129,53 @@ def test_backfill_contracts_execute_is_durable_and_idempotent(monkeypatch):
     assert "enqueued=1" in first_output.getvalue()
     assert "selected=1" in second_output.getvalue()
     assert "enqueued=1" in second_output.getvalue()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 308",
+        title="Reports Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        source_url="https://example.test/hr308.xml",
+        content_type="application/xml",
+        content_hash="legacy-xml",
+        extracted_text=(
+            "<bill><legis-body><section><enum>2.</enum><header>Reports</header>"
+            "<text>The Secretary shall publish a report.</text>"
+            "</section></legis-body></bill>"
+        ),
+    )
+    monkeypatch.setattr(ingestion_tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    call_command(
+        "backfill_contracts",
+        "--start-id",
+        str(document.id),
+        "--end-id",
+        str(document.id),
+        "--execute",
+    )
+
+    work = IngestionWorkItem.objects.get(kind="document_contract")
+    assert work.payload_json == {
+        "document_id": document.id,
+        "reextract_source": True,
+    }
+
+    result = ingestion_tasks._process_durable_work(work)
+
+    document.refresh_from_db()
+    bill.refresh_from_db()
+    assert result["contract_id"] == bill.latest_contract_id
+    assert bill.latest_contract.schema_version == "2.0-legal-nlp"
+    assert document.extracted_text == (
+        "SEC. 2. Reports\nThe Secretary shall publish a report."
+    )

@@ -63,6 +63,9 @@ rtk .venv/bin/python manage.py backfill_contracts --start-id 100 --end-id 200 --
 ```
 
 The command only enqueues durable work; it never runs extraction synchronously.
+Executed batches rebuild `extracted_text` from the stored document before contract
+generation, so documents ingested before the structure-preserving parser can
+produce v2 contracts without a network re-download.
 
 ## Quality gates
 

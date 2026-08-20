@@ -244,6 +244,49 @@ def extract_text_from_xml_or_html(data: bytes, content_type: str | None) -> str:
     return "\n".join(lines)[:500_000]
 
 
+def extract_document_text(
+    data: bytes,
+    content_type: str | None,
+    source_url: str | None,
+) -> str:
+    """Extract text using the document type, with extension fallback for bad MIME."""
+    ext = guess_extension(source_url or "", content_type)
+    normalized_content_type = (content_type or "").casefold()
+    if "pdf" in normalized_content_type or ext == ".pdf":
+        return extract_text_from_pdf(data)
+    if not (
+        any(kind in normalized_content_type for kind in ("xml", "html", "text/plain"))
+        or ext in {".xml", ".html", ".htm", ".txt"}
+    ):
+        return ""
+
+    extraction_content_type = content_type
+    if "xml" not in normalized_content_type and ext == ".xml":
+        extraction_content_type = "application/xml"
+    elif "html" not in normalized_content_type and ext in {".html", ".htm"}:
+        extraction_content_type = "text/html"
+    elif "text/plain" not in normalized_content_type and ext == ".txt":
+        extraction_content_type = "text/plain"
+    return extract_text_from_xml_or_html(data, extraction_content_type)
+
+
+def reextract_stored_document_text(document) -> str:
+    """Rebuild text from a stored source, falling back to legacy raw XML text."""
+    if document.object_storage_key:
+        with default_storage.open(document.object_storage_key, "rb") as stored_file:
+            data = stored_file.read()
+    else:
+        raw_source = document.raw_text or document.extracted_text or ""
+        data = raw_source.encode("utf-8")
+
+    extracted = extract_document_text(
+        data,
+        document.content_type,
+        document.source_url,
+    )
+    return extracted or (document.extracted_text or "")
+
+
 def ensure_s3_bucket_exists() -> None:
     """Create bucket on MinIO/S3 if missing (no-op for filesystem storage)."""
     if getattr(settings, "USE_LOCAL_DOCUMENT_STORAGE", False):

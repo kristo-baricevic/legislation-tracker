@@ -31,8 +31,7 @@ from apps.ingestion.document_download import (
     RetryableDocumentStorageError,
     build_object_key,
     download_url,
-    extract_text_from_pdf,
-    extract_text_from_xml_or_html,
+    extract_document_text,
     guess_extension,
     retryable_storage_error,
     sha256_hex,
@@ -713,7 +712,10 @@ def _process_durable_work(work_item):
     from apps.legislation import tasks as legislation_tasks
 
     if work_item.kind == legislation_tasks.WORK_KIND_DOCUMENT_CONTRACT:
-        return legislation_tasks._generate_contract_impl(payload["document_id"])
+        return legislation_tasks._generate_contract_impl(
+            payload["document_id"],
+            reextract_source=bool(payload.get("reextract_source")),
+        )
     if work_item.kind == legislation_tasks.WORK_KIND_METADATA_CONTRACT:
         return legislation_tasks._generate_contract_for_bill_impl(payload["bill_id"])
     if work_item.kind == legislation_tasks.WORK_KIND_TOPIC_UPDATE:
@@ -1378,22 +1380,7 @@ def _download_document_impl(document_id):
             raise retryable_error from exc
         raise
 
-    extracted = ""
-    normalized_content_type = (content_type or "").casefold()
-    if "pdf" in normalized_content_type or ext == ".pdf":
-        extracted = extract_text_from_pdf(data)
-    elif (
-        any(kind in normalized_content_type for kind in ("xml", "html", "text/plain"))
-        or ext in {".xml", ".html", ".htm", ".txt"}
-    ):
-        extraction_content_type = content_type
-        if "xml" not in normalized_content_type and ext == ".xml":
-            extraction_content_type = "application/xml"
-        elif "html" not in normalized_content_type and ext in {".html", ".htm"}:
-            extraction_content_type = "text/html"
-        elif "text/plain" not in normalized_content_type and ext == ".txt":
-            extraction_content_type = "text/plain"
-        extracted = extract_text_from_xml_or_html(data, extraction_content_type)
+    extracted = extract_document_text(data, content_type, doc.source_url)
 
     now = timezone.now()
     doc.object_storage_key = saved_key

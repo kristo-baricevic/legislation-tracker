@@ -1190,6 +1190,47 @@ def test_downloaded_xml_quoted_amendment_payload_is_not_a_current_requirement(
 
 
 @pytest.mark.django_db
+def test_downloaded_xml_direct_quoted_funding_is_not_current_funding(monkeypatch):
+    payload = (
+        b"<bill><legis-body><section><enum>2.</enum><header>Amendments</header>"
+        b"<paragraph><enum>(a)</enum><text>Section 3 of the Food Act is amended "
+        b"by inserting the following:</text><quoted-block><text>There are "
+        b"appropriated $100,000 for fiscal year 2027.</text></quoted-block>"
+        b"</paragraph></section></legis-body></bill>"
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 4",
+        title="Food Amendment Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr4.xml",
+    )
+    monkeypatch.setattr(
+        tasks, "download_url", lambda *args: (payload, "application/xml")
+    )
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-4/introduced.xml", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["funding_items"] == []
+
+
+@pytest.mark.django_db
 def test_process_bill_records_non_retryable_failures(monkeypatch):
     monkeypatch.setattr(
         tasks,

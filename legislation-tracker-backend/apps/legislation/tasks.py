@@ -10,6 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.changelog.models import ChangeLog
+from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.contract_json import contract_hash_from_dict
 from apps.legislation.extraction.legacy import (
@@ -41,6 +42,7 @@ WORK_KIND_DOCUMENT_CONTRACT = "document_contract"
 WORK_KIND_METADATA_CONTRACT = "metadata_contract"
 WORK_KIND_TOPIC_UPDATE = "topic_update"
 WORK_KIND_SIMILARITY = "similarity"
+SOURCE_REEXTRACTION_VERSION = "structured-source-1.0.0"
 
 _TAXONOMY_BY_SLUG = {entry["slug"]: entry for entry in TOPICS}
 _KEYWORD_INDEX = [
@@ -50,14 +52,21 @@ _KEYWORD_INDEX = [
 GENERIC_SINGLE_HIT_KEYWORDS = {"infrastructure"}
 
 
-def enqueue_document_contract(document):
+def enqueue_document_contract(document, *, reextract_source=False):
+    reextraction_suffix = (
+        f":{SOURCE_REEXTRACTION_VERSION}" if reextract_source else ""
+    )
     return enqueue_ingestion_work(
         kind=WORK_KIND_DOCUMENT_CONTRACT,
         dedupe_key=(
             f"{document.id}:{document.content_hash or 'pending'}:{EXTRACTOR_VERSION}"
+            f"{reextraction_suffix}"
         ),
         source_updated_at=document.created_at or timezone.now(),
-        payload_json={"document_id": document.id},
+        payload_json={
+            "document_id": document.id,
+            **({"reextract_source": True} if reextract_source else {}),
+        },
         jurisdiction=document.bill.jurisdiction,
         congress=document.bill.session,
     )
@@ -309,8 +318,11 @@ def _generate_contract_for_bill_impl(bill_id):
 
 
 @shared_task
-def generate_contract(document_id):
-    return _generate_contract_impl(document_id)
+def generate_contract(document_id, reextract_source=False):
+    return _generate_contract_impl(
+        document_id,
+        reextract_source=reextract_source,
+    )
 
 
 def _replace_evidence_spans(*, bill, document, contract, evidence_spans):
@@ -333,7 +345,7 @@ def _replace_evidence_spans(*, bill, document, contract, evidence_spans):
     )
 
 
-def _generate_contract_impl(document_id):
+def _generate_contract_impl(document_id, *, reextract_source=False):
     """
     Build or skip BillContract from BillDocument.extracted_text.
     Sets Bill.latest_contract, ChangeLog(contract_update), EvidenceSpan rows;
@@ -348,6 +360,13 @@ def _generate_contract_impl(document_id):
     if not document:
         logger.warning("generate_contract: BillDocument %s not found", document_id)
         return {"document_id": document_id, "skipped": True, "reason": "no_document"}
+
+    if reextract_source:
+        refreshed_text = reextract_stored_document_text(document)
+        if refreshed_text != (document.extracted_text or ""):
+            document.extracted_text = refreshed_text or None
+            document.parsed_at = timezone.now() if refreshed_text else None
+            document.save(update_fields=["extracted_text", "parsed_at"])
 
     bill = document.bill
     extraction_started = time.monotonic()
@@ -447,13 +466,12 @@ def _generate_contract_impl(document_id):
                     "schema_version": extraction_result.schema_version,
                 },
             )
-        if contract_created:
-            _replace_evidence_spans(
-                bill=bill,
-                document=document,
-                contract=contract,
-                evidence_spans=evidence_spans,
-            )
+        _replace_evidence_spans(
+            bill=bill,
+            document=document,
+            contract=contract,
+            evidence_spans=evidence_spans,
+        )
 
     if document.is_active_version:
         enqueue_topic_update(contract=contract)

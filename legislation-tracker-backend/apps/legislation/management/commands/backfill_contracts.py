@@ -69,5 +69,5 @@ class Command(BaseCommand):
             return
 
         for document in selected:
-            enqueue_document_contract(document)
+            enqueue_document_contract(document, reextract_source=True)
         self.stdout.write(f"enqueued={len(selected)}")

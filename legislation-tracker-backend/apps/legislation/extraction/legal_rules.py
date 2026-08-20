@@ -211,7 +211,7 @@ def _iter_operative_sentences(
             continue
         for sentence in sentence_spans(section, source_text):
             if any(
-                start <= sentence.start_char < end
+                sentence.start_char < end and start < sentence.end_char
                 for start, end in quoted_block_ranges
             ):
                 continue

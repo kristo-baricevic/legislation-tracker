@@ -157,6 +157,53 @@ def test_generate_contract_refreshes_evidence_after_a_whitespace_only_source_upd
 
 
 @pytest.mark.django_db
+def test_generate_contract_refreshes_evidence_when_reusing_an_older_hash():
+    original_source = "SEC. 2. REPORTS\nThe Secretary shall publish a report."
+    reflowed_source = "SEC. 2. REPORTS\n\nThe Secretary shall publish a report."
+    intervening_source = "SEC. 2. REPORTS\nThe Secretary must publish a report."
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 200B",
+        title="Federal Reports Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text=original_source,
+    )
+
+    original = tasks.generate_contract(document.id)
+    original_evidence = EvidenceSpan.objects.get(
+        contract_id=original["contract_id"],
+        field_path="requirements[0].display_text",
+    )
+    document.extracted_text = intervening_source
+    document.save(update_fields=["extracted_text"])
+    intervening = tasks.generate_contract(document.id)
+
+    document.extracted_text = reflowed_source
+    document.save(update_fields=["extracted_text"])
+    reused = tasks.generate_contract(document.id)
+
+    refreshed_evidence = EvidenceSpan.objects.get(
+        contract_id=reused["contract_id"],
+        field_path="requirements[0].display_text",
+    )
+    assert intervening["contract_id"] != original["contract_id"]
+    assert reused["contract_id"] == original["contract_id"]
+    assert refreshed_evidence.start_char == original_evidence.start_char + 1
+    assert (
+        reflowed_source[
+            refreshed_evidence.start_char : refreshed_evidence.end_char
+        ]
+        == refreshed_evidence.quoted_text
+    )
+
+
+@pytest.mark.django_db
 def test_metadata_contract_generation_remains_legacy():
     bill = Bill.objects.create(
         jurisdiction="federal",
