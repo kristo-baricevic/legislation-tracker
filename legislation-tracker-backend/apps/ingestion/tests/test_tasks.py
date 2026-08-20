@@ -278,6 +278,70 @@ def test_work_processor_rejects_a_stale_dispatch_token(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_work_processor_does_not_complete_after_its_lease_is_replaced(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original-lease",
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+
+    def replace_lease(_bill_key):
+        IngestionWorkItem.objects.filter(pk=work.id).update(
+            status=IngestionWorkStatus.PROCESSING,
+            dispatch_token="replacement-lease",
+            attempt_count=2,
+            lease_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+    monkeypatch.setattr(tasks, "_process_bill_impl", replace_lease)
+
+    assert tasks.process_ingestion_work_item(work.id, "original-lease") == {
+        "work_item_id": work.id,
+        "status": "superseded",
+    }
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PROCESSING
+    assert work.dispatch_token == "replacement-lease"
+
+
+@pytest.mark.django_db
+def test_work_processor_does_not_retry_after_its_lease_is_replaced(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original-lease",
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+
+    def replace_lease_then_fail(_bill_key):
+        IngestionWorkItem.objects.filter(pk=work.id).update(
+            status=IngestionWorkStatus.PROCESSING,
+            dispatch_token="replacement-lease",
+            attempt_count=2,
+            lease_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        raise CongressAPIError("old worker failed after replacement")
+
+    monkeypatch.setattr(tasks, "_process_bill_impl", replace_lease_then_fail)
+
+    assert tasks.process_ingestion_work_item(work.id, "original-lease") == {
+        "work_item_id": work.id,
+        "status": "superseded",
+    }
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PROCESSING
+    assert work.dispatch_token == "replacement-lease"
+    assert work.last_error == ""
+
+
+@pytest.mark.django_db
 def test_recover_stale_ingestion_work_makes_expired_leases_dispatchable():
     work = IngestionWorkItem.objects.create(
         kind="bill",
@@ -293,6 +357,29 @@ def test_recover_stale_ingestion_work_makes_expired_leases_dispatchable():
     work.refresh_from_db()
     assert work.status == IngestionWorkStatus.PENDING
     assert work.lease_expires_at is None
+
+
+@pytest.mark.django_db
+def test_recover_stale_ingestion_work_dead_letters_an_exhausted_lease():
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.PROCESSING,
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS,
+        celery_task_id="lost-worker-task",
+        lease_expires_at=timezone.now() - timedelta(seconds=1),
+    )
+
+    assert tasks.recover_stale_ingestion_work() == {"recovered": 0}
+
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.DEAD
+    assert work.lease_expires_at is None
+    failure = IngestionTaskFailure.objects.get(work_item=work)
+    assert failure.task_id == "lost-worker-task"
+    assert "lease expired" in failure.error_message.lower()
 
 
 @pytest.mark.django_db

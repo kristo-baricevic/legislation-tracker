@@ -207,14 +207,31 @@ def bill_text_list(congress, bill_type, bill_number):
     result = []
     for v in versions if isinstance(versions, list) else []:
         label = v.get("type") or v.get("version") or v.get("label") or "unknown"
-        url = v.get("url")
-        if not url and isinstance(v.get("format"), dict):
-            url = v.get("format", {}).get("url")
-        if not url and isinstance(v.get("formats"), list):
-            for f in v.get("formats", []):
-                if f.get("url"):
-                    url = f["url"]
-                    break
+        # Congress's top-level version URL is a metadata/referrer endpoint. The
+        # downloadable document is exposed in the nested formats collection.
+        # Prefer source formats that we can extract deterministically, then
+        # retain the top-level URL only for older payload shapes.
+        formats = v.get("formats")
+        if not isinstance(formats, list):
+            legacy_format = v.get("format")
+            formats = [legacy_format] if isinstance(legacy_format, dict) else []
+
+        preferred_urls = []
+        for index, format_entry in enumerate(formats):
+            if not isinstance(format_entry, dict) or not format_entry.get("url"):
+                continue
+            format_type = str(format_entry.get("type") or "").strip().casefold()
+            preference = {
+                "formatted xml": 0,
+                "xml": 0,
+                "formatted text": 1,
+                "html": 1,
+                "text": 1,
+                "pdf": 2,
+            }.get(format_type, 3)
+            preferred_urls.append((preference, index, format_entry["url"]))
+
+        url = min(preferred_urls)[2] if preferred_urls else v.get("url")
         result.append({"version_label": str(label), "url": url or ""})
     logger.info(
         "bill_text_list: congress=%s bill_type=%s bill_number=%s -> %s versions",

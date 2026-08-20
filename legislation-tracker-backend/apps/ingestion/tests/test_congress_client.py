@@ -328,13 +328,29 @@ def test_senate_vote_detail_resolves_former_senators_from_congress_history(
     assert vote["members"][0]["bioguideId"] == "S000999"
 
 
-def test_bill_text_list_preserves_top_level_version_url(monkeypatch):
+def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(
+    monkeypatch,
+):
     def fake_request(method, path, params=None):
         return {
             "textVersions": [
                 {
-                    "type": "Introduced",
-                    "url": "https://example.test/bills/hr1.xml",
+                    "type": "Introduced in House",
+                    "url": "https://api.congress.gov/v3/bill/119/hr/1/text/ih",
+                    "formats": [
+                        {
+                            "type": "PDF",
+                            "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.pdf",
+                        },
+                        {
+                            "type": "Formatted Text",
+                            "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.htm",
+                        },
+                        {
+                            "type": "Formatted XML",
+                            "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.xml",
+                        },
+                    ],
                 }
             ]
         }
@@ -346,7 +362,7 @@ def test_bill_text_list_preserves_top_level_version_url(monkeypatch):
 
     assert versions == [
         {
-            "version_label": "Introduced",
-            "url": "https://example.test/bills/hr1.xml",
+            "version_label": "Introduced in House",
+            "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.xml",
         }
     ]

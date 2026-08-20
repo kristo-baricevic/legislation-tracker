@@ -580,6 +580,7 @@ def dispatch_ingestion_work(batch_size=100):
 def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     """Execute one durable work item and persist its terminal or retry state."""
     now = timezone.now()
+    claimed_dispatch_token = ""
     with transaction.atomic():
         work_item = IngestionWorkItem.objects.select_for_update().filter(pk=work_item_id).first()
         if work_item is None:
@@ -597,6 +598,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         work_item.attempt_count += 1
         work_item.lease_expires_at = now + WORK_LEASE_DURATION
         work_item.celery_task_id = self.request.id or work_item.celery_task_id
+        claimed_dispatch_token = work_item.dispatch_token
         work_item.save(
             update_fields=[
                 "status",
@@ -613,6 +615,11 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         error_message = str(exc)[:10000]
         with transaction.atomic():
             work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+            if (
+                work_item.status != IngestionWorkStatus.PROCESSING
+                or work_item.dispatch_token != claimed_dispatch_token
+            ):
+                return {"work_item_id": work_item.id, "status": "superseded"}
             if work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS:
                 work_item.status = IngestionWorkStatus.DEAD
                 work_item.lease_expires_at = None
@@ -663,6 +670,11 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
 
     with transaction.atomic():
         work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+        if (
+            work_item.status != IngestionWorkStatus.PROCESSING
+            or work_item.dispatch_token != claimed_dispatch_token
+        ):
+            return {"work_item_id": work_item.id, "status": "superseded"}
         work_item.status = IngestionWorkStatus.SUCCEEDED
         work_item.lease_expires_at = None
         work_item.dispatch_token = ""
@@ -718,16 +730,60 @@ def _process_durable_work(work_item):
 def recover_stale_ingestion_work():
     """Release worker leases left behind by a crash or a broker delivery loss."""
     now = timezone.now()
-    recovered = IngestionWorkItem.objects.filter(
-        status__in=[IngestionWorkStatus.DISPATCHED, IngestionWorkStatus.PROCESSING],
-        lease_expires_at__lt=now,
-    ).update(
-        status=IngestionWorkStatus.PENDING,
-        available_at=now,
-        lease_expires_at=None,
-        celery_task_id="",
-        dispatch_token="",
-    )
+    with transaction.atomic():
+        stale_items = list(
+            IngestionWorkItem.objects.select_for_update().filter(
+                status__in=[IngestionWorkStatus.DISPATCHED, IngestionWorkStatus.PROCESSING],
+                lease_expires_at__lt=now,
+            )
+        )
+        exhausted_items = [
+            item
+            for item in stale_items
+            if item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
+        ]
+        for work_item in exhausted_items:
+            error_message = (
+                "Ingestion work lease expired after exhausting the retry budget"
+            )
+            work_item.status = IngestionWorkStatus.DEAD
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.last_error = error_message
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+            _record_task_failure(
+                work_item.celery_task_id,
+                "process_ingestion_work_item",
+                (work_item.id,),
+                {},
+                None,
+                RuntimeError(error_message),
+                work_item=work_item,
+            )
+
+        recovered = len(stale_items) - len(exhausted_items)
+        if recovered:
+            IngestionWorkItem.objects.filter(
+                pk__in=[
+                    item.id
+                    for item in stale_items
+                    if item.attempt_count < MAX_INGESTION_WORK_ATTEMPTS
+                ]
+            ).update(
+                status=IngestionWorkStatus.PENDING,
+                available_at=now,
+                lease_expires_at=None,
+                celery_task_id="",
+                dispatch_token="",
+            )
     return {"recovered": recovered}
 
 
