@@ -1,8 +1,9 @@
 import re
 from collections import Counter
 
+from django.core.files.storage import FileSystemStorage
 from django.core.files.storage import default_storage
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect
 from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -43,9 +44,19 @@ class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     def download(self, request, pk=None):
         document = self.get_object()
         if document.object_storage_key:
-            # Filesystem storage yields a local media URL; S3-backed storage
-            # yields its configured signed/public object URL without exposing
-            # the internal object key in API payloads.
+            if isinstance(default_storage, FileSystemStorage):
+                if not default_storage.exists(document.object_storage_key):
+                    raise NotFound("The stored document is unavailable.")
+                response = FileResponse(
+                    default_storage.open(document.object_storage_key, "rb"),
+                    content_type=document.content_type or "application/octet-stream",
+                )
+                response["Content-Disposition"] = (
+                    f'attachment; filename="bill-{document.bill_id}-{document.version_label}"'
+                )
+                return response
+            # S3-backed storage yields its configured signed/public object URL
+            # without exposing the internal object key in API payloads.
             return HttpResponseRedirect(default_storage.url(document.object_storage_key))
 
         text = document.raw_text or document.extracted_text

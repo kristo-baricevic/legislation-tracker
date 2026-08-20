@@ -1,4 +1,6 @@
 import pytest
+from django.core.files.base import ContentFile
+from django.core.files.storage import FileSystemStorage
 from rest_framework.test import APIClient
 
 from apps.congress.models import Vote, VoteRecord
@@ -185,6 +187,33 @@ def test_public_document_download_uses_the_stored_object_url(monkeypatch):
             "text_url": None,
         }
     ]
+
+
+@pytest.mark.django_db
+def test_public_document_download_streams_filesystem_stored_objects(monkeypatch, tmp_path):
+    storage = FileSystemStorage(location=tmp_path, base_url="/media/")
+    object_key = "bills/119/HR_104/Introduced.pdf"
+    storage.save(object_key, ContentFile(b"stored bill bytes"))
+    monkeypatch.setattr(views, "default_storage", storage)
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 108",
+        title="Filesystem stored document bill",
+        status="introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        object_storage_key=object_key,
+        content_type="application/pdf",
+    )
+
+    response = APIClient().get(f"/api/documents/{document.id}/download/")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert b"".join(response.streaming_content) == b"stored bill bytes"
 
 
 @pytest.mark.django_db

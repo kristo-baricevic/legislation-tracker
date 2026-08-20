@@ -25,6 +25,63 @@ def test_request_explicitly_asks_congress_for_json(monkeypatch):
     assert captured["params"] == {"api_key": "test-key", "format": "json"}
 
 
+def test_bill_actions_pages_through_recorded_vote_references(monkeypatch):
+    calls = []
+    expected_actions = [
+        {
+            "actionDate": "2026-01-02",
+            "recordedVotes": [
+                {
+                    "chamber": "House",
+                    "congress": 119,
+                    "rollNumber": 17,
+                    "sessionNumber": 1,
+                    "url": "https://api.congress.gov/v3/house-vote/119/1/17",
+                }
+            ],
+        },
+        {"actionDate": "2026-01-01"},
+        {
+            "actionDate": "2025-12-31",
+            "recordedVotes": [
+                {
+                    "chamber": "Senate",
+                    "congress": 119,
+                    "rollNumber": 3,
+                    "sessionNumber": 1,
+                    "url": "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1191/vote_119_1_00003.xml",
+                }
+            ],
+        },
+    ]
+
+    def fake_request(method, path, params=None):
+        calls.append((method, path, params))
+        offset = params["offset"]
+        if offset == 0:
+            return {"actions": expected_actions[:2]}
+        return {"actions": expected_actions[2:]}
+
+    monkeypatch.setattr(congress_client, "_request", fake_request)
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    actions = congress_client.bill_actions(119, "hr", "1", limit=2)
+
+    assert actions == expected_actions
+    assert calls == [
+        (
+            "GET",
+            "bill/119/hr/1/actions",
+            {"limit": 2, "offset": 0},
+        ),
+        (
+            "GET",
+            "bill/119/hr/1/actions",
+            {"limit": 2, "offset": 2},
+        ),
+    ]
+
+
 def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(monkeypatch):
     calls = []
 
@@ -35,7 +92,7 @@ def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(monk
                 "houseRollCallVoteMemberVotes": {
                     "results": [
                         {
-                            "bioguideId": "A000001",
+                            "bioguideID": "A000001",
                             "firstName": "Ada",
                             "lastName": "Member",
                             "voteCast": "Aye",
@@ -86,7 +143,7 @@ def test_house_vote_detail_paginates_all_member_positions(monkeypatch):
     calls = []
     first_page = [
         {
-            "bioguideId": f"A{index:06d}",
+            "bioguideID": f"A{index:06d}",
             "firstName": "Member",
             "lastName": str(index),
             "voteCast": "Yea",
@@ -103,7 +160,7 @@ def test_house_vote_detail_paginates_all_member_positions(monkeypatch):
         else:
             results = [
                 {
-                    "bioguideId": "A000250",
+                    "bioguideID": "A000250",
                     "firstName": "Member",
                     "lastName": "250",
                     "voteCast": "Nay",
@@ -236,10 +293,9 @@ def test_senate_vote_detail_resolves_former_senators_from_congress_history(
         lambda congress, current_member, limit, offset: [
             {
                 "bioguideId": "S000999",
-                "firstName": "Former",
-                "lastName": "Senator",
-                "state": "VT",
-                "chamber": "Senate",
+                "name": "Senator, Former",
+                "state": "Vermont",
+                "terms": {"item": [{"chamber": "Senate"}]},
             }
         ],
     )

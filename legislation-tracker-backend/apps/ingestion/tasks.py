@@ -18,6 +18,7 @@ from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion.congress_client import (
     CongressAPIError,
+    bill_actions,
     bill_detail,
     bill_list,
     bill_text_list,
@@ -995,10 +996,16 @@ def process_bill_votes(self, bill_id):
     bill_type = (parts[0].lower() if parts else "hr").replace("hr", "hr").replace("s", "s")
     num = parts[1] if len(parts) >= 2 else bill.bill_number.replace(" ", "")
     congress = bill.session
-    detail = bill_detail(congress, bill_type, num)
-    votes_refs = detail.get("votes") or []
-    if isinstance(votes_refs, dict):
-        votes_refs = votes_refs.get("rollCalls") or votes_refs.get("votes") or []
+    actions = bill_actions(congress, bill_type, num)
+    votes_refs = []
+    for action in actions:
+        recorded_votes = action.get("recordedVotes") or []
+        if isinstance(recorded_votes, list):
+            votes_refs.extend(
+                recorded_vote
+                for recorded_vote in recorded_votes
+                if isinstance(recorded_vote, dict)
+            )
     votes_created = 0
     for ref in votes_refs:
         if not isinstance(ref, dict):

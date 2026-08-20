@@ -22,6 +22,59 @@ SENATE_VOTE_URL_TEMPLATE = (
 SENATE_CURRENT_MEMBERS_URL = (
     "https://www.senate.gov/general/contact_information/senators_cfm.xml"
 )
+STATE_CODES = {
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "district of columbia": "DC",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+}
 
 
 class CongressAPIError(Exception):
@@ -113,6 +166,28 @@ def bill_detail(congress, bill_type, bill_number):
     return data.get("bill") or data
 
 
+def bill_actions(congress, bill_type, bill_number, limit=250):
+    """Return every action for a bill, including recorded roll-call references."""
+    bill_type = (bill_type or "hr").lower()
+    offset = 0
+    actions = []
+    while True:
+        data = _request(
+            "GET",
+            f"bill/{congress}/{bill_type}/{bill_number}/actions",
+            params={"limit": limit, "offset": offset},
+        )
+        _throttle()
+        page = data.get("actions") or []
+        if not isinstance(page, list):
+            raise CongressAPIError("Congress bill actions returned an invalid actions payload")
+        actions.extend(action for action in page if isinstance(action, dict))
+        if len(page) < limit:
+            break
+        offset += limit
+    return actions
+
+
 def bill_text_list(congress, bill_type, bill_number):
     """
     GET /bill/{congress}/{billType}/{billNumber}/text.
@@ -173,7 +248,7 @@ def _roll_call_members(payload, chamber):
     for member in results:
         if not isinstance(member, dict):
             continue
-        bioguide_id = member.get("bioguideId")
+        bioguide_id = member.get("bioguideID") or member.get("bioguideId")
         if not bioguide_id:
             continue
         first_name = str(member.get("firstName") or "").strip()
@@ -239,6 +314,40 @@ def _senate_member_fallback_key(last_name, state):
     )
 
 
+def _state_code(value):
+    state = str(value or "").strip()
+    if len(state) == 2:
+        return state.upper()
+    return STATE_CODES.get(state.casefold(), state.upper())
+
+
+def _member_summary_name_parts(member):
+    first_name = str(member.get("firstName") or "").strip()
+    last_name = str(member.get("lastName") or "").strip()
+    if first_name and last_name:
+        return first_name, last_name
+    name = str(member.get("name") or "").strip()
+    if "," not in name:
+        return "", ""
+    last_name, given_names = (part.strip() for part in name.split(",", 1))
+    first_name = given_names.split(maxsplit=1)[0] if given_names else ""
+    return first_name, last_name
+
+
+def _member_summary_is_senator(member):
+    chamber = str(member.get("chamber") or "").casefold()
+    if chamber:
+        return chamber == "senate"
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    return isinstance(terms, list) and any(
+        isinstance(term, dict)
+        and str(term.get("chamber") or "").casefold() == "senate"
+        for term in terms
+    )
+
+
 def _normalized_member_name(value):
     return "".join(
         char
@@ -298,12 +407,10 @@ def _historical_senate_bioguide_ids(congress):
         for member in page:
             if not isinstance(member, dict):
                 continue
-            chamber = str(member.get("chamber") or "").casefold()
-            if chamber and chamber != "senate":
+            if not _member_summary_is_senator(member):
                 continue
-            first_name = str(member.get("firstName") or "").strip()
-            last_name = str(member.get("lastName") or "").strip()
-            state = str(member.get("state") or "").strip()
+            first_name, last_name = _member_summary_name_parts(member)
+            state = _state_code(member.get("state"))
             bioguide_id = str(member.get("bioguideId") or "").strip()
             key = _senate_member_key(first_name, last_name, state)
             if not all(key) or not bioguide_id:

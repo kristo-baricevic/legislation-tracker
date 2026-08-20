@@ -40,6 +40,8 @@ services:
         condition: service_healthy
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - document_media:/app/local_media
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live/', timeout=5)"]
       interval: 20s
@@ -62,6 +64,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - document_media:/app/local_media
 
   beat:
     build: ./legislation-tracker-backend
@@ -94,3 +98,4 @@ services:
 
 volumes:
   postgres_data:
+  document_media:

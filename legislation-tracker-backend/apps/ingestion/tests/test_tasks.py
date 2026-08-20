@@ -235,10 +235,18 @@ def test_process_bill_votes_surfaces_vote_detail_failures_for_retry(monkeypatch)
 
     monkeypatch.setattr(
         tasks,
-        "bill_detail",
-        lambda congress, bill_type, number: {
-            "votes": [{"chamber": "house", "rollNumber": 10}]
-        },
+        "bill_actions",
+        lambda congress, bill_type, number: [
+            {
+                "recordedVotes": [
+                    {
+                        "chamber": "house",
+                        "rollNumber": 10,
+                        "sessionNumber": 1,
+                    }
+                ]
+            }
+        ],
     )
 
     def fail_vote_detail(congress, chamber, roll_number, **kwargs):
@@ -264,17 +272,19 @@ def test_process_bill_votes_preserves_positions_from_grouped_member_payload(monk
     )
     monkeypatch.setattr(
         tasks,
-        "bill_detail",
-        lambda congress, bill_type, number: {
-            "votes": [
-                {
-                    "chamber": "house",
-                    "rollNumber": 10,
-                    "sessionNumber": 1,
-                    "url": "https://api.congress.gov/v3/house-vote/119/1/10",
-                }
-            ]
-        },
+        "bill_actions",
+        lambda congress, bill_type, number: [
+            {
+                "recordedVotes": [
+                    {
+                        "chamber": "house",
+                        "rollNumber": 10,
+                        "sessionNumber": 1,
+                        "url": "https://api.congress.gov/v3/house-vote/119/1/10",
+                    }
+                ]
+            }
+        ],
     )
     vote_calls = []
 
@@ -351,10 +361,18 @@ def test_process_bill_votes_updates_existing_vote_and_records(monkeypatch):
     )
     monkeypatch.setattr(
         tasks,
-        "bill_detail",
-        lambda congress, bill_type, number: {
-            "votes": [{"chamber": "house", "rollNumber": 10}]
-        },
+        "bill_actions",
+        lambda congress, bill_type, number: [
+            {
+                "recordedVotes": [
+                    {
+                        "chamber": "house",
+                        "rollNumber": 10,
+                        "sessionNumber": 1,
+                    }
+                ]
+            }
+        ],
     )
     payload = {
         "date": "2026-01-02T00:00:00Z",
