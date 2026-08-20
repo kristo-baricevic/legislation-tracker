@@ -205,6 +205,9 @@ def sentence_spans(
 ) -> tuple[SourceSpan, ...]:
     start = _content_start(section, source_text)
     end = section.span.end_char
+    nested_marker = SUBDIVISION_RE.search(source_text, start, end)
+    if nested_marker is not None:
+        end = nested_marker.start()
     sentences = []
     cursor = start
 

@@ -155,7 +155,7 @@
           "display_text": {"type": "string", "minLength": 1},
           "subject": {"type": "string", "minLength": 1},
           "scope": {"type": "string", "minLength": 1},
-          "applicability_type": {"enum": ["applies", "does_not_apply", "effective"]}
+          "applicability_type": {"enum": ["applies", "does_not_apply", "eligible", "excluded"]}
         }
       }
     },
