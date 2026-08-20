@@ -8,9 +8,11 @@ import hashlib
 import logging
 import mimetypes
 import re
+from html import unescape
 from io import BytesIO
 from typing import Optional, Tuple
 from urllib.parse import urlparse
+from xml.etree import ElementTree
 
 import requests
 from boto3.exceptions import S3UploadFailedError
@@ -20,6 +22,24 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
 logger = logging.getLogger(__name__)
+
+_STRUCTURAL_MARKUP_TAG_RE = re.compile(
+    r"</?(?:article|body|br|chapter|div|header|item|li|p|paragraph|part|"
+    r"section|subsection|table|td|text|th|title|tr)\b[^>]*>",
+    re.IGNORECASE,
+)
+_MARKUP_TAG_RE = re.compile(r"<[^>]+>")
+_XML_CONTAINER_TAGS = {"chapter", "part", "subpart", "subtitle", "title"}
+_XML_PROVISION_TAGS = {
+    "clause",
+    "item",
+    "paragraph",
+    "section",
+    "subclause",
+    "subparagraph",
+    "subsection",
+}
+_XML_TEXT_TAGS = {"after-quoted-block", "continuation-text", "text"}
 
 
 class RetryableDocumentStorageError(Exception):
@@ -106,6 +126,91 @@ def extract_text_from_pdf(data: bytes) -> str:
         return ""
 
 
+def _xml_tag(element: ElementTree.Element) -> str:
+    return element.tag.rsplit("}", 1)[-1].casefold()
+
+
+def _normalized_inline_text(element: ElementTree.Element) -> str:
+    return re.sub(r"\s+", " ", "".join(element.itertext())).strip()
+
+
+def _direct_xml_child_text(element: ElementTree.Element, tag: str) -> str:
+    child = next((item for item in element if _xml_tag(item) == tag), None)
+    return _normalized_inline_text(child) if child is not None else ""
+
+
+def _render_congress_xml_element(
+    element: ElementTree.Element, lines: list[str]
+) -> None:
+    tag = _xml_tag(element)
+    enum = _direct_xml_child_text(element, "enum")
+    heading = _direct_xml_child_text(element, "header")
+    direct_text = " ".join(
+        value
+        for child in element
+        if _xml_tag(child) in _XML_TEXT_TAGS
+        and (value := _normalized_inline_text(child))
+    )
+
+    if tag in _XML_CONTAINER_TAGS:
+        label = enum or tag.upper()
+        if not label.casefold().startswith(tag):
+            label = f"{tag.upper()} {label}"
+        lines.append(" ".join(part for part in (label, heading) if part))
+    elif tag == "section":
+        label = enum.rstrip(".")
+        if label:
+            lines.append(f"SEC. {label}." + (f" {heading}" if heading else ""))
+        if direct_text:
+            lines.append(direct_text)
+    elif tag in _XML_PROVISION_TAGS:
+        marker = enum
+        if marker:
+            if heading:
+                lines.append(
+                    f"{marker} {heading}.—" + (direct_text if direct_text else "")
+                )
+                direct_text = ""
+            elif direct_text:
+                lines.append(f"{marker} {direct_text}")
+                direct_text = ""
+            else:
+                lines.append(marker)
+        if direct_text:
+            lines.append(direct_text)
+
+    for child in element:
+        child_tag = _xml_tag(child)
+        if child_tag in _XML_CONTAINER_TAGS or child_tag in _XML_PROVISION_TAGS:
+            _render_congress_xml_element(child, lines)
+        elif child_tag == "quoted-block":
+            for quoted_child in child:
+                if _xml_tag(quoted_child) in _XML_PROVISION_TAGS:
+                    _render_congress_xml_element(quoted_child, lines)
+        elif child_tag in _XML_TEXT_TAGS and tag not in _XML_PROVISION_TAGS:
+            value = _normalized_inline_text(child)
+            if value:
+                lines.append(value)
+
+
+def _extract_congress_xml(text: str) -> str | None:
+    try:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError:
+        return None
+    legislative_body = next(
+        (element for element in root.iter() if _xml_tag(element) == "legis-body"),
+        None,
+    )
+    if legislative_body is None:
+        return None
+    lines: list[str] = []
+    for child in legislative_body:
+        if _xml_tag(child) in _XML_CONTAINER_TAGS or _xml_tag(child) in _XML_PROVISION_TAGS:
+            _render_congress_xml_element(child, lines)
+    return "\n".join(line for line in lines if line).strip()
+
+
 def extract_text_from_xml_or_html(data: bytes, content_type: str | None) -> str:
     try:
         text = data.decode("utf-8", errors="replace")
@@ -113,10 +218,22 @@ def extract_text_from_xml_or_html(data: bytes, content_type: str | None) -> str:
         return ""
     if not text.strip():
         return ""
-    # Minimal: strip tags for a rough plain text (Phase 5 can refine)
-    if content_type and "html" in content_type:
-        text = re.sub(r"<[^>]+>", " ", text)
-    return re.sub(r"\s+", " ", text).strip()[:500_000]
+    content_type = (content_type or "").casefold()
+    if "xml" in content_type:
+        structured_text = _extract_congress_xml(text)
+        if structured_text:
+            return structured_text[:500_000]
+    if "xml" in content_type or "html" in content_type:
+        text = _STRUCTURAL_MARKUP_TAG_RE.sub("\n", text)
+        text = _MARKUP_TAG_RE.sub("", text)
+        text = unescape(text)
+
+    lines = []
+    for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = re.sub(r"[\t\f\v ]+", " ", raw_line).strip()
+        if line:
+            lines.append(line)
+    return "\n".join(lines)[:500_000]
 
 
 def ensure_s3_bucket_exists() -> None:

@@ -1,3 +1,5 @@
+import pytest
+
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.legal_rules import (
     extract_amendment_claims,
@@ -13,9 +15,9 @@ from apps.legislation.extraction.legal_rules import (
 
 def assert_exact_evidence(source, claims):
     for claim in claims:
-        assert len(claim.evidence) == 1
-        evidence = claim.evidence[0]
-        assert source[evidence.start_char : evidence.end_char] == evidence.text
+        assert claim.evidence
+        for evidence in claim.evidence:
+            assert source[evidence.start_char : evidence.end_char] == evidence.text
 
 
 def test_extract_modality_claims_maps_supported_phrases_and_conditions():
@@ -190,6 +192,42 @@ def test_nested_subdivision_claim_is_emitted_once_with_full_sentence_evidence():
     assert_exact_evidence(source, claims)
 
 
+def test_extract_modality_claims_inherits_hanging_modal_into_child_subdivisions():
+    source = """SEC. 2. DUTIES
+The Secretary shall—
+(1) publish a report; and
+(2) notify Congress.
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert [claim.fields for claim in claims] == [
+        {
+            "modality": "required",
+            "actor": "The Secretary",
+            "action": "publish a report",
+            "object": None,
+            "conditions": [],
+        },
+        {
+            "modality": "required",
+            "actor": "The Secretary",
+            "action": "notify Congress",
+            "object": None,
+            "conditions": [],
+        },
+    ]
+    assert [span.text for span in claims[0].evidence] == [
+        "The Secretary shall—",
+        "publish a report; and",
+    ]
+    assert [span.text for span in claims[1].evidence] == [
+        "The Secretary shall—",
+        "notify Congress.",
+    ]
+    assert_exact_evidence(source, claims)
+
+
 def test_repeated_subdivision_labels_do_not_cross_section_ancestor_context():
     source = """SEC. 2. DUTIES
 (a) IN GENERAL.—
@@ -245,6 +283,23 @@ There are authorized to be appropriated such sums as may be necessary for fiscal
     ]
     assert not extract_modality_claims(source, sections)
     assert_exact_evidence(source, claims)
+
+
+@pytest.mark.parametrize(
+    "provision",
+    [
+        "Of the amounts appropriated under section 101, $5,000,000 is hereby rescinded.",
+        "The amount appropriated under section 101 is reduced by $5,000,000.",
+        "$5,000,000 of unobligated balances is hereby canceled.",
+        "The report shall identify the $5,000,000 appropriated under section 101.",
+    ],
+)
+def test_extract_funding_claims_rejects_nonaffirmative_amounts(provision):
+    source = f"SEC. 7. FUNDING\n{provision}\n"
+
+    claims = extract_funding_claims(source, parse_federal_structure(source))
+
+    assert claims == ()
 
 
 def test_extract_timeline_claims_normalizes_dates_and_relative_deadlines():
@@ -326,6 +381,39 @@ Section 11 is amended.
     assert claims[4].fields["inserted_text"] == "new term"
     assert not extract_modality_claims(source, sections)
     assert_exact_evidence(source, claims)
+
+
+def test_extract_amendments_inherits_target_for_numbered_gerund_instruction():
+    source = '''SEC. 9. AMENDMENTS
+Section 5 is amended—
+(1) by striking “old text” and inserting “new text”.
+'''
+
+    claims = extract_amendment_claims(source, parse_federal_structure(source))
+
+    assert [claim.fields for claim in claims] == [
+        {
+            "target": "Section 5",
+            "operation": "strike_and_insert",
+            "removed_text": "old text",
+            "inserted_text": "new text",
+        }
+    ]
+    assert [span.text for span in claims[0].evidence] == [
+        "Section 5 is amended—",
+        "by striking “old text” and inserting “new text”.",
+    ]
+    assert_exact_evidence(source, claims)
+
+
+def test_extract_amendments_rejects_descriptive_use_of_amended():
+    source = """SEC. 10. CONTRACTS
+A contract entered into pursuant to this section shall not be treated as a new or amended contract.
+"""
+
+    claims = extract_amendment_claims(source, parse_federal_structure(source))
+
+    assert claims == ()
 
 
 def test_extract_claims_orders_categories_by_evidence_then_category():

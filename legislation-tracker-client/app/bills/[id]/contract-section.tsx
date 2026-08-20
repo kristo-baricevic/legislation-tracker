@@ -118,11 +118,13 @@ function ClaimGroup({
   title,
   items,
   fieldPrefix,
+  evidenceField = "display_text",
   evidence,
 }: {
   title: string;
   items: readonly DisplayItem[];
   fieldPrefix: string;
+  evidenceField?: string;
   evidence: ReadonlyMap<string, readonly EvidenceSpanItem[]>;
 }) {
   if (items.length === 0) return null;
@@ -151,7 +153,7 @@ function ClaimGroup({
             <EvidenceDisclosure
               title={title}
               index={index}
-              spans={evidence.get(`${fieldPrefix}[${index}].display_text`) ?? []}
+              spans={evidence.get(`${fieldPrefix}[${index}].${evidenceField}`) ?? []}
             />
           </li>
         ))}
@@ -224,7 +226,7 @@ function V2ContractSection({
           </p>
         </section>
 
-        <ClaimGroup title="Key provisions" items={keyProvisions} fieldPrefix="key_provisions" evidence={evidence} />
+        <ClaimGroup title="Key provisions" items={keyProvisions} fieldPrefix="key_provisions" evidenceField="text" evidence={evidence} />
         <ClaimGroup title="Requirements" items={value.requirements} fieldPrefix="requirements" evidence={evidence} />
         <ClaimGroup title="Funding" items={value.funding_items} fieldPrefix="funding_items" evidence={evidence} />
         <ClaimGroup title="Timelines" items={value.timeline_items} fieldPrefix="timeline_items" evidence={evidence} />

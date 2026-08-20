@@ -325,6 +325,7 @@ def test_generate_contract_for_inactive_document_does_not_replace_latest_contrac
     assert bill.latest_contract_id == active_contract.id
     assert bill.processing_status == ProcessingStatus.COMPLETE
     assert inactive_document.contract_generated_at is not None
+    assert not IngestionWorkItem.objects.filter(kind="topic_update").exists()
 
 
 @pytest.mark.django_db
@@ -385,6 +386,54 @@ def test_update_topics_infers_bill_topics_and_is_idempotent(monkeypatch):
     assert set(second["topics"]) == {"energy", "environment-climate", "health"}
     assert BillTopic.objects.filter(bill=bill).count() == 3
     assert ChangeLog.objects.filter(change_type="topic_update").count() == 1
+
+
+@pytest.mark.django_db
+def test_update_topics_uses_latest_contract_when_queued_contract_is_stale():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 204",
+        title="Versioned program bill",
+        summary="",
+        status="Introduced",
+    )
+    active_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        is_active_version=True,
+    )
+    active_contract = BillContract.objects.create(
+        bill=bill,
+        document=active_document,
+        schema_version="1.0-stub",
+        contract_json={"plain_summary": "Improves Medicare and hospital access."},
+        contract_hash="active-health",
+    )
+    stale_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=False,
+    )
+    stale_contract = BillContract.objects.create(
+        bill=bill,
+        document=stale_document,
+        schema_version="1.0-stub",
+        contract_json={
+            "plain_summary": "Funds renewable energy and climate adaptation."
+        },
+        contract_hash="stale-climate",
+    )
+    bill.latest_contract = active_contract
+    bill.save(update_fields=["latest_contract"])
+
+    result = tasks.update_topics(stale_contract.id)
+
+    assert result["contract_id"] == active_contract.id
+    assert set(result["topics"]) == {"health"}
+    assert set(
+        BillTopic.objects.filter(bill=bill).values_list("topic__slug", flat=True)
+    ) == {"health"}
 
 
 @pytest.mark.django_db

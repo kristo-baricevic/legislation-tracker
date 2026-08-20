@@ -1379,9 +1379,13 @@ def _download_document_impl(document_id):
         raise
 
     extracted = ""
-    if content_type and "pdf" in content_type.lower():
+    normalized_content_type = (content_type or "").casefold()
+    if "pdf" in normalized_content_type or ext == ".pdf":
         extracted = extract_text_from_pdf(data)
-    elif content_type and ("xml" in content_type.lower() or "html" in content_type.lower()):
+    elif (
+        any(kind in normalized_content_type for kind in ("xml", "html", "text/plain"))
+        or ext in {".xml", ".html", ".htm", ".txt"}
+    ):
         extracted = extract_text_from_xml_or_html(data, content_type)
 
     now = timezone.now()

@@ -17,6 +17,7 @@ from apps.ingestion.models import (
     IngestionWorkItem,
     IngestionWorkStatus,
 )
+from apps.legislation.extraction.service import extract_contract
 from apps.legislation.models import Bill, BillDocument, BillTopic, ProcessingStatus, Topic
 
 
@@ -1044,6 +1045,61 @@ def test_download_document_marks_retryable_s3_failures_for_celery_retry(monkeypa
         error.__name__ == "RetryableDocumentStorageError"
         for error in tasks.download_document.autoretry_for
     )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("content_type", "payload"),
+    [
+        (
+            "application/xml",
+            b"<bill><legis-body><section><enum>2.</enum><header>Reports</header>"
+            b"<text>The Secretary shall publish a report.</text>"
+            b"</section></legis-body></bill>",
+        ),
+        (
+            "text/html",
+            b"<html><body><p>SEC. 2. REPORTS</p>"
+            b"<p>The Secretary shall publish a report.</p></body></html>",
+        ),
+        (
+            "text/plain",
+            b"SEC. 2. REPORTS\nThe Secretary shall publish a report.",
+        ),
+    ],
+)
+def test_downloaded_congress_text_reaches_legal_nlp_v2(
+    monkeypatch, content_type, payload
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr1",
+    )
+    monkeypatch.setattr(tasks, "download_url", lambda *args: (payload, content_type))
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args: ("congress/119/hr-1/introduced", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    result = extract_contract(document=document, bill=bill)
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
+    assert result.contract_json["requirements"][0]["action"] == "publish a report"
 
 
 @pytest.mark.django_db

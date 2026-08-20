@@ -1,0 +1,976 @@
+{
+  "cases": [
+    {
+      "name": "real_hr1_excerpt_01",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 10302. BASE ACRES.\nAn owner of a farm that is\neligible to receive an allocation of base acres may elect to not\nreceive that allocation by notifying the Secretary not later than\n90 days after receipt of the notice provided by the Secretary under\nthis paragraph.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 10302",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "permitted",
+            "actor": "An owner of a farm that is\neligible to receive an allocation of base acres",
+            "action": "elect to not\nreceive that allocation by notifying the Secretary not later than\n90 days after receipt of the notice provided by the Secretary under\nthis paragraph",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "An owner of a farm that is\neligible to receive an allocation of base acres may elect to not\nreceive that allocation by notifying the Secretary not later than\n90 days after receipt of the notice provided by the Secretary under\nthis paragraph."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "relative",
+            "date": null,
+            "relative_value": 90,
+            "relative_unit": "days",
+            "trigger": "receipt of the notice provided by the Secretary under\nthis paragraph"
+          },
+          "evidence": [
+            {
+              "quote": "An owner of a farm that is\neligible to receive an allocation of base acres may elect to not\nreceive that allocation by notifying the Secretary not later than\n90 days after receipt of the notice provided by the Secretary under\nthis paragraph."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_04",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 10602. SUPPLEMENTAL AGRICULTURAL TRADE PROMOTION PROGRAM.\nIn General.--The Secretary of Agriculture shall carry out a\nprogram to encourage the accessibility, development, maintenance, and\nexpansion of commercial export markets for United States agricultural\ncommodities.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 10602",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "In General.--The Secretary of Agriculture",
+            "action": "carry out a\nprogram to encourage the accessibility, development, maintenance, and\nexpansion of commercial export markets for United States agricultural\ncommodities",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "In General.--The Secretary of Agriculture shall carry out a\nprogram to encourage the accessibility, development, maintenance, and\nexpansion of commercial export markets for United States agricultural\ncommodities."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_05",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 10602. SUPPLEMENTAL AGRICULTURAL TRADE PROMOTION PROGRAM.\nFunding.--Of the funds of the Commodity Credit Corporation, the\nSecretary of Agriculture shall make available to carry out this section\n$285,000,000 for fiscal year 2027 and each fiscal year thereafter.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 10602",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Funding.--Of the funds of the Commodity Credit Corporation, the\nSecretary of Agriculture",
+            "action": "make available to carry out this section\n$285,000,000 for fiscal year 2027 and each fiscal year thereafter",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Funding.--Of the funds of the Commodity Credit Corporation, the\nSecretary of Agriculture shall make available to carry out this section\n$285,000,000 for fiscal year 2027 and each fiscal year thereafter."
+            }
+          ]
+        },
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "285000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2027
+            ],
+            "purpose": null
+          },
+          "evidence": [
+            {
+              "quote": "Funding.--Of the funds of the Commodity Credit Corporation, the\nSecretary of Agriculture shall make available to carry out this section\n$285,000,000 for fiscal year 2027 and each fiscal year thereafter."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_06",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20001. ENHANCEMENT OF DEPARTMENT OF DEFENSE RESOURCES FOR\nAppropriations.--In addition to amounts otherwise available,\nthere are appropriated to the Secretary of Defense for fiscal year\n2025, out of any money in the Treasury not otherwise appropriated, to\nremain available until September 30, 2029--",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20001",
+      "expected_claims": [
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2029-09-30",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "Appropriations.--In addition to amounts otherwise available,\nthere are appropriated to the Secretary of Defense for fiscal year\n2025, out of any money in the Treasury not otherwise appropriated, to\nremain available until September 30, 2029--"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_07",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20001. ENHANCEMENT OF DEPARTMENT OF DEFENSE RESOURCES FOR\nIn general.--During the period beginning on the date of the\nenactment of this section and ending on September 30, 2029, the\nSecretary concerned shall apply--",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20001",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "In general.--During the period beginning on the date of the\nenactment of this section and ending on September 30, 2029, the\nSecretary concerned",
+            "action": "apply",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "In general.--During the period beginning on the date of the\nenactment of this section and ending on September 30, 2029, the\nSecretary concerned shall apply--"
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2029-09-30",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "In general.--During the period beginning on the date of the\nenactment of this section and ending on September 30, 2029, the\nSecretary concerned shall apply--"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_16",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20008. ENHANCEMENT OF RESOURCES FOR NUCLEAR FORCES.\n$62,000,000 to convert Ohio-class submarine tubes to accept\nadditional missiles, not to be obligated before March 1, 2026;",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20008",
+      "expected_claims": [
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2026-03-01",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "$62,000,000 to convert Ohio-class submarine tubes to accept\nadditional missiles, not to be obligated before March 1, 2026;"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_17",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20008. ENHANCEMENT OF RESOURCES FOR NUCLEAR FORCES.\nNNSA Appropriations.--In addition to amounts otherwise\navailable, there are appropriated to the Administrator of the National\nNuclear Security Administration for fiscal year 2025, out of any money\nin the Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20008",
+      "expected_claims": [
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2029-09-30",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "NNSA Appropriations.--In addition to amounts otherwise\navailable, there are appropriated to the Administrator of the National\nNuclear Security Administration for fiscal year 2025, out of any money\nin the Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_20",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20012. DEPARTMENT OF DEFENSE OVERSIGHT.\nIn addition to amounts otherwise available, there is appropriated\nto the Inspector General of the Department of Defense for fiscal year\n2025, out of any money in the Treasury not otherwise appropriated,\n$10,000,000, to remain available through September 30, 2029, to monitor\nDepartment of Defense activities for which funding is appropriated in\nthis title, including--",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20012",
+      "expected_claims": [
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "10000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2025
+            ],
+            "purpose": null
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there is appropriated\nto the Inspector General of the Department of Defense for fiscal year\n2025, out of any money in the Treasury not otherwise appropriated,\n$10,000,000, to remain available through September 30, 2029, to monitor\nDepartment of Defense activities for which funding is appropriated in\nthis title, including--"
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2029-09-30",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there is appropriated\nto the Inspector General of the Department of Defense for fiscal year\n2025, out of any money in the Treasury not otherwise appropriated,\n$10,000,000, to remain available through September 30, 2029, to monitor\nDepartment of Defense activities for which funding is appropriated in\nthis title, including--"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_21",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20013. MILITARY CONSTRUCTION PROJECTS AUTHORIZED.\nSpending Plan.--Not later than 30 days after the date of the\nenactment of this title, the Secretary of each military department\nshall submit to the Committees on Armed Services of the Senate and\nHouse of Representatives a detailed spending plan by project for all\nfunds made available by this title to be expended on military\nconstruction projects.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20013",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Spending Plan.--Not later than 30 days after the date of the\nenactment of this title, the Secretary of each military department",
+            "action": "submit to the Committees on Armed Services of the Senate and\nHouse of Representatives a detailed spending plan by project for all\nfunds made available by this title to be expended on military\nconstruction projects",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Spending Plan.--Not later than 30 days after the date of the\nenactment of this title, the Secretary of each military department\nshall submit to the Committees on Armed Services of the Senate and\nHouse of Representatives a detailed spending plan by project for all\nfunds made available by this title to be expended on military\nconstruction projects."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "relative",
+            "date": null,
+            "relative_value": 30,
+            "relative_unit": "days",
+            "trigger": "the date of the\nenactment of this title"
+          },
+          "evidence": [
+            {
+              "quote": "Spending Plan.--Not later than 30 days after the date of the\nenactment of this title, the Secretary of each military department\nshall submit to the Committees on Armed Services of the Senate and\nHouse of Representatives a detailed spending plan by project for all\nfunds made available by this title to be expended on military\nconstruction projects."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_22",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 30003. SECURITIES AND EXCHANGE COMMISSION RESERVE FUND.\nTransition Provision.--During the period beginning on the date\nof enactment of this Act and ending on October 1, 2025, the Securities\nand Exchange Commission may expend amounts in the Securities and\nExchange Commission Reserve Fund that were obligated before the date of\nenactment of this Act for any program, project, or activity that is\nongoing (as of the day before the date of enactment of this Act) in\naccordance with subsection (i) of section 4 of the Securities Exchange\nAct of 1934 (15 U.S.C.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 30003",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "permitted",
+            "actor": "Transition Provision.--During the period beginning on the date\nof enactment of this Act and ending on October 1, 2025, the Securities\nand Exchange Commission",
+            "action": "expend amounts in the Securities and\nExchange Commission Reserve Fund that were obligated before the date of\nenactment of this Act for any program, project, or activity that is\nongoing (as of the day before the date of enactment of this Act) in\naccordance with subsection (i) of section 4 of the Securities Exchange\nAct of 1934 (15 U.S.C",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Transition Provision.--During the period beginning on the date\nof enactment of this Act and ending on October 1, 2025, the Securities\nand Exchange Commission may expend amounts in the Securities and\nExchange Commission Reserve Fund that were obligated before the date of\nenactment of this Act for any program, project, or activity that is\nongoing (as of the day before the date of enactment of this Act) in\naccordance with subsection (i) of section 4 of the Securities Exchange\nAct of 1934 (15 U.S.C."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2025-10-01",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "Transition Provision.--During the period beginning on the date\nof enactment of this Act and ending on October 1, 2025, the Securities\nand Exchange Commission may expend amounts in the Securities and\nExchange Commission Reserve Fund that were obligated before the date of\nenactment of this Act for any program, project, or activity that is\nongoing (as of the day before the date of enactment of this Act) in\naccordance with subsection (i) of section 4 of the Securities Exchange\nAct of 1934 (15 U.S.C."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_23",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 30003. SECURITIES AND EXCHANGE COMMISSION RESERVE FUND.\nTransfer of Remaining Amounts.--Effective on October 1, 2025,\nthe obligated and unobligated balances of amounts in the Securities and\nExchange Commission Reserve Fund shall be transferred to the general\nfund of the Treasury.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 30003",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Transfer of Remaining Amounts.--Effective on October 1, 2025,\nthe obligated and unobligated balances of amounts in the Securities and\nExchange Commission Reserve Fund",
+            "action": "be transferred to the general\nfund of the Treasury",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Transfer of Remaining Amounts.--Effective on October 1, 2025,\nthe obligated and unobligated balances of amounts in the Securities and\nExchange Commission Reserve Fund shall be transferred to the general\nfund of the Treasury."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "effective",
+            "date": "2025-10-01",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "Transfer of Remaining Amounts.--Effective on October 1, 2025,\nthe obligated and unobligated balances of amounts in the Securities and\nExchange Commission Reserve Fund shall be transferred to the general\nfund of the Treasury."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_24",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 30003. SECURITIES AND EXCHANGE COMMISSION RESERVE FUND.\nClosing of Account.--For the purposes of section 1555 of title\n31, United States Code, the Securities and Exchange Commission Reserve\nFund shall be considered closed, and thereafter shall not be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d).",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 30003",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Closing of Account.--For the purposes of section 1555 of title\n31, United States Code, the Securities and Exchange Commission Reserve\nFund",
+            "action": "be considered closed, and thereafter shall not be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d)",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Closing of Account.--For the purposes of section 1555 of title\n31, United States Code, the Securities and Exchange Commission Reserve\nFund shall be considered closed, and thereafter shall not be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d)."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_25",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 30004. APPROPRIATIONS FOR DEFENSE PRODUCTION ACT.\nIn addition to amounts otherwise available, there is appropriated\nfor fiscal year 2025, out of amounts not otherwise appropriated,\n$1,000,000,000, to remain available until September 30, 2027, to carry\nout the Defense Production Act (50 U.S.C.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 30004",
+      "expected_claims": [
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "1000000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2025
+            ],
+            "purpose": "carry\nout the Defense Production Act (50 U.S.C"
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there is appropriated\nfor fiscal year 2025, out of amounts not otherwise appropriated,\n$1,000,000,000, to remain available until September 30, 2027, to carry\nout the Defense Production Act (50 U.S.C."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2027-09-30",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there is appropriated\nfor fiscal year 2025, out of amounts not otherwise appropriated,\n$1,000,000,000, to remain available until September 30, 2027, to carry\nout the Defense Production Act (50 U.S.C."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_26",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nSpectrum auctions.--The Commission shall grant licenses\nthrough systems of competitive bidding, before the expiration of\nthe general auction authority of the Commission under section\n309(j)(11) of the Communications Act of 1934 (47 U.S.C.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Spectrum auctions.--The Commission",
+            "action": "grant licenses\nthrough systems of competitive bidding, before the expiration of\nthe general auction authority of the Commission under section\n309(j)(11) of the Communications Act of 1934 (47 U.S.C",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Spectrum auctions.--The Commission shall grant licenses\nthrough systems of competitive bidding, before the expiration of\nthe general auction authority of the Commission under section\n309(j)(11) of the Communications Act of 1934 (47 U.S.C."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_27",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nIn general.--The Assistant Secretary, in consultation with\nthe Commission, shall identify 500 megahertz of frequencies in the\ncovered band for reallocation to non-Federal use, shared Federal\nand non-Federal use, or a combination thereof, for full-power\ncommercial licensed use cases, that--",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "In general.--The Assistant Secretary, in consultation with\nthe Commission,",
+            "action": "identify 500 megahertz of frequencies in the\ncovered band for reallocation to non-Federal use, shared Federal\nand non-Federal use, or a combination thereof, for full-power\ncommercial licensed use cases, that",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "In general.--The Assistant Secretary, in consultation with\nthe Commission, shall identify 500 megahertz of frequencies in the\ncovered band for reallocation to non-Federal use, shared Federal\nand non-Federal use, or a combination thereof, for full-power\ncommercial licensed use cases, that--"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_28",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nSchedule.--The Assistant Secretary shall identify the\nfrequencies under paragraph (1) according to the following\nschedule:",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Schedule.--The Assistant Secretary",
+            "action": "identify the\nfrequencies under paragraph (1) according to the following\nschedule",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Schedule.--The Assistant Secretary shall identify the\nfrequencies under paragraph (1) according to the following\nschedule:"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_29",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nNot later than 2 years after the date of enactment of\nthis Act, the Assistant Secretary shall identify not less than\n200 megahertz of frequencies within the covered band.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Not later than 2 years after the date of enactment of\nthis Act, the Assistant Secretary",
+            "action": "identify not less than\n200 megahertz of frequencies within the covered band",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 2 years after the date of enactment of\nthis Act, the Assistant Secretary shall identify not less than\n200 megahertz of frequencies within the covered band."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "relative",
+            "date": null,
+            "relative_value": 2,
+            "relative_unit": "years",
+            "trigger": "the date of enactment of\nthis Act"
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 2 years after the date of enactment of\nthis Act, the Assistant Secretary shall identify not less than\n200 megahertz of frequencies within the covered band."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_30",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nNot later than 4 years after the date of enactment of\nthis Act, the Assistant Secretary shall identify any remaining\nbandwidth required to be identified under paragraph (1).",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Not later than 4 years after the date of enactment of\nthis Act, the Assistant Secretary",
+            "action": "identify any remaining\nbandwidth required to be identified under paragraph (1)",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 4 years after the date of enactment of\nthis Act, the Assistant Secretary shall identify any remaining\nbandwidth required to be identified under paragraph (1)."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "relative",
+            "date": null,
+            "relative_value": 4,
+            "relative_unit": "years",
+            "trigger": "the date of enactment of\nthis Act"
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 4 years after the date of enactment of\nthis Act, the Assistant Secretary shall identify any remaining\nbandwidth required to be identified under paragraph (1)."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_31",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nIn general.--In determining under paragraph (1) which\nspecific frequencies within the covered band to reallocate, the\nAssistant Secretary shall determine the feasibility of the\nreallocation of frequencies.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "In general.--In determining under paragraph (1) which\nspecific frequencies within the covered band to reallocate, the\nAssistant Secretary",
+            "action": "determine the feasibility of the\nreallocation of frequencies",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "In general.--In determining under paragraph (1) which\nspecific frequencies within the covered band to reallocate, the\nAssistant Secretary shall determine the feasibility of the\nreallocation of frequencies."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_32",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nRequirements.--In conducting the analysis under\nsubparagraph (A), the Assistant Secretary shall assess net\nrevenue potential, relocation or sharing costs, as applicable,\nand the feasibility of reallocating specific frequencies, with\nthe goal of identifying the best approach to maximize net\nproceeds of systems of competitive bidding for the Treasury,\nconsistent with section 309(j) of the Communications Act of\n1934 (47 U.S.C.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Requirements.--In conducting the analysis under\nsubparagraph (A), the Assistant Secretary",
+            "action": "assess net\nrevenue potential, relocation or sharing costs, as applicable,\nand the feasibility of reallocating specific frequencies, with\nthe goal of identifying the best approach to maximize net\nproceeds of systems of competitive bidding for the Treasury,\nconsistent with section 309(j) of the Communications Act of\n1934 (47 U.S.C",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Requirements.--In conducting the analysis under\nsubparagraph (A), the Assistant Secretary shall assess net\nrevenue potential, relocation or sharing costs, as applicable,\nand the feasibility of reallocating specific frequencies, with\nthe goal of identifying the best approach to maximize net\nproceeds of systems of competitive bidding for the Treasury,\nconsistent with section 309(j) of the Communications Act of\n1934 (47 U.S.C."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_33",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nAuctions.--The Commission shall grant licenses for the\nfrequencies identified for reallocation under subsection (c) through\nsystems of competitive bidding in accordance with the following\nschedule:",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Auctions.--The Commission",
+            "action": "grant licenses for the\nfrequencies identified for reallocation under subsection (c) through\nsystems of competitive bidding in accordance with the following\nschedule",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Auctions.--The Commission shall grant licenses for the\nfrequencies identified for reallocation under subsection (c) through\nsystems of competitive bidding in accordance with the following\nschedule:"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_34",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nNot later than 4 years after the date of enactment of this\nAct, the Commission shall, after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for not less than\n200 megahertz of the frequencies.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Not later than 4 years after the date of enactment of this\nAct, the Commission",
+            "action": ", after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for not less than\n200 megahertz of the frequencies",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 4 years after the date of enactment of this\nAct, the Commission shall, after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for not less than\n200 megahertz of the frequencies."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "relative",
+            "date": null,
+            "relative_value": 4,
+            "relative_unit": "years",
+            "trigger": "the date of enactment of this\nAct"
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 4 years after the date of enactment of this\nAct, the Commission shall, after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for not less than\n200 megahertz of the frequencies."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_excerpt_35",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40002. SPECTRUM AUCTIONS.\nNot later than 8 years after the date of enactment of this\nAct, the Commission shall, after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for any\nfrequencies identified under subsection (c) that remain to be\nauctioned after compliance with paragraph (1) of this subsection.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 40002",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Not later than 8 years after the date of enactment of this\nAct, the Commission",
+            "action": ", after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for any\nfrequencies identified under subsection (c) that remain to be\nauctioned after compliance with paragraph (1) of this subsection",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 8 years after the date of enactment of this\nAct, the Commission shall, after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for any\nfrequencies identified under subsection (c) that remain to be\nauctioned after compliance with paragraph (1) of this subsection."
+            }
+          ]
+        },
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "relative",
+            "date": null,
+            "relative_value": 8,
+            "relative_unit": "years",
+            "trigger": "the date of enactment of this\nAct"
+          },
+          "evidence": [
+            {
+              "quote": "Not later than 8 years after the date of enactment of this\nAct, the Commission shall, after notifying the Assistant Secretary,\ncomplete 1 or more systems of competitive bidding for any\nfrequencies identified under subsection (c) that remain to be\nauctioned after compliance with paragraph (1) of this subsection."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_long_defense_resources_section",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 20006. ENHANCEMENT OF DEPARTMENT OF DEFENSE RESOURCES FOR\nIMPROVING THE EFFICIENCY AND CYBERSECURITY OF THE DEPARTMENT OF\nDEFENSE.\nIn addition to amounts otherwise available, there are appropriated\nto the Secretary of Defense for fiscal year 2025, out of any money in\nthe Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--\n(1) $150,000,000 for business systems replacement to accelerate\nthe audits of the financial statements of the Department of Defense\npursuant to chapter 9A and section 2222 of title 10, United States\nCode;\n(2) $200,000,000 for the deployment of automation and\nartificial intelligence to accelerate the audits of the financial\nstatements of the Department of Defense pursuant to chapter 9A and\nsection 2222 of title 10, United States Code;\n(3) $10,000,000 for the improvement of the budgetary and\nprogrammatic infrastructure of the Office of the Secretary of\nDefense; and\n(4) $20,000,000 for defense cybersecurity programs of the\nDefense Advanced Research Projects Agency.\n",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 20006",
+      "expected_claims": [
+        {
+          "category": "timeline_items",
+          "fields": {
+            "timeline_type": "absolute",
+            "date": "2029-09-30",
+            "relative_value": null,
+            "relative_unit": null,
+            "trigger": null
+          },
+          "evidence": [
+            {
+              "quote": "In addition to amounts otherwise available, there are appropriated\nto the Secretary of Defense for fiscal year 2025, out of any money in\nthe Treasury not otherwise appropriated, to remain available until\nSeptember 30, 2029--"
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr2316_strike_and_insert",
+      "title": "Wetlands Conservation and Access Improvement Act of 2025",
+      "version_label": "Reported in House",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 2. AVAILABILITY OF INTEREST ON OBLIGATIONS HELD IN FEDERAL AID TO WILDLIFE RESTORATION FUND\nSection 3(b)(2)(C) of the Pittman-Robertson Wildlife Restoration Act is amended by striking “2026” and inserting “2033”.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr2316rh/xml/BILLS-119hr2316rh.xml",
+      "source_locator": "Sec. 2",
+      "expected_claims": [
+        {
+          "category": "amendment_operations",
+          "fields": {
+            "target": "Section 3",
+            "operation": "strike_and_insert",
+            "removed_text": "2026",
+            "inserted_text": "2033"
+          },
+          "evidence": [
+            {
+              "quote": "Section 3(b)(2)(C) of the Pittman-Robertson Wildlife Restoration Act is amended by striking “2026” and inserting “2033”."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr7935_reallocation_requirement",
+      "title": "Shall Not Be Infringed Act of 2026",
+      "version_label": "Introduced in House",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 2. GUN FREE ZONE POLICY REQUIREMENT PERTAINING TO ELIGIBILITY FOR BYRNE-JAG FUNDING\n(c) REALLOCATION.—Amounts not allocated under a program referred to in subsection (b)(2) to a State for failure to fully comply with subsection (a) shall be reallocated under that program to States that have not failed to comply with such subsection.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr7935ih/xml/BILLS-119hr7935ih.xml",
+      "source_locator": "Sec. 2(c)",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "Amounts not allocated under a program referred to in subsection (b)(2) to a State for failure to fully comply with subsection (a)",
+            "action": "be reallocated under that program to States that have not failed to comply with such subsection",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Amounts not allocated under a program referred to in subsection (b)(2) to a State for failure to fully comply with subsection (a) shall be reallocated under that program to States that have not failed to comply with such subsection."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": []
+    },
+    {
+      "name": "real_hr1_negative_inserted_obligation",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 10104. RESTRICTIONS ON INTERNET EXPENSES\nSection 5(e)(6) of the Food and Nutrition Act of 2008 is amended by adding at the end the following: “Any service fee associated with internet connection shall not be used in computing the excess shelter expense deduction under this paragraph”.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Sec. 10104",
+      "expected_claims": [
+        {
+          "category": "amendment_operations",
+          "fields": {
+            "target": "Section 5",
+            "operation": "add",
+            "removed_text": null,
+            "inserted_text": "Any service fee associated with internet connection shall not be used in computing the excess shelter expense deduction under this paragraph"
+          },
+          "evidence": [
+            {
+              "quote": "Section 5(e)(6) of the Food and Nutrition Act of 2008 is amended by adding at the end the following: “Any service fee associated with internet connection shall not be used in computing the excess shelter expense deduction under this paragraph”."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "prohibited",
+            "actor": "Section 5(e)(6) of the Food and Nutrition Act of 2008 is amended by adding at the end the following: “Any service fee associated with internet connection",
+            "action": "be used in computing the excess shelter expense deduction under this paragraph”",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "Section 5(e)(6) of the Food and Nutrition Act of 2008 is amended by adding at the end the following: “Any service fee associated with internet connection shall not be used in computing the excess shelter expense deduction under this paragraph”."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real_hr1_negative_rescission",
+      "title": "H.R. 1 (119th Congress), enrolled",
+      "version_label": "Enrolled",
+      "corpus_kind": "public_domain_excerpt",
+      "source_text": "SEC. 40011. RESCISSION OF AMOUNTS APPROPRIATED TO PUBLIC WIRELESS SUPPLY CHAIN INNOVATION FUND\nOf the unobligated balances of amounts made available under section 106(a) of the CHIPS Act of 2022, $850,000,000 are permanently rescinded.\nSEC. 50101. ONSHORE OIL AND GAS LEASING\nThe Secretary of the Interior shall immediately resume quarterly onshore oil and gas lease sales in compliance with the Mineral Leasing Act.",
+      "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+      "source_locator": "Secs. 40011 and 50101(b)(1)",
+      "expected_claims": [
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "required",
+            "actor": "The Secretary of the Interior",
+            "action": "immediately resume quarterly onshore oil and gas lease sales in compliance with the Mineral Leasing Act",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "The Secretary of the Interior shall immediately resume quarterly onshore oil and gas lease sales in compliance with the Mineral Leasing Act."
+            }
+          ]
+        }
+      ],
+      "forbidden_claims": [
+        {
+          "category": "funding_items",
+          "fields": {
+            "amount": "850000000.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [],
+            "purpose": null
+          },
+          "evidence": [
+            {
+              "quote": "Of the unobligated balances of amounts made available under section 106(a) of the CHIPS Act of 2022, $850,000,000 are permanently rescinded."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -382,7 +382,8 @@ def _generate_contract_impl(document_id):
                 bill.save(update_fields=["latest_contract", "processing_status"])
             else:
                 bill.save(update_fields=["latest_contract"])
-        enqueue_topic_update(contract=latest)
+        if document.is_active_version:
+            enqueue_topic_update(contract=latest)
         logger.info(
             "generate_contract: unchanged hash for document_id=%s, skipping",
             document_id,
@@ -433,7 +434,8 @@ def _generate_contract_impl(document_id):
                     page_number=span.page_number,
                 )
 
-    enqueue_topic_update(contract=contract)
+    if document.is_active_version:
+        enqueue_topic_update(contract=contract)
 
     logger.info(
         "generate_contract: created contract_id=%s document_id=%s",
@@ -471,6 +473,11 @@ def _update_topics_impl(contract_id=None, bill_id=None):
         )
         if contract:
             bill = contract.bill
+            if (
+                bill.latest_contract_id is not None
+                and bill.latest_contract_id != contract.id
+            ):
+                contract = bill.latest_contract
     if bill is None and bill_id:
         bill = Bill.objects.filter(pk=bill_id).first()
         if bill and bill.latest_contract_id:

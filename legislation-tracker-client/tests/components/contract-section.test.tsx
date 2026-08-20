@@ -98,6 +98,13 @@ function v2Contract(): BillContractItem {
     },
     evidence_spans: [
       {
+        field_path: "key_provisions[0].text",
+        start_char: 0,
+        end_char: 9,
+        quoted_text: "SEC. 2. REPORTS\nThe Secretary shall report.",
+        page_number: null,
+      },
+      {
         field_path: "requirements[0].display_text",
         start_char: 10,
         end_char: 35,
@@ -135,6 +142,13 @@ describe("ContractSection", () => {
     }
     expect(screen.getAllByText("Sec. 2").length).toBeGreaterThan(0);
     expect(screen.getAllByText("The Secretary is required to publish a report.").length).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByLabelText("Source evidence for Key provisions item 1"),
+    );
+    expect(
+      screen.getByText("SEC. 2. REPORTS The Secretary shall report."),
+    ).toBeVisible();
 
     await user.click(
       screen.getByLabelText("Source evidence for Requirements item 1"),

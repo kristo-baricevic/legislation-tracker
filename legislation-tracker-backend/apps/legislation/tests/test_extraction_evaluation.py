@@ -69,8 +69,7 @@ def _evidence_offsets(source_text, evidence):
     return offsets
 
 
-def load_fixture(path: Path):
-    fixture = json.loads(path.read_text(encoding="utf-8"))
+def _prepare_fixture(fixture, path: Path):
     required = {
         "name",
         "title",
@@ -86,9 +85,39 @@ def load_fixture(path: Path):
     return fixture
 
 
+def load_fixtures(path: Path):
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    cases = payload.get("cases") if isinstance(payload, dict) else None
+    fixtures = cases if isinstance(cases, list) else [payload]
+    return [_prepare_fixture(fixture, path) for fixture in fixtures]
+
+
 def test_legal_nlp_evaluation_corpus_meets_release_gates():
     paths = sorted(FIXTURE_DIR.glob("*.json"))
     assert len(paths) >= 25, "Legal NLP evaluation requires at least 25 fixtures"
+    fixtures = [
+        fixture
+        for path in paths
+        for fixture in load_fixtures(path)
+    ]
+    public_excerpts = [
+        fixture
+        for fixture in fixtures
+        if fixture.get("corpus_kind") == "public_domain_excerpt"
+    ]
+    assert len(public_excerpts) >= 25, (
+        "Legal NLP evaluation requires at least 25 public-domain federal excerpts"
+    )
+    assert len({fixture["source_reference"] for fixture in public_excerpts}) >= 3, (
+        "Public-domain excerpts must cover at least three source documents"
+    )
+    assert all(fixture.get("source_locator") for fixture in public_excerpts)
+    assert any(len(fixture["source_text"]) >= 1_000 for fixture in public_excerpts), (
+        "Public-domain corpus requires at least one long section"
+    )
+    assert sum(bool(fixture["forbidden_claims"]) for fixture in fixtures) >= 5, (
+        "Legal NLP evaluation requires at least five explicit negative cases"
+    )
 
     totals = Counter()
     by_category = defaultdict(Counter)
@@ -98,8 +127,7 @@ def test_legal_nlp_evaluation_corpus_meets_release_gates():
     all_contracts_valid = True
     all_evidence_exact = True
 
-    for path in paths:
-        fixture = load_fixture(path)
+    for fixture in fixtures:
         bill = SimpleNamespace(
             jurisdiction="federal",
             title=fixture["title"],

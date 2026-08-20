@@ -27,7 +27,9 @@ _SECTION_DEFINITION_RE = re.compile(
 )
 _QUOTED_RANGE_RE = re.compile(r'“[^”]*”|"[^"]*"|‘[^’]*’|\'[^\']*\'')
 _AMENDMENT_INSTRUCTION_RE = re.compile(
-    r"^\s*(?:strike|insert|replace|redesignate|repeal|amend)\b", re.IGNORECASE
+    r"^\s*(?:by\s+)?(?:strik(?:e|ing)|insert(?:ing)?|replac(?:e|ing)|"
+    r"redesignat(?:e|ing)|repeal(?:ing)?|amend(?:ing)?)\b",
+    re.IGNORECASE,
 )
 _CONDITION_RE = re.compile(
     r"(?:,\s*|\s+)(?P<condition>(?:if|when|unless|subject\s+to)\b.+)$",
@@ -78,6 +80,23 @@ _FISCAL_RANGE_RE = re.compile(
 )
 _FISCAL_YEAR_RE = re.compile(r"\bfiscal\s+year\s+(?P<year>\d{4})\b", re.IGNORECASE)
 _SUCH_SUMS_RE = re.compile(r"\bsuch\s+sums\s+as\s+may\s+be\s+necessary\b", re.IGNORECASE)
+_AFFIRMATIVE_FUNDING_RE = re.compile(
+    r"\b(?:there\s+)?(?:is|are)\s+"
+    r"(?:authorized\s+to\s+be\s+)?appropriated\b",
+    re.IGNORECASE,
+)
+_OPERATIVE_FUNDING_RE = re.compile(
+    r"\b(?:shall|must|may)\s+(?:"
+    r"(?:award|allocate|disburse|expend|obligate|transfer|use)\b|"
+    r"make\s+available\b|"
+    r"be\s+(?:allocated|awarded|disbursed|expended|obligated|transferred|used)\b"
+    r")",
+    re.IGNORECASE,
+)
+_NEGATIVE_FUNDING_RE = re.compile(
+    r"\b(?:rescind(?:ed|ing)?|reduc(?:e|ed|ing)|cancel(?:ed|led|ing)|returned?)\b",
+    re.IGNORECASE,
+)
 _RELATIVE_TIMELINE_RE = re.compile(
     r"\b(?P<prefix>not\s+later\s+than\s+)?(?P<value>\d+)\s+"
     r"(?P<unit>days?|months?|years?)\s+after\s+"
@@ -91,7 +110,8 @@ _DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _TARGET_RE = re.compile(
-    r"\b(?P<target>section\s+[0-9A-Z-]+(?:\s+of\s+the\s+[^,.;:]+?\s+Act)?|"
+    r"\b(?P<target>section\s+[0-9]+[A-Z]?(?:-[0-9A-Z]+)*"
+    r"(?:\s+of\s+the\s+[^,.;:]+?\s+Act)?|"
     r"paragraph\s+\([^)]+\))(?!\w)",
     re.IGNORECASE,
 )
@@ -110,14 +130,19 @@ _MONTHS = {
     "december": 12,
 }
 _AMENDMENT_PATTERNS = (
-    ("strike_and_insert", re.compile(r"\bstrike\b.+\band\s+insert\b", re.IGNORECASE)),
-    ("replace", re.compile(r"\breplace\b.+\bwith\b", re.IGNORECASE)),
+    (
+        "strike_and_insert",
+        re.compile(
+            r"\bstrik(?:e|ing)\b.+\band\s+insert(?:ing)?\b", re.IGNORECASE
+        ),
+    ),
+    ("replace", re.compile(r"\breplac(?:e|ing)\b.+\bwith\b", re.IGNORECASE)),
     (
         "add",
         re.compile(r"\b(?:is\s+amended\s+by\s+adding|add(?:ing)?)\b", re.IGNORECASE),
     ),
-    ("insert", re.compile(r"\binsert\b", re.IGNORECASE)),
-    ("strike", re.compile(r"\bstrike\b", re.IGNORECASE)),
+    ("insert", re.compile(r"\binsert(?:ing)?\b", re.IGNORECASE)),
+    ("strike", re.compile(r"\bstrik(?:e|ing)\b", re.IGNORECASE)),
     ("redesignate", re.compile(r"\bredesignat(?:e|ed|ing)\b", re.IGNORECASE)),
     ("repeal", re.compile(r"\brepeal(?:ed|ing)?\b", re.IGNORECASE)),
     ("amend", re.compile(r"\b(?:is\s+amended|amend(?:ed|ing)?)\b", re.IGNORECASE)),
@@ -125,7 +150,50 @@ _AMENDMENT_PATTERNS = (
 
 
 def _strip_terminal_punctuation(value: str) -> str:
-    return value.strip().rstrip(".;:").strip()
+    return value.strip().rstrip(".;:—–-").strip()
+
+
+def _strip_list_connector(value: str) -> str:
+    return _strip_terminal_punctuation(
+        re.sub(r"(?:[;,]\s*)?(?:and|or)\s*$", "", value, flags=re.IGNORECASE)
+    )
+
+
+def _parent_section(
+    section: StructuralSection, sections: Sequence[StructuralSection]
+) -> StructuralSection | None:
+    if section.parent_label is None:
+        return None
+    candidates = [
+        candidate
+        for candidate in sections
+        if candidate.label == section.parent_label
+        and candidate.span.start_char < section.span.start_char
+        and section.span.end_char <= candidate.span.end_char
+    ]
+    return max(candidates, key=lambda candidate: candidate.span.start_char, default=None)
+
+
+def _inherited_modal_context(
+    source_text: str,
+    section: StructuralSection,
+    sections: Sequence[StructuralSection],
+) -> tuple[str, str, SourceSpan] | None:
+    parent = _parent_section(section, sections)
+    if parent is None:
+        return None
+    for sentence in reversed(sentence_spans(parent, source_text)):
+        matches = list(MODAL_RE.finditer(sentence.text))
+        if not matches:
+            continue
+        modal_match = matches[-1]
+        if _is_modal_excluded(sentence, modal_match.start(), parent, sections):
+            continue
+        actor = _strip_terminal_punctuation(sentence.text[: modal_match.start()])
+        action = _strip_terminal_punctuation(sentence.text[modal_match.end() :])
+        if actor and not action:
+            return modal_match.group("modal").casefold(), actor, sentence
+    return None
 
 
 def _definition_term(match: re.Match[str]) -> str:
@@ -190,7 +258,31 @@ def extract_modality_claims(
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     for section, sentence in _iter_operative_sentences(source_text, sections):
-        for modal_match in MODAL_RE.finditer(sentence.text):
+        modal_matches = list(MODAL_RE.finditer(sentence.text))
+        if not modal_matches:
+            inherited = _inherited_modal_context(source_text, section, sections)
+            if inherited is not None:
+                modal, actor, parent_evidence = inherited
+                action = _strip_list_connector(sentence.text)
+                if action and re.search(r"\w", action):
+                    claims.append(
+                        ExtractedClaim(
+                            category="requirements",
+                            fields={
+                                "modality": _MODALITY_BY_PHRASE[modal],
+                                "actor": actor,
+                                "action": action,
+                                "object": None,
+                                "conditions": [],
+                            },
+                            section_label=section.label,
+                            evidence=(parent_evidence, sentence),
+                            rule_id=f"modality.{modal.replace(' ', '_')}.inherited.v1",
+                        )
+                    )
+            continue
+
+        for modal_match in modal_matches:
             if _is_modal_excluded(sentence, modal_match.start(), section, sections):
                 continue
 
@@ -215,7 +307,13 @@ def extract_modality_claims(
             modal = modal_match.group("modal").casefold()
             if modal == "may" and action.casefold().startswith("discuss whether"):
                 continue
-            if not actor or not action or len(actor) > 300 or len(action) > 1_000:
+            if (
+                not actor
+                or not action
+                or re.search(r"\w", action) is None
+                or len(actor) > 300
+                or len(action) > 1_000
+            ):
                 continue
 
             claims.append(
@@ -362,7 +460,12 @@ def extract_funding_claims(
         lowered = text.casefold()
         such_sums = _SUCH_SUMS_RE.search(text) is not None
         money = _MONEY_RE.search(text)
-        if "appropriat" not in lowered and not such_sums:
+        if (
+            _AFFIRMATIVE_FUNDING_RE.search(text) is None
+            and _OPERATIVE_FUNDING_RE.search(text) is None
+        ) or (
+            _NEGATIVE_FUNDING_RE.search(text) is not None
+        ):
             continue
         if money is None and not such_sums:
             continue
@@ -496,7 +599,23 @@ def extract_amendment_claims(
         if details is None:
             continue
         operation, removed_text, inserted_text = details
+        if operation == "amend" and sentence.text.rstrip().endswith(("—", "–", "-")):
+            continue
         target_match = _TARGET_RE.search(sentence.text)
+        inherited_evidence = None
+        if target_match is None:
+            parent = _parent_section(section, sections)
+            if parent is not None:
+                for parent_sentence in reversed(sentence_spans(parent, source_text)):
+                    target_match = _TARGET_RE.search(parent_sentence.text)
+                    if target_match is not None:
+                        inherited_evidence = parent_sentence
+                        break
+        evidence = (
+            (inherited_evidence, sentence)
+            if inherited_evidence is not None
+            else (sentence,)
+        )
         claims.append(
             ExtractedClaim(
                 category="amendment_operations",
@@ -507,7 +626,7 @@ def extract_amendment_claims(
                     "inserted_text": inserted_text,
                 },
                 section_label=section.label,
-                evidence=(sentence,),
+                evidence=evidence,
                 rule_id=f"amendment.{operation}.v1",
             )
         )
