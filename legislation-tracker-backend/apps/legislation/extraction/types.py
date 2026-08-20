@@ -15,6 +15,14 @@ FALLBACK_REASONS = frozenset(
 )
 
 
+class ExpectedExtractionRejection(ValueError):
+    def __init__(self, reason: str):
+        if reason not in FALLBACK_REASONS:
+            raise ValueError(f"Unsupported extraction rejection reason: {reason}")
+        super().__init__(reason)
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class SourceSpan:
     text: str
