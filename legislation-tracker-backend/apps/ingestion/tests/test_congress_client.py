@@ -25,6 +25,16 @@ def test_request_explicitly_asks_congress_for_json(monkeypatch):
     assert captured["params"] == {"api_key": "test-key", "format": "json"}
 
 
+def test_request_wraps_transport_errors_as_retryable_congress_api_errors(monkeypatch):
+    def fake_request(*args, **kwargs):
+        raise congress_client.requests.ConnectionError("Congress is unavailable")
+
+    monkeypatch.setattr(congress_client.requests, "request", fake_request)
+
+    with pytest.raises(congress_client.CongressAPIError, match="request failed"):
+        congress_client._request("GET", "member/congress/119")
+
+
 def test_bill_actions_pages_through_recorded_vote_references(monkeypatch):
     calls = []
     expected_actions = [
@@ -232,8 +242,10 @@ def test_senate_vote_detail_uses_official_senate_xml_with_bioguide_ids(monkeypat
     vote = congress_client.vote_detail(119, "senate", 7, session_number=1)
 
     assert [call[0] for call in calls] == [
-        "https://www.senate.gov/legislative/LIS/roll_call_votes/"
-        "vote1191/vote_119_1_00007.xml",
+        (
+            "https://www.senate.gov/legislative/LIS/roll_call_votes/"
+            "vote1191/vote_119_1_00007.xml"
+        ),
         "https://www.senate.gov/general/contact_information/senators_cfm.xml",
     ]
     assert vote == {

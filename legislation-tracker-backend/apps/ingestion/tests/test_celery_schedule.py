@@ -32,6 +32,13 @@ def test_celery_beat_dispatches_and_recovers_durable_ingestion_work():
     }
 
 
+def test_celery_requeues_late_acked_tasks_when_a_worker_process_is_lost():
+    from config.celery import app
+
+    assert app.conf.task_acks_late is True
+    assert app.conf.task_reject_on_worker_lost is True
+
+
 def test_celery_beat_syncs_the_full_current_representative_roster_daily():
     from config.celery import app
 

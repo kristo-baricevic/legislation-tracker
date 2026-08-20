@@ -103,7 +103,11 @@ def _request(method, path, params=None):
     if api_key:
         params.setdefault("api_key", api_key)
     logger.debug("Congress API request: %s %s (params keys: %s)", method, path, list(params.keys()) if params else [])
-    resp = requests.request(method, url, params=params, timeout=30)
+    try:
+        resp = requests.request(method, url, params=params, timeout=30)
+    except requests.RequestException as exc:
+        logger.warning("Congress API request failed: %s %s: %s", method, path, exc)
+        raise CongressAPIError(f"Congress API request failed: {exc}") from exc
     if not resp.ok:
         logger.error(
             "Congress API error: %s %s -> %s %s",

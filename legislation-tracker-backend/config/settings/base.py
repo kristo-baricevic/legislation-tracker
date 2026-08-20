@@ -94,6 +94,11 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+# A worker process can disappear after receiving a downstream document, vote,
+# or contract task. Acknowledge only after completion and return that delivery
+# to the broker when the child process is lost so the pipeline is at-least-once.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
 # REST Framework
 REST_FRAMEWORK = {
