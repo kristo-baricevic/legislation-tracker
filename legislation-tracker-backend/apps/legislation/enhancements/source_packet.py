@@ -267,20 +267,37 @@ def build_enhancement_preflight(bill) -> EnhancementPreflight:
             reason="request_too_large",
         )
 
-    selected = candidates[:]
-    while selected:
-        numbered = _numbered_sources(selected)
-        truncated = len(selected) < len(candidates)
-        envelope = _request_envelope(bill, numbered, truncated=truncated)
-        request_bytes = canonical_json_bytes(envelope)
-        if _within_limits(request_bytes):
-            break
-        selected.pop()
-    else:
+    numbered = None
+    request_envelope = None
+    request_bytes = None
+    selected_count = 0
+    low = 1
+    high = len(candidates)
+    while low <= high:
+        candidate_count = (low + high) // 2
+        candidate_sources = _numbered_sources(candidates[:candidate_count])
+        candidate_truncated = candidate_count < len(candidates)
+        candidate_envelope = _request_envelope(
+            bill,
+            candidate_sources,
+            truncated=candidate_truncated,
+        )
+        candidate_bytes = canonical_json_bytes(candidate_envelope)
+        if _within_limits(candidate_bytes):
+            numbered = candidate_sources
+            request_envelope = candidate_envelope
+            request_bytes = candidate_bytes
+            selected_count = candidate_count
+            low = candidate_count + 1
+        else:
+            high = candidate_count - 1
+
+    if numbered is None or request_envelope is None or request_bytes is None:
         raise PreflightUnavailable(
             "No source packet can fit the configured request limits",
             reason="request_too_large",
         )
+    truncated = selected_count < len(candidates)
 
     source_snapshot = [_snapshot(source) for source in numbered]
     source_fingerprint = hashlib.sha256(
@@ -297,7 +314,7 @@ def build_enhancement_preflight(bill) -> EnhancementPreflight:
         **source_identity,
         "source_kind": source_kind,
         "total_candidates": len(candidates),
-        "selected_count": len(selected),
+        "selected_count": selected_count,
         "truncated": truncated,
     }
     return EnhancementPreflight(
@@ -311,7 +328,7 @@ def build_enhancement_preflight(bill) -> EnhancementPreflight:
         request_fingerprint=request_fingerprint,
         source_manifest=manifest,
         source_snapshot=source_snapshot,
-        request_envelope=envelope,
+        request_envelope=request_envelope,
         request_bytes=request_bytes,
         estimated_input_tokens=estimate_input_tokens(request_bytes),
         truncated=truncated,

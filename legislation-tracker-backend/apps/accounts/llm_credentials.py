@@ -18,6 +18,9 @@ class CredentialDecryptionError(RuntimeError):
     pass
 
 
+MIN_LLM_RUN_LEASE_HEADROOM_SECONDS = 30
+
+
 @dataclass(frozen=True)
 class EncryptionKeyRing:
     active_key_id: str
@@ -155,10 +158,18 @@ def llm_feature_configuration_errors(*, production: bool) -> list[str]:
     ):
         if getattr(settings, name, 0) <= 0:
             errors.append(f"invalid_{name.lower()}")
-    if getattr(settings, "LLM_ENHANCEMENT_RUN_LEASE_SECONDS", 0) <= getattr(
-        settings, "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS", 0
-    ):
+    run_lease_seconds = getattr(settings, "LLM_ENHANCEMENT_RUN_LEASE_SECONDS", 0)
+    provider_timeout_seconds = getattr(
+        settings,
+        "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS",
+        0,
+    )
+    if run_lease_seconds <= provider_timeout_seconds:
         errors.append("run_lease_not_longer_than_timeout")
+    elif run_lease_seconds < (
+        provider_timeout_seconds + MIN_LLM_RUN_LEASE_HEADROOM_SECONDS
+    ):
+        errors.append("run_lease_insufficient_headroom")
 
     if production:
         if not getattr(settings, "SECURE_SSL_REDIRECT", False):

@@ -1,12 +1,16 @@
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
+from django.utils import timezone
 
 from apps.accounts.models import LLMCredential
 from apps.accounts.tests.test_llm_credentials import FERNET_KEY
 from apps.legislation.enhancements.service import (
     EnhancementServiceError,
     create_enhancement_attempt,
+    retry_allowed,
     retry_enhancement_attempt,
 )
 from apps.legislation.enhancements.source_packet import build_enhancement_preflight
@@ -240,7 +244,6 @@ def test_refusal_is_not_retryable_and_ownership_is_enforced(
         "model_access_denied",
         "provider_rate_limited",
         "provider_unavailable",
-        "quota_exhausted",
     ],
 )
 def test_definitive_pre_call_or_recoverable_provider_failures_allow_confirmed_retry(
@@ -263,6 +266,56 @@ def test_definitive_pre_call_or_recoverable_provider_failures_allow_confirmed_re
         created.enhancement.status = created.enhancement.Status.FAILED
         created.enhancement.save(update_fields=["status"])
 
+        retried = retry_enhancement_attempt(
+            user=enhancement_owner,
+            bill=source_bill,
+            enhancement_id=created.enhancement.pk,
+            confirmed=confirmation,
+        )
+
+    assert retried.created is True
+    assert retried.attempt.sequence == 2
+
+
+@pytest.mark.django_db
+def test_quota_retry_requires_validation_after_the_failed_attempt(
+    enhancement_owner,
+    source_bill,
+    enhancement_settings,
+):
+    with enhancement_settings:
+        credential = _valid_credential(enhancement_owner)
+        confirmation = _confirmation(source_bill, credential)
+        created = create_enhancement_attempt(
+            user=enhancement_owner,
+            bill=source_bill,
+            confirmed=confirmation,
+        )
+        completed_at = timezone.now()
+        created.attempt.status = created.attempt.Status.FAILED
+        created.attempt.failure_category = "quota_exhausted"
+        created.attempt.completed_at = completed_at
+        created.attempt.save(
+            update_fields=["status", "failure_category", "completed_at"]
+        )
+        created.enhancement.status = created.enhancement.Status.FAILED
+        created.enhancement.save(update_fields=["status"])
+
+        assert retry_allowed(created.attempt) is False
+        with pytest.raises(EnhancementServiceError) as blocked:
+            retry_enhancement_attempt(
+                user=enhancement_owner,
+                bill=source_bill,
+                enhancement_id=created.enhancement.pk,
+                confirmed=confirmation,
+            )
+        assert blocked.value.code == "retry_not_allowed"
+
+        credential.validated_at = completed_at + timedelta(seconds=1)
+        credential.save(update_fields=["validated_at"])
+        created.attempt.refresh_from_db()
+
+        assert retry_allowed(created.attempt) is True
         retried = retry_enhancement_attempt(
             user=enhancement_owner,
             bill=source_bill,

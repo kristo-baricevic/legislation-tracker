@@ -213,7 +213,24 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
       setEnhancement(updated);
       setConfirming(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not start AI enhancement.");
+      const refreshableConflict = reason instanceof ApiError && reason.status === 409;
+      if (refreshableConflict) {
+        setConfirming(null);
+        try {
+          const [nextEstimate, latest] = await Promise.all([
+            getBillEnhancementEstimate(billId),
+            getLatestBillEnhancement(billId),
+          ]);
+          setEstimate(nextEstimate);
+          setEnhancement(latest);
+          setError("The bill or credential changed. Review the refreshed estimate and confirm again.");
+        } catch (refreshReason) {
+          if (refreshReason instanceof ApiError && refreshReason.status === 401) setSignedIn(false);
+          else setError(refreshReason instanceof Error ? refreshReason.message : "Could not refresh AI enhancement.");
+        }
+      } else {
+        setError(reason instanceof Error ? reason.message : "Could not start AI enhancement.");
+      }
     } finally {
       setSubmitting(false);
     }

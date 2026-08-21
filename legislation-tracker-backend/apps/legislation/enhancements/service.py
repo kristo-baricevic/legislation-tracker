@@ -26,7 +26,6 @@ USER_RETRYABLE_FAILURES = {
     "model_access_denied",
     "provider_rate_limited",
     "provider_unavailable",
-    "quota_exhausted",
     "source_unavailable",
 }
 
@@ -60,10 +59,19 @@ def credential_is_current(credential: LLMCredential | None) -> bool:
 def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
     if attempt is None:
         return False
-    return attempt.status == BillEnhancementAttempt.Status.OUTCOME_UNKNOWN or (
-        attempt.status == BillEnhancementAttempt.Status.FAILED
-        and attempt.failure_category in USER_RETRYABLE_FAILURES
-    )
+    if attempt.status == BillEnhancementAttempt.Status.OUTCOME_UNKNOWN:
+        return True
+    if attempt.status != BillEnhancementAttempt.Status.FAILED:
+        return False
+    if attempt.failure_category == "quota_exhausted":
+        credential = attempt.credential
+        return bool(
+            credential_is_current(credential)
+            and attempt.completed_at
+            and credential.validated_at
+            and credential.validated_at > attempt.completed_at
+        )
+    return attempt.failure_category in USER_RETRYABLE_FAILURES
 
 
 def _validate_confirmation(preflight, credential, confirmed) -> None:

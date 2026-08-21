@@ -982,6 +982,21 @@ def _invalidate_rejected_credential(attempt):
     )
 
 
+def _require_quota_revalidation(attempt):
+    """Require an explicit post-remediation validation for the used revision."""
+    LLMCredential.objects.filter(
+        pk=attempt.credential_id,
+        revision=attempt.credential_revision,
+        provider=attempt.enhancement.provider,
+    ).update(
+        validation_status=LLMCredential.ValidationStatus.UNVERIFIED,
+        validated_revision=None,
+        validated_provider="",
+        validated_model="",
+        validated_at=None,
+    )
+
+
 def _worker_preflight(attempt):
     if not llm_feature_available():
         return None, None, "feature_disabled"
@@ -1060,6 +1075,8 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
     except ProviderError as exc:
         if exc.category in {"invalid_credentials", "model_access_denied"}:
             _invalidate_rejected_credential(attempt)
+        elif exc.category == "quota_exhausted":
+            _require_quota_revalidation(attempt)
         if exc.outcome_unknown:
             terminal_status = BillEnhancementAttempt.Status.OUTCOME_UNKNOWN
         elif exc.category == "content_refusal":

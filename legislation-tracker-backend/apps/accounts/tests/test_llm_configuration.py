@@ -35,6 +35,23 @@ def test_enabled_feature_reports_missing_key_ring_and_invalid_lease():
     assert "run_lease_not_longer_than_timeout" in errors
 
 
+def test_enabled_feature_requires_persistence_headroom_after_provider_timeout():
+    with override_settings(
+        DEBUG=False,
+        LLM_ENHANCEMENTS_ENABLED=True,
+        LLM_CREDENTIAL_ENCRYPTION_KEYS=f"primary:{FERNET_KEY}",
+        LLM_CREDENTIAL_ACTIVE_KEY_ID="primary",
+        LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS=90,
+        LLM_ENHANCEMENT_RUN_LEASE_SECONDS=91,
+        LLM_ENHANCEMENT_PROVIDER="openai",
+        LLM_ENHANCEMENT_MODEL="gpt-5.6-luna",
+        LLM_ENHANCEMENT_REASONING_EFFORT="none",
+    ):
+        errors = set(llm_feature_configuration_errors(production=False))
+
+    assert "run_lease_insufficient_headroom" in errors
+
+
 def test_enabled_feature_rejects_an_unregistered_provider_and_implicit_debug_http():
     with override_settings(
         DEBUG=True,

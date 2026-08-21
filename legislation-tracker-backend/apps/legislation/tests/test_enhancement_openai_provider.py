@@ -154,6 +154,7 @@ def test_provider_status_errors_are_sanitized(status_code, category, retry_allow
     [
         (429, "insufficient_quota", "quota_exhausted"),
         (400, "context_length_exceeded", "request_too_large"),
+        (404, "model_not_found", "model_access_denied"),
     ],
 )
 def test_provider_known_error_codes_have_specific_terminal_categories(

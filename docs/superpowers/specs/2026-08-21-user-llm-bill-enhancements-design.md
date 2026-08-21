@@ -243,7 +243,7 @@ Configuration:
 - `LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED=False`
 - `LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED=False`
 
-The request byte/token defaults are conservative operational starting points and must be validated against the selected model before rollout. The run lease must exceed the provider timeout plus persistence overhead.
+The request byte/token defaults are conservative operational starting points and must be validated against the selected model before rollout. The run lease must exceed the provider timeout by at least 30 seconds so response validation and persistence cannot race lease recovery.
 
 When the feature is enabled, startup checks reject an empty key ring, missing active ID, duplicate IDs, malformed Fernet keys, an unregistered provider, unrecognized reasoning effort, non-positive bounds, or a run lease that is too short. When disabled, missing provider/encryption configuration is allowed. Settings reads and deletion remain available while disabled so users can inspect or remove stored material.
 
@@ -432,7 +432,7 @@ Returns logical status, validated result with server-expanded cited sources, att
 
 ### `POST /api/bills/{bill_id}/enhancements/{enhancement_id}/retry/`
 
-Retry is another paid-action confirmation. It requires current `source_fingerprint`, `request_fingerprint`, and `credential_revision`, repeats full preflight, and creates exactly one new attempt. It is allowed only for API-declared retryable failures or `outcome_unknown`; refusal, invalid output, source loss, invalid credentials, quota exhaustion, and disabled feature states require remediation rather than replay.
+Retry is another paid-action confirmation. It requires current `source_fingerprint`, `request_fingerprint`, and `credential_revision`, repeats full preflight, and creates exactly one new attempt. It is allowed only for API-declared retryable failures or `outcome_unknown`; refusal, invalid output, source loss, invalid credentials, quota exhaustion, and disabled feature states require remediation rather than replay. Quota exhaustion resets validation for only the credential revision used by the failed attempt; after resolving billing or quota, the user must explicitly validate that revision before retry becomes available.
 
 When the previous state is `outcome_unknown`, the confirmation explicitly warns that the earlier provider request may have completed and another attempt may duplicate provider-side usage. The server never retries merely because a category is transient.
 

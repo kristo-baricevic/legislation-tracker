@@ -57,6 +57,8 @@ def _mapped_error(error: Exception) -> ProviderError:
         return ProviderError("quota_exhausted")
     if error_code in {"context_length_exceeded", "max_tokens_exceeded"}:
         return ProviderError("request_too_large")
+    if error_code == "model_not_found":
+        return ProviderError("model_access_denied")
 
     status_code = getattr(error, "status_code", None)
     if status_code == 401:

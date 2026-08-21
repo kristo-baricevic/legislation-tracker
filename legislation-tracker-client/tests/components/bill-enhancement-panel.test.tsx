@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BillEnhancementPanel from "@/app/bills/[id]/bill-enhancement-panel";
 import {
+  ApiError,
   createBillEnhancement,
   getBillEnhancementEstimate,
   getLatestBillEnhancement,
@@ -16,14 +17,26 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@/lib/api", () => ({
-  createBillEnhancement: vi.fn(),
-  getBillEnhancement: vi.fn(),
-  getBillEnhancementEstimate: vi.fn(),
-  getLatestBillEnhancement: vi.fn(),
-  getStoredAccessToken: vi.fn(),
-  retryBillEnhancement: vi.fn(),
-}));
+vi.mock("@/lib/api", () => {
+  class MockApiError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  }
+
+  return {
+    ApiError: MockApiError,
+    createBillEnhancement: vi.fn(),
+    getBillEnhancement: vi.fn(),
+    getBillEnhancementEstimate: vi.fn(),
+    getLatestBillEnhancement: vi.fn(),
+    getStoredAccessToken: vi.fn(),
+    retryBillEnhancement: vi.fn(),
+  };
+});
 
 const estimate = {
   feature_available: true,
@@ -111,6 +124,37 @@ describe("BillEnhancementPanel", () => {
         credential_revision: 2,
       }),
     );
+  });
+
+  it("refreshes a stale confirmation before allowing another paid request", async () => {
+    const user = userEvent.setup();
+    const refreshedEstimate = {
+      ...estimate,
+      credential_revision: 3,
+      source_fingerprint: "c".repeat(64),
+      request_fingerprint: "d".repeat(64),
+      estimated_input_tokens: 700,
+    };
+    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getBillEnhancementEstimate)
+      .mockResolvedValueOnce(estimate)
+      .mockResolvedValueOnce(refreshedEstimate);
+    vi.mocked(createBillEnhancement).mockRejectedValueOnce(
+      new ApiError("preflight_changed", 409),
+    );
+
+    render(<BillEnhancementPanel billId={10} />);
+    await user.click(await screen.findByRole("button", { name: "Enhance with AI" }));
+    await user.click(screen.getByRole("button", { name: "Confirm and enhance" }));
+
+    await waitFor(() => expect(getBillEnhancementEstimate).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("dialog", { name: "Confirm AI enhancement" })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/review the refreshed estimate/i);
+
+    await user.click(screen.getByRole("button", { name: "Enhance with AI" }));
+    const refreshedDialog = screen.getByRole("dialog", { name: "Confirm AI enhancement" });
+    expect(refreshedDialog).toHaveTextContent("700 estimated input tokens");
+    expect(refreshedDialog).toHaveTextContent("Credential revision 3");
   });
 
   it("renders server-owned citations as cited sources, never verified evidence", async () => {

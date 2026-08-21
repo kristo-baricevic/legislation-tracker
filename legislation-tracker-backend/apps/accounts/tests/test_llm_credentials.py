@@ -1,5 +1,10 @@
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import close_old_connections, connection
 from django.test import override_settings
 
 from apps.accounts.llm_credentials import CredentialDecryptionError, decrypt_credential
@@ -52,6 +57,59 @@ def test_create_and_replace_key_increments_revision_and_resets_validation(
         assert credential.validated_model == ""
         assert credential.key_suffix == "cond"
         assert decrypt_credential(credential) == "sk-test-second"
+
+
+@pytest.mark.skipif(
+    connection.vendor != "postgresql",
+    reason="requires PostgreSQL row-lock semantics",
+)
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_first_key_writes_serialize_on_the_user_row(
+    user,
+    encryption_settings,
+    monkeypatch,
+):
+    from apps.accounts import llm_credentials
+
+    real_encrypt = llm_credentials.encrypt_credential
+    start = threading.Barrier(2)
+    errors = []
+    revisions = []
+
+    def slow_encrypt(**kwargs):
+        time.sleep(0.2)
+        return real_encrypt(**kwargs)
+
+    def save_key(api_key):
+        close_old_connections()
+        try:
+            thread_user = get_user_model().objects.get(pk=user.pk)
+            start.wait(timeout=2)
+            credential = LLMCredential.objects.create_for_key(
+                user=thread_user,
+                provider="openai",
+                api_key=api_key,
+            )
+            revisions.append(credential.revision)
+        except Exception as exc:  # noqa: BLE001 - capture thread failures for assertion
+            errors.append(exc)
+        finally:
+            close_old_connections()
+
+    monkeypatch.setattr(llm_credentials, "encrypt_credential", slow_encrypt)
+
+    with encryption_settings, ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(save_key, "sk-test-concurrent-one"),
+            executor.submit(save_key, "sk-test-concurrent-two"),
+        ]
+        for future in futures:
+            future.result(timeout=5)
+
+    credential = LLMCredential.objects.get(user=user)
+    assert errors == []
+    assert sorted(revisions) == [1, 2]
+    assert credential.revision == 2
 
 
 @pytest.mark.django_db

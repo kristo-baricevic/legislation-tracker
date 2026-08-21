@@ -64,6 +64,10 @@ LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED=True
 LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED=True
 ```
 
+Keep the run lease at least 30 seconds longer than the provider timeout. Startup
+and readiness checks reject a smaller margin because response validation and
+persistence continue after the provider call returns.
+
 Generate the Fernet key outside the repository and secret manager logs. Retain
 old key-ring entries while any credential row references them. The provider key
 used for the non-production evaluation command is separate:

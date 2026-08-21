@@ -273,6 +273,43 @@ def test_definitive_provider_auth_rejection_invalidates_only_the_used_revision(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_quota_exhaustion_requires_explicit_credential_revalidation(
+    enhancement_owner,
+    source_bill,
+    enhancement_settings,
+    monkeypatch,
+):
+    class ExhaustedProvider:
+        def enhance_bill(self, **kwargs):
+            raise ProviderError("quota_exhausted")
+
+    with enhancement_settings:
+        monkeypatch.setattr(
+            "apps.legislation.enhancements.service.request_enhancement_dispatch",
+            lambda attempt_id: None,
+        )
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        attempt.dispatch_token = "quota-token"
+        attempt.save(update_fields=["dispatch_token"])
+        monkeypatch.setattr(
+            "apps.legislation.tasks.get_provider",
+            lambda name: ExhaustedProvider(),
+        )
+
+        result = run_bill_enhancement_attempt(attempt.id, "quota-token")
+        attempt.refresh_from_db()
+        credential = LLMCredential.objects.get(pk=attempt.credential_id)
+
+    assert result == {"status": "failed", "category": "quota_exhausted"}
+    assert attempt.failure_category == "quota_exhausted"
+    assert credential.validation_status == LLMCredential.ValidationStatus.UNVERIFIED
+    assert credential.validated_revision is None
+    assert credential.validated_provider == ""
+    assert credential.validated_model == ""
+    assert credential.validated_at is None
+
+
+@pytest.mark.django_db(transaction=True)
 def test_worker_does_not_report_success_after_its_run_lease_was_recovered(
     enhancement_owner,
     source_bill,

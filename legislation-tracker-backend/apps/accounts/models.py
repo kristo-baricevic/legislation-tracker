@@ -29,10 +29,14 @@ class LLMCredentialManager(models.Manager):
             raise ValueError("Provider is required")
 
         with transaction.atomic():
-            credential = self.select_for_update().filter(user=user).first()
+            # A credential row does not exist for a user's first write, so it
+            # cannot serve as the serialization lock. The user row is stable
+            # across both initial creation and later replacement.
+            locked_user = type(user).objects.select_for_update().get(pk=user.pk)
+            credential = self.select_for_update().filter(user=locked_user).first()
             revision = (credential.revision + 1) if credential else 1
             encrypted_envelope, key_id = encrypt_credential(
-                user_id=user.pk,
+                user_id=locked_user.pk,
                 provider=normalized_provider,
                 revision=revision,
                 api_key=normalized_key,
@@ -51,7 +55,7 @@ class LLMCredentialManager(models.Manager):
                 "validated_at": None,
             }
             if credential is None:
-                credential = self.create(user=user, **values)
+                credential = self.create(user=locked_user, **values)
             else:
                 for field, value in values.items():
                     setattr(credential, field, value)

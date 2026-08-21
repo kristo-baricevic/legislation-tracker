@@ -4,6 +4,7 @@ import math
 import pytest
 from django.test import override_settings
 
+from apps.legislation.enhancements import source_packet
 from apps.legislation.enhancements.source_packet import (
     PreflightUnavailable,
     build_enhancement_preflight,
@@ -189,6 +190,42 @@ def test_source_selection_shrinks_until_the_complete_request_fits():
     assert preflight.estimated_input_tokens <= 4500
     assert preflight.truncated is True
     assert len(preflight.source_snapshot) < 10
+
+
+@pytest.mark.django_db
+def test_large_document_finds_bounded_prefix_without_linear_reserialization(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 501A",
+        title="Large Fallback Text Act",
+        status="introduced",
+    )
+    chunk_count = 1_000
+    text = (("x" * 3_999) + "\n") * chunk_count
+    BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text=text,
+    )
+    real_serializer = source_packet.canonical_json_bytes
+    serialization_calls = 0
+
+    def counted_serializer(value):
+        nonlocal serialization_calls
+        serialization_calls += 1
+        return real_serializer(value)
+
+    monkeypatch.setattr(source_packet, "canonical_json_bytes", counted_serializer)
+
+    preflight = build_enhancement_preflight(bill)
+
+    assert preflight.truncated is True
+    assert 0 < len(preflight.source_snapshot) < chunk_count
+    assert serialization_calls <= 20
 
 
 @pytest.mark.django_db
