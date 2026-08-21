@@ -10,6 +10,11 @@ For production process layout, environment variables, Celery worker/Beat command
 staff-only ingestion controls, and background polling behavior, see
 [docs/PRODUCTION_OPERATIONS.md](docs/PRODUCTION_OPERATIONS.md).
 
+For the optional, user-owned AI bill-enhancement flow—including credential
+handling, private APIs, conservative request bounds, durable execution, history,
+and the live-stack test harness—see
+[docs/LLM_ENHANCEMENTS.md](docs/LLM_ENHANCEMENTS.md).
+
 ## Quick start (local) — Postgres
 
 The backend is set up to use **PostgreSQL** by default when you use the provided `.env`. Follow these steps in order.
@@ -210,6 +215,8 @@ Each app under `apps/` has its own **README.md** describing purpose, how it fits
 **File storage (bill PDFs / documents):** [docs/FILE_STORAGE.md](docs/FILE_STORAGE.md)
 
 **Bill “contract” (plain-language interpretation, Phase 5):** [docs/PHASE_5_CONTRACT.md](docs/PHASE_5_CONTRACT.md)
+
+**Optional user-owned AI bill enhancements:** [docs/LLM_ENHANCEMENTS.md](docs/LLM_ENHANCEMENTS.md)
 
 ## Settings
 

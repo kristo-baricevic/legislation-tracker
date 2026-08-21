@@ -1,7 +1,7 @@
 # User-Owned LLM Bill Enhancements Design
 
 **Date:** 2026-08-21
-**Status:** Revised after adversarial review; production implementation has not started
+**Status:** Implemented and locally verified in PR #4; disabled by default and not deployed
 **Scope:** Toggleable BYOK LLM settings, provider abstraction, bounded bill enhancements, durable execution, private API, bill-detail UI, and operational controls
 
 ## Summary
@@ -81,6 +81,7 @@ Suggested backend modules:
 | `apps/legislation/enhancements/types.py` | Provider-neutral request, response, usage, and error types. |
 | `apps/legislation/enhancements/providers/base.py` | Provider adapter protocol and error taxonomy. |
 | `apps/legislation/enhancements/providers/openai.py` | OpenAI Responses API implementation with SDK retries disabled. |
+| `apps/legislation/enhancements/providers/e2e.py` | Deterministic browser-test provider, registered only by the isolated E2E settings module and forbidden in production. |
 | `apps/legislation/enhancements/provider_registry.py` | Strict configured-provider lookup. |
 | `apps/legislation/enhancements/source_packet.py` | Deterministic bounded source selection, references, estimates, and fingerprints. |
 | `apps/legislation/enhancements/schema.py` | JSON Schema and citation-integrity validation. |
@@ -239,11 +240,12 @@ Configuration:
 - `LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS=90`
 - `LLM_ENHANCEMENT_RUN_LEASE_SECONDS=180`
 - `LLM_ENHANCEMENT_CREATE_RATE=10/hour`
+- `LLM_ENHANCEMENT_VALIDATION_RATE=5/hour`
 - `LLM_ENHANCEMENT_ALLOW_INSECURE_HTTP_IN_DEBUG=False`
 - `LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED=False`
 - `LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED=False`
 
-The request byte/token defaults are conservative operational starting points and must be validated against the selected model before rollout. The run lease must exceed the provider timeout by at least 30 seconds so response validation and persistence cannot race lease recovery.
+The request byte/token defaults are conservative operational starting points and must be validated against the selected model before rollout. The E2E fake-provider gate is test-only and production configuration rejects it even if every other security requirement passes. The run lease must exceed the provider timeout by at least 30 seconds so response validation and persistence cannot race lease recovery.
 
 When the feature is enabled, startup checks reject an empty key ring, missing active ID, duplicate IDs, malformed Fernet keys, an unregistered provider, unrecognized reasoning effort, non-positive bounds, or a run lease that is too short. When disabled, missing provider/encryption configuration is allowed. Settings reads and deletion remain available while disabled so users can inspect or remove stored material.
 
@@ -317,9 +319,9 @@ Preflight builds the complete provider-neutral request envelope before estimatin
 The builder calculates:
 
 - exact serialized UTF-8 byte length; and
-- a conservative local input estimate of `ceil(serialized_utf8_bytes / 2)` tokens.
+- a conservative local input bound equal to `serialized_utf8_bytes`.
 
-An adapter may provide a more conservative model-specific estimator, but it may never lower this safety estimate. Source selection shrinks deterministically until the complete request is below both `LLM_ENHANCEMENT_MAX_REQUEST_BYTES` and `LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS`. If fixed instructions, metadata, and schema alone exceed either bound, preflight fails without creating work. The estimate endpoint and worker independently rebuild and verify the same canonical request and fingerprint.
+Using one UTF-8 byte per estimated token prevents the earlier punctuation and non-BMP undercount without binding provider-neutral preflight to a model tokenizer. An adapter may provide a more conservative model-specific estimator, but it may never lower this safety bound. Source selection shrinks deterministically until the complete request is below both `LLM_ENHANCEMENT_MAX_REQUEST_BYTES` and `LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS`. If fixed instructions, metadata, and schema alone exceed either bound, preflight fails without creating work. The estimate endpoint and worker independently rebuild and verify the same canonical request and fingerprint.
 
 The provider request sets:
 
@@ -374,6 +376,8 @@ Output schema version `1.1` uses cited atomic items:
 ```
 
 JSON Schema limits string lengths, array sizes, enum values, and object properties, with `additionalProperties: false` throughout. Every substantive item requires at least one source reference. There is no provider-authored `coverage_notes` escape hatch. Coverage, truncation, and legal-information notices are fixed server copy.
+
+The provider-facing schema is a recursively derived strict subset named `PROVIDER_OUTPUT_SCHEMA`. It removes OpenAI Structured Outputs keywords that are valid in the stronger local schema but unsupported by the provider, including `uniqueItems`. The response is still validated against the full local `OUTPUT_SCHEMA`, so provider compatibility does not weaken persisted-result or citation checks.
 
 After schema validation, citation-integrity validation requires each reference ID to exist in `source_snapshot_json` and verifies that stored text and its recorded hash still match. The server ignores any provider-authored quotation and expands **Cited source** content only from its stored snapshot. Unknown, missing, or corrupted references make the complete response `invalid_output`; partial display is forbidden.
 
@@ -445,8 +449,8 @@ When the previous state is `outcome_unknown`, the confirmation explicitly warns 
 1. The API transaction commits the logical enhancement and one pending attempt.
 2. `transaction.on_commit` performs a best-effort dispatcher wake. Broker errors are caught and logged by ID/category only; the accepted attempt remains pending.
 3. A Celery Beat task in `apps/legislation/tasks.py` runs `dispatch_bill_enhancement_attempts` on a short interval and scans due pending attempts even if every on-commit wake failed.
-4. A dispatcher locks a pending row, assigns a random `dispatch_token` and short dispatch lease, commits, and publishes `run_bill_enhancement_attempt(attempt_id, dispatch_token)`.
-5. A publish failure releases or lets the dispatch lease expire so a later scan can publish again. An ambiguous publish may create duplicate messages, but not duplicate provider calls.
+4. A dispatcher locks a pending row, assigns a random `dispatch_token` when one does not already exist, sets a short dispatch lease, commits, and publishes `run_bill_enhancement_attempt(attempt_id, dispatch_token)`.
+5. A known publish failure clears the token and lease. If a successful publication is merely delayed past lease expiry, later scans republish the same token so either delivery can win the atomic claim. Ambiguous publication may create duplicate messages, but not duplicate provider calls.
 
 ### Worker claim and call
 
@@ -530,11 +534,11 @@ Add a separate panel after the deterministic contract. Anonymous users see a log
 
 For an eligible user:
 
-1. Load the latest owned enhancement and complete-request estimate.
+1. Load the latest owned enhancement, paginated owned history, and complete-request estimate.
 2. **Enhance with AI** opens confirmation showing provider, requested model, reasoning effort, conservative estimated input tokens, maximum output tokens, truncation/coverage copy, credential revision, and billing warning.
 3. Confirm using current source/request fingerprints and credential revision.
-4. Poll only `pending` and `running`; stop on terminal state, unmount, authentication failure, or bill change.
-5. Success renders atomic overview, impacts, obligations, funding/timing, uncertain language, expandable **Cited source** text, per-attempt/cumulative usage, requested/resolved model, history, and fixed disclaimer.
+4. Poll only `pending` and `running`; transient request errors reschedule polling, while terminal state, unmount, authentication failure, bill change, or selecting another enhancement stops the old loop.
+5. Success renders atomic overview, impacts, obligations, funding/timing, uncertain language, expandable **Cited source** text, per-attempt/cumulative usage, requested/resolved model, and fixed disclaimer. The history list can page through and open any older logical result.
 6. Stale success remains visible with **Enhance current version**.
 7. A retry control appears only when the API declares eligibility and always opens a new paid-action confirmation.
 8. An `outcome_unknown` retry warning says the previous request may already have incurred usage.
@@ -582,7 +586,7 @@ Schema and citation integrity are necessary but not sufficient for semantic qual
 - funding, deadlines, obligations, and discretionary language; and
 - prompt-injection-like instructions embedded in source text.
 
-CI uses deterministic mocked/recorded adapter fixtures and never calls a live provider. A separate non-CI management command may run the versioned corpus only with a dedicated test key and an explicit `--execute` flag. It must show and enforce a bounded case count, maximum input/output budget, requested model, and reasoning effort before making calls.
+Automated tests use deterministic mocked adapters or the explicitly gated E2E provider and never call a live provider. A separate non-CI management command may run the versioned corpus only with a dedicated test key and an explicit `--execute` flag. It shows and enforces a bounded case count, maximum input/output budget, requested model, and reasoning effort before making calls. The checked-in corpus carries its human review labels and rubric into each evaluation artifact.
 
 Human reviewers score each atomic displayed claim for source support, overstatement, unsupported inference, citation selection, and prohibited completeness/absence language. Initial release gates are:
 
@@ -646,7 +650,8 @@ No normal automated test makes a live provider request or uses a real key.
 - Citation expansion labels server text **Cited source** and never **Verified evidence** or provider-authored quotations.
 - Poll cleanup and stale-response protection between bills.
 - No-store header checks for all private routes.
-- Playwright flow with a mocked adapter for save, validate, enhance, broker-delayed dispatch, poll, render, revisit, stale, uncertain outcome, explicit retry, and delete-key history.
+- Component coverage for transient polling recovery, cancellation, federal eligibility before private calls, paginated history, and historical-detail selection.
+- Playwright flow through live Django routes, encrypted credential storage, a real filesystem Celery broker/worker, delayed deterministic E2E-provider completion, polling, citation rendering, and persisted history/detail reads.
 
 ### Final verification
 
@@ -656,6 +661,11 @@ No normal automated test makes a live provider request or uses a real key.
 - TypeScript typecheck, ESLint, and production build.
 - Playwright end-to-end suite.
 - Bounded non-CI provider evaluation and documented human gate results before production enablement.
+
+The implementation-branch verification completed with 314 backend tests passed
+and 4 skipped, 25 Vitest tests passed, 18 Node/API tests passed, and all 3
+Chromium E2E flows passed. TypeScript, ESLint, changed-file Ruff/Black, Django
+checks, migration consistency, and the production webpack build also passed.
 
 ## Acceptance Criteria
 

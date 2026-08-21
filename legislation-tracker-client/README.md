@@ -27,6 +27,18 @@ The app has **Log in** and **Sign up** pages that use the Django backend JWT API
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+### Optional AI enhancement UI
+
+When the backend enables user-owned AI enhancement, authenticated users can
+save and validate their own OpenAI key at `/settings`. Eligible federal bill
+pages then show a confirmation flow, asynchronous status, source-cited result,
+and paginated private history. State bills explain the current federal-only
+scope without making private credential or enhancement requests.
+
+The browser never receives a saved key from the API. See the backend
+[AI enhancement guide](../legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md)
+for the complete API, security, execution, and test contracts.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## govinfo api docs

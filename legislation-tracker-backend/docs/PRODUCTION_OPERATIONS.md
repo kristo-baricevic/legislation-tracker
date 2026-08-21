@@ -48,6 +48,10 @@ through the authenticated Settings page; the deployment does not provide a
 shared provider key. Set the following identically on the API, worker, and Beat
 only after the evaluation and transport gates pass:
 
+The feature architecture, API routes, user flow, request validation, durable
+execution semantics, and test boundary are documented in
+[LLM_ENHANCEMENTS.md](LLM_ENHANCEMENTS.md).
+
 ```bash
 LLM_ENHANCEMENTS_ENABLED=True
 LLM_CREDENTIAL_ENCRYPTION_KEYS=primary:<fernet-key>
@@ -60,23 +64,35 @@ LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=60000
 LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=4000
 LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS=90
 LLM_ENHANCEMENT_RUN_LEASE_SECONDS=180
+LLM_ENHANCEMENT_CREATE_RATE=10/hour
+LLM_ENHANCEMENT_VALIDATION_RATE=5/hour
 LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED=True
 LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED=True
 ```
+
+The estimated-input setting is compared with the canonical request's UTF-8 byte
+count as a deliberately conservative local token bound. Revisit both request
+limits when changing models, and treat the displayed value as a safety bound
+rather than a provider bill or exact tokenizer count.
 
 Keep the run lease at least 30 seconds longer than the provider timeout. Startup
 and readiness checks reject a smaller margin because response validation and
 persistence continue after the provider call returns.
 
+The deterministic E2E provider is not a deployment option. Its registration is
+available only through `config.settings.e2e`, and production configuration fails
+closed if `LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED` is true.
+
 Generate the Fernet key outside the repository and secret manager logs. Retain
-old key-ring entries while any credential row references them. The provider key
-used for the non-production evaluation command is separate:
+old key-ring entries while any credential row references them.
 
 To rotate encryption, add the new key to the ring, mark its ID active on the
 API/worker/Beat, and run `python manage.py rotate_llm_credentials --execute`.
 The command re-encrypts bounded batches without changing credential revisions
 or validation state. Remove an old key only after the command reports complete
 and no database row references its ID.
+
+The provider key used for the non-production evaluation command is separate:
 
 ```bash
 LLM_ENHANCEMENT_EVALUATION_API_KEY=<dedicated-test-key> \
@@ -91,10 +107,24 @@ per selected case with SDK retries disabled, and writes source/output material
 only when `--output` is supplied. Never configure the evaluation key in normal
 API, worker, or Beat process environments. Human reviewers must score the local
 artifact against the release gates in the design before production enablement.
+The checked-in 25-case corpus includes the review rubric and human labels in the
+artifact, plus multi-source, truncated, conflicting, cross-reference, and
+prompt-injection-shaped source packets.
 
 `/health/` reports `llm_enhancements` as `disabled`, `ok`, or `error` without
 decrypting user keys or contacting OpenAI. An enabled but unsafe configuration
 makes readiness fail.
+
+Pending enhancement attempts are durable database work. A dispatch lease expiry
+reuses the existing token because an earlier broker message may only be delayed;
+a known publish failure clears it. Running lease expiry becomes
+`outcome_unknown` and is never replayed automatically. Monitor pending age,
+dispatch failures, running lease expiry, and outcome-unknown rate without
+logging keys, source text, prompts, or results.
+
+Users can open paginated historical enhancements from the bill page. Deleting a
+credential does not delete those results, so key-retention and user-data policy
+should treat credential rows and enhancement history as separate data classes.
 
 ## Release Commands
 
