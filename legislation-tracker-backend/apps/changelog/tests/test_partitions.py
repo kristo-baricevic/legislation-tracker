@@ -85,6 +85,14 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
     second_created_at = datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc)
     OldChangeLog.objects.filter(pk=first.pk).update(created_at=first_created_at)
     OldChangeLog.objects.filter(pk=second.pk).update(created_at=second_created_at)
+    source_sequence_high_water_mark = second.pk + 50
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT setval("
+            "pg_get_serial_sequence('changelog_changelog', 'id')::regclass, "
+            "%s, true)",
+            [source_sequence_high_water_mark],
+        )
 
     try:
         executor = MigrationExecutor(connection)
@@ -131,7 +139,7 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
             change_type="status_update",
             new_value={"status": "updated"},
         )
-        assert fresh.pk > second.pk
+        assert fresh.pk == source_sequence_high_water_mark + 1
 
         relation_bill = Bill.objects.create(
             jurisdiction="federal",
@@ -163,10 +171,33 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
         relation_bill.delete()
         assert not ChangeLog.objects.filter(pk=related.pk).exists()
 
+        reverse_sequence_high_water_mark = fresh.pk + 50
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT setval("
+                "pg_get_serial_sequence('changelog_changelog', 'id')::regclass, "
+                "%s, true)",
+                [reverse_sequence_high_water_mark],
+            )
+
         executor = MigrationExecutor(connection)
         executor.migrate([_PRE_PARTITION_MIGRATION])
         restored_apps = executor.loader.project_state([_PRE_PARTITION_MIGRATION]).apps
         RestoredChangeLog = restored_apps.get_model("changelog", "ChangeLog")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT array_agg(attribute.attname ORDER BY key_column.ordinality) "
+                "FROM pg_constraint AS pk_constraint "
+                "JOIN unnest(pk_constraint.conkey) WITH ORDINALITY "
+                "AS key_column(attnum, ordinality) ON TRUE "
+                "JOIN pg_attribute AS attribute "
+                "ON attribute.attrelid = pk_constraint.conrelid "
+                "AND attribute.attnum = key_column.attnum "
+                "WHERE pk_constraint.conrelid = 'changelog_changelog'::regclass "
+                "AND pk_constraint.contype = 'p' "
+                "GROUP BY pk_constraint.oid"
+            )
+            assert cursor.fetchone()[0] == ["id"]
         assert list(
             RestoredChangeLog.objects.filter(bill_id=bill.id)
             .order_by("id")
@@ -176,6 +207,12 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
             {"version": 2},
             {"status": "updated"},
         ]
+        restored = RestoredChangeLog.objects.create(
+            bill_id=bill.id,
+            change_type="status_update",
+            new_value={"status": "restored"},
+        )
+        assert restored.pk == reverse_sequence_high_water_mark + 1
     finally:
         MigrationExecutor(connection).migrate([_PARTITION_MIGRATION])
 

@@ -96,6 +96,7 @@ def _assert_no_inbound_foreign_keys(cursor):
 def _create_table(cursor, table, *, partitioned):
     identity_sequence = f"{table}_id_seq"
     primary_key = f"{table}_pkey"
+    primary_key_columns = '"id", "created_at"' if partitioned else '"id"'
     partition_clause = ' PARTITION BY RANGE ("created_at")' if partitioned else ""
     cursor.execute(
         f'CREATE TABLE "{table}" ('
@@ -108,7 +109,7 @@ def _create_table(cursor, table, *, partitioned):
         '"old_value" jsonb NULL, '
         '"new_value" jsonb NOT NULL, '
         '"created_at" timestamp with time zone NOT NULL, '
-        f'CONSTRAINT "{primary_key}" PRIMARY KEY ("id", "created_at"), '
+        f'CONSTRAINT "{primary_key}" PRIMARY KEY ({primary_key_columns}), '
         'CONSTRAINT "changelog_changelog_bill_id_a3ee17ab_fk_legislation_bill_id" '
         'FOREIGN KEY ("bill_id") REFERENCES "legislation_bill" ("id") '
         "DEFERRABLE INITIALLY DEFERRED, "
@@ -127,15 +128,24 @@ def _create_parent_indexes(cursor):
         cursor.execute(f'CREATE INDEX "{name}" ON "{TABLE}" ({columns})')
 
 
-def _set_identity_sequence(cursor, table):
+def _set_identity_sequence(cursor, table, *, source_table):
+    """Preserve the source sequence allocation to avoid reusing serialized IDs."""
     cursor.execute(f'SELECT MAX("id") FROM "{table}"')
     maximum_id = cursor.fetchone()[0]
-    if maximum_id is None:
-        cursor.execute(f'ALTER TABLE "{table}" ALTER COLUMN "id" RESTART WITH 1')
+    cursor.execute("SELECT pg_get_serial_sequence(%s, 'id')", [source_table])
+    source_sequence = cursor.fetchone()[0]
+    cursor.execute("SELECT pg_sequence_last_value(%s::regclass)", [source_sequence])
+    source_high_water_mark = cursor.fetchone()[0]
+    allocated_ids = [
+        value for value in (maximum_id, source_high_water_mark) if value is not None
+    ]
+    if not allocated_ids:
         return
+    high_water_mark = max(allocated_ids)
+
     cursor.execute("SELECT pg_get_serial_sequence(%s, 'id')", [table])
     sequence = cursor.fetchone()[0]
-    cursor.execute("SELECT setval(%s::regclass, %s, true)", [sequence, maximum_id])
+    cursor.execute("SELECT setval(%s::regclass, %s, true)", [sequence, high_water_mark])
 
 
 def _copy_rows(cursor, source, destination):
@@ -216,7 +226,7 @@ def partition_changelog(apps, schema_editor):
         _create_table(cursor, FORWARD_SHADOW_TABLE, partitioned=True)
         _create_monthly_partitions(cursor, FORWARD_SHADOW_TABLE)
         _copy_rows(cursor, TABLE, FORWARD_SHADOW_TABLE)
-        _set_identity_sequence(cursor, FORWARD_SHADOW_TABLE)
+        _set_identity_sequence(cursor, FORWARD_SHADOW_TABLE, source_table=TABLE)
         _flush_deferred_foreign_keys(cursor)
         cursor.execute(f'ALTER TABLE "{TABLE}" RENAME TO "{FORWARD_OLD_TABLE}"')
         cursor.execute(f'ALTER TABLE "{FORWARD_SHADOW_TABLE}" RENAME TO "{TABLE}"')
@@ -241,7 +251,7 @@ def unpartition_changelog(apps, schema_editor):
         _lock_source_table(cursor)
         _create_table(cursor, REVERSE_SHADOW_TABLE, partitioned=False)
         _copy_rows(cursor, TABLE, REVERSE_SHADOW_TABLE)
-        _set_identity_sequence(cursor, REVERSE_SHADOW_TABLE)
+        _set_identity_sequence(cursor, REVERSE_SHADOW_TABLE, source_table=TABLE)
         _flush_deferred_foreign_keys(cursor)
         cursor.execute(f'ALTER TABLE "{TABLE}" RENAME TO "{REVERSE_OLD_TABLE}"')
         cursor.execute(f'ALTER TABLE "{REVERSE_SHADOW_TABLE}" RENAME TO "{TABLE}"')
