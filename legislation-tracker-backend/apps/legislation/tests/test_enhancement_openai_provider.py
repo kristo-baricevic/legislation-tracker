@@ -1,4 +1,7 @@
 import json
+import re
+from inspect import signature
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -86,18 +89,46 @@ def test_enhancement_uses_one_bounded_non_persistent_structured_request():
     assert call["tools"] == []
     assert call["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
     assert call["reasoning"] == {"effort": "none"}
-    assert call["text"]["format"] == {
-        "type": "json_schema",
-        "name": "bill_enhancement_v1_1",
-        "schema": OUTPUT_SCHEMA,
-        "strict": True,
-    }
+    assert call["text"]["format"]["type"] == "json_schema"
+    assert call["text"]["format"]["name"] == "bill_enhancement_v1_1"
+    assert call["text"]["format"]["strict"] is True
+    provider_schema = call["text"]["format"]["schema"]
+    assert "uniqueItems" not in json.dumps(provider_schema)
+    assert (
+        provider_schema["properties"]["overview"]["items"]["properties"]["source_refs"][
+            "maxItems"
+        ]
+        == 8
+    )
+    assert (
+        OUTPUT_SCHEMA["properties"]["overview"]["items"]["properties"]["source_refs"][
+            "uniqueItems"
+        ]
+        is True
+    )
     assert "previous_response_id" not in call
     assert "conversation" not in call
     assert result.output == _valid_output()
     assert result.response_id == "resp_test_123"
     assert result.resolved_model == "gpt-5.6-luna-2026-08-01"
     assert result.usage.total_tokens == 165
+
+
+def test_declared_openai_floor_supports_the_adapter_privacy_argument():
+    from openai.resources.responses.responses import Responses
+
+    requirement_path = Path(__file__).resolve().parents[3] / "requirements" / "base.txt"
+    requirement = next(
+        line
+        for line in requirement_path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("openai>=")
+    )
+    minimum = tuple(
+        int(part) for part in re.match(r"openai>=(\d+)\.(\d+)", requirement).groups()
+    )
+
+    assert minimum >= (2, 54)
+    assert "prompt_cache_options" in signature(Responses.create).parameters
 
 
 def test_explicit_validation_makes_exactly_one_minimal_request():

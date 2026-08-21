@@ -174,6 +174,12 @@ LLM_ENHANCEMENT_EVALUATION_API_KEY = env(
     "LLM_ENHANCEMENT_EVALUATION_API_KEY",
     default="",
 )
+# Test-only adapter registration. Production configuration rejects this gate
+# even if all transport and encryption settings are otherwise valid.
+LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED = env.bool(
+    "LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED",
+    default=False,
+)
 
 # REST Framework
 REST_FRAMEWORK = {

@@ -5,6 +5,7 @@ import {
   createBillEnhancement,
   deleteLLMSettings,
   getBillEnhancementEstimate,
+  getBillEnhancements,
   getLLMSettings,
   getPublicCapabilities,
   updateLLMSettings,
@@ -72,13 +73,18 @@ describe("LLM API helpers", () => {
     };
 
     await getBillEnhancementEstimate(18);
+    await getBillEnhancements(18, { page: 2, pageSize: 20 });
     await createBillEnhancement(18, confirmation);
 
     assert.equal(
       requests[0].url,
       "http://api.test/api/bills/18/enhancements/estimate/",
     );
-    assert.equal(requests[1].url, "http://api.test/api/bills/18/enhancements/");
-    assert.equal(requests[1].init?.body, JSON.stringify(confirmation));
+    assert.equal(
+      requests[1].url,
+      "http://api.test/api/bills/18/enhancements/?page=2&page_size=20",
+    );
+    assert.equal(requests[2].url, "http://api.test/api/bills/18/enhancements/");
+    assert.equal(requests[2].init?.body, JSON.stringify(confirmation));
   });
 });

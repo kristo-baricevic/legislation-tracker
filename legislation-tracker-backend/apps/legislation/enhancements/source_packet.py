@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from collections import OrderedDict, deque
 from typing import Any
 
@@ -11,7 +10,7 @@ from django.conf import settings
 from apps.legislation.models import BillDocument
 
 from .prompts import DEVELOPER_INSTRUCTIONS, PROMPT_VERSION, SOURCE_PACKET_VERSION
-from .schema import OUTPUT_SCHEMA, OUTPUT_SCHEMA_VERSION
+from .schema import OUTPUT_SCHEMA_VERSION, PROVIDER_OUTPUT_SCHEMA
 from .types import EnhancementPreflight
 
 MAX_SOURCE_TEXT_LENGTH = 4_000
@@ -33,7 +32,10 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 
 def estimate_input_tokens(request_bytes: bytes) -> int:
-    return math.ceil(len(request_bytes) / 2)
+    # A BPE token cannot contain less than one byte of the UTF-8 request. This
+    # deliberately conservative upper bound remains safe for punctuation,
+    # non-BMP text, and model tokenizer changes.
+    return len(request_bytes)
 
 
 def _text_hash(text: str) -> str:
@@ -246,7 +248,7 @@ def _request_envelope(
             "truncated": truncated,
             "sources": sources,
         },
-        "output_schema": OUTPUT_SCHEMA,
+        "output_schema": PROVIDER_OUTPUT_SCHEMA,
     }
 
 

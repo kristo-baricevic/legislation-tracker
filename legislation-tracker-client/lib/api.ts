@@ -746,11 +746,31 @@ export interface BillEnhancementEstimate {
   matching_enhancement?: BillEnhancement | null;
 }
 
+export interface BillEnhancementsPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: BillEnhancement[];
+}
+
 export function getBillEnhancementEstimate(
   billId: number,
 ): Promise<BillEnhancementEstimate> {
   return authGet<BillEnhancementEstimate>(
     `/api/bills/${billId}/enhancements/estimate/`,
+  );
+}
+
+export function getBillEnhancements(
+  billId: number,
+  options: { page?: number; pageSize?: number } = {},
+): Promise<BillEnhancementsPage> {
+  const search = new URLSearchParams();
+  if (options.page != null) search.set("page", String(options.page));
+  if (options.pageSize != null) search.set("page_size", String(options.pageSize));
+  const query = search.toString();
+  return authGet<BillEnhancementsPage>(
+    `/api/bills/${billId}/enhancements/${query ? `?${query}` : ""}`,
   );
 }
 

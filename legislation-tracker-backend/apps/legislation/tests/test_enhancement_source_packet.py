@@ -1,5 +1,4 @@
 import hashlib
-import math
 
 import pytest
 from django.test import override_settings
@@ -87,12 +86,18 @@ def test_complete_request_is_canonical_bounded_and_uses_exact_evidence():
     assert first.source_snapshot[0]["quoted_text"] == (
         "The Secretary shall publish a report."
     )
-    assert first.estimated_input_tokens == math.ceil(len(first.request_bytes) / 2)
+    assert first.estimated_input_tokens == len(first.request_bytes)
     assert first.request_fingerprint == hashlib.sha256(first.request_bytes).hexdigest()
     assert first.request_bytes == second.request_bytes
     assert first.source_fingerprint == second.source_fingerprint
     assert len(first.request_bytes) <= 120000
     assert first.truncated is False
+
+
+def test_token_estimate_is_a_utf8_byte_upper_bound_for_dense_text():
+    request_bytes = ("!@#$%^&*()[]{}<>⚖️🧑🏽‍⚖️" * 50).encode("utf-8")
+
+    assert source_packet.estimate_input_tokens(request_bytes) == len(request_bytes)
 
 
 @pytest.mark.django_db

@@ -96,6 +96,53 @@ def test_dispatch_publishes_only_id_and_token_and_recovers_publish_failure(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_dispatch_lease_rollover_keeps_the_original_delivery_claimable(
+    enhancement_owner,
+    source_bill,
+    enhancement_settings,
+    monkeypatch,
+):
+    published = []
+    provider_calls = []
+
+    class Provider:
+        def enhance_bill(self, **kwargs):
+            provider_calls.append(kwargs)
+            source_ref = kwargs["request"].source_snapshot[0]["source_ref"]
+            return ProviderResult(
+                output=_valid_output(source_ref),
+                usage=ProviderUsage(total_tokens=12),
+                response_id="rollover-response",
+                resolved_model="rollover-model",
+            )
+
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        monkeypatch.setattr(
+            "apps.legislation.tasks.run_bill_enhancement_attempt.apply_async",
+            lambda *, args: published.append(args),
+        )
+        dispatch_bill_enhancement_attempts(attempt_ids=[attempt.id])
+        first_token = published[0][1]
+        attempt.refresh_from_db()
+        attempt.dispatch_lease_expires_at = timezone.now() - timedelta(seconds=1)
+        attempt.save(update_fields=["dispatch_lease_expires_at"])
+
+        dispatch_bill_enhancement_attempts(attempt_ids=[attempt.id])
+        monkeypatch.setattr(
+            "apps.legislation.tasks.get_provider",
+            lambda name: Provider(),
+        )
+        first_delivery = run_bill_enhancement_attempt(attempt.id, first_token)
+        duplicate_delivery = run_bill_enhancement_attempt(attempt.id, published[1][1])
+
+    assert published[1][1] == first_token
+    assert first_delivery == {"status": "succeeded"}
+    assert duplicate_delivery == {"status": "not_claimed"}
+    assert len(provider_calls) == 1
+
+
+@pytest.mark.django_db(transaction=True)
 def test_worker_claims_once_validates_and_promotes_usage(
     enhancement_owner,
     source_bill,

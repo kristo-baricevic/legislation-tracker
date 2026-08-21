@@ -511,7 +511,7 @@ function BillDetailInner() {
           </section>
         )}
 
-        <BillEnhancementPanel billId={bill.id} />
+        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
 
         {contractHistory && (
           <ContractHistorySection

@@ -16,12 +16,21 @@ CORPUS_PATH = (
 def test_evaluation_corpus_has_25_versioned_representative_federal_cases():
     corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
 
-    assert corpus["corpus_version"] == "1.0"
+    assert corpus["corpus_version"] == "1.1"
     assert len(corpus["cases"]) >= 25
     assert all(case["jurisdiction"] == "federal" for case in corpus["cases"])
     assert len({case["category"] for case in corpus["cases"]}) >= 7
     assert any(case["truncated"] for case in corpus["cases"])
-    assert any("instruction" in case["source_text"].lower() for case in corpus["cases"])
+    assert all(case["review_labels"] for case in corpus["cases"])
+    assert sum(len(case["sources"]) > 1 for case in corpus["cases"]) >= 5
+    assert any(
+        "instruction" in source["quoted_text"].lower()
+        for case in corpus["cases"]
+        for source in case["sources"]
+    )
+    assert any(
+        case["truncated"] and len(case["sources"]) > 1 for case in corpus["cases"]
+    )
 
 
 @pytest.mark.django_db
@@ -106,7 +115,9 @@ def test_evaluation_uses_dedicated_key_prints_budget_before_calls_and_writes_onl
     assert "max_output_tokens=200" in output_before_call
     assert kwargs["api_key"] == "sk-evaluation-dedicated"
     artifact = json.loads(output_path.read_text(encoding="utf-8"))
-    assert artifact["corpus_version"] == "1.0"
+    assert artifact["corpus_version"] == "1.1"
+    assert artifact["review_rubric"]["citation_precision_target"] == 0.95
+    assert artifact["results"][0]["review_labels"]
     assert artifact["results"][0]["output"]["schema_version"] == "1.1"
     combined = output_before_call + capsys.readouterr().out
     assert "sk-evaluation-dedicated" not in combined
@@ -156,6 +167,11 @@ def test_evaluation_sanitizes_schema_invalid_provider_output(
         {
             "case_id": "federal-obligation-01",
             "category": "obligation",
+            "review_labels": {
+                "must_capture": ["Secretary duty", "180-day deadline"],
+                "must_not_claim": ["the report has already been submitted"],
+                "expected_source_refs": ["src_0001"],
+            },
             "status": "failed",
             "failure_category": "invalid_output",
         }

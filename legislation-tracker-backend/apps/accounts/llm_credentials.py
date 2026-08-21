@@ -187,6 +187,12 @@ def llm_feature_configuration_errors(*, production: bool) -> list[str]:
         errors.append("run_lease_insufficient_headroom")
 
     if production:
+        if getattr(
+            settings,
+            "LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED",
+            False,
+        ):
+            errors.append("e2e_fake_provider_forbidden")
         if not getattr(settings, "SECURE_SSL_REDIRECT", False):
             errors.append("secure_ssl_redirect_required")
         if getattr(settings, "SECURE_HSTS_SECONDS", 0) <= 0:

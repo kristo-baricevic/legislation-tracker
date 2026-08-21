@@ -113,6 +113,25 @@ OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+def _provider_schema(value: Any) -> Any:
+    """Return the strict-schema subset supported by the provider API."""
+    if isinstance(value, dict):
+        return {
+            key: _provider_schema(item)
+            for key, item in value.items()
+            if key != "uniqueItems"
+        }
+    if isinstance(value, list):
+        return [_provider_schema(item) for item in value]
+    return copy.deepcopy(value)
+
+
+# OpenAI Structured Outputs supports only a subset of JSON Schema. Keep the
+# stronger local schema above for post-response validation, including citation
+# uniqueness, while sending only supported keywords to the provider.
+PROVIDER_OUTPUT_SCHEMA: dict[str, Any] = _provider_schema(OUTPUT_SCHEMA)
+
+
 def _validate_snapshot(source_snapshot: list[dict[str, Any]]) -> set[str]:
     source_ids: set[str] = set()
     for source in source_snapshot:

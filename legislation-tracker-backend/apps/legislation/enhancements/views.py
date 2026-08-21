@@ -73,16 +73,19 @@ def _is_stale(enhancement, bill) -> bool:
 class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
-        credential = LLMCredential.objects.filter(user=request.user).first()
         base = {
             "feature_available": llm_feature_available(),
             "can_enhance": False,
             "unavailable_reason": None,
-            "credential_revision": credential.revision if credential else None,
+            "credential_revision": None,
             "requested_model": settings.LLM_ENHANCEMENT_MODEL,
         }
         if not base["feature_available"]:
             return Response({**base, "unavailable_reason": "feature_unavailable"})
+        if str(bill.jurisdiction or "").strip().lower() != "federal":
+            return Response({**base, "unavailable_reason": "unsupported_jurisdiction"})
+        credential = LLMCredential.objects.filter(user=request.user).first()
+        base["credential_revision"] = credential.revision if credential else None
         if not credential_is_current(credential):
             if credential is None:
                 reason = "credential_not_configured"

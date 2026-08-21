@@ -4,6 +4,10 @@ from apps.accounts.llm_credentials import (
     llm_feature_available,
     llm_feature_configuration_errors,
 )
+from apps.legislation.enhancements.provider_registry import (
+    get_provider,
+    provider_is_registered,
+)
 
 from .test_llm_credentials import FERNET_KEY
 
@@ -69,6 +73,41 @@ def test_enabled_feature_rejects_an_unregistered_provider_and_implicit_debug_htt
 
     assert "unregistered_provider" in errors
     assert "debug_http_not_confirmed" in errors
+
+
+def test_e2e_fake_provider_requires_an_explicit_nonproduction_gate():
+    with override_settings(LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED=False):
+        assert provider_is_registered("e2e") is False
+
+    with override_settings(LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED=True):
+        assert provider_is_registered("e2e") is True
+        assert get_provider("e2e").provider_name == "e2e"
+
+
+def test_e2e_fake_provider_is_rejected_by_production_configuration():
+    with override_settings(
+        LLM_ENHANCEMENTS_ENABLED=True,
+        LLM_CREDENTIAL_ENCRYPTION_KEYS=f"primary:{FERNET_KEY}",
+        LLM_CREDENTIAL_ACTIVE_KEY_ID="primary",
+        LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS=90,
+        LLM_ENHANCEMENT_RUN_LEASE_SECONDS=180,
+        LLM_ENHANCEMENT_PROVIDER="e2e",
+        LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED=True,
+        LLM_ENHANCEMENT_MODEL="e2e-model",
+        LLM_ENHANCEMENT_REASONING_EFFORT="none",
+        LLM_ENHANCEMENT_MAX_REQUEST_BYTES=120000,
+        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=60000,
+        LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=4000,
+        SECURE_SSL_REDIRECT=True,
+        SECURE_HSTS_SECONDS=31536000,
+        SESSION_COOKIE_SECURE=True,
+        CSRF_COOKIE_SECURE=True,
+        LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED=True,
+        LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED=True,
+    ):
+        errors = set(llm_feature_configuration_errors(production=True))
+
+    assert "e2e_fake_provider_forbidden" in errors
 
 
 def test_production_feature_requires_secure_transport_and_log_redaction_assertions():

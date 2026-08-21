@@ -6,7 +6,7 @@ from typing import Any
 
 from django.conf import settings
 
-from apps.legislation.enhancements.schema import OUTPUT_SCHEMA
+from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
 from .base import CredentialCheck, ProviderError, ProviderResult, ProviderUsage
 
@@ -157,7 +157,7 @@ class OpenAIEnhancementProvider:
                     "format": {
                         "type": "json_schema",
                         "name": "bill_enhancement_v1_1",
-                        "schema": OUTPUT_SCHEMA,
+                        "schema": PROVIDER_OUTPUT_SCHEMA,
                         "strict": True,
                     }
                 },

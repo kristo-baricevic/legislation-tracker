@@ -8,12 +8,14 @@ import {
   createBillEnhancement,
   getBillEnhancement,
   getBillEnhancementEstimate,
+  getBillEnhancements,
   getLatestBillEnhancement,
   getPublicCapabilities,
   getStoredAccessToken,
   retryBillEnhancement,
   type BillEnhancement,
   type BillEnhancementEstimate,
+  type BillEnhancementsPage,
   type EnhancementCitedSource,
   type EnhancementConfirmation,
 } from "@/lib/api";
@@ -150,15 +152,34 @@ function EnhancementUnavailable({ reason }: { reason: string | null }) {
   );
 }
 
-export default function BillEnhancementPanel({ billId }: { billId: number }) {
+function historyDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
+export default function BillEnhancementPanel({
+  billId,
+  jurisdiction,
+}: {
+  billId: number;
+  jurisdiction: string;
+}) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [featureAvailable, setFeatureAvailable] = useState<boolean | null>(null);
   const [estimate, setEstimate] = useState<BillEnhancementEstimate | null>(null);
   const [enhancement, setEnhancement] = useState<BillEnhancement | null>(null);
+  const [history, setHistory] = useState<BillEnhancementsPage | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<"create" | "retry" | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const isFederal = jurisdiction.trim().toLowerCase() === "federal";
 
   useEffect(() => {
     const authenticated = Boolean(getStoredAccessToken());
@@ -167,6 +188,8 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
     setFeatureAvailable(null);
     setEstimate(null);
     setEnhancement(null);
+    setHistory(null);
+    setHistoryPage(1);
     setError(null);
     setConfirming(null);
     setLoading(false);
@@ -180,7 +203,7 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
         const capabilities = await getPublicCapabilities();
         if (!active) return;
         setFeatureAvailable(capabilities.llm_enhancements);
-        if (!capabilities.llm_enhancements || !authenticated) return;
+        if (!capabilities.llm_enhancements || !isFederal || !authenticated) return;
       } catch {
         if (active) setFeatureAvailable(false);
         return;
@@ -208,24 +231,83 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
     return () => {
       active = false;
     };
-  }, [billId]);
+  }, [billId, isFederal]);
 
   useEffect(() => {
-    if (!enhancement || !["pending", "running"].includes(enhancement.status)) return;
+    if (signedIn !== true || featureAvailable !== true || !isFederal) return;
     let active = true;
-    const timer = window.setTimeout(async () => {
-      try {
-        const updated = await getBillEnhancement(billId, enhancement.id);
-        if (active) setEnhancement(updated);
-      } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : "Could not refresh AI enhancement.");
-      }
-    }, Math.max(1, enhancement.poll_after_seconds ?? 2) * 1000);
+    setHistoryLoading(true);
+    void getBillEnhancements(billId, { page: historyPage, pageSize: 20 })
+      .then((nextHistory) => {
+        if (active) setHistory(nextHistory);
+      })
+      .catch((reason) => {
+        if (!active) return;
+        if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
+        else setError(reason instanceof Error ? reason.message : "Could not load enhancement history.");
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
     return () => {
       active = false;
-      window.clearTimeout(timer);
     };
-  }, [billId, enhancement]);
+  }, [billId, featureAvailable, historyPage, isFederal, signedIn]);
+
+  const shouldPoll = Boolean(
+    enhancement && ["pending", "running"].includes(enhancement.status),
+  );
+  const enhancementId = enhancement?.id ?? null;
+  const pollDelaySeconds = Math.max(1, enhancement?.poll_after_seconds ?? 2);
+  useEffect(() => {
+    if (enhancementId == null || !shouldPoll) return;
+    let active = true;
+    let timer: number | undefined;
+
+    const schedule = (delaySeconds: number) => {
+      timer = window.setTimeout(poll, delaySeconds * 1000);
+    };
+    const poll = async () => {
+      try {
+        const updated = await getBillEnhancement(billId, enhancementId);
+        if (!active) return;
+        setError(null);
+        setEnhancement(updated);
+        setHistory((current) => current ? {
+          ...current,
+          results: current.results.map((item) => item.id === updated.id ? updated : item),
+        } : current);
+        if (["pending", "running"].includes(updated.status)) {
+          schedule(Math.max(1, updated.poll_after_seconds ?? 2));
+        }
+      } catch (reason) {
+        if (!active) return;
+        if (reason instanceof ApiError && reason.status === 401) {
+          setSignedIn(false);
+          return;
+        }
+        setError(reason instanceof Error ? reason.message : "Could not refresh AI enhancement.");
+        schedule(pollDelaySeconds);
+      }
+    };
+
+    schedule(pollDelaySeconds);
+    return () => {
+      active = false;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [billId, enhancementId, pollDelaySeconds, shouldPoll]);
+
+  async function selectHistoryItem(item: BillEnhancement) {
+    setError(null);
+    try {
+      const selected = await getBillEnhancement(billId, item.id);
+      setEnhancement(selected);
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
+      else setError(reason instanceof Error ? reason.message : "Could not load the selected enhancement.");
+    }
+  }
 
   async function submitEnhancement() {
     if (!estimate || !confirming) return;
@@ -238,6 +320,14 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
         ? await retryBillEnhancement(billId, enhancement.id, confirmation)
         : await createBillEnhancement(billId, confirmation);
       setEnhancement(updated);
+      setHistoryPage(1);
+      setHistory((current) => current ? {
+        ...current,
+        count: current.results.some((item) => item.id === updated.id)
+          ? current.count
+          : current.count + 1,
+        results: [updated, ...current.results.filter((item) => item.id !== updated.id)].slice(0, 20),
+      } : current);
       setConfirming(null);
     } catch (reason) {
       const refreshableConflict = reason instanceof ApiError && reason.status === 409;
@@ -264,6 +354,14 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
   }
 
   if (signedIn === null || featureAvailable === null || !featureAvailable) return null;
+  if (!isFederal) {
+    return (
+      <section className="mb-6 border-l-4 border-amber-500 bg-white/70 p-4 dark:border-amber-400 dark:bg-green-950/20">
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-green-300">AI enhancement</h2>
+        <EnhancementUnavailable reason="unsupported_jurisdiction" />
+      </section>
+    );
+  }
   if (!signedIn) {
     return (
       <section className="mb-6 border-l-4 border-amber-500 bg-white/70 p-4 dark:border-amber-400 dark:bg-green-950/20">
@@ -355,6 +453,39 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
             ))}
           </ol>
         </details>
+      )}
+      {(historyLoading || history) && (
+        <section className="mt-5 border-t border-slate-300 pt-4 text-sm dark:border-green-900/70">
+          <h3 className="font-semibold">Enhancement history</h3>
+          {historyLoading && !history && <p className="mt-2">Loading enhancement history…</p>}
+          {history && history.results.length === 0 && <p className="mt-2 text-slate-600 dark:text-green-600">No prior enhancements.</p>}
+          {history && history.results.length > 0 && (
+            <ol className="mt-3 space-y-2">
+              {history.results.map((item) => (
+                <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 border border-slate-300 p-3 dark:border-green-900/70">
+                  <span>
+                    {historyDate(item.created_at)} · {item.status.replaceAll("_", " ")} · {item.requested_model}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void selectHistoryItem(item)}
+                    aria-label={`View enhancement from ${historyDate(item.created_at)}`}
+                    className="border border-slate-600 px-3 py-1 font-semibold hover:bg-slate-100 dark:border-green-700 dark:hover:bg-green-950/40"
+                  >
+                    View result
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+          {history && (history.previous || history.next) && (
+            <nav aria-label="Enhancement history pagination" className="mt-3 flex items-center justify-between gap-3">
+              <button type="button" disabled={!history.previous || historyLoading} onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} className="border border-slate-600 px-3 py-1 font-semibold disabled:opacity-50">Previous</button>
+              <span>Page {historyPage}</span>
+              <button type="button" disabled={!history.next || historyLoading} onClick={() => setHistoryPage((page) => page + 1)} className="border border-slate-600 px-3 py-1 font-semibold disabled:opacity-50">Next</button>
+            </nav>
+          )}
+        </section>
       )}
       {error && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-400">{error}</p>}
     </section>

@@ -796,7 +796,6 @@ def dispatch_bill_enhancement_attempts(attempt_ids=None):
     published = 0
     failed = 0
     for attempt_id in ids:
-        dispatch_token = uuid.uuid4().hex
         with transaction.atomic():
             attempt = (
                 BillEnhancementAttempt.objects.select_for_update()
@@ -813,6 +812,10 @@ def dispatch_bill_enhancement_attempts(attempt_ids=None):
             )
             if attempt is None:
                 continue
+            # A lease expiry means delivery is ambiguous, not that the queued
+            # message is known to be gone. Reuse the token so both the original
+            # and republished message remain able to win the atomic claim.
+            dispatch_token = attempt.dispatch_token or uuid.uuid4().hex
             attempt.dispatch_token = dispatch_token
             attempt.dispatch_lease_expires_at = now + timedelta(
                 seconds=ENHANCEMENT_DISPATCH_LEASE_SECONDS

@@ -127,7 +127,6 @@ def test_estimate_rejects_non_federal_bills_before_a_paid_call(
     )
 
     with enhancement_settings:
-        _valid_credential(enhancement_owner)
         response = enhancement_client.get(
             f"/api/bills/{bill.id}/enhancements/estimate/"
         )

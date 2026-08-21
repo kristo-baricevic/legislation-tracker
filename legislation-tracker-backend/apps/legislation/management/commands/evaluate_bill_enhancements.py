@@ -31,17 +31,21 @@ CORPUS_PATH = (
 
 
 def _case_preflight(case):
-    text = case["source_text"]
-    source = {
-        "source_ref": "src_0001",
-        "kind": "document_chunk",
-        "field_path": None,
-        "section_label": "Evaluation fixture",
-        "quoted_text": text,
-        "start_char": 0,
-        "end_char": len(text),
-        "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-    }
+    sources = []
+    for index, fixture_source in enumerate(case["sources"], start=1):
+        text = fixture_source["quoted_text"]
+        sources.append(
+            {
+                "source_ref": f"src_{index:04d}",
+                "kind": fixture_source.get("kind", "document_chunk"),
+                "field_path": fixture_source.get("field_path"),
+                "section_label": fixture_source["section_label"],
+                "quoted_text": text,
+                "start_char": 0,
+                "end_char": len(text),
+                "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            }
+        )
     bill = SimpleNamespace(
         id=case["id"],
         jurisdiction=case["jurisdiction"],
@@ -51,14 +55,14 @@ def _case_preflight(case):
         status=case["status"],
         introduced_at=None,
     )
-    envelope = _request_envelope(bill, [source], truncated=case["truncated"])
+    envelope = _request_envelope(bill, sources, truncated=case["truncated"])
     request_bytes = canonical_json_bytes(envelope)
     source_fingerprint = hashlib.sha256(
         canonical_json_bytes(
             {
                 "source_packet_version": SOURCE_PACKET_VERSION,
                 "source_identity": {"evaluation_case_id": case["id"]},
-                "sources": [source],
+                "sources": sources,
             }
         )
     ).hexdigest()
@@ -74,11 +78,11 @@ def _case_preflight(case):
         source_manifest={
             "evaluation_case_id": case["id"],
             "source_kind": "document_chunk",
-            "total_candidates": 1,
-            "selected_count": 1,
+            "total_candidates": case.get("total_candidates", len(sources)),
+            "selected_count": len(sources),
             "truncated": case["truncated"],
         },
-        source_snapshot=[source],
+        source_snapshot=sources,
         request_envelope=envelope,
         request_bytes=request_bytes,
         estimated_input_tokens=estimate_input_tokens(request_bytes),
@@ -165,6 +169,7 @@ class Command(BaseCommand):
                         {
                             "case_id": case["id"],
                             "category": case["category"],
+                            "review_labels": case["review_labels"],
                             "source_snapshot": preflight.source_snapshot,
                             "truncated": preflight.truncated,
                             "output": validated,
@@ -188,6 +193,7 @@ class Command(BaseCommand):
                         {
                             "case_id": case["id"],
                             "category": case["category"],
+                            "review_labels": case["review_labels"],
                             "status": "failed",
                             "failure_category": failure_category,
                         }
@@ -201,6 +207,7 @@ class Command(BaseCommand):
         if options["output"]:
             artifact = {
                 "corpus_version": corpus["corpus_version"],
+                "review_rubric": corpus["review_rubric"],
                 "provider": settings.LLM_ENHANCEMENT_PROVIDER,
                 "requested_model": settings.LLM_ENHANCEMENT_MODEL,
                 "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,

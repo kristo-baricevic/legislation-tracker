@@ -75,6 +75,14 @@ def test_unknown_or_missing_citations_reject_the_complete_output():
         validate_enhancement_output(missing, _source_snapshot())
 
 
+def test_duplicate_citations_are_rejected_by_server_validation():
+    duplicate = _valid_output()
+    duplicate["overview"][0]["source_refs"] = ["src_0001", "src_0001"]
+
+    with pytest.raises(ValidationError):
+        validate_enhancement_output(duplicate, _source_snapshot())
+
+
 def test_corrupted_server_source_hash_rejects_the_output():
     snapshot = _source_snapshot()
     snapshot[0]["text_sha256"] = "0" * 64
