@@ -1,5 +1,5 @@
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.db import models, transaction
 
 
 class User(AbstractUser):
@@ -15,6 +15,96 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
+class LLMCredentialManager(models.Manager):
+    def create_for_key(self, *, user, provider, api_key, enabled=True):
+        from .llm_credentials import encrypt_credential
+
+        normalized_key = (api_key or "").strip()
+        if not normalized_key:
+            raise ValueError("API key is required")
+        normalized_provider = (provider or "").strip().lower()
+        if not normalized_provider:
+            raise ValueError("Provider is required")
+
+        with transaction.atomic():
+            credential = self.select_for_update().filter(user=user).first()
+            revision = (credential.revision + 1) if credential else 1
+            encrypted_envelope, key_id = encrypt_credential(
+                user_id=user.pk,
+                provider=normalized_provider,
+                revision=revision,
+                api_key=normalized_key,
+            )
+            values = {
+                "provider": normalized_provider,
+                "encrypted_envelope": encrypted_envelope,
+                "key_suffix": normalized_key[-4:],
+                "encryption_key_id": key_id,
+                "revision": revision,
+                "enabled": enabled if credential is None else credential.enabled,
+                "validation_status": LLMCredential.ValidationStatus.UNVERIFIED,
+                "validated_revision": None,
+                "validated_provider": "",
+                "validated_model": "",
+                "validated_at": None,
+            }
+            if credential is None:
+                credential = self.create(user=user, **values)
+            else:
+                for field, value in values.items():
+                    setattr(credential, field, value)
+                credential.save(update_fields=[*values, "updated_at"])
+            return credential
+
+
+class LLMCredential(models.Model):
+    class ValidationStatus(models.TextChoices):
+        UNVERIFIED = "unverified", "Unverified"
+        VALID = "valid", "Valid"
+        INVALID = "invalid", "Invalid"
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="llm_credential",
+    )
+    provider = models.CharField(max_length=32, default="openai")
+    encrypted_envelope = models.TextField()
+    key_suffix = models.CharField(max_length=4)
+    encryption_key_id = models.CharField(max_length=64)
+    revision = models.PositiveIntegerField(default=1)
+    enabled = models.BooleanField(default=True)
+    validation_status = models.CharField(
+        max_length=16,
+        choices=ValidationStatus.choices,
+        default=ValidationStatus.UNVERIFIED,
+    )
+    validated_revision = models.PositiveIntegerField(null=True, blank=True)
+    validated_provider = models.CharField(max_length=32, blank=True, default="")
+    validated_model = models.CharField(max_length=128, blank=True, default="")
+    validated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = LLMCredentialManager()
+
+    class Meta:
+        db_table = "accounts_llmcredential"
+
+    def replace_key(self, api_key, *, provider=None):
+        fresh = type(self).objects.create_for_key(
+            user=self.user,
+            provider=provider or self.provider,
+            api_key=api_key,
+            enabled=self.enabled,
+        )
+        self.refresh_from_db()
+        return fresh
+
+    def __str__(self):
+        return f"{self.provider} credential for user {self.user_id}"
 
 
 class UserPreference(models.Model):

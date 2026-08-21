@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { getContractSummary } from "@/lib/contracts";
 import { ContractSection } from "./contract-section";
+import BillEnhancementPanel from "./bill-enhancement-panel";
 
 function HistoryPagination({
   page,
@@ -509,6 +510,8 @@ function BillDetailInner() {
             </p>
           </section>
         )}
+
+        <BillEnhancementPanel billId={bill.id} />
 
         {contractHistory && (
           <ContractHistorySection

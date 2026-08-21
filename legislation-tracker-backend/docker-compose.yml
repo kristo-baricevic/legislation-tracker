@@ -1,6 +1,8 @@
 # Legislation Tracker Backend — local development
 # Run: docker compose up -d
 # Then: DATABASE_URL=postgres://legislation:legislation@localhost:5432/legislation REDIS_URL=redis://localhost:6379/0 python manage.py runserver
+# The same Redis instance carries durable-ingestion and optional bill-enhancement
+# delivery hints; the database remains the source of truth for both queues.
 
 services:
   postgres:

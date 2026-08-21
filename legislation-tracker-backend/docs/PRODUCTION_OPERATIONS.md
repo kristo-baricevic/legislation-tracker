@@ -41,6 +41,57 @@ AWS_S3_ENDPOINT_URL=<optional-s3-compatible-endpoint>
 
 `USE_LOCAL_DOCUMENT_STORAGE=True` is only appropriate for local development or a single-node deployment where local disk persistence is explicitly managed.
 
+## Optional user-owned AI enhancement
+
+AI bill enhancement is disabled by default. Users supply their own OpenAI key
+through the authenticated Settings page; the deployment does not provide a
+shared provider key. Set the following identically on the API, worker, and Beat
+only after the evaluation and transport gates pass:
+
+```bash
+LLM_ENHANCEMENTS_ENABLED=True
+LLM_CREDENTIAL_ENCRYPTION_KEYS=primary:<fernet-key>
+LLM_CREDENTIAL_ACTIVE_KEY_ID=primary
+LLM_ENHANCEMENT_PROVIDER=openai
+LLM_ENHANCEMENT_MODEL=gpt-5.6-luna
+LLM_ENHANCEMENT_REASONING_EFFORT=none
+LLM_ENHANCEMENT_MAX_REQUEST_BYTES=120000
+LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=60000
+LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=4000
+LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS=90
+LLM_ENHANCEMENT_RUN_LEASE_SECONDS=180
+LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED=True
+LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED=True
+```
+
+Generate the Fernet key outside the repository and secret manager logs. Retain
+old key-ring entries while any credential row references them. The provider key
+used for the non-production evaluation command is separate:
+
+To rotate encryption, add the new key to the ring, mark its ID active on the
+API/worker/Beat, and run `python manage.py rotate_llm_credentials --execute`.
+The command re-encrypts bounded batches without changing credential revisions
+or validation state. Remove an old key only after the command reports complete
+and no database row references its ID.
+
+```bash
+LLM_ENHANCEMENT_EVALUATION_API_KEY=<dedicated-test-key> \
+python manage.py evaluate_bill_enhancements \
+  --execute --case-limit 25 \
+  --max-input-tokens 60000 --max-output-tokens 4000 \
+  --output /secure/local/path/evaluation-results.json
+```
+
+The command prints the hard budget before its first request, makes one request
+per selected case with SDK retries disabled, and writes source/output material
+only when `--output` is supplied. Never configure the evaluation key in normal
+API, worker, or Beat process environments. Human reviewers must score the local
+artifact against the release gates in the design before production enablement.
+
+`/health/` reports `llm_enhancements` as `disabled`, `ok`, or `error` without
+decrypting user keys or contacting OpenAI. An enabled but unsafe configuration
+makes readiness fail.
+
 ## Release Commands
 
 Run database migrations before serving traffic:
@@ -96,6 +147,11 @@ Fix the failure, then rerun the deployment command. The compose health check
 uses `/health/live/`; deploy/load-balancer readiness should use `/health/`,
 which verifies the database, Redis cache, and document storage.
 
+The production Compose file exposes the API only to the internal Compose
+network on port 8000. Attach a trusted TLS-terminating ingress or reverse proxy
+to that network; do not add a host `ports` mapping that bypasses HTTPS. The
+browser-facing client still uses the externally routed HTTPS API URL.
+
 ## Scheduled Background Polling
 
 Celery Beat currently schedules:
@@ -108,6 +164,8 @@ Celery Beat currently schedules:
 | `recover-stale-ingestion-work` | `apps.ingestion.tasks.recover_stale_ingestion_work` | 5 minutes | Releases work abandoned by a worker or broker failure. |
 | `sync-representatives` | `apps.ingestion.tasks.sync_representatives` | Daily | Refreshes the complete current congressional roster. |
 | `ensure-changelog-partitions` | `apps.changelog.tasks.ensure_change_log_partitions_task` | Daily | Creates missing UTC ChangeLog partitions through the next 12 months. |
+| `dispatch-bill-enhancements` | `apps.legislation.tasks.dispatch_bill_enhancement_attempts` | 15 seconds | Publishes delivery hints for due, user-confirmed enhancement attempts. |
+| `recover-stale-bill-enhancements` | `apps.legislation.tasks.recover_stale_bill_enhancement_attempts` | 1 minute | Marks expired provider calls outcome-unknown without replaying them. |
 
 Both schedules enqueue normal ingestion tasks. They do not store user-specific feed rows. The durable history is written to the shared `ChangeLog` table by ingestion tasks such as `process_bill`, `process_bill_votes`, document processing, and contract generation.
 

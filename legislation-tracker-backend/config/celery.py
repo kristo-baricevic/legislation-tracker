@@ -2,6 +2,7 @@
 Celery app for legislation-tracker-backend.
 Loads config from Django settings and autodiscovers tasks in installed apps.
 """
+
 import os
 
 # So "celery -A config" works without exporting DJANGO_SETTINGS_MODULE each time
@@ -17,11 +18,14 @@ app.autodiscover_tasks()
 # Print at startup so it's always visible (runs when worker process loads config)
 try:
     from django.conf import settings
+
     _key = getattr(settings, "CONGRESS_API_KEY", "") or ""
     if _key:
         print("[config] CONGRESS_API_KEY is set (length=%s)" % len(_key))
     else:
-        print("[config] CONGRESS_API_KEY is NOT set — set it in .env and restart worker")
+        print(
+            "[config] CONGRESS_API_KEY is NOT set — set it in .env and restart worker"
+        )
 except Exception as e:
     print("[config] Could not check CONGRESS_API_KEY:", e)
 
@@ -59,6 +63,14 @@ app.conf.beat_schedule = {
         "schedule": 86400.0,
         "kwargs": {"months_ahead": 12},
     },
+    "dispatch-bill-enhancements": {
+        "task": "apps.legislation.tasks.dispatch_bill_enhancement_attempts",
+        "schedule": 15.0,
+    },
+    "recover-stale-bill-enhancements": {
+        "task": "apps.legislation.tasks.recover_stale_bill_enhancement_attempts",
+        "schedule": 60.0,
+    },
 }
 
 
@@ -66,17 +78,25 @@ app.conf.beat_schedule = {
 def _on_task_failure(sender, task_id, exception, args, kwargs, **kw):
     """Record failures from ingestion and legislation tasks (process_bill records itself)."""
     from apps.ingestion.tasks import _record_task_failure
+
     task_name = getattr(sender, "name", str(sender))
     if (
         not task_name
         or not task_name.startswith(
-            ("apps.ingestion.tasks.", "apps.legislation.tasks.", "apps.changelog.tasks.")
+            (
+                "apps.ingestion.tasks.",
+                "apps.legislation.tasks.",
+                "apps.changelog.tasks.",
+            )
         )
         or task_name.endswith("process_bill")
     ):
         return
     bill_id = None
-    if args and (task_name.endswith("process_bill_versions") or task_name.endswith("process_bill_votes")):
+    if args and (
+        task_name.endswith("process_bill_versions")
+        or task_name.endswith("process_bill_votes")
+    ):
         try:
             bill_id = int(args[0])
         except (IndexError, TypeError, ValueError):

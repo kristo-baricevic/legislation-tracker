@@ -1,7 +1,10 @@
 """Small, dependency-aware health checks for container and extension clients."""
+
 import uuid
 from pathlib import Path
 
+from apps.accounts.llm_credentials import llm_feature_configuration_errors
+from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db import connections
@@ -43,6 +46,17 @@ def check_storage():
     raise RuntimeError("storage backend does not support a readiness probe")
 
 
+def check_llm_enhancements():
+    """Report capability without decrypting a key or contacting a provider."""
+    if not settings.LLM_ENHANCEMENTS_ENABLED:
+        return "disabled"
+    if llm_feature_configuration_errors(
+        production=settings.LLM_ENHANCEMENT_PRODUCTION_SECURITY_REQUIRED
+    ):
+        raise RuntimeError("LLM enhancement configuration is unsafe")
+    return "ok"
+
+
 def live(request):
     """Process liveness: safe for restarts while dependencies are recovering."""
     return JsonResponse({"status": "ok"})
@@ -63,7 +77,17 @@ def ready(request):
         else:
             checks[name] = "ok"
 
-    status = "ok" if all(value == "ok" for value in checks.values()) else "unavailable"
+    try:
+        checks["llm_enhancements"] = check_llm_enhancements()
+    # Readiness must fail closed for any unsafe or malformed capability config.
+    except Exception:  # noqa: BLE001
+        checks["llm_enhancements"] = "error"
+
+    status = (
+        "ok"
+        if all(value in {"ok", "disabled"} for value in checks.values())
+        else "unavailable"
+    )
     return JsonResponse(
         {"status": status, "checks": checks},
         status=200 if status == "ok" else 503,

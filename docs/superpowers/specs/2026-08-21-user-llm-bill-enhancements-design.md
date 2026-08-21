@@ -327,7 +327,7 @@ The provider request sets:
 - `reasoning.effort=LLM_ENHANCEMENT_REASONING_EFFORT` (default `none`);
 - `truncation="disabled"`;
 - `store=false`;
-- `prompt_cache_retention="in_memory"`; and
+- `prompt_cache_options={"mode":"explicit","ttl":"30m"}` with no cache breakpoints, disabling implicit prompt caching; and
 - no conversation, `previous_response_id`, tools, browsing, or actions.
 
 `max_output_tokens` includes visible output and any reasoning tokens. The configured reasoning effort is therefore part of both estimate/configuration identity and staleness. Provider context-limit rejection is a sanitized terminal `request_too_large` failure; the adapter does not retry with automatic truncation.
@@ -549,7 +549,7 @@ The UI never labels output verified, optimistically displays provider output, or
 - Request bodies containing keys are explicitly redacted/excluded in reverse-proxy access logs, Django request/error logging, APM, tracing, analytics, and exception reporting.
 - Secrets are absent from serializers, admin displays, task arguments, structured logs, and raw errors.
 - Provider calls use only the fixed configured provider/base URL; users cannot supply endpoints.
-- OpenAI calls use `store=false`, `prompt_cache_retention="in_memory"`, and no tools, browsing, conversations, or prior response IDs.
+- OpenAI calls use `store=false`, explicit prompt-cache mode with no breakpoints, and no tools, browsing, conversations, or prior response IDs.
 - Bill content is untrusted data and cannot enable actions.
 - Structured schema and citation-integrity validation are mandatory before persistence as success.
 - Every authenticated settings/enhancement response uses `Cache-Control: private, no-store`.
