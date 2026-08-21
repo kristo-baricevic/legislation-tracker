@@ -4,7 +4,8 @@ from django.db import models
 class ChangeLog(models.Model):
     """
     Event backbone: one row per meaningful change (status, new version, contract, topic, vote).
-    Append-only. Table is created as partitioned by RANGE (created_at) in migration.
+    Append-only. PostgreSQL storage is monthly UTC-partitioned by ``created_at``;
+    SQLite keeps the normal table for local development and tests.
     """
 
     bill = models.ForeignKey(

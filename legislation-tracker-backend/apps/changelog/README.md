@@ -6,12 +6,25 @@ This app is the **event log** for the product: every meaningful change to a bill
 
 ## How it works (plain English + tech)
 
-- **ChangeLog** stores each event in **PostgreSQL** as an **append-only** row (we don’t edit old events; we add new ones).
+- **ChangeLog** stores each event in **PostgreSQL** as an **append-only** row (we don’t edit old events; we add new ones). PostgreSQL stores those rows in monthly UTC partitions; SQLite keeps one ordinary table for local development.
 - Each row points to a **Bill** and optionally to a **BillDocument** or **BillContract** when the event is about a specific version or interpretation.
 - `change_type` is a short label (e.g. `status_update`, `vote`, `contract_update`).
 - `old_value` and `new_value` are **JSON** snapshots so the API or UI can show before/after without joining many tables.
 
-The design is meant to scale: later, the table can be **partitioned by date** in PostgreSQL for very large histories. Ingestion tasks write here when bills update, votes are recorded, etc.
+The partitioned parent keeps the same `changelog_changelog` name, so ingestion
+tasks and the Django ORM keep writing normally. There is deliberately no
+default partition: an out-of-range event fails visibly instead of being hidden
+in storage that cannot later be attached to the monthly hierarchy.
+
+PostgreSQL requires a partitioned primary key to include the partition key, so
+the physical key is `(id, created_at)`. Normal inserts still use a single,
+global identity sequence, but PostgreSQL no longer guarantees `id` uniqueness
+by itself. Do not manually assign event IDs or add a foreign key to
+`ChangeLog`; a Django system check and the conversion migration reject inbound
+foreign keys.
+
+`python manage.py ensure_changelog_partitions --months-ahead 12` is safe to run
+repeatedly. Celery Beat also runs the same maintenance daily.
 
 ## What you’ll find here
 
