@@ -21,6 +21,13 @@ test("a signed-in user confirms one mocked enhancement and sees server-owned cit
     localStorage.setItem("legislation_tracker_access", "e2e-access-token");
     localStorage.setItem("legislation_tracker_refresh", "e2e-refresh-token");
   });
+  await page.route("**/api/capabilities/", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ llm_enhancements: true }),
+    });
+  });
   await page.route("**/api/tracking/", async (route) => {
     await route.fulfill({
       status: 200,

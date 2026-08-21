@@ -8,6 +8,7 @@ import {
   createBillEnhancement,
   getBillEnhancementEstimate,
   getLatestBillEnhancement,
+  getPublicCapabilities,
   getStoredAccessToken,
 } from "@/lib/api";
 
@@ -33,6 +34,7 @@ vi.mock("@/lib/api", () => {
     getBillEnhancement: vi.fn(),
     getBillEnhancementEstimate: vi.fn(),
     getLatestBillEnhancement: vi.fn(),
+    getPublicCapabilities: vi.fn(),
     getStoredAccessToken: vi.fn(),
     retryBillEnhancement: vi.fn(),
   };
@@ -64,18 +66,31 @@ const estimate = {
 describe("BillEnhancementPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getPublicCapabilities).mockResolvedValue({ llm_enhancements: true });
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(null);
   });
 
-  it("offers login without calling private endpoints for an anonymous reader", () => {
+  it("offers login without calling private endpoints for an anonymous reader", async () => {
     vi.mocked(getStoredAccessToken).mockReturnValue(null);
     render(<BillEnhancementPanel billId={10} />);
 
-    expect(screen.getByRole("link", { name: "Log in to use AI enhancement" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Log in to use AI enhancement" })).toHaveAttribute(
       "href",
       "/login",
     );
     expect(getBillEnhancementEstimate).not.toHaveBeenCalled();
+  });
+
+  it("omits the panel for an anonymous reader when the deployment disables it", async () => {
+    vi.mocked(getStoredAccessToken).mockReturnValue(null);
+    vi.mocked(getPublicCapabilities).mockResolvedValue({ llm_enhancements: false });
+
+    render(<BillEnhancementPanel billId={10} />);
+
+    await waitFor(() => expect(getPublicCapabilities).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("AI enhancement")).not.toBeInTheDocument();
+    expect(getBillEnhancementEstimate).not.toHaveBeenCalled();
+    expect(getLatestBillEnhancement).not.toHaveBeenCalled();
   });
 
   it("requires a cost confirmation containing the complete request estimate", async () => {
@@ -266,6 +281,22 @@ describe("BillEnhancementPanel", () => {
     render(<BillEnhancementPanel billId={10} />);
 
     expect(await screen.findByText(/no stored bill text/i)).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
+  it("explains that state bills are outside the federal-first scope", async () => {
+    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue({
+      feature_available: true,
+      can_enhance: false,
+      unavailable_reason: "unsupported_jurisdiction",
+      credential_revision: 2,
+      requested_model: "gpt-5.6-luna",
+    });
+
+    render(<BillEnhancementPanel billId={10} />);
+
+    expect(await screen.findByText(/available only for federal bills/i)).toBeVisible();
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });
 });

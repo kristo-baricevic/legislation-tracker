@@ -65,9 +65,13 @@ def _contract_value(contract_json: dict[str, Any], field_path: str) -> Any:
     return current
 
 
-def _evidence_candidates(bill) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _evidence_candidates(
+    bill, *, active_document: BillDocument | None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     contract = bill.latest_contract
-    if contract is None:
+    if contract is None or (
+        active_document is not None and contract.document_id != active_document.id
+    ):
         return [], {}
     spans = list(
         contract.evidence_spans.select_related("document").order_by(
@@ -140,14 +144,15 @@ def _evidence_candidates(bill) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     }
 
 
-def _active_document(bill):
-    active = (
+def _marked_active_document(bill) -> BillDocument | None:
+    return (
         bill.documents.filter(is_active_version=True)
         .order_by("-created_at", "-id")
         .first()
     )
-    if active and (active.extracted_text or active.raw_text or "").strip():
-        return active
+
+
+def _stored_document(bill) -> BillDocument | None:
     return (
         bill.documents.exclude(extracted_text__isnull=True)
         .exclude(extracted_text="")
@@ -160,8 +165,10 @@ def _active_document(bill):
     )
 
 
-def _document_candidates(bill) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    document: BillDocument | None = _active_document(bill)
+def _document_candidates(
+    bill, *, active_document: BillDocument | None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    document = active_document or _stored_document(bill)
     if document is None:
         return [], {}
     text = document.extracted_text or document.raw_text or ""
@@ -252,10 +259,23 @@ def _within_limits(request_bytes: bytes) -> bool:
 
 
 def build_enhancement_preflight(bill) -> EnhancementPreflight:
-    candidates, source_identity = _evidence_candidates(bill)
+    if str(bill.jurisdiction or "").strip().lower() != "federal":
+        raise PreflightUnavailable(
+            "LLM enhancements are currently available only for federal bills",
+            reason="unsupported_jurisdiction",
+        )
+
+    active_document = _marked_active_document(bill)
+    candidates, source_identity = _evidence_candidates(
+        bill,
+        active_document=active_document,
+    )
     source_kind = "contract_evidence"
     if not candidates:
-        candidates, source_identity = _document_candidates(bill)
+        candidates, source_identity = _document_candidates(
+            bill,
+            active_document=active_document,
+        )
         source_kind = "document_chunk"
     if not candidates:
         raise PreflightUnavailable("No stored source text is available for this bill")

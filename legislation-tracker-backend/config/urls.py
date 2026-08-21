@@ -2,7 +2,16 @@
 URL configuration for config project.
 """
 
-from apps.accounts.llm_views import LLMSettingsValidateView, LLMSettingsView
+from django.contrib import admin
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from apps.accounts.llm_views import (
+    LLMSettingsValidateView,
+    LLMSettingsView,
+    PublicCapabilitiesView,
+)
 from apps.accounts.views import RegisterView, UserPreferenceViewSet
 from apps.congress.views import RepresentativeViewSet, VoteViewSet
 from apps.legislation.enhancements.views import (
@@ -18,11 +27,6 @@ from apps.legislation.views import (
     BillViewSet,
     TopicViewSet,
 )
-from django.contrib import admin
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-
 from config import health
 
 router = DefaultRouter()
@@ -42,6 +46,7 @@ urlpatterns = [
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/auth/register/", RegisterView.as_view(), name="register"),
+    path("api/capabilities/", PublicCapabilitiesView.as_view(), name="capabilities"),
     path("api/settings/llm/", LLMSettingsView.as_view(), name="llm-settings"),
     path(
         "api/settings/llm/validate/",

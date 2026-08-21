@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
@@ -33,6 +33,16 @@ class PrivateNoStoreMixin:
 
 class LLMValidationThrottle(UserRateThrottle):
     scope = "llm_validation"
+
+
+class PublicCapabilitiesView(APIView):
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+
+    def get(self, request):
+        response = Response({"llm_enhancements": llm_feature_available()})
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 def _configured_provider() -> str:

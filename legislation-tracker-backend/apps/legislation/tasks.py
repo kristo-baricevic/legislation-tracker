@@ -1089,6 +1089,8 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             attempt_status=terminal_status,
             failure_category=exc.category,
             usage=exc.usage,
+            provider_response_id=exc.response_id,
+            resolved_model=exc.resolved_model,
         )
         return _terminal_task_result(
             persisted=persisted,

@@ -171,20 +171,42 @@ class OpenAIEnhancementProvider:
             raise _mapped_error(error) from None
 
         usage = _usage(response)
+        response_id = str(_value(response, "id", "") or "")
+        resolved_model = str(_value(response, "model", "") or "")
         if _contains_refusal(response):
-            raise ProviderError("content_refusal", usage=usage)
+            raise ProviderError(
+                "content_refusal",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            )
         if _value(response, "status") != "completed":
-            raise ProviderError("invalid_output", usage=usage)
+            raise ProviderError(
+                "invalid_output",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            )
         output_text = _value(response, "output_text", "")
         try:
             output = json.loads(output_text)
         except (TypeError, ValueError):
-            raise ProviderError("invalid_output", usage=usage) from None
+            raise ProviderError(
+                "invalid_output",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            ) from None
         if not isinstance(output, dict):
-            raise ProviderError("invalid_output", usage=usage)
+            raise ProviderError(
+                "invalid_output",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            )
         return ProviderResult(
             output=output,
             usage=usage,
-            response_id=str(_value(response, "id", "") or ""),
-            resolved_model=str(_value(response, "model", "") or ""),
+            response_id=response_id,
+            resolved_model=resolved_model,
         )

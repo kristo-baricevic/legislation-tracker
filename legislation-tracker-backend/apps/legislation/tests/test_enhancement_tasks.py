@@ -244,6 +244,40 @@ def test_provider_timeout_becomes_unknown_and_invalid_output_is_terminal(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_worker_persists_response_metadata_from_terminal_provider_error(
+    enhancement_owner,
+    source_bill,
+    enhancement_settings,
+    monkeypatch,
+):
+    class RefusalProvider:
+        def enhance_bill(self, **kwargs):
+            raise ProviderError(
+                "content_refusal",
+                usage=ProviderUsage(input_tokens=80, output_tokens=12, total_tokens=92),
+                response_id="resp_refused_private",
+                resolved_model="gpt-5.6-luna-2026-08-01",
+            )
+
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        attempt.dispatch_token = "refusal-token"
+        attempt.save(update_fields=["dispatch_token"])
+        monkeypatch.setattr(
+            "apps.legislation.tasks.get_provider",
+            lambda name: RefusalProvider(),
+        )
+
+        result = run_bill_enhancement_attempt(attempt.id, "refusal-token")
+        attempt.refresh_from_db()
+
+    assert result == {"status": "refused", "category": "content_refusal"}
+    assert attempt.provider_response_id == "resp_refused_private"
+    assert attempt.resolved_model == "gpt-5.6-luna-2026-08-01"
+    assert attempt.total_tokens == 92
+
+
+@pytest.mark.django_db(transaction=True)
 def test_definitive_provider_auth_rejection_invalidates_only_the_used_revision(
     enhancement_owner,
     source_bill,

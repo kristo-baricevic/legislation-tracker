@@ -9,6 +9,7 @@ import {
   getBillEnhancement,
   getBillEnhancementEstimate,
   getLatestBillEnhancement,
+  getPublicCapabilities,
   getStoredAccessToken,
   retryBillEnhancement,
   type BillEnhancement,
@@ -121,6 +122,13 @@ function confirmationFromEstimate(estimate: BillEnhancementEstimate): Enhancemen
 }
 
 function EnhancementUnavailable({ reason }: { reason: string | null }) {
+  if (reason === "unsupported_jurisdiction") {
+    return (
+      <p className="mt-4 text-sm text-slate-700 dark:text-green-500">
+        AI enhancement is currently available only for federal bills.
+      </p>
+    );
+  }
   if (reason === "source_unavailable") {
     return (
       <p className="mt-4 text-sm text-slate-700 dark:text-green-500">
@@ -144,6 +152,7 @@ function EnhancementUnavailable({ reason }: { reason: string | null }) {
 
 export default function BillEnhancementPanel({ billId }: { billId: number }) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [featureAvailable, setFeatureAvailable] = useState<boolean | null>(null);
   const [estimate, setEstimate] = useState<BillEnhancementEstimate | null>(null);
   const [enhancement, setEnhancement] = useState<BillEnhancement | null>(null);
   const [loading, setLoading] = useState(false);
@@ -153,31 +162,49 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
 
   useEffect(() => {
     const authenticated = Boolean(getStoredAccessToken());
+    let active = true;
     setSignedIn(authenticated);
+    setFeatureAvailable(null);
     setEstimate(null);
     setEnhancement(null);
     setError(null);
     setConfirming(null);
-    if (!authenticated || Number.isNaN(billId)) return;
-    let active = true;
-    setLoading(true);
-    Promise.all([
-      getBillEnhancementEstimate(billId),
-      getLatestBillEnhancement(billId),
-    ])
-      .then(([nextEstimate, latest]) => {
+    setLoading(false);
+
+    async function load() {
+      if (Number.isNaN(billId)) {
+        setFeatureAvailable(false);
+        return;
+      }
+      try {
+        const capabilities = await getPublicCapabilities();
+        if (!active) return;
+        setFeatureAvailable(capabilities.llm_enhancements);
+        if (!capabilities.llm_enhancements || !authenticated) return;
+      } catch {
+        if (active) setFeatureAvailable(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const [nextEstimate, latest] = await Promise.all([
+          getBillEnhancementEstimate(billId),
+          getLatestBillEnhancement(billId),
+        ]);
         if (!active) return;
         setEstimate(nextEstimate);
         setEnhancement(latest);
-      })
-      .catch((reason) => {
+      } catch (reason) {
         if (!active) return;
         if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
         else setError(reason instanceof Error ? reason.message : "Could not load AI enhancement.");
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    }
+
+    void load();
     return () => {
       active = false;
     };
@@ -236,7 +263,7 @@ export default function BillEnhancementPanel({ billId }: { billId: number }) {
     }
   }
 
-  if (signedIn === null) return null;
+  if (signedIn === null || featureAvailable === null || !featureAvailable) return null;
   if (!signedIn) {
     return (
       <section className="mb-6 border-l-4 border-amber-500 bg-white/70 p-4 dark:border-amber-400 dark:bg-green-950/20">

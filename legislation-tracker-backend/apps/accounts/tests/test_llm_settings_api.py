@@ -51,6 +51,21 @@ def _assert_private(response):
     assert response["Cache-Control"] == "private, no-store"
 
 
+def test_public_capabilities_exposes_only_runtime_feature_availability(llm_settings):
+    client = APIClient()
+    with llm_settings:
+        available = client.get("/api/capabilities/")
+    with override_settings(LLM_ENHANCEMENTS_ENABLED=False):
+        unavailable = client.get("/api/capabilities/")
+
+    assert available.status_code == 200
+    assert available.json() == {"llm_enhancements": True}
+    assert unavailable.status_code == 200
+    assert unavailable.json() == {"llm_enhancements": False}
+    assert available["Cache-Control"] == "no-store"
+    assert unavailable["Cache-Control"] == "no-store"
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("method", ["get", "put", "post", "delete"])
 def test_settings_endpoints_require_authentication(method, llm_settings):

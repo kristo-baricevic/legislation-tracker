@@ -223,6 +223,8 @@ def test_refusal_and_incomplete_response_fail_without_parsing_output():
             timeout_seconds=90,
         )
     assert captured.value.category == "content_refusal"
+    assert captured.value.response_id == "resp_refused"
+    assert captured.value.resolved_model == "gpt-5.6-luna"
 
     incomplete = SimpleNamespace(
         id="resp_incomplete",
@@ -242,6 +244,8 @@ def test_refusal_and_incomplete_response_fail_without_parsing_output():
             timeout_seconds=90,
         )
     assert captured.value.category == "invalid_output"
+    assert captured.value.response_id == "resp_incomplete"
+    assert captured.value.resolved_model == "gpt-5.6-luna"
 
 
 def test_malformed_completed_output_is_invalid_output():
@@ -259,3 +263,5 @@ def test_malformed_completed_output_is_invalid_output():
         )
 
     assert captured.value.category == "invalid_output"
+    assert captured.value.response_id == "resp_test_123"
+    assert captured.value.resolved_model == "gpt-5.6-luna-2026-08-01"

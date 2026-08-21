@@ -6,6 +6,7 @@ import {
   deleteLLMSettings,
   getBillEnhancementEstimate,
   getLLMSettings,
+  getPublicCapabilities,
   updateLLMSettings,
   validateLLMCredential,
 } from "../lib/api.ts";
@@ -16,7 +17,22 @@ afterEach(() => {
   process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
 });
 
-describe("private LLM API helpers", () => {
+describe("LLM API helpers", () => {
+  it("loads the public deployment capability without authentication", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "http://api.test";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return Response.json({ llm_enhancements: true });
+    };
+
+    const capabilities = await getPublicCapabilities();
+
+    assert.deepEqual(capabilities, { llm_enhancements: true });
+    assert.equal(requests[0].url, "http://api.test/api/capabilities/");
+    assert.equal(requests[0].init, undefined);
+  });
+
   it("uses only authenticated private settings routes", async () => {
     process.env.NEXT_PUBLIC_API_URL = "http://api.test";
     const requests: Array<{ url: string; init?: RequestInit }> = [];

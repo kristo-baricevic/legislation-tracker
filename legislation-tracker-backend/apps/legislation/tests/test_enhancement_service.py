@@ -148,6 +148,42 @@ def test_create_rejects_changed_confirmation_and_unvalidated_credential(
 
 
 @pytest.mark.django_db
+def test_create_rejects_non_federal_bill_without_creating_an_attempt(
+    enhancement_owner,
+    enhancement_settings,
+):
+    bill = Bill.objects.create(
+        jurisdiction="california",
+        session=2025,
+        bill_number="AB 881",
+        title="State Attempt Act",
+        status="introduced",
+    )
+    BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SECTION 1. The department shall publish a report.",
+    )
+
+    with enhancement_settings:
+        _valid_credential(enhancement_owner)
+        with pytest.raises(EnhancementServiceError) as rejected:
+            create_enhancement_attempt(
+                user=enhancement_owner,
+                bill=bill,
+                confirmed={
+                    "source_fingerprint": "0" * 64,
+                    "request_fingerprint": "1" * 64,
+                    "credential_revision": 1,
+                },
+            )
+
+    assert rejected.value.code == "unsupported_jurisdiction"
+    assert BillEnhancementAttempt.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_terminal_attempt_requires_explicit_eligible_retry(
     enhancement_owner,
     source_bill,

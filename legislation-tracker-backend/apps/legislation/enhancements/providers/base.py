@@ -35,12 +35,16 @@ class ProviderError(RuntimeError):
         outcome_unknown: bool = False,
         retry_allowed: bool = False,
         usage: ProviderUsage | None = None,
+        response_id: str = "",
+        resolved_model: str = "",
     ):
         super().__init__(f"Provider request failed: {category}")
         self.category = category
         self.outcome_unknown = outcome_unknown
         self.retry_allowed = retry_allowed
         self.usage = usage or ProviderUsage()
+        self.response_id = response_id
+        self.resolved_model = resolved_model
 
 
 class EnhancementProvider(Protocol):

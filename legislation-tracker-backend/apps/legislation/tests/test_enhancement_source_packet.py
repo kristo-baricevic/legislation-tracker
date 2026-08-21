@@ -129,7 +129,7 @@ def test_document_text_is_used_when_contract_has_no_usable_evidence():
 
 
 @pytest.mark.django_db
-def test_blank_active_document_does_not_hide_an_older_stored_document():
+def test_blank_active_document_does_not_fall_back_to_an_older_version():
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -152,10 +152,52 @@ def test_blank_active_document_does_not_hide_an_older_stored_document():
         raw_text="",
     )
 
+    with pytest.raises(PreflightUnavailable, match="source text"):
+        build_enhancement_preflight(bill)
+
+
+@pytest.mark.django_db
+def test_current_active_document_replaces_older_contract_evidence():
+    bill = _bill_with_contract_and_evidence()
+    older_document = bill.documents.get()
+    older_document.is_active_version = False
+    older_document.save(update_fields=["is_active_version"])
+    current_text = "SEC. 4. The Secretary shall publish a quarterly report."
+    current_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        is_active_version=True,
+        extracted_text=current_text,
+    )
+
     preflight = build_enhancement_preflight(bill)
 
-    assert preflight.source_snapshot[0]["section_label"] == "Introduced"
-    assert preflight.source_snapshot[0]["quoted_text"] == older_text
+    assert preflight.source_manifest["source_kind"] == "document_chunk"
+    assert preflight.source_manifest["document_id"] == current_document.id
+    assert preflight.source_snapshot[0]["section_label"] == "Engrossed"
+    assert preflight.source_snapshot[0]["quoted_text"] == current_text
+
+
+@pytest.mark.django_db
+def test_preflight_rejects_non_federal_bills():
+    bill = Bill.objects.create(
+        jurisdiction="california",
+        session=2025,
+        bill_number="AB 501",
+        title="State Reporting Act",
+        status="introduced",
+    )
+    BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SECTION 1. The department shall publish a report.",
+    )
+
+    with pytest.raises(PreflightUnavailable) as error:
+        build_enhancement_preflight(bill)
+
+    assert error.value.reason == "unsupported_jurisdiction"
 
 
 @pytest.mark.django_db

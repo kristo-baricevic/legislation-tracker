@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
+from rest_framework.throttling import SimpleRateThrottle
 
 
 class CredentialConfigurationError(RuntimeError):
@@ -19,6 +20,14 @@ class CredentialDecryptionError(RuntimeError):
 
 
 MIN_LLM_RUN_LEASE_HEADROOM_SECONDS = 30
+
+
+def _valid_throttle_rate(rate: str | None) -> bool:
+    try:
+        num_requests, duration = SimpleRateThrottle.parse_rate(None, rate)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+    return bool(num_requests and num_requests > 0 and duration and duration > 0)
 
 
 @dataclass(frozen=True)
@@ -157,6 +166,12 @@ def llm_feature_configuration_errors(*, production: bool) -> list[str]:
         "LLM_ENHANCEMENT_RUN_LEASE_SECONDS",
     ):
         if getattr(settings, name, 0) <= 0:
+            errors.append(f"invalid_{name.lower()}")
+    for name in (
+        "LLM_ENHANCEMENT_CREATE_RATE",
+        "LLM_ENHANCEMENT_VALIDATION_RATE",
+    ):
+        if not _valid_throttle_rate(getattr(settings, name, None)):
             errors.append(f"invalid_{name.lower()}")
     run_lease_seconds = getattr(settings, "LLM_ENHANCEMENT_RUN_LEASE_SECONDS", 0)
     provider_timeout_seconds = getattr(

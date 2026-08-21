@@ -613,6 +613,14 @@ export function deleteLLMSettings(): Promise<void> {
   return authDelete("/api/settings/llm/");
 }
 
+export interface PublicCapabilities {
+  llm_enhancements: boolean;
+}
+
+export function getPublicCapabilities(): Promise<PublicCapabilities> {
+  return publicGet<PublicCapabilities>("/api/capabilities/");
+}
+
 export interface EnhancementConfirmation {
   source_fingerprint: string;
   request_fingerprint: string;

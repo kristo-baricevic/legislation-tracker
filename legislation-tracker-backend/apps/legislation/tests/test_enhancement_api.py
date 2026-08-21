@@ -2,11 +2,19 @@
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.legislation.enhancements.service import create_enhancement_attempt
 from apps.legislation.enhancements.source_packet import build_enhancement_preflight
-from apps.legislation.models import BillEnhancement, BillEnhancementAttempt
+from apps.legislation.models import (
+    Bill,
+    BillDocument,
+    BillEnhancement,
+    BillEnhancementAttempt,
+)
 
 from .test_enhancement_service import (
     _confirmation,
@@ -99,6 +107,37 @@ def test_estimate_distinguishes_a_disabled_credential(
 
 
 @pytest.mark.django_db
+def test_estimate_rejects_non_federal_bills_before_a_paid_call(
+    enhancement_client,
+    enhancement_owner,
+    enhancement_settings,
+):
+    bill = Bill.objects.create(
+        jurisdiction="california",
+        session=2025,
+        bill_number="AB 880",
+        title="State Enhancement Act",
+        status="introduced",
+    )
+    BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SECTION 1. The department shall publish a report.",
+    )
+
+    with enhancement_settings:
+        _valid_credential(enhancement_owner)
+        response = enhancement_client.get(
+            f"/api/bills/{bill.id}/enhancements/estimate/"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["can_enhance"] is False
+    assert response.json()["unavailable_reason"] == "unsupported_jurisdiction"
+
+
+@pytest.mark.django_db
 def test_create_deduplicates_and_private_history_never_exposes_internal_data(
     enhancement_client,
     enhancement_owner,
@@ -178,6 +217,60 @@ def test_history_is_paginated_and_page_size_is_bounded(
     assert second.status_code == 200
     assert len(second.json()["results"]) == 1
     assert second.json()["previous"] is not None
+
+
+@pytest.mark.django_db
+def test_history_quota_retry_serialization_has_constant_query_count(
+    enhancement_client,
+    enhancement_owner,
+    source_bill,
+    enhancement_settings,
+):
+    with enhancement_settings:
+        credential = _valid_credential(enhancement_owner)
+    completed_at = timezone.now()
+
+    def create_quota_failure(index):
+        enhancement = BillEnhancement.objects.create(
+            user=enhancement_owner,
+            bill=source_bill,
+            provider="openai",
+            requested_model="test-model",
+            reasoning_effort="none",
+            prompt_version="test",
+            output_schema_version="1.1",
+            source_packet_version="test",
+            source_fingerprint=f"{index:064x}",
+            request_fingerprint=f"{index + 100:064x}",
+            source_manifest_json={},
+            source_snapshot_json=[],
+            status=BillEnhancement.Status.FAILED,
+        )
+        BillEnhancementAttempt.objects.create(
+            enhancement=enhancement,
+            sequence=1,
+            credential=credential,
+            credential_revision=credential.revision,
+            status=BillEnhancementAttempt.Status.FAILED,
+            available_at=completed_at,
+            estimated_input_tokens=10,
+            failure_category="quota_exhausted",
+            completed_at=completed_at,
+        )
+
+    create_quota_failure(1)
+    path = f"/api/bills/{source_bill.id}/enhancements/"
+    with CaptureQueriesContext(connection) as one_item_queries:
+        one_item_response = enhancement_client.get(path)
+
+    for index in range(2, 6):
+        create_quota_failure(index)
+    with CaptureQueriesContext(connection) as five_item_queries:
+        five_item_response = enhancement_client.get(path)
+
+    assert one_item_response.status_code == 200
+    assert five_item_response.status_code == 200
+    assert len(five_item_queries) == len(one_item_queries)
 
 
 @pytest.mark.django_db

@@ -51,7 +51,9 @@ class EnhancementHistoryPagination(PageNumberPagination):
 
 ATTEMPT_PREFETCH = Prefetch(
     "attempts",
-    queryset=BillEnhancementAttempt.objects.order_by("sequence"),
+    queryset=BillEnhancementAttempt.objects.select_related("credential").order_by(
+        "sequence"
+    ),
     to_attr="ordered_attempts_cache",
 )
 

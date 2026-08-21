@@ -120,6 +120,26 @@ def test_complete_production_configuration_is_accepted():
         assert llm_feature_configuration_errors(production=True) == []
 
 
+def test_enabled_feature_rejects_malformed_throttle_rates():
+    with override_settings(
+        LLM_ENHANCEMENTS_ENABLED=True,
+        LLM_CREDENTIAL_ENCRYPTION_KEYS=f"primary:{FERNET_KEY}",
+        LLM_CREDENTIAL_ACTIVE_KEY_ID="primary",
+        LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS=90,
+        LLM_ENHANCEMENT_RUN_LEASE_SECONDS=180,
+        LLM_ENHANCEMENT_PROVIDER="openai",
+        LLM_ENHANCEMENT_MODEL="gpt-5.6-luna",
+        LLM_ENHANCEMENT_REASONING_EFFORT="none",
+        LLM_ENHANCEMENT_CREATE_RATE="garbage",
+        LLM_ENHANCEMENT_VALIDATION_RATE="10/fortnight",
+        LLM_ENHANCEMENT_ALLOW_INSECURE_HTTP_IN_DEBUG=True,
+    ):
+        errors = set(llm_feature_configuration_errors(production=False))
+
+    assert "invalid_llm_enhancement_create_rate" in errors
+    assert "invalid_llm_enhancement_validation_rate" in errors
+
+
 def test_runtime_availability_fails_closed_for_unsafe_debug_transport():
     with override_settings(
         DEBUG=True,
