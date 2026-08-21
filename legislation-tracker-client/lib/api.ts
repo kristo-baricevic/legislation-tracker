@@ -45,6 +45,21 @@ export function isLoggedIn(): boolean {
   return !!getStoredAccessToken();
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function responseError(res: Response, fallback: string): Promise<ApiError> {
+  const data = await res.json().catch(() => ({}));
+  return new ApiError(data.detail ?? data.error ?? fallback, res.status);
+}
+
 export interface LoginResponse {
   access: string;
   refresh: string;
@@ -106,8 +121,7 @@ export async function publicGet<T = unknown>(path: string): Promise<T> {
   const base = getApiBase();
   const res = await fetch(`${base}${path}`);
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+    throw await responseError(res, `Request failed: ${res.status}`);
   }
   return res.json();
 }
@@ -127,15 +141,14 @@ export async function authGet<T = unknown>(path: string, retried = false): Promi
     }
   }
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+    throw await responseError(res, `Request failed: ${res.status}`);
   }
   return res.json();
 }
 
 export async function authPost<T = unknown>(
   path: string,
-  body?: Record<string, unknown>,
+  body?: object,
   retried = false,
 ): Promise<T> {
   const base = getApiBase();
@@ -153,8 +166,32 @@ export async function authPost<T = unknown>(
     clearStoredTokens();
   }
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+    throw await responseError(res, `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function authPut<T = unknown>(
+  path: string,
+  body: object,
+  retried = false,
+): Promise<T> {
+  const base = getApiBase();
+  const token = getStoredAccessToken();
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${base}${path}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401 && !retried) {
+    const newToken = await tryRefreshToken();
+    if (newToken) return authPut<T>(path, body, true);
+    clearStoredTokens();
+  }
+  if (!res.ok) {
+    throw await responseError(res, `Request failed: ${res.status}`);
   }
   return res.json();
 }
@@ -174,8 +211,7 @@ export async function authDelete(path: string, retried = false): Promise<void> {
     clearStoredTokens();
   }
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? data.error ?? `Request failed: ${res.status}`);
+    throw await responseError(res, `Request failed: ${res.status}`);
   }
 }
 
@@ -544,4 +580,239 @@ export function triggerTopicBackfill(params: {
   return authPost<IngestionTaskResponse>("/api/ingestion/backfill-topics/", {
     session: params.session,
   });
+}
+
+export interface LLMSettings {
+  feature_available: boolean;
+  configured: boolean;
+  provider: string;
+  key_suffix: string | null;
+  revision: number | null;
+  enabled: boolean;
+  validation_status: "unverified" | "valid" | "invalid";
+  validated_revision: number | null;
+  validated_at: string | null;
+  requested_model: string;
+}
+
+export function getLLMSettings(): Promise<LLMSettings> {
+  return authGet<LLMSettings>("/api/settings/llm/");
+}
+
+export function updateLLMSettings(
+  values: { api_key?: string; enabled?: boolean },
+): Promise<LLMSettings> {
+  return authPut<LLMSettings>("/api/settings/llm/", values);
+}
+
+export function validateLLMCredential(): Promise<LLMSettings> {
+  return authPost<LLMSettings>("/api/settings/llm/validate/");
+}
+
+export function deleteLLMSettings(): Promise<void> {
+  return authDelete("/api/settings/llm/");
+}
+
+export interface PublicCapabilities {
+  llm_enhancements: boolean;
+}
+
+export function getPublicCapabilities(): Promise<PublicCapabilities> {
+  return publicGet<PublicCapabilities>("/api/capabilities/");
+}
+
+export interface EnhancementConfirmation {
+  source_fingerprint: string;
+  request_fingerprint: string;
+  credential_revision: number;
+}
+
+export interface EnhancementUsage {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+}
+
+export interface EnhancementCitedSource {
+  source_ref: string;
+  label: "Cited source";
+  quoted_text: string;
+  section_label: string | null;
+  start_char: number | null;
+  end_char: number | null;
+}
+
+export interface EnhancementAtomicItem {
+  text: string;
+  source_refs: string[];
+  cited_sources: EnhancementCitedSource[];
+}
+
+export interface EnhancementObligation {
+  actor: string;
+  modality: "required" | "prohibited" | "permitted";
+  action: string;
+  conditions: string | null;
+  source_refs: string[];
+  cited_sources: EnhancementCitedSource[];
+}
+
+export interface EnhancementFundingTiming extends EnhancementAtomicItem {
+  kind: "funding" | "timing";
+}
+
+export interface EnhancementUncertainLanguage extends EnhancementAtomicItem {
+  why_it_matters: string;
+}
+
+export interface EnhancementResult {
+  schema_version: "1.1";
+  overview: EnhancementAtomicItem[];
+  key_impacts: EnhancementAtomicItem[];
+  obligations: EnhancementObligation[];
+  funding_and_timing: EnhancementFundingTiming[];
+  uncertain_language: EnhancementUncertainLanguage[];
+}
+
+export interface EnhancementAttempt {
+  id: number;
+  sequence: number;
+  status: EnhancementStatus;
+  credential_revision: number;
+  estimated_input_tokens: number;
+  usage: EnhancementUsage;
+  resolved_model: string | null;
+  failure_category: string | null;
+  retry_allowed: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export type EnhancementStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "refused"
+  | "outcome_unknown";
+
+export interface BillEnhancement {
+  id: number;
+  bill_id: number;
+  status: EnhancementStatus;
+  provider: string;
+  requested_model: string;
+  reasoning_effort: string;
+  prompt_version: string;
+  output_schema_version: string;
+  source_packet_version: string;
+  source_fingerprint: string;
+  request_fingerprint: string;
+  truncated: boolean;
+  coverage_notice: string | null;
+  disclaimer: string;
+  usage: EnhancementUsage;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  latest_attempt: EnhancementAttempt | null;
+  result?: EnhancementResult | null;
+  attempts?: EnhancementAttempt[];
+  poll_after_seconds?: number | null;
+  stale?: boolean;
+}
+
+export interface BillEnhancementEstimate {
+  feature_available: boolean;
+  can_enhance: boolean;
+  unavailable_reason: string | null;
+  credential_revision: number | null;
+  provider?: string;
+  requested_model: string;
+  reasoning_effort?: string;
+  prompt_version?: string;
+  output_schema_version?: string;
+  source_packet_version?: string;
+  source_fingerprint?: string;
+  request_fingerprint?: string;
+  serialized_request_bytes?: number;
+  estimated_input_tokens?: number;
+  max_output_tokens?: number;
+  max_output_includes_reasoning?: boolean;
+  truncated?: boolean;
+  coverage_notice?: string | null;
+  source_description?: string;
+  matching_enhancement?: BillEnhancement | null;
+}
+
+export interface BillEnhancementsPage {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: BillEnhancement[];
+}
+
+export function getBillEnhancementEstimate(
+  billId: number,
+): Promise<BillEnhancementEstimate> {
+  return authGet<BillEnhancementEstimate>(
+    `/api/bills/${billId}/enhancements/estimate/`,
+  );
+}
+
+export function getBillEnhancements(
+  billId: number,
+  options: { page?: number; pageSize?: number } = {},
+): Promise<BillEnhancementsPage> {
+  const search = new URLSearchParams();
+  if (options.page != null) search.set("page", String(options.page));
+  if (options.pageSize != null) search.set("page_size", String(options.pageSize));
+  const query = search.toString();
+  return authGet<BillEnhancementsPage>(
+    `/api/bills/${billId}/enhancements/${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function getLatestBillEnhancement(
+  billId: number,
+): Promise<BillEnhancement | null> {
+  try {
+    return await authGet<BillEnhancement>(
+      `/api/bills/${billId}/enhancements/latest/`,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export function getBillEnhancement(
+  billId: number,
+  enhancementId: number,
+): Promise<BillEnhancement> {
+  return authGet<BillEnhancement>(
+    `/api/bills/${billId}/enhancements/${enhancementId}/`,
+  );
+}
+
+export function createBillEnhancement(
+  billId: number,
+  confirmation: EnhancementConfirmation,
+): Promise<BillEnhancement> {
+  return authPost<BillEnhancement>(
+    `/api/bills/${billId}/enhancements/`,
+    confirmation,
+  );
+}
+
+export function retryBillEnhancement(
+  billId: number,
+  enhancementId: number,
+  confirmation: EnhancementConfirmation,
+): Promise<BillEnhancement> {
+  return authPost<BillEnhancement>(
+    `/api/bills/${billId}/enhancements/${enhancementId}/retry/`,
+    confirmation,
+  );
 }

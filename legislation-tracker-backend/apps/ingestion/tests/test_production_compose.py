@@ -13,7 +13,9 @@ COMPOSE_FILE = REPOSITORY_ROOT / "docker-compose.production.yml"
 def test_production_compose_blocks_runtime_services_until_migration_succeeds(tmp_path):
     docker = shutil.which("docker")
     if docker is None:
-        pytest.skip("Docker Compose is required to validate the production deployment graph")
+        pytest.skip(
+            "Docker Compose is required to validate the production deployment graph"
+        )
 
     env_file = tmp_path / "production.env"
     env_file.write_text("DJANGO_SECRET_KEY=test-secret\n")
@@ -50,3 +52,9 @@ def test_production_compose_blocks_runtime_services_until_migration_succeeds(tmp
             services[service_name]["depends_on"]["migrate"]["condition"]
             == "service_completed_successfully"
         )
+
+    assert "ports" not in services["api"]
+    assert services["api"]["expose"] == ["8000"]
+    healthcheck_command = " ".join(services["api"]["healthcheck"]["test"])
+    assert "X-Forwarded-Proto" in healthcheck_command
+    assert "https" in healthcheck_command

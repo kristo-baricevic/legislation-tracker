@@ -40,13 +40,21 @@ export default function AuthNav() {
         Representatives
       </Link>
       {hasToken ? (
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
-        >
-          Log out
-        </button>
+        <>
+          <Link
+            href="/settings"
+            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+          >
+            Settings
+          </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+          >
+            Log out
+          </button>
+        </>
       ) : (
         <>
           <Link

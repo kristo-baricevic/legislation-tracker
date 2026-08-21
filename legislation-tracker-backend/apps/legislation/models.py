@@ -57,7 +57,9 @@ class Bill(models.Model):
         related_name="+",
     )
     source_api_id = models.CharField(max_length=255, null=True, blank=True)
-    metadata_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    metadata_hash = models.CharField(
+        max_length=64, null=True, blank=True, db_index=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -86,7 +88,9 @@ class BillDocument(models.Model):
         on_delete=models.CASCADE,
         related_name="documents",
     )
-    version_label = models.CharField(max_length=50)  # introduced, amended, engrossed, enrolled
+    version_label = models.CharField(
+        max_length=50
+    )  # introduced, amended, engrossed, enrolled
     is_active_version = models.BooleanField(default=False, db_index=True)
     object_storage_key = models.CharField(max_length=512, null=True, blank=True)
     content_type = models.CharField(max_length=128, null=True, blank=True)
@@ -193,6 +197,141 @@ class EvidenceSpan(models.Model):
         indexes = [
             models.Index(fields=["contract"]),
             models.Index(fields=["bill"]),
+        ]
+
+
+class BillEnhancement(models.Model):
+    """Private, immutable request identity and its promoted validated result."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        REFUSED = "refused", "Refused"
+        OUTCOME_UNKNOWN = "outcome_unknown", "Outcome unknown"
+
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="bill_enhancements",
+    )
+    bill = models.ForeignKey(
+        Bill,
+        on_delete=models.CASCADE,
+        related_name="private_enhancements",
+    )
+    provider = models.CharField(max_length=32)
+    requested_model = models.CharField(max_length=128)
+    reasoning_effort = models.CharField(max_length=16)
+    prompt_version = models.CharField(max_length=32)
+    output_schema_version = models.CharField(max_length=32)
+    source_packet_version = models.CharField(max_length=32)
+    source_fingerprint = models.CharField(max_length=64)
+    request_fingerprint = models.CharField(max_length=64)
+    source_manifest_json = models.JSONField(default=dict)
+    source_snapshot_json = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=24,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    result_json = models.JSONField(null=True, blank=True)
+    successful_attempt = models.OneToOneField(
+        "BillEnhancementAttempt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promoted_enhancement",
+    )
+    input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    output_tokens = models.PositiveIntegerField(null=True, blank=True)
+    total_tokens = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "legislation_billenhancement"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "bill", "request_fingerprint"],
+                name="legislation_enhancement_request_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "bill", "-created_at"]),
+            models.Index(fields=["bill", "request_fingerprint"]),
+        ]
+
+
+class BillEnhancementAttempt(models.Model):
+    """Append-only paid-action authorization and durable work item."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        REFUSED = "refused", "Refused"
+        OUTCOME_UNKNOWN = "outcome_unknown", "Outcome unknown"
+
+    enhancement = models.ForeignKey(
+        BillEnhancement,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+    )
+    sequence = models.PositiveIntegerField()
+    credential = models.ForeignKey(
+        "accounts.LLMCredential",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="enhancement_attempts",
+    )
+    credential_revision = models.PositiveIntegerField()
+    status = models.CharField(
+        max_length=24,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    available_at = models.DateTimeField()
+    dispatch_token = models.CharField(max_length=64, blank=True, default="")
+    dispatch_lease_expires_at = models.DateTimeField(null=True, blank=True)
+    run_token = models.CharField(max_length=64, blank=True, default="")
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    estimated_input_tokens = models.PositiveIntegerField()
+    input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    output_tokens = models.PositiveIntegerField(null=True, blank=True)
+    total_tokens = models.PositiveIntegerField(null=True, blank=True)
+    provider_response_id = models.CharField(max_length=255, blank=True, default="")
+    resolved_model = models.CharField(max_length=128, blank=True, default="")
+    result_json = models.JSONField(null=True, blank=True)
+    failure_category = models.CharField(max_length=64, blank=True, default="")
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "legislation_billenhancementattempt"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["enhancement", "sequence"],
+                name="legislation_enhancement_attempt_sequence_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["enhancement"],
+                condition=models.Q(status__in=["pending", "running"]),
+                name="legislation_enhancement_one_active_attempt",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "available_at"]),
+            models.Index(fields=["status", "dispatch_lease_expires_at"]),
+            models.Index(fields=["status", "lease_expires_at"]),
+            models.Index(fields=["enhancement", "created_at"]),
         ]
 
 

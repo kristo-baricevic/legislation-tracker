@@ -2,6 +2,7 @@
 Django base settings for legislation-tracker-backend.
 All env-based configuration uses django-environ; defaults are for local dev.
 """
+
 from datetime import timedelta
 from pathlib import Path
 
@@ -101,6 +102,85 @@ CELERY_TIMEZONE = "UTC"
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
+# Optional user-owned LLM bill enhancements. The feature is off by default and
+# configuration is validated before any credential or provider operation.
+LLM_ENHANCEMENTS_ENABLED = env.bool("LLM_ENHANCEMENTS_ENABLED", default=False)
+LLM_CREDENTIAL_ENCRYPTION_KEYS = env(
+    "LLM_CREDENTIAL_ENCRYPTION_KEYS",
+    default="",
+)
+LLM_CREDENTIAL_ACTIVE_KEY_ID = env(
+    "LLM_CREDENTIAL_ACTIVE_KEY_ID",
+    default="",
+)
+LLM_ENHANCEMENT_PROVIDER = (
+    env("LLM_ENHANCEMENT_PROVIDER", default="openai").strip().lower()
+)
+LLM_ENHANCEMENT_MODEL = env("LLM_ENHANCEMENT_MODEL", default="gpt-5.6-luna").strip()
+LLM_ENHANCEMENT_REASONING_EFFORT = (
+    env(
+        "LLM_ENHANCEMENT_REASONING_EFFORT",
+        default="none",
+    )
+    .strip()
+    .lower()
+)
+LLM_ENHANCEMENT_MAX_REQUEST_BYTES = env.int(
+    "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
+    default=120000,
+)
+LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = env.int(
+    "LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS",
+    default=60000,
+)
+LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
+    "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS",
+    default=4000,
+)
+LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS = env.int(
+    "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS",
+    default=90,
+)
+LLM_ENHANCEMENT_RUN_LEASE_SECONDS = env.int(
+    "LLM_ENHANCEMENT_RUN_LEASE_SECONDS",
+    default=180,
+)
+LLM_ENHANCEMENT_CREATE_RATE = env(
+    "LLM_ENHANCEMENT_CREATE_RATE",
+    default="10/hour",
+)
+LLM_ENHANCEMENT_VALIDATION_RATE = env(
+    "LLM_ENHANCEMENT_VALIDATION_RATE",
+    default="5/hour",
+)
+LLM_ENHANCEMENT_ALLOW_INSECURE_HTTP_IN_DEBUG = env.bool(
+    "LLM_ENHANCEMENT_ALLOW_INSECURE_HTTP_IN_DEBUG",
+    default=False,
+)
+LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED = env.bool(
+    "LLM_ENHANCEMENT_PRODUCTION_TLS_CONFIRMED",
+    default=False,
+)
+LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED = env.bool(
+    "LLM_ENHANCEMENT_SECRET_LOG_REDACTION_CONFIRMED",
+    default=False,
+)
+# Internal settings-module marker. Production overrides this to ensure runtime
+# gates do not infer deployment mode from DEBUG (which test runners also alter).
+LLM_ENHANCEMENT_PRODUCTION_SECURITY_REQUIRED = False
+# Dedicated non-production key used only by the explicitly gated evaluation
+# management command. It is never read by user request or worker paths.
+LLM_ENHANCEMENT_EVALUATION_API_KEY = env(
+    "LLM_ENHANCEMENT_EVALUATION_API_KEY",
+    default="",
+)
+# Test-only adapter registration. Production configuration rejects this gate
+# even if all transport and encryption settings are otherwise valid.
+LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED = env.bool(
+    "LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED",
+    default=False,
+)
+
 # REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -111,6 +191,10 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_THROTTLE_RATES": {
+        "llm_enhancement": LLM_ENHANCEMENT_CREATE_RATE,
+        "llm_validation": LLM_ENHANCEMENT_VALIDATION_RATE,
+    },
 }
 
 # JWT (Simple JWT)
@@ -127,7 +211,9 @@ CONGRESS_API_KEY = env("CONGRESS_API_KEY", default="")
 USE_LOCAL_DOCUMENT_STORAGE = env.bool("USE_LOCAL_DOCUMENT_STORAGE", default=False)
 AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
-AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="legislation-tracker-documents")
+AWS_STORAGE_BUCKET_NAME = env(
+    "AWS_STORAGE_BUCKET_NAME", default="legislation-tracker-documents"
+)
 AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default="")
 AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
 AWS_DEFAULT_ACL = None
@@ -166,7 +252,9 @@ CORS_ALLOWED_ORIGIN_REGEXES = env.list("CORS_ALLOWED_ORIGIN_REGEXES", default=[]
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},

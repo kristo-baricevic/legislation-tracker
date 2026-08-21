@@ -59,9 +59,23 @@ def test_celery_beat_maintains_future_changelog_partitions_daily():
     }
 
 
+def test_celery_beat_dispatches_and_recovers_durable_bill_enhancements():
+    from config.celery import app
+
+    assert app.conf.beat_schedule["dispatch-bill-enhancements"] == {
+        "task": "apps.legislation.tasks.dispatch_bill_enhancement_attempts",
+        "schedule": 15.0,
+    }
+    assert app.conf.beat_schedule["recover-stale-bill-enhancements"] == {
+        "task": "apps.legislation.tasks.recover_stale_bill_enhancement_attempts",
+        "schedule": 60.0,
+    }
+
+
 def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
-    from apps.ingestion import tasks
     from config.celery import _on_task_failure
+
+    from apps.ingestion import tasks
 
     recorded = []
     monkeypatch.setattr(
@@ -94,8 +108,9 @@ def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
 
 
 def test_task_failure_handler_records_changelog_maintenance_failures(monkeypatch):
-    from apps.ingestion import tasks
     from config.celery import _on_task_failure
+
+    from apps.ingestion import tasks
 
     recorded = []
     monkeypatch.setattr(
