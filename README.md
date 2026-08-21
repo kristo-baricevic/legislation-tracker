@@ -1,6 +1,6 @@
 # Legislation Tracker
 
-Monorepo: **Django** API (`legislation-tracker-backend`) + **Next.js** app (`legislation-tracker-client`). Bills from Congress.gov, documents, plain-language “contracts,” change log, and (with Celery running) background ingestion.
+Monorepo: **Django** API (`legislation-tracker-backend`) + **Next.js** app (`legislation-tracker-client`). Bills from Congress.gov, documents, deterministic plain-language “contracts,” change log, and (with Celery running) background ingestion. An optional, disabled-by-default AI layer lets signed-in users enhance individual federal bills with their own OpenAI API key without changing the canonical contract.
 
 ---
 
@@ -127,6 +127,22 @@ App: **http://localhost:3000**
 
 The client expects the API at **http://localhost:8000** by default. To change that, set **`NEXT_PUBLIC_API_URL`** in `legislation-tracker-client/.env.local`.
 
+### Optional user-owned AI enhancements
+
+The feature is federal-only, private to the signed-in user, and disabled by
+default. Users save and validate their own provider key under `/settings`, then
+explicitly confirm a bounded request from an eligible bill page. Results include
+server-owned cited-source text and paginated private history; they never modify
+the deterministic contract or trigger automatically during ingestion.
+
+Enabling the feature requires a dedicated Fernet key ring, the Django API,
+Celery worker and Beat processes, secure production transport, and explicit
+provider configuration. See the
+**[AI enhancement guide](legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md)**
+for behavior and APIs, and
+**[production operations](legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md)**
+for rollout and key-rotation instructions.
+
 ---
 
 ### Quick reference
@@ -142,5 +158,7 @@ The client expects the API at **http://localhost:8000** by default. To change th
 ## More documentation
 
 - **Backend detail:** [legislation-tracker-backend/README.md](legislation-tracker-backend/README.md) (includes Docker-based Postgres/Redis/MinIO if you prefer that later.)
+- **User-owned AI enhancements:** [legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md](legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md)
+- **Production operations:** [legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md](legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md)
 - **Build phases / checklist:** [BACKEND_BUILD_STEPS.md](BACKEND_BUILD_STEPS.md)
 - **Architecture:** [BACKEND_PLAN.md](BACKEND_PLAN.md), [ARCHITECTURE_ELI5.md](ARCHITECTURE_ELI5.md)
