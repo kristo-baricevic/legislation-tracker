@@ -160,7 +160,7 @@ def test_generate_contract_refreshes_evidence_after_a_whitespace_only_source_upd
 def test_generate_contract_refreshes_evidence_when_reusing_an_older_hash():
     original_source = "SEC. 2. REPORTS\nThe Secretary shall publish a report."
     reflowed_source = "SEC. 2. REPORTS\n\nThe Secretary shall publish a report."
-    intervening_source = "SEC. 2. REPORTS\nThe Secretary must publish a report."
+    intervening_source = "SEC. 2. REPORTS\nThe Secretary shall submit a report."
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,

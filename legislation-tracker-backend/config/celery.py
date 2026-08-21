@@ -54,6 +54,11 @@ app.conf.beat_schedule = {
         "schedule": 86400.0,
         "kwargs": {"congress": 119},
     },
+    "ensure-changelog-partitions": {
+        "task": "apps.changelog.tasks.ensure_change_log_partitions_task",
+        "schedule": 86400.0,
+        "kwargs": {"months_ahead": 12},
+    },
 }
 
 
@@ -64,7 +69,9 @@ def _on_task_failure(sender, task_id, exception, args, kwargs, **kw):
     task_name = getattr(sender, "name", str(sender))
     if (
         not task_name
-        or not task_name.startswith(("apps.ingestion.tasks.", "apps.legislation.tasks."))
+        or not task_name.startswith(
+            ("apps.ingestion.tasks.", "apps.legislation.tasks.", "apps.changelog.tasks.")
+        )
         or task_name.endswith("process_bill")
     ):
         return

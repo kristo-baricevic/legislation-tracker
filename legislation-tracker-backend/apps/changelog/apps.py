@@ -6,3 +6,6 @@ class ChangelogConfig(AppConfig):
     name = "apps.changelog"
     label = "changelog"
     verbose_name = "Change log"
+
+    def ready(self):
+        from . import checks  # noqa: F401

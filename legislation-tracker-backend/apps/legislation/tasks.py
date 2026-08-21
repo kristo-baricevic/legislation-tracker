@@ -536,7 +536,7 @@ def _update_topics_impl(contract_id=None, bill_id=None):
 
     with transaction.atomic():
         bill = (
-            Bill.objects.select_for_update()
+            Bill.objects.select_for_update(of=("self",))
             .select_related("latest_contract")
             .filter(pk=bill.pk)
             .first()

@@ -33,7 +33,7 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 - [x] **2.8** **legislation**: `BillTopic` (bill FK, topic FK, confidence_score). Migration.
 - [x] **2.9** **legislation**: `BillSimilarity` (bill_a FK, bill_b FK, similarity_score, method, computed_at). UniqueConstraint (bill_a, bill_b, method). Add check or app logic: bill_a_id < bill_b_id. Migration.
 - [x] **2.10** **congress**: `Vote` (bill FK, chamber, roll_number, vote_date, result, yeas, nays). `VoteRecord` (vote FK, representative FK, position). Migrations.
-- [x] **2.11** **changelog**: `ChangeLog` model (bill FK, document FK nullable, contract FK nullable, change_type, old_value JSONB, new_value JSONB, created_at). Create migration that creates a **partitioned table** by RANGE (created_at) with initial monthly partitions (raw SQL in migration). Ensure Django ORM writes to parent table name. _(Implemented as normal table; partitioning can be added later.)_
+- [x] **2.11** **changelog**: `ChangeLog` model (bill FK, document FK nullable, contract FK nullable, change_type, old_value JSONB, new_value JSONB, created_at). PostgreSQL migration `changelog.0003_partition_by_created_at` converts it to a monthly UTC RANGE-partitioned parent and preserves ORM writes to the parent table name; SQLite remains a normal table for local development.
 - [x] **2.12** **ingestion**: `IngestionState` (jurisdiction, congress, last_polled_at, last_bill_update_seen_at). Migration.
 - [x] **2.13** Add indexes per BACKEND_PLAN §7 (Bill, BillDocument, BillContract, ChangeLog, BillTopic, VoteRecord, BillSimilarity). Can be in same migrations or follow-up migration.
 

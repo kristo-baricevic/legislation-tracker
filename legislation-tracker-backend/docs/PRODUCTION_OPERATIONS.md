@@ -107,6 +107,7 @@ Celery Beat currently schedules:
 | `dispatch-ingestion-work` | `apps.ingestion.tasks.dispatch_ingestion_work` | 30 seconds | Sends durable discovered bill work to workers. |
 | `recover-stale-ingestion-work` | `apps.ingestion.tasks.recover_stale_ingestion_work` | 5 minutes | Releases work abandoned by a worker or broker failure. |
 | `sync-representatives` | `apps.ingestion.tasks.sync_representatives` | Daily | Refreshes the complete current congressional roster. |
+| `ensure-changelog-partitions` | `apps.changelog.tasks.ensure_change_log_partitions_task` | Daily | Creates missing UTC ChangeLog partitions through the next 12 months. |
 
 Both schedules enqueue normal ingestion tasks. They do not store user-specific feed rows. The durable history is written to the shared `ChangeLog` table by ingestion tasks such as `process_bill`, `process_bill_votes`, document processing, and contract generation.
 
@@ -115,6 +116,45 @@ Contract generation enqueues `update_topics`, which deterministically infers pol
 `GET /api/tracking/feed/` reads persistent `ChangeLog` rows and filters them for the authenticated user based on tracked bills, tracked topics, and tracked legislators.
 
 Important limitation: `poll_tracked_bills` refreshes bills that already exist in the shared corpus. Discovery of brand-new bills still depends on `poll_congress`, followed by topic assignment/sponsor data.
+
+## ChangeLog partition migration
+
+`changelog.0003_partition_by_created_at` converts an existing PostgreSQL
+`changelog_changelog` table into monthly UTC partitions. It is transactional,
+but it takes an `ACCESS EXCLUSIVE` lock and builds the replacement indexes in
+that transaction. Treat it as a planned maintenance window, not a rolling
+deployment:
+
+1. Back up the database and record the current `ChangeLog` row count.
+2. Quiesce the API, workers, Beat, and any long-running read/reporting jobs.
+   A five-second lock timeout makes the migration fail rather than wait behind
+   a live reader.
+3. Run `python manage.py migrate --noinput`.
+4. Verify the parent and row count, then resume API, workers, Beat, and readers:
+
+```sql
+SELECT relkind FROM pg_class WHERE oid = 'changelog_changelog'::regclass;
+-- expected: p
+
+SELECT count(*) FROM changelog_changelog;
+
+SELECT child.relname, pg_get_expr(child.relpartbound, child.oid) AS bounds
+FROM pg_inherits
+JOIN pg_class parent ON parent.oid = pg_inherits.inhparent
+JOIN pg_class child ON child.oid = pg_inherits.inhrelid
+WHERE parent.relname = 'changelog_changelog'
+ORDER BY child.relname;
+```
+
+5. Run `python manage.py ensure_changelog_partitions --months-ahead 12` once.
+   It is idempotent and should normally report `created=0` immediately after
+   a successful migration.
+
+The parent has a physical primary key of `(id, created_at)`, because PostgreSQL
+requires the partition key to be part of every partitioned primary key. Normal
+Django inserts still use one identity sequence, but `id` is not independently
+database-unique. Do not add a foreign key to `ChangeLog` or manually supply an
+event ID; Django's model check and the migration reject inbound foreign keys.
 
 ## Manual Admin Controls
 

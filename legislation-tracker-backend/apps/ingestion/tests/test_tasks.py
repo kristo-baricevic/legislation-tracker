@@ -1196,7 +1196,7 @@ def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_t
 
 
 @pytest.mark.django_db
-def test_downloaded_xml_quoted_amendment_payload_is_not_a_current_requirement(
+def test_downloaded_xml_quoted_amendment_payload_falls_back_without_current_claims(
     monkeypatch,
 ):
     payload = (
@@ -1236,12 +1236,14 @@ def test_downloaded_xml_quoted_amendment_payload_is_not_a_current_requirement(
 
     document.refresh_from_db()
     result = extract_contract(document=document, bill=bill)
-    assert result.schema_version == "2.0-legal-nlp"
-    assert result.contract_json["requirements"] == []
+    assert result.schema_version == "1.1-deterministic"
+    assert result.fallback_reason == "no_supported_claims"
 
 
 @pytest.mark.django_db
-def test_downloaded_xml_direct_quoted_funding_is_not_current_funding(monkeypatch):
+def test_downloaded_xml_direct_quoted_funding_falls_back_without_current_claims(
+    monkeypatch,
+):
     payload = (
         b"<bill><legis-body><section><enum>2.</enum><header>Amendments</header>"
         b"<paragraph><enum>(a)</enum><text>Section 3 of the Food Act is amended "
@@ -1277,8 +1279,8 @@ def test_downloaded_xml_direct_quoted_funding_is_not_current_funding(monkeypatch
 
     document.refresh_from_db()
     result = extract_contract(document=document, bill=bill)
-    assert result.schema_version == "2.0-legal-nlp"
-    assert result.contract_json["funding_items"] == []
+    assert result.schema_version == "1.1-deterministic"
+    assert result.fallback_reason == "no_supported_claims"
 
 
 @pytest.mark.django_db
