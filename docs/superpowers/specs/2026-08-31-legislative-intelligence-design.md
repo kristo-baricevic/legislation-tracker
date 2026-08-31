@@ -21,7 +21,7 @@ The tracks ship in that order. Discovery owns the shared activity timestamp and 
 - Discovery is implemented: bounded bill search indexing, full-text query/highlight API, recent-activity sorting, private saved searches, and the public URL-backed search UI.
 - What changed is implemented: normalized activity events, signed timeline cursors, signed-in view state, explicit acknowledgement, and bounded contract/document comparison APIs and UI.
 - Representative product and persistence foundations are implemented: Congress-scoped canonical vote identities, committee/cosponsor tables, exact-identity dependency blocking, representative detail/comparison APIs, and UI.
-- The remaining operational work is to add official complete House/Senate roll-call discovery, official committee-roster snapshot synchronization, and the preview-first historical backfill command before representative voting/committee coverage can be labelled complete.
+- The remaining operational work is official committee-roster snapshot synchronization and the preview-first historical backfill command before committee coverage can be labelled complete. Roll-call discovery is scheduled for the current Congress and current/past session scope, but coverage remains explicitly partial until source cursors exhaust and every durable detail item succeeds.
 
 ## Goals
 

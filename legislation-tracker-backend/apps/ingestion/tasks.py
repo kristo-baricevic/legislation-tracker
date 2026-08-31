@@ -17,7 +17,7 @@ from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
 from apps.changelog.models import BillActivityClock
 from apps.changelog.services import record_bill_change
-from apps.congress.current import current_congress
+from apps.congress.current import current_congress, current_congress_session
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion.congress_client import (
     CongressAPIError,
@@ -45,7 +45,9 @@ from apps.ingestion.models import (
     IngestionTaskFailure,
     IngestionWorkItem,
     IngestionWorkStatus,
+    RollCallIngestionState,
 )
+from apps.ingestion.vote_sources import HouseVoteSource, SenateVoteSource
 from apps.ingestion.work_queue import (
     enqueue_ingestion_work,
     fulfill_tracking_requests_for_bill,
@@ -597,6 +599,59 @@ def poll_congress(jurisdiction="federal", congress=None):
         "discovered": len(discovered_bills),
         "created": created_count,
     }
+
+
+@shared_task(
+    autoretry_for=(CongressAPIError,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=2,
+)
+def discover_roll_calls(congress=None):
+    """Durably discover every current Congress chamber/session roll call."""
+
+    active_congress = current_congress() if congress is None else int(congress)
+    current_session = current_congress_session()
+    created_count = 0
+    for session_number in range(1, current_session + 1):
+        for source, chamber in ((HouseVoteSource(), "house"), (SenateVoteSource(), "senate")):
+            refs = source.discover(congress=active_congress, session_number=session_number)
+            now = timezone.now()
+            with transaction.atomic():
+                state, _ = RollCallIngestionState.objects.select_for_update().get_or_create(
+                    congress=active_congress,
+                    chamber=chamber,
+                    session_number=session_number,
+                )
+                for ref in refs:
+                    _, created = IngestionWorkItem.objects.get_or_create(
+                        kind=WORK_KIND_ROLL_CALL_VOTE,
+                        dedupe_key=f"vote:{ref.congress}:{ref.chamber}:{ref.session_number}:{ref.roll_number}",
+                        source_updated_at=ref.source_updated_at,
+                        defaults={
+                            "congress": ref.congress,
+                            "payload_json": {
+                                "congress": ref.congress,
+                                "chamber": ref.chamber,
+                                "session_number": ref.session_number,
+                                "roll_number": ref.roll_number,
+                                "source_url": ref.source_url,
+                            },
+                            "available_at": now,
+                        },
+                    )
+                    created_count += int(created)
+                state.discovered_roll_count = len(refs)
+                state.source_exhausted_at = now
+                state.source_updated_at = max((ref.source_updated_at for ref in refs), default=None)
+                state.last_polled_at = now
+                state.save()
+    if created_count:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception("discover_roll_calls: could not wake the dispatcher")
+    return {"congress": active_congress, "created": created_count}
 
 
 def _retry_delay(attempt_count):

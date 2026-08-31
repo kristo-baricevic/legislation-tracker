@@ -20,6 +20,7 @@ from apps.ingestion.models import (
     IngestionWorkItem,
     IngestionWorkStatus,
 )
+from apps.ingestion.vote_sources import RollCallRef
 from apps.legislation.extraction.service import extract_contract
 from apps.legislation.models import (
     Bill,
@@ -69,6 +70,40 @@ def test_sync_representatives_has_bounded_congress_api_retries():
         CongressAPIError,
     )
     assert tasks.sync_representatives.max_retries == 2
+
+
+@pytest.mark.django_db
+def test_roll_call_discovery_persists_work_and_cursor_before_dispatch(monkeypatch):
+    reference = RollCallRef(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        roll_number=7,
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+        source_url="https://example.test/house/7",
+    )
+
+    class House:
+        def discover(self, **_kwargs):
+            return [reference]
+
+    class Senate:
+        def discover(self, **_kwargs):
+            return []
+
+    monkeypatch.setattr(tasks, "HouseVoteSource", House)
+    monkeypatch.setattr(tasks, "SenateVoteSource", Senate)
+    monkeypatch.setattr(tasks, "current_congress_session", lambda: 1)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    assert tasks.discover_roll_calls(congress=119) == {"congress": 119, "created": 1}
+    work = IngestionWorkItem.objects.get()
+    assert work.dedupe_key == "vote:119:house:1:7"
+    state = tasks.RollCallIngestionState.objects.get(
+        congress=119, chamber="house", session_number=1
+    )
+    assert state.discovered_roll_count == 1
+    assert state.source_exhausted_at is not None
 
 
 @pytest.mark.django_db

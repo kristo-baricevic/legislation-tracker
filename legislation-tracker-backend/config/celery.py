@@ -56,6 +56,10 @@ app.conf.beat_schedule = {
         "task": "apps.ingestion.tasks.sync_representatives",
         "schedule": 86400.0,
     },
+    "discover-roll-calls": {
+        "task": "apps.ingestion.tasks.discover_roll_calls",
+        "schedule": 900.0,
+    },
     "ensure-changelog-partitions": {
         "task": "apps.changelog.tasks.ensure_change_log_partitions_task",
         "schedule": 86400.0,
