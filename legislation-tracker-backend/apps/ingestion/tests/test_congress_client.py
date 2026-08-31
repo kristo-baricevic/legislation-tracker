@@ -409,5 +409,6 @@ def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(
         {
             "version_label": "Introduced in House",
             "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.xml",
+            "source_order": 1,
         }
     ]

@@ -16,24 +16,21 @@ import {
   type DocumentSectionComparison,
 } from "@/lib/api";
 
-function documentTime(document: BillDocumentItem): number {
-  const parsed = document.downloaded_at
-    ? Date.parse(document.downloaded_at)
-    : Number.NaN;
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
 export function selectDocumentComparisonPair(
   documents: BillDocumentItem[],
 ): [BillDocumentItem, BillDocumentItem] | null {
-  if (documents.length < 2) return null;
-  const newestFirst = [...documents].sort(
-    (left, right) =>
-      documentTime(right) - documentTime(left) || right.id - left.id,
-  );
-  const after =
-    newestFirst.find((document) => document.is_active_version) ?? newestFirst[0];
-  const before = newestFirst.find((document) => document.id !== after.id);
+  const after = documents.find((document) => document.is_active_version);
+  if (!after || after.source_order === null) return null;
+  let before: BillDocumentItem | null = null;
+  for (const document of documents) {
+    if (
+      document.source_order !== null &&
+      document.source_order < after.source_order &&
+      document.source_order > (before?.source_order ?? 0)
+    ) {
+      before = document;
+    }
+  }
   return before ? [before, after] : null;
 }
 

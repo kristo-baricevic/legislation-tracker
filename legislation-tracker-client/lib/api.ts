@@ -279,6 +279,7 @@ export interface SearchHighlight {
 export interface BillDocumentItem {
   id: number;
   version_label: string;
+  source_order: number | null;
   is_active_version: boolean;
   content_type: string | null;
   file_size_bytes: number | null;

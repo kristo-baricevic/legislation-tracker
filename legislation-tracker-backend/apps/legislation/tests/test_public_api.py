@@ -1,10 +1,12 @@
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.legislation import views
@@ -187,6 +189,36 @@ def test_public_comparison_endpoints_throttle_before_validating_or_diffing(
         assert second.status_code == 429
 
 
+@pytest.mark.django_db
+def test_authenticated_comparison_requests_use_the_user_rate_bucket(monkeypatch):
+    from apps.legislation.throttles import BillComparisonThrottle
+
+    monkeypatch.setitem(
+        BillComparisonThrottle.THROTTLE_RATES,
+        "bill_comparison_anon",
+        "2/min",
+    )
+    monkeypatch.setitem(
+        BillComparisonThrottle.THROTTLE_RATES,
+        "bill_comparison_user",
+        "1/min",
+    )
+    user = get_user_model().objects.create_user(
+        username="comparison-user",
+        email="comparison@example.com",
+        password="not-used-in-this-test",
+    )
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+    cache.clear()
+
+    first = client.get("/api/bills/1/comparisons/contracts/")
+    second = client.get("/api/bills/1/comparisons/contracts/")
+
+    assert first.status_code == 400
+    assert second.status_code == 429
+
+
 class FakeRemoteStorage:
     def url(self, object_key):
         return f"https://documents.example.com/{object_key}?signature=abc"
@@ -359,6 +391,7 @@ def test_public_document_download_uses_the_stored_object_url(monkeypatch):
         {
             "id": document.id,
             "version_label": "Introduced",
+            "source_order": None,
             "is_active_version": False,
             "content_type": "application/pdf",
             "file_size_bytes": 123,

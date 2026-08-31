@@ -309,7 +309,7 @@ def bill_text_list(congress, bill_type, bill_number):
     if isinstance(versions, dict):
         versions = versions.get("count", []) or []
     result = []
-    for v in versions if isinstance(versions, list) else []:
+    for source_order, v in enumerate(versions if isinstance(versions, list) else [], start=1):
         label = v.get("type") or v.get("version") or v.get("label") or "unknown"
         # Congress's top-level version URL is a metadata/referrer endpoint. The
         # downloadable document is exposed in the nested formats collection.
@@ -336,7 +336,13 @@ def bill_text_list(congress, bill_type, bill_number):
             preferred_urls.append((preference, index, format_entry["url"]))
 
         url = min(preferred_urls)[2] if preferred_urls else v.get("url")
-        result.append({"version_label": str(label), "url": url or ""})
+        result.append(
+            {
+                "version_label": str(label),
+                "url": url or "",
+                "source_order": source_order,
+            }
+        )
     logger.info(
         "bill_text_list: congress=%s bill_type=%s bill_number=%s -> %s versions",
         congress,

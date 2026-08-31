@@ -1536,6 +1536,47 @@ def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_documen
 
 
 @pytest.mark.django_db
+def test_process_bill_versions_persists_source_order_for_comparison_predecessors(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        status="Introduced",
+    )
+    monkeypatch.setattr(
+        tasks,
+        "bill_text_list",
+        lambda *args: [
+            {
+                "version_label": "Introduced",
+                "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.xml",
+                "source_order": 1,
+            },
+            {
+                "version_label": "Engrossed",
+                "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1eh.xml",
+                "source_order": 2,
+            },
+        ],
+    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    tasks.process_bill_versions(bill.id)
+
+    assert list(
+        BillDocument.objects.filter(bill=bill)
+        .order_by("source_order")
+        .values_list("version_label", "source_order", "is_active_version")
+    ) == [
+        ("Introduced", 1, False),
+        ("Engrossed", 2, True),
+    ]
+
+
+@pytest.mark.django_db
 def test_process_bill_versions_enqueues_metadata_contract_when_no_text_versions_exist(
     monkeypatch,
 ):
@@ -2293,3 +2334,43 @@ def test_sync_representatives_does_not_retire_existing_members_after_an_incomple
     stale.refresh_from_db()
     assert stale.is_current is True
     assert not Representative.objects.filter(bioguide_id="C000001").exists()
+
+
+@pytest.mark.django_db
+def test_sync_representatives_rejects_mismatched_member_detail_identity(monkeypatch):
+    current_member = Representative.objects.create(
+        bioguide_id="C000001",
+        name="Current Member",
+        chamber="house",
+        party="Independent",
+        state="CA",
+        is_current=True,
+    )
+    monkeypatch.setattr(
+        tasks,
+        "member_list",
+        lambda congress, current_member=True, limit=250, offset=0: (
+            [{"bioguideId": "C000001", "name": "Doe, Jane"}]
+            if offset == 0
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "member_detail",
+        lambda _bioguide_id: {
+            "bioguideId": "W000001",
+            "directOrderName": "Wrong Member",
+            "currentMember": True,
+        },
+    )
+
+    with pytest.raises(
+        CongressAPIError,
+        match="detail identity did not match requested Bioguide ID",
+    ):
+        tasks.sync_representatives(congress=119)
+
+    current_member.refresh_from_db()
+    assert current_member.is_current is True
+    assert not Representative.objects.filter(bioguide_id="W000001").exists()

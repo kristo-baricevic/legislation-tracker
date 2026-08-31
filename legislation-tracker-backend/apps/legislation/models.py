@@ -97,6 +97,9 @@ class BillDocument(models.Model):
     version_label = models.CharField(
         max_length=50
     )  # introduced, amended, engrossed, enrolled
+    # Position in the official text-version list. This is source chronology,
+    # intentionally distinct from the asynchronous download completion time.
+    source_order = models.PositiveIntegerField(null=True, blank=True)
     is_active_version = models.BooleanField(default=False, db_index=True)
     object_storage_key = models.CharField(max_length=512, null=True, blank=True)
     content_type = models.CharField(max_length=128, null=True, blank=True)

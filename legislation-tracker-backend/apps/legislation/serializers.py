@@ -81,6 +81,7 @@ class BillDocumentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "version_label",
+            "source_order",
             "is_active_version",
             "content_type",
             "file_size_bytes",

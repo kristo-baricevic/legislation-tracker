@@ -25,7 +25,6 @@ class DocumentSectionQuerySerializer(ComparisonQuerySerializer):
 
 
 class BillContractComparisonView(APIView):
-    authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [BillComparisonThrottle]
 
@@ -57,7 +56,6 @@ class BillContractComparisonView(APIView):
 
 
 class BillDocumentComparisonView(APIView):
-    authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [BillComparisonThrottle]
 
@@ -91,7 +89,6 @@ class BillDocumentComparisonView(APIView):
 
 
 class BillDocumentSectionComparisonView(APIView):
-    authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [BillComparisonThrottle]
 

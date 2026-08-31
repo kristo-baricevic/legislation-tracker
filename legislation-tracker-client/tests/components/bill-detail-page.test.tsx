@@ -77,6 +77,7 @@ describe("BillDetailPage", () => {
         {
           id: 9,
           version_label: "Introduced",
+          source_order: 1,
           is_active_version: true,
           content_type: "application/pdf",
           file_size_bytes: 123,

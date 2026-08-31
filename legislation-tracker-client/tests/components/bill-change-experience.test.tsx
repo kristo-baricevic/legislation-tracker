@@ -68,11 +68,11 @@ describe("BillChangeExperience", () => {
     expect(screen.queryByRole("button", { name: /Mark .* as seen/ })).toBeNull();
   });
 
-  it("uses the active document and newest inactive predecessor regardless of API order", () => {
+  it("uses the source predecessor even when an older version is re-downloaded last", () => {
     const pair = selectDocumentComparisonPair([
-      { id: 3, version_label: "old", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-01T00:00:00Z", download_url: null, text_url: null },
-      { id: 1, version_label: "active", is_active_version: true, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-02T00:00:00Z", download_url: null, text_url: null },
-      { id: 4, version_label: "new predecessor", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-03T00:00:00Z", download_url: null, text_url: null },
+      { id: 3, version_label: "introduced", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-03T00:00:00Z", download_url: null, text_url: null, source_order: 1 },
+      { id: 1, version_label: "active", is_active_version: true, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-02T00:00:00Z", download_url: null, text_url: null, source_order: 3 },
+      { id: 4, version_label: "engrossed", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-01T00:00:00Z", download_url: null, text_url: null, source_order: 2 },
     ]);
 
     expect(pair?.map((document) => document.id)).toEqual([4, 1]);
@@ -177,8 +177,8 @@ describe("BillChangeExperience", () => {
       { id: 2, schema_version: "1", contract_json: {}, contract_hash: "b", computed_at: "2026-01-02T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
     ];
     const documents = [
-      { id: 1, version_label: "old", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-01T00:00:00Z", download_url: null, text_url: null },
-      { id: 2, version_label: "active", is_active_version: true, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-02T00:00:00Z", download_url: null, text_url: null },
+      { id: 1, version_label: "old", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-01T00:00:00Z", download_url: null, text_url: null, source_order: 1 },
+      { id: 2, version_label: "active", is_active_version: true, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-02T00:00:00Z", download_url: null, text_url: null, source_order: 2 },
     ];
     render(<BillChangeExperience billId={10} contracts={contracts} documents={documents} />);
 

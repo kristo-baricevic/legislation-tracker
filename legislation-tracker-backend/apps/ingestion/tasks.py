@@ -526,7 +526,15 @@ def sync_representatives(congress=None):
         bioguide_id = summary.get("bioguideId") or summary.get("bioguide_id")
         if not bioguide_id:
             raise CongressAPIError("Congress member list entry is missing bioguideId")
-        detail = member_detail(bioguide_id)
+        expected_id = str(bioguide_id).strip()
+        detail = member_detail(expected_id)
+        returned_id = str(
+            detail.get("bioguideId") or detail.get("bioguide_id") or ""
+        ).strip()
+        if returned_id != expected_id:
+            raise CongressAPIError(
+                "Congress member detail identity did not match requested Bioguide ID"
+            )
         profiles.append(
             (
                 _member_profile(summary, detail),
@@ -1627,15 +1635,33 @@ def _process_bill_versions_impl(bill_id):
     for i, v in enumerate(versions):
         label = v.get("version_label") or v.get("url") or f"v{i}"
         url = v.get("url") or ""
+        source_order = v.get("source_order", i + 1)
+        try:
+            source_order = int(source_order)
+        except (TypeError, ValueError) as exc:
+            raise CongressAPIError("Congress bill text version has an invalid source order") from exc
+        if source_order < 1:
+            raise CongressAPIError("Congress bill text version has an invalid source order")
         doc, created = BillDocument.objects.get_or_create(
             bill=bill,
             version_label=label[:50],
-            defaults={"source_url": url or None, "is_active_version": False},
+            defaults={
+                "source_url": url or None,
+                "source_order": source_order,
+                "is_active_version": False,
+            },
         )
         source_url_changed = not created and (doc.source_url or "") != url
+        source_order_changed = not created and doc.source_order != source_order
+        update_fields = []
         if source_url_changed:
             doc.source_url = url or None
-            doc.save(update_fields=["source_url"])
+            update_fields.append("source_url")
+        if source_order_changed:
+            doc.source_order = source_order
+            update_fields.append("source_order")
+        if update_fields:
+            doc.save(update_fields=update_fields)
         if i == len(versions) - 1:
             BillDocument.objects.filter(bill=bill).update(is_active_version=False)
             doc.is_active_version = True
