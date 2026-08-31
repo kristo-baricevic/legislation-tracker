@@ -223,6 +223,75 @@ def bill_actions(congress, bill_type, bill_number, limit=250):
     return actions
 
 
+def _paginated_bill_collection(congress, bill_type, bill_number, collection, key):
+    """Fetch a complete offset-paginated bill collection without silent loops."""
+
+    bill_type = (bill_type or "hr").lower()
+    offset = 0
+    limit = 250
+    seen_pages = set()
+    items = []
+    while True:
+        data = _request(
+            "GET",
+            f"bill/{congress}/{bill_type}/{bill_number}/{collection}",
+            params={"limit": limit, "offset": offset},
+        )
+        page = data.get(key) or []
+        if not isinstance(page, list):
+            raise CongressAPIError(
+                f"Congress bill {collection} returned an invalid {key} payload"
+            )
+        fingerprint = tuple(
+            str(entry.get("url") or entry.get("bioguideId") or entry)
+            for entry in page
+            if isinstance(entry, dict)
+        )
+        if fingerprint in seen_pages and page:
+            raise CongressAPIError(
+                f"Congress bill {collection} pagination repeated a page"
+            )
+        seen_pages.add(fingerprint)
+        items.extend(entry for entry in page if isinstance(entry, dict))
+        if len(page) < limit:
+            break
+        offset += limit
+    _throttle()
+    return items
+
+
+def bill_cosponsors(congress, bill_type, bill_number):
+    """Return all official cosponsor records for a bill."""
+
+    return _paginated_bill_collection(
+        congress,
+        bill_type,
+        bill_number,
+        "cosponsors",
+        "cosponsors",
+    )
+
+
+def bill_committees(congress, bill_type, bill_number):
+    """Return all official committee relationships for a bill."""
+
+    return _paginated_bill_collection(
+        congress,
+        bill_type,
+        bill_number,
+        "committees",
+        "committees",
+    )
+
+
+def committee_detail(chamber, system_code):
+    """Return one official committee by its canonical Congress.gov system code."""
+
+    data = _request("GET", f"committee/{chamber}/{system_code}")
+    _throttle()
+    return data.get("committee") or data
+
+
 def bill_text_list(congress, bill_type, bill_number):
     """
     GET /bill/{congress}/{billType}/{billNumber}/text.

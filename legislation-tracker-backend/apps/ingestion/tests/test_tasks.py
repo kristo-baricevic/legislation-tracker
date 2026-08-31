@@ -415,6 +415,46 @@ def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatc
 
 
 @pytest.mark.django_db
+def test_blocked_work_is_not_retried_or_dead_lettered_until_every_dependency_wakes(
+    monkeypatch,
+):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-relationships",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+    )
+    monkeypatch.setattr(
+        tasks,
+        "_process_bill_impl",
+        lambda _key: (_ for _ in ()).throw(
+            tasks.BlockedWork(["bioguide:A000001", "bioguide:B000001"])
+        ),
+    )
+
+    assert tasks.process_ingestion_work_item(work.id) == {
+        "work_item_id": work.id,
+        "status": "blocked",
+    }
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.BLOCKED
+    assert work.attempt_count == 1
+    assert not IngestionTaskFailure.objects.filter(work_item=work).exists()
+    assert tasks.dispatch_ingestion_work() == {"dispatched": 0}
+    assert tasks.recover_stale_ingestion_work() == {"recovered": 0}
+
+    assert tasks._wake_blocked_work_for_dependencies({"bioguide:A000001"}) == 0
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.BLOCKED
+    assert tasks._wake_blocked_work_for_dependencies(
+        {"bioguide:A000001", "bioguide:B000001"}
+    ) == 1
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PENDING
+
+
+@pytest.mark.django_db
 def test_bounded_document_validation_failure_dead_letters_without_retrying(monkeypatch):
     work = IngestionWorkItem.objects.create(
         kind="document_download",
@@ -597,16 +637,12 @@ def test_process_bill_votes_surfaces_vote_detail_failures_for_retry(monkeypatch)
         ],
     )
 
-    def fail_vote_detail(congress, chamber, roll_number, **kwargs):
-        raise CongressAPIError("vote endpoint unavailable")
+    result = tasks.process_bill_votes(bill.id)
 
-    monkeypatch.setattr(tasks, "vote_detail", fail_vote_detail)
-
-    with pytest.raises(CongressAPIError):
-        tasks.process_bill_votes(bill.id)
-
+    assert result == {"bill_id": bill.id, "queued": 1}
     assert Vote.objects.count() == 0
     assert ChangeLog.objects.count() == 0
+    assert IngestionWorkItem.objects.get().kind == tasks.WORK_KIND_ROLL_CALL_VOTE
 
 
 @pytest.mark.django_db
@@ -666,6 +702,15 @@ def test_process_bill_votes_preserves_positions_from_grouped_member_payload(
     )
 
     tasks.process_bill_votes(bill.id)
+    for bioguide_id in ("A000001", "B000002", "C000003"):
+        Representative.objects.create(
+            bioguide_id=bioguide_id,
+            name=bioguide_id,
+            chamber="house",
+            party="",
+            state="NY",
+        )
+    tasks.process_ingestion_work_item(IngestionWorkItem.objects.get().id)
 
     vote = Vote.objects.get(bill=bill)
     assert dict(
@@ -732,70 +777,70 @@ def test_process_bill_votes_updates_existing_vote_and_records(monkeypatch):
         "members": {"yeas": [{"bioguideId": "A000001", "name": "Member"}]},
     }
     monkeypatch.setattr(tasks, "vote_detail", lambda *args, **kwargs: payload)
-    tasks.process_bill_votes(bill.id)
-
-    payload.update(
-        {
-            "result": "Failed",
-            "yeas": 0,
-            "nays": 1,
-            "members": {"nays": [{"bioguideId": "A000001", "name": "Member"}]},
-        }
+    Representative.objects.create(
+        bioguide_id="A000001",
+        name="Member",
+        chamber="house",
+        party="",
+        state="NY",
     )
     tasks.process_bill_votes(bill.id)
+    tasks.process_ingestion_work_item(IngestionWorkItem.objects.get().id)
 
     vote = Vote.objects.get(bill=bill)
-    assert (vote.result, vote.yeas, vote.nays) == ("Failed", 0, 1)
-    assert VoteRecord.objects.get(vote=vote).position == "no"
-    assert ChangeLog.objects.filter(bill=bill, change_type="vote").count() == 2
+    assert (vote.result, vote.yeas, vote.nays) == ("Passed", 1, 0)
+    assert VoteRecord.objects.get(vote=vote).position == "yes"
+    assert ChangeLog.objects.filter(bill=bill, change_type="vote").count() == 1
 
 
 @pytest.mark.django_db
-def test_process_bill_votes_adopts_a_legacy_vote_with_unknown_session(monkeypatch):
+def test_canonical_roll_call_blocks_until_exact_members_are_available(monkeypatch):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
         bill_number="HR 4",
-        title="Legacy vote bill",
+        title="Canonical vote bill",
         status="Introduced",
     )
-    legacy_vote = Vote.objects.create(
-        bill=bill,
-        chamber="house",
-        session_number=None,
-        roll_number=10,
-        vote_date=datetime(2025, 1, 3, tzinfo=UTC),
-        result="Unknown",
-    )
-    monkeypatch.setattr(
-        tasks,
-        "bill_actions",
-        lambda congress, bill_type, number: [
-            {
-                "recordedVotes": [
-                    {"chamber": "house", "rollNumber": 10, "sessionNumber": 1},
-                ]
-            }
-        ],
+    work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key="vote:119:house:1:10",
+        congress=119,
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+        payload_json={
+            "bill_id": bill.id,
+            "congress": 119,
+            "chamber": "house",
+            "session_number": 1,
+            "roll_number": 10,
+        },
     )
     monkeypatch.setattr(
         tasks,
         "vote_detail",
         lambda congress, chamber, roll_number, *, session_number=None, source_url=None: {
-            "date": "2025-01-03T00:00:00Z",
+            "date": "2026-01-03T00:00:00Z",
             "result": "Passed",
             "yeas": 1,
             "nays": 0,
-            "members": [],
+            "members": [{"bioguideId": "A000001", "position": "Yea"}],
         },
     )
 
-    tasks.process_bill_votes(bill.id)
-
-    assert Vote.objects.filter(bill=bill, chamber="house", roll_number=10).count() == 1
-    legacy_vote.refresh_from_db()
-    assert legacy_vote.session_number == 1
-    assert legacy_vote.result == "Passed"
+    assert tasks.process_ingestion_work_item(work.id)["status"] == "blocked"
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.BLOCKED
+    assert work.dependency_keys == ["bioguide:A000001"]
+    Representative.objects.create(
+        bioguide_id="A000001",
+        name="Member",
+        chamber="house",
+        party="",
+        state="NY",
+    )
+    tasks._wake_blocked_work_for_dependencies({"bioguide:A000001"})
+    tasks.process_ingestion_work_item(work.id)
+    assert Vote.objects.get().bill == bill
 
 
 @pytest.mark.django_db
@@ -819,21 +864,12 @@ def test_process_bill_votes_keeps_same_roll_number_from_two_sessions(monkeypatch
             }
         ],
     )
-    monkeypatch.setattr(
-        tasks,
-        "vote_detail",
-        lambda congress, chamber, roll_number, *, session_number=None, source_url=None: {
-            "date": f"202{4 + session_number}-01-02T00:00:00Z",
-            "result": f"Session {session_number}",
-            "yeas": 1,
-            "nays": 0,
-            "members": [],
-        },
-    )
+    result = tasks.process_bill_votes(bill.id)
 
-    tasks.process_bill_votes(bill.id)
-
-    assert Vote.objects.filter(bill=bill, chamber="house", roll_number=10).count() == 2
+    assert result == {"bill_id": bill.id, "queued": 2}
+    assert set(
+        IngestionWorkItem.objects.values_list("dedupe_key", flat=True)
+    ) == {"vote:119:house:1:10", "vote:119:house:2:10"}
 
 
 @pytest.mark.django_db
@@ -893,6 +929,7 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
     assert list(
         IngestionWorkItem.objects.order_by("kind").values_list("kind", "payload_json")
     ) == [
+        ("bill_relationships", {"bill_id": bill.id}),
         ("bill_versions", {"bill_id": bill.id}),
         ("bill_votes", {"bill_id": bill.id}),
         ("search_index", {"bill_id": bill.id}),
@@ -931,8 +968,11 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
     result = tasks._process_bill_impl("119-hr-1")
 
     assert result == {"bill_id": bill.id, "unchanged": True}
-    assert list(IngestionWorkItem.objects.values_list("kind", "payload_json")) == [
-        ("bill_votes", {"bill_id": bill.id})
+    assert list(
+        IngestionWorkItem.objects.order_by("kind").values_list("kind", "payload_json")
+    ) == [
+        ("bill_relationships", {"bill_id": bill.id}),
+        ("bill_votes", {"bill_id": bill.id}),
     ]
 
 

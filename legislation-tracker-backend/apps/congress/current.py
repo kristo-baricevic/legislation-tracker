@@ -40,3 +40,23 @@ def current_congress(on_date=None) -> int:
     if civil_date.year % 2 and (civil_date.month, civil_date.day) < (1, 3):
         start_year -= 2
     return ((start_year - 1789) // 2) + 1
+
+
+def current_congress_session(on_date=None) -> int:
+    """Return session 1 or 2 for the Congress active on the supplied date."""
+
+    if on_date is None:
+        civil_date = timezone.now().astimezone(WASHINGTON_DC).date()
+    elif isinstance(on_date, datetime):
+        instant = on_date
+        if timezone.is_naive(instant):
+            instant = instant.replace(tzinfo=WASHINGTON_DC)
+        civil_date = instant.astimezone(WASHINGTON_DC).date()
+    elif isinstance(on_date, date):
+        civil_date = on_date
+    else:
+        raise TypeError("on_date must be a date, datetime, or None")
+
+    congress = current_congress(civil_date)
+    congress_start_year = 1789 + (congress - 1) * 2
+    return 1 if civil_date.year == congress_start_year else 2

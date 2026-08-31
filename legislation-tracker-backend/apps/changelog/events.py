@@ -95,9 +95,30 @@ _EVENT_KEYS = {
     "new_version": {"document_id", "version_label", "content_hash", "is_active_version"},
     "contract_update": {"contract_id", "contract_hash", "schema_version"},
     "topic_update": {"topics", "contract_id"},
-    "vote": {"vote_id", "chamber", "roll_number", "result"},
-    "committee_update": {"committee_ids"},
-    "cosponsor_update": {"representative_ids"},
+    "vote": {
+        "vote_id",
+        "congress",
+        "chamber",
+        "session_number",
+        "roll_number",
+        "result",
+        "yeas",
+        "nays",
+    },
+    "committee_update": {
+        "added",
+        "removed",
+        "added_count",
+        "removed_count",
+        "truncated",
+    },
+    "cosponsor_update": {
+        "added",
+        "removed",
+        "added_count",
+        "removed_count",
+        "truncated",
+    },
 }
 
 

@@ -469,6 +469,7 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
         {
             "id": vote.id,
             "bill": bill.id,
+            "congress": 119,
             "chamber": "house",
             "session_number": 1,
             "roll_number": 17,
@@ -476,6 +477,8 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
             "result": "Passed",
             "yeas": 220,
             "nays": 210,
+            "question": "",
+            "source_url": "",
         }
     ]
     assert detail.status_code == 200

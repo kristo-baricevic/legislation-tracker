@@ -64,6 +64,18 @@ WORK_KIND_BILL = "bill"
 WORK_KIND_BILL_VERSIONS = "bill_versions"
 WORK_KIND_BILL_VOTES = "bill_votes"
 WORK_KIND_DOCUMENT_DOWNLOAD = "document_download"
+WORK_KIND_BILL_RELATIONSHIPS = "bill_relationships"
+WORK_KIND_ROLL_CALL_VOTE = "roll_call_vote"
+WORK_KIND_REPRESENTATIVE_DETAIL = "representative_detail"
+
+
+class BlockedWork(Exception):
+    """Work that is valid but cannot proceed until exact identities exist."""
+
+    def __init__(self, dependency_keys: list[str], reason="blocked_on_dependencies"):
+        super().__init__(reason)
+        self.dependency_keys = sorted(set(dependency_keys))
+        self.reason = reason
 
 
 def _queue_bill_stage(bill, kind, *, source_updated_at=None):
@@ -75,6 +87,53 @@ def _queue_bill_stage(bill, kind, *, source_updated_at=None):
         jurisdiction=bill.jurisdiction,
         congress=bill.session,
     )
+
+
+def _queue_bill_relationships(bill, *, source_updated_at=None):
+    return _queue_bill_stage(
+        bill,
+        WORK_KIND_BILL_RELATIONSHIPS,
+        source_updated_at=source_updated_at,
+    )
+
+
+def _wake_blocked_work_for_dependencies(dependency_keys: set[str]) -> int:
+    """Make rows ready only when every persisted exact dependency is satisfied."""
+
+    if not dependency_keys:
+        return 0
+    now = timezone.now()
+    woken = 0
+    with transaction.atomic():
+        candidates = IngestionWorkItem.objects.select_for_update().filter(
+            status=IngestionWorkStatus.BLOCKED
+        )
+        for item in candidates:
+            dependencies = set(item.dependency_keys or [])
+            resolved = set(dependency_keys)
+            for dependency in dependencies:
+                if dependency.startswith("bioguide:"):
+                    bioguide_id = dependency.removeprefix("bioguide:")
+                    if Representative.objects.filter(bioguide_id=bioguide_id).exists():
+                        resolved.add(dependency)
+            if dependencies and dependencies.issubset(resolved):
+                item.status = IngestionWorkStatus.PENDING
+                item.available_at = now
+                item.lease_expires_at = None
+                item.dispatch_token = ""
+                item.last_error = ""
+                item.save(
+                    update_fields=[
+                        "status",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                woken += 1
+    return woken
 
 
 def _queue_document_download(document):
@@ -316,6 +375,29 @@ def _member_profile(summary, detail):
         "source_api_url": member.get("url") or None,
         "is_current": bool(member.get("currentMember", True)),
     }
+
+
+def _process_representative_detail_impl(bioguide_id: str):
+    """Upsert one profile only after proving the response identity is exact."""
+
+    expected_id = str(bioguide_id).strip()
+    detail = member_detail(expected_id)
+    returned_id = str(
+        detail.get("bioguideId") or detail.get("bioguide_id") or ""
+    ).strip()
+    if returned_id != expected_id:
+        raise CongressAPIError(
+            "Congress member detail identity did not match requested Bioguide ID"
+        )
+    profile = _member_profile({"bioguideId": expected_id}, detail)
+    with transaction.atomic():
+        persisted_id = profile.pop("bioguide_id")
+        Representative.objects.update_or_create(
+            bioguide_id=persisted_id,
+            defaults={**profile, "last_seen_at": timezone.now()},
+        )
+    woken = _wake_blocked_work_for_dependencies({f"bioguide:{expected_id}"})
+    return {"bioguide_id": expected_id, "woken": woken}
 
 
 @shared_task(
@@ -612,6 +694,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         if work_item.status in (
             IngestionWorkStatus.SUCCEEDED,
             IngestionWorkStatus.DEAD,
+            IngestionWorkStatus.BLOCKED,
         ):
             return {"work_item_id": work_item.id, "status": work_item.status}
         if dispatch_token and work_item.dispatch_token != dispatch_token:
@@ -641,6 +724,32 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
 
     try:
         _process_durable_work(work_item)
+    except BlockedWork as exc:
+        with transaction.atomic():
+            work_item = IngestionWorkItem.objects.select_for_update().get(
+                pk=work_item_id
+            )
+            if (
+                work_item.status != IngestionWorkStatus.PROCESSING
+                or work_item.dispatch_token != claimed_dispatch_token
+            ):
+                return {"work_item_id": work_item.id, "status": "superseded"}
+            work_item.status = IngestionWorkStatus.BLOCKED
+            work_item.dependency_keys = exc.dependency_keys
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.last_error = exc.reason
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "dependency_keys",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+        return {"work_item_id": work_item_id, "status": "blocked"}
     except Exception as exc:
         error_message = str(exc)[:10000]
         with transaction.atomic():
@@ -741,6 +850,14 @@ def _process_durable_work(work_item):
         return _process_bill_versions_impl(payload["bill_id"])
     if work_item.kind == WORK_KIND_BILL_VOTES:
         return _process_bill_votes_impl(payload["bill_id"])
+    if work_item.kind == WORK_KIND_BILL_RELATIONSHIPS:
+        from apps.congress.relationship_sync import sync_bill_relationships
+
+        return sync_bill_relationships(bill_id=payload["bill_id"])
+    if work_item.kind == WORK_KIND_REPRESENTATIVE_DETAIL:
+        return _process_representative_detail_impl(payload["bioguide_id"])
+    if work_item.kind == WORK_KIND_ROLL_CALL_VOTE:
+        return _process_roll_call_vote_impl(work_item)
     if work_item.kind == WORK_KIND_DOCUMENT_DOWNLOAD:
         return _download_document_impl(payload["document_id"])
 
@@ -1060,6 +1177,7 @@ def _process_bill_impl(bill_key_str):
                             bill.id,
                         )
                     _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
+                    _queue_bill_relationships(bill)
                 except Exception:
                     logger.exception(
                         "process_bill: failed to enqueue versions/votes bill_id=%s",
@@ -1117,6 +1235,7 @@ def _process_bill_impl(bill_key_str):
     try:
         _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
         _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
+        _queue_bill_relationships(bill)
         from apps.legislation.tasks import enqueue_search_index
 
         enqueue_search_index(bill)
@@ -1247,6 +1366,240 @@ def process_bill_votes(self, bill_id):
     return _process_bill_votes_impl(bill_id)
 
 
+def _queue_roll_call_vote(*, bill, reference: dict):
+    chamber = str(reference.get("chamber") or reference.get("chamberCode") or "").casefold()
+    if chamber not in {"house", "senate"}:
+        raise CongressAPIError("recorded vote has an unsupported chamber")
+    try:
+        session_number = int(
+            reference.get("sessionNumber") or reference.get("session_number")
+        )
+        roll_number = int(reference.get("rollNumber") or reference.get("roll_number"))
+    except (TypeError, ValueError) as exc:
+        raise CongressAPIError("recorded vote is missing session or roll number") from exc
+    source_updated_at = _parse_congress_update_datetime(
+        reference.get("updateDate") or reference.get("actionDate")
+    ) or timezone.now()
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key=(
+            f"vote:{bill.session}:{chamber}:{session_number}:{roll_number}"
+        ),
+        source_updated_at=source_updated_at,
+        congress=bill.session,
+        payload_json={
+            "bill_id": bill.id,
+            "congress": bill.session,
+            "chamber": chamber,
+            "session_number": session_number,
+            "roll_number": roll_number,
+            "source_url": str(reference.get("url") or "")[:1024],
+        },
+    )
+
+
+def _normalize_vote_position(value: object) -> str:
+    raw = str(value or "").strip().casefold()
+    return {
+        "aye": "yes",
+        "ayes": "yes",
+        "yea": "yes",
+        "yeas": "yes",
+        "yes": "yes",
+        "nay": "no",
+        "nays": "no",
+        "no": "no",
+        "present": "present",
+        "not voting": "not_voting",
+        "not_voting": "not_voting",
+    }.get(raw, "other")
+
+
+def _normalized_vote_members(raw_members, *, chamber: str) -> list[dict]:
+    if isinstance(raw_members, dict):
+        members = []
+        for key, default_position in (
+            ("yeas", "yes"),
+            ("ayes", "yes"),
+            ("nays", "no"),
+            ("noes", "no"),
+            ("present", "present"),
+            ("notVoting", "not_voting"),
+        ):
+            for member in raw_members.get(key, []):
+                if isinstance(member, dict):
+                    members.append({**member, "position": member.get("position") or default_position})
+    elif isinstance(raw_members, list):
+        members = raw_members
+    else:
+        raise CongressAPIError("roll-call detail has an invalid voter collection")
+
+    normalized = []
+    seen = set()
+    for member in members:
+        if not isinstance(member, dict):
+            raise CongressAPIError("roll-call detail contains an invalid voter")
+        bioguide_id = str(
+            member.get("bioguideId") or member.get("bioguide_id") or ""
+        ).strip()
+        if not bioguide_id:
+            raise CongressAPIError("roll-call detail contains a voter without Bioguide ID")
+        if bioguide_id in seen:
+            raise CongressAPIError("roll-call detail contains duplicate voter identities")
+        seen.add(bioguide_id)
+        raw_position = str(member.get("position") or member.get("vote") or "").strip()
+        normalized.append(
+            {
+                "bioguide_id": bioguide_id,
+                "position": _normalize_vote_position(raw_position),
+                "raw_position": raw_position[:100],
+                "chamber": chamber,
+            }
+        )
+    if not normalized:
+        raise CongressAPIError("roll-call detail contains no voters")
+    return normalized
+
+
+def _parse_vote_datetime(value):
+    if isinstance(value, datetime):
+        return _ensure_utc_aware(value)
+    if isinstance(value, str):
+        try:
+            return _ensure_utc_aware(datetime.fromisoformat(value.replace("Z", "+00:00")))
+        except ValueError:
+            pass
+    raise CongressAPIError("roll-call detail has no valid vote date")
+
+
+def _process_roll_call_vote_impl(work_item):
+    """Persist a complete official roll call after all exact members are known."""
+
+    payload = work_item.payload_json
+    congress = int(payload["congress"])
+    chamber = str(payload["chamber"])
+    session_number = int(payload["session_number"])
+    roll_number = int(payload["roll_number"])
+    vote_data = vote_detail(
+        congress,
+        chamber,
+        roll_number,
+        session_number=session_number,
+        source_url=payload.get("source_url") or None,
+    )
+    members = _normalized_vote_members(
+        vote_data.get("members") or vote_data.get("votes"), chamber=chamber
+    )
+    known = set(
+        Representative.objects.filter(
+            bioguide_id__in=[member["bioguide_id"] for member in members]
+        ).values_list("bioguide_id", flat=True)
+    )
+    missing = {member["bioguide_id"] for member in members} - known
+    if missing:
+        for bioguide_id in missing:
+            enqueue_ingestion_work(
+                kind=WORK_KIND_REPRESENTATIVE_DETAIL,
+                dedupe_key=f"bioguide:{bioguide_id}",
+                source_updated_at=work_item.source_updated_at,
+                congress=congress,
+                payload_json={"bioguide_id": bioguide_id},
+            )
+        raise BlockedWork([f"bioguide:{bioguide_id}" for bioguide_id in missing])
+
+    vote_date = _parse_vote_datetime(vote_data.get("date") or vote_data.get("voteDate"))
+    bill = None
+    bill_id = payload.get("bill_id")
+    if bill_id is not None:
+        bill = Bill.objects.filter(pk=bill_id, session=congress).first()
+        if bill is None:
+            raise ValueError("roll-call work references a missing bill")
+    result = str(vote_data.get("result") or vote_data.get("question") or "unknown")[:50]
+    question = str(vote_data.get("question") or "")
+    with transaction.atomic():
+        vote, created = Vote.objects.select_for_update().get_or_create(
+            congress=congress,
+            chamber=chamber,
+            session_number=session_number,
+            roll_number=roll_number,
+            defaults={
+                "bill": bill,
+                "vote_date": vote_date,
+                "result": result,
+                "question": question,
+                "source_url": str(payload.get("source_url") or "")[:1024],
+                "yeas": int(vote_data.get("yeas") or 0),
+                "nays": int(vote_data.get("nays") or 0),
+            },
+        )
+        changed = created
+        for field, value in {
+            "bill": bill or vote.bill,
+            "vote_date": vote_date,
+            "result": result,
+            "question": question,
+            "source_url": str(payload.get("source_url") or "")[:1024],
+            "yeas": int(vote_data.get("yeas") or 0),
+            "nays": int(vote_data.get("nays") or 0),
+        }.items():
+            if getattr(vote, field) != value:
+                setattr(vote, field, value)
+                changed = True
+        if changed and not created:
+            vote.save()
+        representative_by_id = {
+            representative.bioguide_id: representative
+            for representative in Representative.objects.filter(
+                bioguide_id__in=[member["bioguide_id"] for member in members]
+            )
+        }
+        member_ids = set()
+        for member in members:
+            representative = representative_by_id[member["bioguide_id"]]
+            member_ids.add(representative.id)
+            record, record_created = VoteRecord.objects.get_or_create(
+                vote=vote,
+                representative=representative,
+                defaults={
+                    "position": member["position"],
+                    "raw_position": member["raw_position"],
+                },
+            )
+            if not record_created and (
+                record.position != member["position"]
+                or record.raw_position != member["raw_position"]
+            ):
+                record.position = member["position"]
+                record.raw_position = member["raw_position"]
+                record.save(update_fields=["position", "raw_position"])
+                changed = True
+            changed = changed or record_created
+        deleted, _ = VoteRecord.objects.filter(vote=vote).exclude(
+            representative_id__in=member_ids
+        ).delete()
+        changed = changed or bool(deleted)
+        if changed and bill is not None:
+            record_bill_change(
+                bill=bill,
+                change_type="vote",
+                new_value={
+                    "vote_id": vote.id,
+                    "congress": congress,
+                    "chamber": chamber,
+                    "session_number": session_number,
+                    "roll_number": roll_number,
+                    "result": vote.result,
+                    "yeas": vote.yeas,
+                    "nays": vote.nays,
+                },
+                event_key=(
+                    f"vote:{congress}:{chamber}:{session_number}:{roll_number}:"
+                    f"{work_item.source_updated_at.isoformat()}"
+                ),
+            )
+    return {"vote_id": vote.id, "created_or_updated": changed, "member_count": len(members)}
+
+
 def _process_bill_votes_impl(bill_id):
     """Fetch vote refs from bill detail, create Vote/VoteRecord/Representative, insert ChangeLog(vote)."""
     logger.info("process_bill_votes: starting bill_id=%s", bill_id)
@@ -1270,6 +1623,19 @@ def _process_bill_votes_impl(bill_id):
                 for recorded_vote in recorded_votes
                 if isinstance(recorded_vote, dict)
             )
+    queued = 0
+    for reference in votes_refs:
+        _queue_roll_call_vote(bill=bill, reference=reference)
+        queued += 1
+    logger.info(
+        "process_bill_votes: queued canonical roll calls bill_id=%s count=%s",
+        bill_id,
+        queued,
+    )
+    return {"bill_id": bill_id, "queued": queued}
+
+    # Kept below temporarily only for migration archaeology. All production
+    # calls return through the canonical durable work path above.
     votes_created = 0
     for ref in votes_refs:
         if not isinstance(ref, dict):

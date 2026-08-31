@@ -6,6 +6,7 @@ class IngestionWorkStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     DISPATCHED = "dispatched", "Dispatched"
     PROCESSING = "processing", "Processing"
+    BLOCKED = "blocked", "Blocked"
     SUCCEEDED = "succeeded", "Succeeded"
     DEAD = "dead", "Dead"
 
@@ -45,6 +46,10 @@ class IngestionWorkItem(models.Model):
     congress = models.PositiveIntegerField(null=True, blank=True)
     source_updated_at = models.DateTimeField()
     payload_json = models.JSONField(default=dict, blank=True)
+    # Exact external identities required before this work can be processed.
+    # A blocked row is intentionally not retried or dead-lettered: the detail
+    # worker that satisfies its identities wakes it explicitly.
+    dependency_keys = models.JSONField(default=list, blank=True)
     status = models.CharField(
         max_length=20,
         choices=IngestionWorkStatus.choices,
@@ -79,6 +84,34 @@ class IngestionWorkItem(models.Model):
 
     def __str__(self):
         return f"{self.kind}:{self.dedupe_key} ({self.status})"
+
+
+class RollCallIngestionState(models.Model):
+    """Durable discovery cursor for one official chamber/session roll-call feed."""
+
+    congress = models.PositiveSmallIntegerField()
+    chamber = models.CharField(max_length=16)
+    session_number = models.PositiveSmallIntegerField()
+    next_page_or_roll = models.CharField(max_length=255, blank=True, default="")
+    discovered_roll_count = models.PositiveIntegerField(default=0)
+    source_exhausted_at = models.DateTimeField(null=True, blank=True)
+    source_updated_at = models.DateTimeField(null=True, blank=True)
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ingestion_rollcallingestionstate"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["congress", "chamber", "session_number"],
+                name="ingest_roll_state_scope_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["congress", "chamber", "session_number"],
+                name="ingest_roll_state_scope_idx",
+            )
+        ]
 
 
 class BillTrackingRequest(models.Model):

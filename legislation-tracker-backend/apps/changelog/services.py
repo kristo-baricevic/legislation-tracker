@@ -27,6 +27,10 @@ def record_bill_change(
     payload = deepcopy(new_value)
 
     with transaction.atomic():
+        # Test databases and pre-migration operational restores can lack the
+        # seeded singleton. Creating it before taking the canonical lock keeps
+        # the normal lock ordering while making the service self-healing.
+        BillActivityClock.objects.get_or_create(pk=1, defaults={"committed_sequence": 0})
         clock = BillActivityClock.objects.select_for_update().get(pk=1)
         locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
 
