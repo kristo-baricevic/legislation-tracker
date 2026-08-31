@@ -1,6 +1,6 @@
 """Monotonic authenticated bill timeline acknowledgement state."""
 
-from django.db import IntegrityError, transaction
+from django.db import transaction
 
 from apps.changelog.cursors import ChangeCursor, strictly_after
 from apps.changelog.models import ChangeLog
@@ -12,6 +12,9 @@ def acknowledge_bill_changes(*, user, bill, cursor: ChangeCursor, acknowledged_a
     if cursor.bill_id != bill.id or cursor.purpose != "acknowledge":
         raise ValueError("Cursor cannot acknowledge this bill.")
     with transaction.atomic():
+        # The user row always exists and serializes the first acknowledgement,
+        # including the interval before BillViewState itself exists.
+        type(user).objects.select_for_update().get(pk=user.pk)
         if not ChangeLog.objects.filter(
             bill=bill,
             id=cursor.event_id,
@@ -24,10 +27,7 @@ def acknowledge_bill_changes(*, user, bill, cursor: ChangeCursor, acknowledged_a
             .first()
         )
         if state is None:
-            try:
-                state = BillViewState.objects.create(user=user, bill=bill)
-            except IntegrityError:
-                state = BillViewState.objects.select_for_update().get(user=user, bill=bill)
+            state = BillViewState.objects.create(user=user, bill=bill)
         current = (
             (state.last_seen_change_created_at, state.last_seen_change_id)
             if state.last_seen_change_created_at is not None

@@ -50,7 +50,9 @@ def _committee_chamber(assignment: CommitteeAssignment) -> str:
     )
 
 
-def _validate_snapshot(*, snapshot: SourceSnapshot, congress: int, now) -> set[str]:
+def _validate_snapshot(
+    *, snapshot: SourceSnapshot, congress: int, now, previous=None
+) -> set[str]:
     if snapshot.congress != congress:
         raise CommitteeSnapshotValidationError(
             "Committee snapshot Congress did not match"
@@ -97,10 +99,22 @@ def _validate_snapshot(*, snapshot: SourceSnapshot, congress: int, now) -> set[s
         raise CommitteeSnapshotValidationError(
             "Committee snapshot references too many unknown representatives"
         )
-    previous = CommitteeRosterSnapshot.objects.filter(
-        congress=congress, chamber=snapshot.chamber
-    ).first()
+    if previous is None:
+        previous = CommitteeRosterSnapshot.objects.filter(
+            congress=congress, chamber=snapshot.chamber
+        ).first()
     if previous:
+        if snapshot.published_at < previous.published_at:
+            raise CommitteeSnapshotValidationError(
+                "Committee snapshot is older than the persisted roster"
+            )
+        if (
+            snapshot.published_at == previous.published_at
+            and snapshot.source_hash != previous.source_hash
+        ):
+            raise CommitteeSnapshotValidationError(
+                "Committee snapshot changed without a newer publication time"
+            )
         minimum = previous.representative_count * getattr(
             settings, "COMMITTEE_ROSTER_MIN_MEMBER_FRACTION", 0.65
         )
@@ -258,11 +272,31 @@ def sync_committee_memberships(
     for snapshot in snapshots:
         _validate_snapshot(snapshot=snapshot, congress=congress, now=now)
     with transaction.atomic():
+        # Snapshot rows do not exist on the first run, so lock the known member
+        # set as the stable serialization boundary for every roster writer.
+        list(
+            Representative.objects.select_for_update()
+            .filter(is_current=True)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        previous_by_chamber = {
+            item.chamber: item
+            for item in CommitteeRosterSnapshot.objects.select_for_update().filter(
+                congress=congress,
+                chamber__in=[snapshot.chamber for snapshot in snapshots],
+            )
+        }
         # Revalidate at the replacement boundary so a long-running fetch can
         # never turn a once-fresh payload into an accepted stale snapshot.
         write_now = timezone.now()
         for snapshot in snapshots:
-            _validate_snapshot(snapshot=snapshot, congress=congress, now=write_now)
+            _validate_snapshot(
+                snapshot=snapshot,
+                congress=congress,
+                now=write_now,
+                previous=previous_by_chamber.get(snapshot.chamber),
+            )
         return [
             _persist_snapshot(snapshot=snapshot, congress=congress)
             for snapshot in snapshots

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from django.contrib.postgres.search import SearchHeadline, SearchQuery, SearchRank
 from django.db import connection
-from django.db.models import F, Q, QuerySet
+from django.db.models import Exists, F, FloatField, OuterRef, Q, QuerySet, Subquery
 
 from .models import Bill, BillSearchChunk
 
@@ -129,12 +129,9 @@ def _recent_order(queryset: QuerySet[Bill]) -> QuerySet[Bill]:
     return queryset.order_by(F("last_activity_sequence").desc(nulls_last=True), "-id")
 
 
-def _fallback_metadata_search(
-    *, queryset: QuerySet[Bill], query: BillSearchQuery
-) -> BillSearchPage:
-    terms = re.findall(r"[\w'-]+", query.q.lower())
+def _metadata_match(queryset: QuerySet[Bill], query_text: str) -> QuerySet[Bill]:
     matching = queryset
-    for term in terms:
+    for term in re.findall(r"[\w'-]+", query_text.lower()):
         matching = matching.filter(
             Q(title__icontains=term)
             | Q(summary__icontains=term)
@@ -144,7 +141,13 @@ def _fallback_metadata_search(
             | Q(sponsor__bioguide_id__icontains=term)
             | Q(bill_topics__topic__name__icontains=term)
         )
-    matching = matching.distinct().order_by("id")
+    return matching.distinct()
+
+
+def _fallback_metadata_search(
+    *, queryset: QuerySet[Bill], query: BillSearchQuery
+) -> BillSearchPage:
+    matching = _metadata_match(queryset, query.q).order_by("id")
     count = matching.count()
     offset = (query.page - 1) * query.page_size
     bills = list(matching[offset : offset + query.page_size])
@@ -169,10 +172,70 @@ def _fallback_metadata_search(
     )
 
 
+def matching_bill_queryset(
+    *, queryset: QuerySet[Bill], query_text: str
+) -> QuerySet[Bill]:
+    """Return matching bills without evaluating the result set in Python."""
+    if connection.vendor != "postgresql":
+        return _metadata_match(queryset, query_text)
+
+    search_query = SearchQuery(query_text, search_type="websearch", config="english")
+    all_chunks = BillSearchChunk.objects.filter(bill_id=OuterRef("pk"))
+    ranked_chunks = (
+        all_chunks.filter(search_vector=search_query)
+        .annotate(_rank=SearchRank(F("search_vector"), search_query))
+        .order_by("-_rank", "id")
+    )
+    projected = queryset.annotate(
+        _has_search_projection=Exists(all_chunks),
+        _search_rank=Subquery(
+            ranked_chunks.values("_rank")[:1], output_field=FloatField()
+        ),
+    )
+    indexed_matches = projected.filter(_search_rank__isnull=False)
+    unindexed_matches = _metadata_match(
+        projected.filter(_has_search_projection=False), query_text
+    )
+    # Existing bills remain discoverable while the projection backfill rolls
+    # out; once indexed, their complete metadata/contract/document projection
+    # is authoritative.
+    return indexed_matches.union(unindexed_matches)
+
+
 def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> BillSearchPage:
     search_query = SearchQuery(query.q, search_type="websearch", config="english")
+    matching = matching_bill_queryset(queryset=queryset, query_text=query.q)
+    ranked = queryset.filter(pk__in=matching.values("pk")).annotate(
+        _search_rank=Subquery(
+            BillSearchChunk.objects.filter(
+                bill_id=OuterRef("pk"), search_vector=search_query
+            )
+            .annotate(_rank=SearchRank(F("search_vector"), search_query))
+            .order_by("-_rank", "id")
+            .values("_rank")[:1],
+            output_field=FloatField(),
+        )
+    )
+    if query.sort == "recent_activity":
+        ranked = ranked.order_by(
+            F("last_activity_sequence").desc(nulls_last=True), "-id"
+        )
+    else:
+        ranked = ranked.order_by(F("_search_rank").desc(nulls_last=True), "id")
+    count = ranked.count()
+    offset = (query.page - 1) * query.page_size
+    page_rows = list(
+        ranked.values_list("id", "_search_rank")[offset : offset + query.page_size]
+    )
+    page_ids = [bill_id for bill_id, _rank in page_rows]
+    rank_by_id = {
+        bill_id: float(rank) if rank is not None else None
+        for bill_id, rank in page_rows
+    }
     chunks = (
-        BillSearchChunk.objects.filter(bill__in=queryset, search_vector=search_query)
+        BillSearchChunk.objects.filter(
+            bill_id__in=page_ids, search_vector=search_query
+        )
         .annotate(
             _rank=SearchRank(F("search_vector"), search_query),
             _headline=SearchHeadline(
@@ -193,27 +256,39 @@ def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> Bil
         entries = grouped.setdefault(chunk.bill_id, [])
         if len(entries) < 3:
             entries.append((float(chunk._rank), chunk.kind, chunk._headline))
-    ranked_ids = sorted(
-        grouped,
-        key=lambda bill_id: (-grouped[bill_id][0][0], -bill_id),
-    )
-    if query.sort == "recent_activity":
-        activity_by_id = dict(
-            queryset.filter(pk__in=ranked_ids).values_list("pk", "last_activity_sequence")
+    unindexed_metadata = {
+        bill_id: (title, summary)
+        for bill_id, title, summary in queryset.filter(
+            pk__in=[bill_id for bill_id in page_ids if bill_id not in grouped]
+        ).values_list("id", "title", "summary")
+    }
+
+    def highlights_for(bill_id: int) -> tuple[SearchHighlight, ...]:
+        if bill_id in grouped:
+            return tuple(
+                SearchHighlight(
+                    kind=kind,
+                    segments=parse_headline_segments(headline),
+                )
+                for _rank, kind, headline in grouped[bill_id]
+            )
+        title, summary = unindexed_metadata.get(bill_id, ("", ""))
+        return (
+            SearchHighlight(
+                kind="metadata",
+                segments=plain_highlight_segments(
+                    "\n".join(part for part in (title, summary or "") if part),
+                    query.q,
+                ),
+            ),
         )
-        ranked_ids.sort(key=lambda bill_id: (activity_by_id[bill_id] is None, -(activity_by_id[bill_id] or 0), -bill_id))
-    offset = (query.page - 1) * query.page_size
-    page_ids = ranked_ids[offset : offset + query.page_size]
     return BillSearchPage(
-        count=len(ranked_ids),
+        count=count,
         hits=tuple(
             BillSearchHit(
                 bill_id=bill_id,
-                rank=grouped[bill_id][0][0],
-                highlights=tuple(
-                    SearchHighlight(kind=kind, segments=parse_headline_segments(headline))
-                    for _rank, kind, headline in grouped[bill_id]
-                ),
+                rank=rank_by_id[bill_id],
+                highlights=highlights_for(bill_id),
             )
             for bill_id in page_ids
         ),

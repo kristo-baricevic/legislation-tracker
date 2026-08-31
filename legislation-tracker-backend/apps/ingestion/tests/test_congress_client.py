@@ -104,6 +104,18 @@ def test_bill_actions_pages_through_recorded_vote_references(monkeypatch):
     ]
 
 
+def test_bill_collection_rejects_malformed_relationship_entries(monkeypatch):
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *args, **kwargs: {"cosponsors": [{"bioguideId": "A000001"}, "bad"]},
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    with pytest.raises(congress_client.CongressAPIError, match="invalid cosponsors entry"):
+        congress_client.bill_cosponsors(119, "hr", "1")
+
+
 def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(
     monkeypatch,
 ):

@@ -11,10 +11,15 @@ from apps.legislation.models import (
     Bill,
     BillContract,
     BillDocument,
+    BillSearchChunk,
     BillSimilarity,
     BillTopic,
     EvidenceSpan,
     Topic,
+)
+
+POSTGRESQL_ONLY = pytest.mark.skipif(
+    connection.vendor != "postgresql", reason="requires PostgreSQL full-text search"
 )
 
 
@@ -61,6 +66,68 @@ def test_bill_search_rejects_relevance_without_query_and_excessive_query():
     assert "sort" in relevance_without_query.json()
     assert too_large.status_code == 400
     assert "q" in too_large.json()
+
+
+@POSTGRESQL_ONLY
+@pytest.mark.django_db
+def test_postgres_search_keeps_unindexed_bills_visible_and_fetches_headlines_for_one_page():
+    from apps.legislation.search import BillSearchQuery, search_bills
+    from apps.legislation.search_index import rebuild_bill_search_index
+
+    indexed = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 890",
+        title="Specialist workforce",
+        status="Introduced",
+    )
+    BillDocument.objects.create(
+        bill=indexed,
+        version_label="Introduced",
+        extracted_text="Nephrology clinic grants for rural hospitals.",
+        is_active_version=True,
+    )
+    rebuild_bill_search_index(bill_id=indexed.id)
+    unindexed = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 891",
+        title="Nephrology clinic access",
+        status="Introduced",
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        search_page = search_bills(
+            queryset=Bill.objects.all(),
+            query=BillSearchQuery(
+                q="nephrology", sort="relevance", page=1, page_size=1
+            ),
+        )
+    headline_queries = [
+        query["sql"] for query in queries if "ts_headline" in query["sql"].lower()
+    ]
+    response = APIClient().get(
+        "/api/bills/",
+        {"q": "nephrology", "sort": "relevance", "page_size": 1},
+    )
+    unindexed_page = APIClient().get(
+        "/api/bills/",
+        {"q": "nephrology", "sort": "relevance", "page_size": 1, "page": 2},
+    )
+
+    assert response.status_code == 200
+    assert [hit.bill_id for hit in search_page.hits] == [indexed.id]
+    assert response.json()["count"] == 2
+    assert [item["id"] for item in response.json()["results"]] == [indexed.id]
+    assert response.json()["results"][0]["search_rank"] > 0
+    assert [item["id"] for item in unindexed_page.json()["results"]] == [unindexed.id]
+    assert any(
+        segment["matched"]
+        for segment in unindexed_page.json()["results"][0]["highlights"][0]["segments"]
+    )
+    assert len(headline_queries) == 1
+    assert f'"legislation_billsearchchunk"."bill_id" IN ({indexed.id})' in headline_queries[0]
+    assert BillSearchChunk.objects.filter(bill=unindexed).exists() is False
 
 
 @pytest.mark.django_db

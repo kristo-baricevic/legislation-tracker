@@ -44,7 +44,7 @@ class VoteListQuerySerializer(PaginatedQuerySerializer):
     vote_date = serializers.DateField(required=False)
 
 
-class RepresentativeInsightQuerySerializer(StrictQuerySerializer):
+class RepresentativeInsightQuerySerializer(PaginatedQuerySerializer):
     congress = serializers.IntegerField(min_value=1)
 
 

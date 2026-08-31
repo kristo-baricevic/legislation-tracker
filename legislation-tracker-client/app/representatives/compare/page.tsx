@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import {
   compareRepresentatives,
-  getRepresentatives,
+  getAllCurrentRepresentatives,
+  getBillFilterOptions,
   type RepresentativeComparison,
   type RepresentativeItem,
 } from "@/lib/api";
@@ -19,10 +20,13 @@ function parseIds(value: string | null): [number, number] | null {
     : null;
 }
 
-export default function RepresentativeComparePage() {
+function RepresentativeCompareContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const congress = Number(searchParams.get("congress") ?? "119");
+  const congressParam = searchParams.get("congress");
+  const parsedCongress = congressParam === null ? null : Number(congressParam);
+  const [defaultCongress, setDefaultCongress] = useState<number | null>(null);
+  const congress = parsedCongress ?? defaultCongress;
   const ids = parseIds(searchParams.get("ids"));
   const leftId = ids?.[0] ?? null;
   const rightId = ids?.[1] ?? null;
@@ -37,21 +41,36 @@ export default function RepresentativeComparePage() {
     : `${Math.round(comparison.agreement_rate * 100)}% agreement`;
 
   useEffect(() => {
+    if (congressParam !== null) return;
+    let cancelled = false;
+    getBillFilterOptions()
+      .then((options) => {
+        if (!cancelled) setDefaultCongress(options.current_congress);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load the current Congress.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [congressParam]);
+
+  useEffect(() => {
     setDraftLeft(leftId ? String(leftId) : "");
     setDraftRight(rightId ? String(rightId) : "");
   }, [leftId, rightId]);
 
   useEffect(() => {
     let cancelled = false;
-    getRepresentatives({ page: 1 })
-      .then((page) => { if (!cancelled) setPeople(page.results); })
+    getAllCurrentRepresentatives()
+      .then((results) => { if (!cancelled) setPeople(results); })
       .catch(() => { if (!cancelled) setError("Could not load representatives. Try again."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (leftId === null || rightId === null || !Number.isSafeInteger(congress) || congress < 1) {
+    if (leftId === null || rightId === null || congress === null || !Number.isSafeInteger(congress) || congress < 1) {
       setComparison(null);
       return;
     }
@@ -64,7 +83,7 @@ export default function RepresentativeComparePage() {
   }, [congress, leftId, rightId]);
 
   function setSelection(left: string, right: string) {
-    if (!left || !right || left === right) return;
+    if (!left || !right || left === right || congress === null) return;
     router.replace(`/representatives/compare?ids=${left},${right}&congress=${congress}`);
   }
 
@@ -82,9 +101,28 @@ export default function RepresentativeComparePage() {
         {error && <p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
         {comparison && <section className="space-y-4 rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20">
           <div><h2 className="text-lg font-semibold">Shared vote evidence</h2><p>{comparison.reason ?? `${comparison.agree_count} agreements and ${comparison.disagreement_count} disagreements across ${comparison.shared_vote_count} shared yes/no votes (${agreementText}).`}</p><p className="mt-1 text-sm text-slate-600 dark:text-green-600">Excluded shared positions: {comparison.excluded_shared_vote_count}. Coverage is {comparison.coverage_complete ? "complete" : "partial"}.</p></div>
+          {comparison.shared_votes_truncated && (
+            <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+              Showing {comparison.returned_shared_vote_count} of {comparison.shared_vote_count} shared vote records. The summary counts include the full comparison.
+            </p>
+          )}
           {comparison.shared_votes.length > 0 && <ul className="divide-y divide-slate-300 dark:divide-green-900/70">{comparison.shared_votes.map((vote) => <li key={vote.vote_id} className="py-3"><div className="font-semibold">{vote.question || vote.result}</div><div className="text-sm">First: {vote.left_position} · Second: {vote.right_position} · {new Date(vote.vote_date).toLocaleDateString()}</div>{vote.bill_id && <Link href={`/bills/${vote.bill_id}`} className="text-sm text-blue-900 underline dark:text-green-400">View bill</Link>}</li>)}</ul>}
         </section>}
       </div>
     </main>
+  );
+}
+
+export default function RepresentativeComparePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[60vh] items-center justify-center font-mono text-slate-600 dark:text-green-500">
+          Loading representative comparison…
+        </div>
+      }
+    >
+      <RepresentativeCompareContent />
+    </Suspense>
   );
 }

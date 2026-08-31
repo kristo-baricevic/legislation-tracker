@@ -1,5 +1,7 @@
 # Bill Discovery and Search Implementation Plan
 
+> **Status (2026-08-31):** Implemented. This file retains the original TDD execution checklist as historical design context; current behavior and rollout instructions live in the linked specification and `legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add PostgreSQL full-text bill search with safe highlights, URL-backed filters, recent-activity sorting, and authenticated saved searches with new-result counts.

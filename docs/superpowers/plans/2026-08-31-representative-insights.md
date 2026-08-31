@@ -1,5 +1,7 @@
 # Representative Insights Implementation Plan
 
+> **Status (2026-08-31):** Implemented. Current-Congress source population remains an operational rollout step. This file retains the original TDD execution checklist as historical design context; current behavior and rollout instructions live in the linked specification and `legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add current-Congress committee assignments, bill sponsorship/co-sponsorship histories, descriptive voting summaries, and an auditable two-representative comparison experience.

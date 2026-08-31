@@ -40,3 +40,43 @@ def test_contract_comparison_uses_stable_identities_for_reordered_requirements()
         ("plain_summary", "changed"),
         ("requirements[sec. 1|shall|agency|report|results].deadline", "changed"),
     ]
+
+
+@pytest.mark.django_db
+def test_contract_comparison_preserves_duplicate_identity_rows():
+    """Removing one of two same-identity requirements must remain visible."""
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 910",
+        title="Duplicate identity diff bill",
+        status="Introduced",
+    )
+    shared = {
+        "section_label": "Sec. 1",
+        "modality": "shall",
+        "actor": "Agency",
+        "action": "report",
+        "object": "results",
+    }
+    before = BillContract.objects.create(
+        bill=bill,
+        contract_hash="duplicate-before",
+        contract_json={
+            "requirements": [
+                {**shared, "deadline": "2027"},
+                {**shared, "deadline": "2028"},
+            ]
+        },
+    )
+    after = BillContract.objects.create(
+        bill=bill,
+        contract_hash="duplicate-after",
+        contract_json={"requirements": [{**shared, "deadline": "2027"}]},
+    )
+
+    diff = compare_contracts(before=before, after=after)
+
+    assert diff.total_change_count == 1
+    assert diff.changes[0].operation == "removed"
+    assert diff.changes[0].before["deadline"] == "2028"

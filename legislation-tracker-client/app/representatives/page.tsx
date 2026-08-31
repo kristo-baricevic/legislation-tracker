@@ -50,7 +50,7 @@ function RepresentativesTable() {
     null,
   );
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [currentCongress, setCurrentCongress] = useState(119);
+  const [currentCongress, setCurrentCongress] = useState<number | null>(null);
 
   useEffect(() => {
     void getBillFilterOptions()
@@ -240,7 +240,7 @@ function RepresentativesTable() {
                     >
                       <td className="truncate p-3 font-medium">
                         <Link
-                          href={`/representatives/${rep.id}?congress=${currentCongress}`}
+                          href={currentCongress === null ? `/representatives/${rep.id}` : `/representatives/${rep.id}?congress=${currentCongress}`}
                           className="text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
                         >
                           {rep.name}

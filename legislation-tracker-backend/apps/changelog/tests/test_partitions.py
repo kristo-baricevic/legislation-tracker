@@ -11,7 +11,7 @@ from apps.changelog.partitions import (
     month_bounds,
     partition_name,
 )
-from apps.legislation.models import Bill, BillContract, BillDocument
+from apps.legislation.models import Bill
 
 POSTGRESQL_ONLY = pytest.mark.skipif(
     connection.vendor != "postgresql", reason="requires PostgreSQL partitions"
@@ -37,6 +37,13 @@ _EXPECTED_PARENT_INDEXES = {
 }
 
 
+def _applied_apps():
+    executor = MigrationExecutor(connection)
+    return executor.loader.project_state(
+        list(executor.loader.applied_migrations)
+    ).apps
+
+
 def test_month_bounds_roll_over_december():
     assert month_bounds(date(2026, 12, 25)) == (
         datetime(2026, 12, 1, tzinfo=UTC),
@@ -57,13 +64,18 @@ def test_partition_maintenance_is_a_noop_on_sqlite():
 
 @POSTGRESQL_ONLY
 @pytest.mark.django_db(transaction=True)
-def test_partition_migration_preserves_data_indexes_sequences_and_relations():
+def test_partition_migration_preserves_data_indexes_sequences_and_relations(request):
     """Exercise the real 0002 -> 0003 -> 0002 conversion on PostgreSQL."""
     executor = MigrationExecutor(connection)
+    latest_targets = executor.loader.graph.leaf_nodes()
+    request.addfinalizer(
+        lambda: MigrationExecutor(connection).migrate(latest_targets)
+    )
     executor.migrate([_PRE_PARTITION_MIGRATION])
-    old_apps = executor.loader.project_state([_PRE_PARTITION_MIGRATION]).apps
+    old_apps = _applied_apps()
     OldChangeLog = old_apps.get_model("changelog", "ChangeLog")
-    bill = Bill.objects.create(
+    OldBill = old_apps.get_model("legislation", "Bill")
+    bill = OldBill.objects.create(
         jurisdiction="federal",
         session=119,
         bill_number="HR PARTITION 1",
@@ -97,6 +109,15 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
     try:
         executor = MigrationExecutor(connection)
         executor.migrate([_PARTITION_MIGRATION])
+        partitioned_apps = _applied_apps()
+        PartitionedChangeLog = partitioned_apps.get_model("changelog", "ChangeLog")
+        PartitionedBill = partitioned_apps.get_model("legislation", "Bill")
+        PartitionedBillDocument = partitioned_apps.get_model(
+            "legislation", "BillDocument"
+        )
+        PartitionedBillContract = partitioned_apps.get_model(
+            "legislation", "BillContract"
+        )
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -132,32 +153,32 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
             )
             assert cursor.fetchone()[0] == "changelog_changelog_2026_02"
 
-        assert ChangeLog.objects.get(pk=first.pk).new_value == {"status": "introduced"}
-        assert ChangeLog.objects.get(pk=second.pk).old_value == {"version": 1}
-        fresh = ChangeLog.objects.create(
-            bill=bill,
+        assert PartitionedChangeLog.objects.get(pk=first.pk).new_value == {"status": "introduced"}
+        assert PartitionedChangeLog.objects.get(pk=second.pk).old_value == {"version": 1}
+        fresh = PartitionedChangeLog.objects.create(
+            bill_id=bill.id,
             change_type="status_update",
             new_value={"status": "updated"},
         )
         assert fresh.pk == source_sequence_high_water_mark + 1
 
-        relation_bill = Bill.objects.create(
+        relation_bill = PartitionedBill.objects.create(
             jurisdiction="federal",
             session=119,
             bill_number="HR PARTITION 2",
             title="Partition relation test",
             status="Introduced",
         )
-        document = BillDocument.objects.create(
+        document = PartitionedBillDocument.objects.create(
             bill=relation_bill,
             version_label="Introduced",
         )
-        contract = BillContract.objects.create(
+        contract = PartitionedBillContract.objects.create(
             bill=relation_bill,
             document=document,
             contract_hash="partition-test-contract",
         )
-        related = ChangeLog.objects.create(
+        related = PartitionedChangeLog.objects.create(
             bill=relation_bill,
             document=document,
             contract=contract,
@@ -169,7 +190,7 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
         assert related.document_id is None
         assert related.contract_id is None
         relation_bill.delete()
-        assert not ChangeLog.objects.filter(pk=related.pk).exists()
+        assert not PartitionedChangeLog.objects.filter(pk=related.pk).exists()
 
         reverse_sequence_high_water_mark = fresh.pk + 50
         with connection.cursor() as cursor:
@@ -182,7 +203,7 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
 
         executor = MigrationExecutor(connection)
         executor.migrate([_PRE_PARTITION_MIGRATION])
-        restored_apps = executor.loader.project_state([_PRE_PARTITION_MIGRATION]).apps
+        restored_apps = _applied_apps()
         RestoredChangeLog = restored_apps.get_model("changelog", "ChangeLog")
         with connection.cursor() as cursor:
             cursor.execute(
@@ -214,7 +235,7 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
         )
         assert restored.pk == reverse_sequence_high_water_mark + 1
     finally:
-        MigrationExecutor(connection).migrate([_PARTITION_MIGRATION])
+        MigrationExecutor(connection).migrate(latest_targets)
 
 
 @POSTGRESQL_ONLY

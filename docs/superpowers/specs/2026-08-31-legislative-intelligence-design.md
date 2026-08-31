@@ -20,7 +20,7 @@ The tracks ship in that order. Discovery owns the shared activity timestamp and 
 
 - Discovery is implemented: bounded bill search indexing, full-text query/highlight API, recent-activity sorting, private saved searches, and the public URL-backed search UI.
 - What changed is implemented: normalized activity events, signed timeline cursors, signed-in view state, explicit acknowledgement, and bounded contract/document comparison APIs and UI.
-- Representative product and persistence foundations are implemented: Congress-scoped canonical vote identities, committee/cosponsor tables, exact-identity dependency blocking, representative detail/comparison APIs, and UI.
+- Representative product and persistence foundations are implemented: Congress-scoped canonical vote identities, member service intervals, committee/cosponsor tables, exact-identity dependency blocking, paginated representative detail/comparison APIs, and UI.
 - Official House and Senate committee-roster synchronization is implemented as a bounded, XML-safe, validation-first replacement path. The preview-first backfill command now queues relationship and roll-call discovery, and runs a committee snapshot sync only for the current Congress. Roll-call discovery is scheduled for the current Congress and current/past session scope, but coverage remains explicitly partial until source cursors exhaust and every durable detail item succeeds.
 - The representative browser journey now runs against an isolated PostgreSQL fixture with complete House-session coverage, a non-bill roll call, committee membership, and bill relationship evidence. It is repeatable without touching the normal local database.
 
@@ -119,7 +119,7 @@ Full document text is not stored in one `tsvector`. Chunks are capped at 20,000 
 
 - `q`: PostgreSQL `websearch` query.
 - Existing bill/session/status/sponsor/topic filters.
-- `sort`: `relevance`, `recent_activity`, `last_action`, or `introduced`.
+- `sort`: `relevance` or `recent_activity`.
 
 When `q` is present, the service ranks metadata above contracts above document text, selects the best matching chunks per bill, and returns at most three sanitized highlight fragments. Search markers are converted to structured segments by the client; raw server-produced HTML is never injected into the DOM.
 
@@ -141,7 +141,7 @@ The API supports list, create, rename/update, delete, `GET /api/saved-searches/{
 
 `new_result_count` is the count of bills matching the current saved query whose `last_activity_sequence` is greater than the acknowledged sequence. A never-opened saved search counts every currently matching bill with a non-null activity sequence. `last_opened_at` records the snapshot time for display, not ordering.
 
-Opening a saved search is a two-step, lossless protocol. In one short PostgreSQL transaction, the bill-list request locks `BillActivityClock`, reads its committed sequence and database timestamp, executes the bounded result query, and returns both as a versioned, signed `result_watermark` bound to the owner, saved-search ID, and normalized query hash. Writers that committed first are visible before the snapshot; writers that commit later receive a greater sequence. After the page renders, `POST /api/saved-searches/{id}/open/` verifies the watermark and monotonically stores its sequence/timestamp rather than request-arrival time. Activity committed after the result snapshot but before acknowledgement therefore remains new. Updating a saved query resets both acknowledged fields.
+Opening a saved search is a two-step, lossless protocol. In one short PostgreSQL transaction, the result request locks `BillActivityClock` only long enough to read its committed sequence and database timestamp, then releases the lock before executing the bounded search. It returns a versioned, signed `result_watermark` bound to the owner, saved-search ID, and normalized query hash. A writer that overlaps the search receives a greater sequence and therefore remains new even if its bill becomes visible in that result page; the protocol may conservatively show that bill as new once more, but it cannot hide unseen activity. After the page renders, `POST /api/saved-searches/{id}/open/` verifies the watermark and monotonically stores its sequence/timestamp rather than request-arrival time. Updating a saved query resets both acknowledged fields.
 
 ### Frontend
 
@@ -155,6 +155,7 @@ Before adding representative analytics, make roll calls first-class current-Cong
 
 Add:
 
+- `RepresentativeTerm`: representative, chamber, state/district, member type, and an exclusive service interval used to scope vote denominators across chamber changes and partial terms.
 - `Committee`: Congress system code, name, chamber, type, optional parent, website, current flag, and source timestamp.
 - `CommitteeMembership`: committee, representative, Congress, rank, normalized role, optional party side, current flag, and source timestamp.
 - `BillCommittee`: bill, committee, relationship/activity label, and source timestamp.
@@ -226,20 +227,21 @@ Add:
 
 - `GET /api/bills/{id}/changes/`
 - `POST /api/bills/{id}/changes/acknowledge/`
-- `GET /api/bills/{id}/compare/contracts/`
-- `GET /api/bills/{id}/compare/documents/`
+- `GET /api/bills/{id}/comparisons/contracts/`
+- `GET /api/bills/{id}/comparisons/documents/`
+- `GET /api/bills/{id}/comparisons/documents/section/`
 
 The timeline has two distinct navigation contracts. `after_cursor` requests unread progression strictly newer than the supplied tuple and returns events oldest-first. `before_cursor` requests older history strictly before the supplied tuple and returns a bounded newest-first database page normalized into display order. An initial request returns the newest bounded window. Responses expose `page_end_cursor`, `older_cursor`, `stream_head_cursor`, `has_more_newer`, `has_more_older`, and authenticated `unread_count`.
 
 Only an initial canonical page or an unfiltered `after_cursor` page returns an acknowledgement-purpose `page_end_cursor`. `before_cursor` is browse-only. The API rejects a server-side `type` parameter; type filters remain client-side, so acknowledgement can never leap over hidden events.
 
-Contract comparison is a schema-aware JSON diff. A versioned `CONTRACT_ITEM_IDENTITIES` registry defines the normalized field tuple for every array category. Duplicate identity keys are ambiguous and produce bounded add/remove records rather than an invented modification. Results are capped at 200 changes and report truncation.
+Contract comparison is a schema-aware JSON diff. A versioned `CONTRACT_ITEM_IDENTITIES` registry defines the normalized field tuple for every array category. Duplicate identity groups consume exact matches first, then pair remaining entries deterministically and suffix duplicate paths, so a removal cannot be misreported as a mutation of a surviving identical row. Results are capped at 200 changes and report truncation.
 
 Document comparison accepts inactive historical predecessors as long as both documents belong to the requested bill and have accessible stored/extracted text. It rejects cross-bill IDs and missing or inaccessible text. The service first segments text with the existing federal structure parser and keys sections by full ancestor path plus same-path occurrence ordinal, so repeated `(a)`/`(1)` labels in different sections cannot collide. It reports added, removed, and modified sections by hash. A requested modified section receives a bounded line diff: at most 50,000 characters from each side and 500 operations. Legacy/non-federal documents fall back to bounded paragraph blocks. The service never runs an unbounded whole-document diff.
 
 ### Frontend
 
-Bill detail gains a unified change timeline, unread badge, type filters, and links to the relevant vote, document, contract, or member. Existing contract history and vote history remain. Compare actions open accessible contract/document diffs using semantic additions and deletions rather than color alone.
+Bill detail gains a unified change timeline with older/newer navigation, explicit unread acknowledgement, and rendered before/after facts. Existing contract history and vote history remain. Compare actions open accessible contract/document diffs, including on-demand section line operations and explicit truncation reasons, using semantic labels rather than color alone.
 
 The client acknowledges only the returned page-end cursor after every event through that cursor has rendered for the current bill. Fetch errors, render errors, or a route change never acknowledge unseen data. If more unread pages or a concurrently arriving event remain, the next response continues after the stored page-end cursor.
 
@@ -258,7 +260,7 @@ The client acknowledges only the returned page-end cursor after every event thro
 - Bill list queries remain paginated and return no raw search chunks.
 - Search returns at most three snippets per bill and uses a GIN index in PostgreSQL.
 - Saved-search counts are computed in a batched service, not one query per card.
-- The global activity-clock lock is held only by one bounded saved-search result page or one canonical event transaction; record lock wait time and keep network/object-storage work outside it.
+- A saved-search result holds the global activity-clock lock only while capturing its sequence/timestamp; search evaluation runs after the lock is released. Canonical event transactions retain the lock through commit.
 - Representative list/detail endpoints prefetch bounded related data and expose paginated histories.
 - Comparison endpoints enforce input and output caps before diffing.
 - Timeline pagination uses `(created_at, id)` keyset ordering rather than deep offsets.

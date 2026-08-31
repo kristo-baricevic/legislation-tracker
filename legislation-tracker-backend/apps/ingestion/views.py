@@ -24,6 +24,7 @@ from apps.ingestion.tasks import (
     poll_congress,
     process_bill_versions,
     process_bill_votes,
+    sync_committee_memberships,
     sync_representatives,
 )
 from apps.ingestion.work_queue import enqueue_manual_bill_request
@@ -39,6 +40,9 @@ REPLAYABLE_STAGE_TASKS = {
     "apps.ingestion.tasks.process_bill_votes": process_bill_votes,
     "apps.ingestion.tasks.download_document": download_document,
     "apps.ingestion.tasks.sync_representatives": sync_representatives,
+    "apps.ingestion.tasks.sync_committee_memberships": sync_committee_memberships,
+    # Legacy rows were recorded before task names were normalized.
+    "sync_committee_memberships": sync_committee_memberships,
     "apps.legislation.tasks.generate_contract": generate_contract,
     "apps.legislation.tasks.generate_contract_for_bill": generate_contract_for_bill,
     "apps.legislation.tasks.update_topics": update_topics,

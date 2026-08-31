@@ -33,6 +33,40 @@ class Representative(models.Model):
         return f"{self.name} ({self.state}-{self.chamber})"
 
 
+class RepresentativeTerm(models.Model):
+    """One continuous chamber service interval from the Congress member API."""
+
+    representative = models.ForeignKey(
+        Representative,
+        on_delete=models.CASCADE,
+        related_name="service_terms",
+    )
+    chamber = models.CharField(max_length=20)
+    state = models.CharField(max_length=2, blank=True, default="")
+    district = models.CharField(max_length=10, null=True, blank=True)
+    member_type = models.CharField(max_length=50, blank=True, default="")
+    start_date = models.DateField()
+    # Congress.gov terms use an exclusive January 3 end boundary.
+    end_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "congress_representativeterm"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["representative", "chamber", "start_date"],
+                name="congress_rep_term_identity_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["representative", "start_date", "end_date"],
+                name="congress_rep_term_dates_idx",
+            )
+        ]
+
+
 class Vote(models.Model):
     """Roll-call vote on a bill."""
 

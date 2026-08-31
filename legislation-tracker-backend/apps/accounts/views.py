@@ -22,6 +22,7 @@ from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
 from apps.legislation.models import Bill, Topic
 from apps.legislation.serializers import BillListSerializer
+from apps.legislation.throttles import BillSearchThrottle
 
 from .authentication import enforce_csrf
 from .models import (
@@ -268,6 +269,11 @@ class SavedBillSearchViewSet(viewsets.ModelViewSet):
 
     permission_classes = [IsAuthenticated]
     queryset = SavedBillSearch.objects.all()
+
+    def get_throttles(self):
+        if self.action in {"list", "results"}:
+            return [BillSearchThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         return SavedBillSearch.objects.filter(user=self.request.user).order_by(

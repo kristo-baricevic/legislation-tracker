@@ -87,8 +87,12 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .select_related("sponsor")
             .prefetch_related("bill_topics__topic")
+            .order_by("-last_activity_sequence", "-id")
         )
-        return Response({"results": BillListSerializer(bills, many=True).data})
+        page = self.paginate_queryset(bills)
+        return self.get_paginated_response(
+            BillListSerializer(page, many=True).data
+        )
 
     @action(detail=True, methods=["get"], url_path="cosponsored-bills")
     def cosponsored_bills(self, request, pk=None):
@@ -101,17 +105,17 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .select_related("bill", "bill__sponsor")
             .prefetch_related("bill__bill_topics__topic")
+            .order_by("-sponsorship_date", "-id")
         )
-        return Response(
-            {
-                "results": [
-                    {
-                        "bill": BillListSerializer(item.bill).data,
-                        **BillCosponsorSerializer(item).data,
-                    }
-                    for item in relationships
-                ]
-            }
+        page = self.paginate_queryset(relationships)
+        return self.get_paginated_response(
+            [
+                {
+                    "bill": BillListSerializer(item.bill).data,
+                    **BillCosponsorSerializer(item).data,
+                }
+                for item in page
+            ]
         )
 
     @action(detail=True, methods=["get"])
@@ -121,9 +125,10 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         memberships = CommitteeMembership.objects.filter(
             representative=self.get_object(),
             congress=query.validated_data["congress"],
-        ).select_related("committee")
-        return Response(
-            {"results": CommitteeMembershipSerializer(memberships, many=True).data}
+        ).select_related("committee").order_by("committee__name", "id")
+        page = self.paginate_queryset(memberships)
+        return self.get_paginated_response(
+            CommitteeMembershipSerializer(page, many=True).data
         )
 
     @action(detail=False, methods=["get"])

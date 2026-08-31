@@ -5,7 +5,8 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 import hashlib
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from copy import deepcopy
+from datetime import UTC, date, datetime, timedelta
 
 import requests
 from celery import shared_task
@@ -18,7 +19,7 @@ from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
 from apps.changelog.models import BillActivityClock
 from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress, current_congress_session
-from apps.congress.models import Representative, Vote, VoteRecord
+from apps.congress.models import Representative, RepresentativeTerm, Vote, VoteRecord
 from apps.ingestion.committee_sources import (
     CommitteeRosterError,
     CommitteeRosterTransportError,
@@ -310,6 +311,15 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
     return rep
 
 
+def _normalize_member_chamber(value):
+    chamber = str(value or "").strip().casefold()
+    if chamber in {"house", "house of representatives"}:
+        return "house"
+    if chamber == "senate":
+        return "senate"
+    return ""
+
+
 def _member_chamber(member):
     terms = member.get("terms") or []
     if isinstance(terms, dict):
@@ -317,9 +327,10 @@ def _member_chamber(member):
     if isinstance(terms, list):
         for term in reversed(terms):
             if isinstance(term, dict) and term.get("chamber"):
-                return str(term["chamber"]).lower()
-    chamber = member.get("chamber") or ""
-    return str(chamber).lower() if chamber else "house"
+                chamber = _normalize_member_chamber(term["chamber"])
+                if chamber:
+                    return chamber
+    return _normalize_member_chamber(member.get("chamber")) or "house"
 
 
 def _member_party(member):
@@ -383,6 +394,67 @@ def _member_profile(summary, detail):
     }
 
 
+def _member_terms(summary, detail):
+    member = dict(summary)
+    member.update(detail or {})
+    if "terms" not in member:
+        return None
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    if not isinstance(terms, list):
+        raise CongressAPIError("Congress member terms payload is invalid")
+    parsed = []
+    for term in terms:
+        if not isinstance(term, dict):
+            raise CongressAPIError("Congress member terms contain an invalid entry")
+        chamber = _normalize_member_chamber(term.get("chamber"))
+        try:
+            start_year = int(term.get("startYear"))
+            raw_end_year = term.get("endYear")
+            end_year = int(raw_end_year) if raw_end_year not in (None, "") else None
+        except (TypeError, ValueError) as exc:
+            raise CongressAPIError(
+                "Congress member term is missing a valid service year"
+            ) from exc
+        if not chamber or start_year < 1789 or (end_year is not None and end_year <= start_year):
+            raise CongressAPIError("Congress member term has an invalid service interval")
+        district = term.get("district")
+        parsed.append(
+            {
+                "chamber": chamber,
+                "state": state_code(term.get("stateCode") or member.get("state")),
+                "district": (
+                    str(district)[:10] if district not in (None, "") else None
+                ),
+                "member_type": str(term.get("memberType") or "")[:50],
+                "start_date": date(start_year, 1, 3),
+                "end_date": date(end_year, 1, 3) if end_year is not None else None,
+            }
+        )
+    return parsed
+
+
+def _replace_representative_terms(representative, terms):
+    if terms is None:
+        return
+    retained_ids = []
+    for values in terms:
+        term, _ = RepresentativeTerm.objects.update_or_create(
+            representative=representative,
+            chamber=values["chamber"],
+            start_date=values["start_date"],
+            defaults={
+                "state": values["state"],
+                "district": values["district"],
+                "member_type": values["member_type"],
+                "end_date": values["end_date"],
+            },
+        )
+        retained_ids.append(term.id)
+    representative.service_terms.exclude(pk__in=retained_ids).delete()
+
+
 def _process_representative_detail_impl(bioguide_id: str):
     """Upsert one profile only after proving the response identity is exact."""
 
@@ -395,13 +467,16 @@ def _process_representative_detail_impl(bioguide_id: str):
         raise CongressAPIError(
             "Congress member detail identity did not match requested Bioguide ID"
         )
-    profile = _member_profile({"bioguideId": expected_id}, detail)
+    summary = {"bioguideId": expected_id}
+    profile = _member_profile(summary, detail)
+    terms = _member_terms(summary, detail)
     with transaction.atomic():
         persisted_id = profile.pop("bioguide_id")
-        Representative.objects.update_or_create(
+        representative, _ = Representative.objects.update_or_create(
             bioguide_id=persisted_id,
             defaults={**profile, "last_seen_at": timezone.now()},
         )
+        _replace_representative_terms(representative, terms)
     woken = _wake_blocked_work_for_dependencies({f"bioguide:{expected_id}"})
     return {"bioguide_id": expected_id, "woken": woken}
 
@@ -450,20 +525,27 @@ def sync_representatives(congress=None):
         bioguide_id = summary.get("bioguideId") or summary.get("bioguide_id")
         if not bioguide_id:
             raise CongressAPIError("Congress member list entry is missing bioguideId")
-        profiles.append(_member_profile(summary, member_detail(bioguide_id)))
+        detail = member_detail(bioguide_id)
+        profiles.append(
+            (
+                _member_profile(summary, detail),
+                _member_terms(summary, detail),
+            )
+        )
 
     now = timezone.now()
     created_count = 0
     updated_count = 0
-    seen_ids = {profile["bioguide_id"] for profile in profiles}
+    seen_ids = {profile["bioguide_id"] for profile, _terms in profiles}
     with transaction.atomic():
-        for profile in profiles:
+        for profile, terms in profiles:
             bioguide_id = profile.pop("bioguide_id")
             profile["last_seen_at"] = now
-            _, created = Representative.objects.update_or_create(
+            representative, created = Representative.objects.update_or_create(
                 bioguide_id=bioguide_id,
                 defaults=profile,
             )
+            _replace_representative_terms(representative, terms)
             created_count += int(created)
             updated_count += int(not created)
         Representative.objects.filter(is_current=True).exclude(
@@ -510,7 +592,7 @@ def sync_committee_memberships(self, congress=None):
         ):
             _record_task_failure(
                 self.request.id,
-                "sync_committee_memberships",
+                "apps.ingestion.tasks.sync_committee_memberships",
                 (resolved_congress,),
                 {},
                 None,
@@ -857,6 +939,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     """Execute one durable work item and persist its terminal or retry state."""
     now = timezone.now()
     claimed_dispatch_token = ""
+    claimed_payload_json = None
     with transaction.atomic():
         work_item = (
             IngestionWorkItem.objects.select_for_update()
@@ -886,6 +969,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         work_item.lease_expires_at = now + WORK_LEASE_DURATION
         work_item.celery_task_id = self.request.id or work_item.celery_task_id
         claimed_dispatch_token = work_item.dispatch_token
+        claimed_payload_json = deepcopy(work_item.payload_json)
         work_item.save(
             update_fields=[
                 "status",
@@ -909,6 +993,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             ):
                 return {"work_item_id": work_item.id, "status": "superseded"}
             work_item.status = IngestionWorkStatus.BLOCKED
+            work_item.attempt_count = max(work_item.attempt_count - 1, 0)
             work_item.dependency_keys = exc.dependency_keys
             work_item.lease_expires_at = None
             work_item.dispatch_token = ""
@@ -916,6 +1001,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             work_item.save(
                 update_fields=[
                     "status",
+                    "attempt_count",
                     "dependency_keys",
                     "lease_expires_at",
                     "dispatch_token",
@@ -994,21 +1080,52 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             or work_item.dispatch_token != claimed_dispatch_token
         ):
             return {"work_item_id": work_item.id, "status": "superseded"}
-        work_item.status = IngestionWorkStatus.SUCCEEDED
-        work_item.lease_expires_at = None
-        work_item.dispatch_token = ""
-        work_item.completed_at = timezone.now()
-        work_item.last_error = ""
-        work_item.save(
-            update_fields=[
-                "status",
-                "lease_expires_at",
-                "dispatch_token",
-                "completed_at",
-                "last_error",
-                "updated_at",
-            ]
-        )
+        if work_item.payload_json != claimed_payload_json:
+            work_item.status = IngestionWorkStatus.PENDING
+            work_item.available_at = timezone.now()
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.completed_at = None
+            work_item.last_error = ""
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "available_at",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "completed_at",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+            requeued = True
+        else:
+            requeued = False
+        if not requeued:
+            work_item.status = IngestionWorkStatus.SUCCEEDED
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.completed_at = timezone.now()
+            work_item.last_error = ""
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "completed_at",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+    if requeued:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception(
+                "process_ingestion_work_item: could not dispatch revised work_item=%s",
+                work_item_id,
+            )
+        return {"work_item_id": work_item_id, "status": "requeued"}
     return {"work_item_id": work_item_id, "status": "succeeded"}
 
 

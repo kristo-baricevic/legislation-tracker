@@ -56,6 +56,7 @@ class DocumentSectionDiff:
     returned_change_count: int
     truncated: bool
     fallback: bool
+    truncation_reasons: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ class DocumentLineDiff:
     section_key: str
     operations: tuple[dict, ...]
     truncated: bool
+    truncation_reasons: tuple[str, ...]
 
 
 def _normalize_identity(value: object) -> str:
@@ -97,16 +99,63 @@ def _compare_values(before: object, after: object, path: str, changes: list[Cont
         root = path.split(".", 1)[0]
         identity_fields = CONTRACT_ITEM_IDENTITIES.get(root)
         if identity_fields and all(isinstance(item, dict) for item in before + after):
-            before_items = {_identity(item, identity_fields): item for item in before}
-            after_items = {_identity(item, identity_fields): item for item in after}
+            before_items: dict[str, list[dict]] = {}
+            after_items: dict[str, list[dict]] = {}
+            for item in before:
+                before_items.setdefault(_identity(item, identity_fields), []).append(item)
+            for item in after:
+                after_items.setdefault(_identity(item, identity_fields), []).append(item)
             for identity in sorted(set(before_items) | set(after_items)):
-                item_path = f"{path}[{identity}]"
-                if identity not in before_items:
-                    changes.append(ContractChange(item_path, "added", None, _bounded(after_items[identity])))
-                elif identity not in after_items:
-                    changes.append(ContractChange(item_path, "removed", _bounded(before_items[identity]), None))
-                else:
-                    _compare_values(before_items[identity], after_items[identity], item_path, changes)
+                old_group = list(before_items.get(identity, ()))
+                new_group = list(after_items.get(identity, ()))
+                duplicate_identity = max(len(old_group), len(new_group)) > 1
+
+                def item_path(
+                    index: int,
+                    *,
+                    is_duplicate: bool = duplicate_identity,
+                    item_identity: str = identity,
+                ) -> str:
+                    suffix = f"#{index}" if is_duplicate else ""
+                    return f"{path}[{item_identity}{suffix}]"
+
+                # Consume exact matches first so a duplicate removal cannot be
+                # misreported as a mutation of the surviving row.
+                unmatched_new = list(new_group)
+                unmatched_old = []
+                for old_item in old_group:
+                    try:
+                        match_index = unmatched_new.index(old_item)
+                    except ValueError:
+                        unmatched_old.append(old_item)
+                    else:
+                        unmatched_new.pop(match_index)
+                paired = min(len(unmatched_old), len(unmatched_new))
+                for index in range(paired):
+                    _compare_values(
+                        unmatched_old[index],
+                        unmatched_new[index],
+                        item_path(index + 1),
+                        changes,
+                    )
+                for index, item in enumerate(unmatched_old[paired:], start=paired + 1):
+                    changes.append(
+                        ContractChange(
+                            item_path(index),
+                            "removed",
+                            _bounded(item),
+                            None,
+                        )
+                    )
+                for index, item in enumerate(unmatched_new[paired:], start=paired + 1):
+                    changes.append(
+                        ContractChange(
+                            item_path(index),
+                            "added",
+                            None,
+                            _bounded(item),
+                        )
+                    )
             return
         if sorted(map(repr, before)) == sorted(map(repr, after)):
             return
@@ -130,7 +179,9 @@ def compare_contracts(*, before, after, limit: int = 200) -> ContractDiff:
 
 
 def _section_map(document):
-    source = (document.extracted_text or document.raw_text or "")[:50_000]
+    complete_source = document.extracted_text or document.raw_text or ""
+    source_truncated = len(complete_source) > 50_000
+    source = complete_source[:50_000]
     if not source:
         raise ValueError("Document text is unavailable.")
     try:
@@ -151,7 +202,7 @@ def _section_map(document):
         for index, paragraph in enumerate(re.split(r"\n\s*\n+", source), start=1):
             if paragraph.strip():
                 result[f"paragraph-{index}"] = paragraph.strip()
-    return result, fallback
+    return result, fallback, source_truncated
 
 
 def _content_hash(value: str) -> str:
@@ -162,8 +213,8 @@ def _content_hash(value: str) -> str:
 def compare_document_sections(*, before, after, limit: int = 500) -> DocumentSectionDiff:
     if before.bill_id != after.bill_id:
         raise ValueError("Documents must belong to the same bill.")
-    before_sections, before_fallback = _section_map(before)
-    after_sections, after_fallback = _section_map(after)
+    before_sections, before_fallback, before_source_truncated = _section_map(before)
+    after_sections, after_fallback, after_source_truncated = _section_map(after)
     changes = []
     for key in sorted(set(before_sections) | set(after_sections)):
         old = before_sections.get(key)
@@ -178,29 +229,56 @@ def compare_document_sections(*, before, after, limit: int = 500) -> DocumentSec
         sections=tuple(changes[:limit]),
         total_change_count=len(changes),
         returned_change_count=min(len(changes), limit),
-        truncated=len(changes) > limit,
+        truncated=(
+            len(changes) > limit or before_source_truncated or after_source_truncated
+        ),
         fallback=before_fallback or after_fallback,
+        truncation_reasons=tuple(
+            reason
+            for reason, applies in (
+                ("source_text_limit", before_source_truncated or after_source_truncated),
+                ("section_change_limit", len(changes) > limit),
+            )
+            if applies
+        ),
     )
 
 
 def compare_document_section(*, before, after, section_key: str) -> DocumentLineDiff:
-    before_sections, _ = _section_map(before)
-    after_sections, _ = _section_map(after)
+    before_sections, _, before_source_truncated = _section_map(before)
+    after_sections, _, after_source_truncated = _section_map(after)
     left = before_sections.get(section_key, "")[:50_000].splitlines()
     right = after_sections.get(section_key, "")[:50_000].splitlines()
     matcher = SequenceMatcher(a=left[:2_000], b=right[:2_000], autojunk=False)
-    operations = []
-    for tag, left_start, left_end, right_start, right_end in matcher.get_opcodes()[:500]:
-        if tag != "equal":
-            operations.append(
-                {
-                    "operation": tag,
-                    "before": left[left_start:left_end],
-                    "after": right[right_start:right_end],
-                }
-            )
+    changed_opcodes = [
+        opcode for opcode in matcher.get_opcodes() if opcode[0] != "equal"
+    ]
+    operations = [
+        {
+            "operation": tag,
+            "before": left[left_start:left_end],
+            "after": right[right_start:right_end],
+        }
+        for tag, left_start, left_end, right_start, right_end in changed_opcodes[:500]
+    ]
+    operation_limit_reached = len(changed_opcodes) > 500
+    line_limit_reached = len(left) > 2_000 or len(right) > 2_000
     return DocumentLineDiff(
         section_key=section_key,
         operations=tuple(operations),
-        truncated=len(operations) >= 500 or len(left) > 2_000 or len(right) > 2_000,
+        truncated=(
+            operation_limit_reached
+            or line_limit_reached
+            or before_source_truncated
+            or after_source_truncated
+        ),
+        truncation_reasons=tuple(
+            reason
+            for reason, applies in (
+                ("source_text_limit", before_source_truncated or after_source_truncated),
+                ("line_limit", line_limit_reached),
+                ("operation_limit", operation_limit_reached),
+            )
+            if applies
+        ),
     )

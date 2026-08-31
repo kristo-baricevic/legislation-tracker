@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
   getRelatedBills,
+  getAllCurrentRepresentatives,
   getTrackedTopics,
   getMyTracking,
   getTrackingFeed,
@@ -56,6 +57,25 @@ describe("tracking API helpers", () => {
 
     assert.deepEqual(result, { results: [] });
     assert.equal(requests[0].url, "http://api.test/api/bills/10/related/?limit=5");
+  });
+
+  it("loads every page of current representatives for the comparison selector", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "http://api.test";
+    const requests: string[] = [];
+    globalThis.fetch = async (url) => {
+      requests.push(String(url));
+      return Response.json(
+        requests.length === 1
+          ? { count: 2, next: "next", previous: null, results: [{ id: 1, name: "First" }] }
+          : { count: 2, next: null, previous: "previous", results: [{ id: 2, name: "Second" }] },
+      );
+    };
+
+    const result = await getAllCurrentRepresentatives();
+
+    assert.deepEqual(result.map((representative) => representative.id), [1, 2]);
+    assert.equal(requests[0], "http://api.test/api/representatives/?is_current=true&page=1&page_size=100");
+    assert.equal(requests[1], "http://api.test/api/representatives/?is_current=true&page=2&page_size=100");
   });
 
   it("loads the current user's tracking summary", async () => {

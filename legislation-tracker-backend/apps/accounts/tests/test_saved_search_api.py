@@ -1,9 +1,16 @@
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import SavedBillSearch, User
+from apps.accounts.saved_searches import count_saved_search_new_results
 from apps.changelog.services import record_bill_change
 from apps.legislation.models import Bill
+
+POSTGRESQL_ONLY = pytest.mark.skipif(
+    connection.vendor != "postgresql", reason="requires PostgreSQL query composition"
+)
 
 
 @pytest.mark.django_db
@@ -87,3 +94,42 @@ def test_saved_search_rejects_unknown_query_keys_and_duplicate_normalized_query(
     assert first.status_code == 201
     assert duplicate.status_code == 400
     assert invalid.status_code == 400
+
+
+@POSTGRESQL_ONLY
+@pytest.mark.django_db
+def test_saved_search_activity_counts_are_computed_in_one_database_query():
+    user = User.objects.create_user(
+        username="query-count@example.test",
+        email="query-count@example.test",
+        password="safe-password-123",
+    )
+    Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 906",
+        title="Active bill",
+        status="Introduced",
+        last_activity_sequence=5,
+    )
+    searches = [
+        SavedBillSearch.objects.create(
+            user=user,
+            name="All active",
+            query_json={"session": 119},
+            normalized_hash="all-active",
+        ),
+        SavedBillSearch.objects.create(
+            user=user,
+            name="Introduced",
+            query_json={"session": 119, "status": "Introduced"},
+            normalized_hash="introduced",
+        ),
+    ]
+
+    with CaptureQueriesContext(connection) as queries:
+        counts = count_saved_search_new_results(searches)
+
+    assert counts == {searches[0].id: 1, searches[1].id: 1}
+    assert len(queries) == 1
+    assert "UNION ALL" in queries[0]["sql"]

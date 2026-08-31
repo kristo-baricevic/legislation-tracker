@@ -243,17 +243,20 @@ def _paginated_bill_collection(congress, bill_type, bill_number, collection, key
             raise CongressAPIError(
                 f"Congress bill {collection} returned an invalid {key} payload"
             )
+        if any(not isinstance(entry, dict) for entry in page):
+            raise CongressAPIError(
+                f"Congress bill {collection} returned an invalid {key} entry"
+            )
         fingerprint = tuple(
             str(entry.get("url") or entry.get("bioguideId") or entry)
             for entry in page
-            if isinstance(entry, dict)
         )
         if fingerprint in seen_pages and page:
             raise CongressAPIError(
                 f"Congress bill {collection} pagination repeated a page"
             )
         seen_pages.add(fingerprint)
-        items.extend(entry for entry in page if isinstance(entry, dict))
+        items.extend(page)
         if len(page) < limit:
             break
         offset += limit

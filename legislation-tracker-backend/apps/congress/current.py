@@ -60,3 +60,11 @@ def current_congress_session(on_date=None) -> int:
     congress = current_congress(civil_date)
     congress_start_year = 1789 + (congress - 1) * 2
     return 1 if civil_date.year == congress_start_year else 2
+
+
+def congress_date_bounds(congress: int) -> tuple[date, date]:
+    """Return the inclusive start and exclusive end civil dates for a Congress."""
+    if not isinstance(congress, int) or congress < 1:
+        raise ValueError("congress must be a positive integer")
+    start_year = 1789 + (congress - 1) * 2
+    return date(start_year, 1, 3), date(start_year + 2, 1, 3)

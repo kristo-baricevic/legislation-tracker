@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from django.utils import timezone
@@ -151,6 +152,50 @@ def test_invalid_snapshot_leaves_existing_memberships_unchanged(monkeypatch):
         CommitteeMembership.objects.get(representative=representative).is_current
         is True
     )
+
+
+@pytest.mark.django_db
+def test_older_committee_snapshot_cannot_overwrite_newer_persisted_roster(monkeypatch):
+    house_rep = Representative.objects.create(
+        bioguide_id="R000010", name="House", chamber="house", party="R", state="NY"
+    )
+    senate_rep = Representative.objects.create(
+        bioguide_id="S000010", name="Senate", chamber="senate", party="D", state="CA"
+    )
+    newer_time = timezone.now()
+    older_time = newer_time - timedelta(days=1)
+    CommitteeRosterSnapshot.objects.create(
+        congress=119,
+        chamber="house",
+        source_url="https://source.test/house.xml",
+        source_hash="newer-house",
+        published_at=newer_time,
+        assignment_count=1,
+        representative_count=1,
+    )
+    house = replace(
+        snapshot(
+            chamber="house",
+            assignments=[assignment(bioguide_id=house_rep.bioguide_id, code="hsii00", name="Rules", chamber="house")],
+        ),
+        published_at=older_time,
+        source_hash="older-house",
+    )
+    senate = replace(
+        snapshot(
+            chamber="senate",
+            assignments=[assignment(bioguide_id=senate_rep.bioguide_id, code="ssfi00", name="Finance", chamber="senate")],
+        ),
+        published_at=newer_time,
+    )
+    monkeypatch.setattr(committee_sync, "current_congress", lambda: 119)
+    monkeypatch.setattr(committee_sync, "fetch_house_committee_roster", lambda **_kwargs: house)
+    monkeypatch.setattr(committee_sync, "fetch_senate_committee_roster", lambda **_kwargs: senate)
+
+    with pytest.raises(committee_sync.CommitteeSnapshotValidationError, match="older"):
+        committee_sync.sync_committee_memberships()
+
+    assert CommitteeRosterSnapshot.objects.get(congress=119, chamber="house").source_hash == "newer-house"
 
 
 @pytest.mark.django_db

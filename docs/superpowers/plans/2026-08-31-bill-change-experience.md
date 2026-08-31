@@ -1,5 +1,7 @@
 # Bill Change Experience Implementation Plan
 
+> **Status (2026-08-31):** Implemented. This file retains the original TDD execution checklist as historical design context; current behavior is documented in the linked specification.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give authenticated users a reliable unread bill-change experience, a unified event timeline, and safe contract/document comparisons while keeping the public timeline readable without persistence.

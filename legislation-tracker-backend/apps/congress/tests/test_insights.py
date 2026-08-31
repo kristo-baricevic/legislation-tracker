@@ -4,7 +4,7 @@ import pytest
 
 from apps.congress import insights
 from apps.congress.insights import compare_representatives, representative_summary
-from apps.congress.models import Representative, Vote, VoteRecord
+from apps.congress.models import Representative, RepresentativeTerm, Vote, VoteRecord
 from apps.ingestion.models import RollCallIngestionState
 
 
@@ -103,3 +103,85 @@ def test_representative_comparison_only_uses_shared_yes_no_votes():
     assert comparison.shared_vote_count == 1
     assert comparison.agree_count == 0
     assert comparison.agreement_rate == 0
+
+
+@pytest.mark.django_db
+def test_historical_insight_uses_chamber_and_dates_from_service_terms():
+    representative = Representative.objects.create(
+        bioguide_id="I000020",
+        name="Former House Member",
+        chamber="senate",
+        party="Independent",
+        state="NY",
+        is_current=False,
+    )
+    RepresentativeTerm.objects.create(
+        representative=representative,
+        chamber="house",
+        state="NY",
+        district="1",
+        start_date=datetime(2025, 1, 3, tzinfo=UTC).date(),
+        end_date=datetime(2027, 1, 3, tzinfo=UTC).date(),
+    )
+    house_vote = Vote.objects.create(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        roll_number=20,
+        vote_date=datetime(2026, 1, 2, tzinfo=UTC),
+        result="Passed",
+    )
+    senate_vote = Vote.objects.create(
+        congress=119,
+        chamber="senate",
+        session_number=1,
+        roll_number=20,
+        vote_date=datetime(2026, 1, 2, tzinfo=UTC),
+        result="Passed",
+    )
+    VoteRecord.objects.create(
+        vote=house_vote, representative=representative, position="yes"
+    )
+    VoteRecord.objects.create(
+        vote=senate_vote, representative=representative, position="no"
+    )
+
+    summary = representative_summary(representative=representative, congress=119)
+
+    assert summary.total_roll_calls == 1
+    assert summary.position_counts["yes"] == 1
+    assert summary.position_counts["no"] == 0
+
+
+@pytest.mark.django_db
+def test_historical_insight_does_not_infer_service_from_a_current_profile(monkeypatch):
+    representative = Representative.objects.create(
+        bioguide_id="I000021",
+        name="Current Member Without History",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=True,
+    )
+    vote = Vote.objects.create(
+        congress=118,
+        chamber="house",
+        session_number=1,
+        roll_number=21,
+        vote_date=datetime(2023, 1, 4, tzinfo=UTC),
+        result="Passed",
+    )
+    VoteRecord.objects.create(
+        vote=vote,
+        representative=representative,
+        position="yes",
+    )
+    monkeypatch.setattr(insights, "current_congress", lambda: 119)
+
+    summary = representative_summary(representative=representative, congress=118)
+
+    assert summary.total_roll_calls == 0
+    assert summary.coverage_complete is False
+    assert summary.coverage_reason == (
+        "Service-term history is unavailable for this Congress."
+    )

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from django.core import signing
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from apps.changelog.models import BillActivityClock
@@ -16,6 +16,7 @@ from apps.legislation.models import Bill
 from apps.legislation.search import (
     BillSearchQuery,
     apply_bill_list_filters,
+    matching_bill_queryset,
     search_bills,
 )
 
@@ -79,6 +80,33 @@ def saved_search_queryset(search: SavedBillSearch):
 
 def count_saved_search_new_results(searches):
     """Count matching bills with activity newer than each private acknowledgement."""
+    searches = list(searches)
+    if connection.vendor == "postgresql" and searches:
+        statements = []
+        parameters = []
+        for search in searches:
+            queryset = saved_search_queryset(search)
+            if search.last_opened_activity_sequence is None:
+                queryset = queryset.filter(last_activity_sequence__isnull=False)
+            else:
+                queryset = queryset.filter(
+                    last_activity_sequence__gt=search.last_opened_activity_sequence
+                )
+            query = BillSearchQuery.from_params(search.query_json)
+            if query.q:
+                queryset = matching_bill_queryset(
+                    queryset=queryset,
+                    query_text=query.q,
+                )
+            sql, params = queryset.values("pk").order_by().query.sql_with_params()
+            statements.append(
+                f"SELECT %s AS search_id, COUNT(*) AS result_count FROM ({sql}) saved_match"
+            )
+            parameters.extend([search.id, *params])
+        with connection.cursor() as cursor:
+            cursor.execute(" UNION ALL ".join(statements), parameters)
+            return {search_id: count for search_id, count in cursor.fetchall()}
+
     counts = {}
     for search in searches:
         queryset = saved_search_queryset(search)
@@ -131,18 +159,19 @@ def saved_search_result_page(*, user, search: SavedBillSearch, page: int, page_s
     with transaction.atomic():
         clock = BillActivityClock.objects.select_for_update().get(pk=1)
         captured_at = timezone.now()
-        result = search_bills(
-            queryset=saved_search_queryset(search),
-            query=BillSearchQuery.from_params(
-                {**search.query_json, "page": page, "page_size": page_size}
-            ),
-        )
-        watermark = issue_saved_search_watermark(
-            user_id=user.id,
-            search=search,
-            sequence=clock.committed_sequence,
-            captured_at=captured_at,
-        )
+        captured_sequence = clock.committed_sequence
+    result = search_bills(
+        queryset=saved_search_queryset(search),
+        query=BillSearchQuery.from_params(
+            {**search.query_json, "page": page, "page_size": page_size}
+        ),
+    )
+    watermark = issue_saved_search_watermark(
+        user_id=user.id,
+        search=search,
+        sequence=captured_sequence,
+        captured_at=captured_at,
+    )
     return result, watermark
 
 

@@ -82,6 +82,7 @@ class BillDocumentComparisonView(APIView):
                 "returned_change_count": diff.returned_change_count,
                 "truncated": diff.truncated,
                 "fallback": diff.fallback,
+                "truncation_reasons": list(diff.truncation_reasons),
             }
         )
 
@@ -106,5 +107,6 @@ class BillDocumentSectionComparisonView(APIView):
                 "section_key": diff.section_key,
                 "operations": list(diff.operations),
                 "truncated": diff.truncated,
+                "truncation_reasons": list(diff.truncation_reasons),
             }
         )

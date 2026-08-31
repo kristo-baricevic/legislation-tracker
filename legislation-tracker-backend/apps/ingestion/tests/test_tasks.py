@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.models import ChangeLog
 from apps.congress.committee_sync import CommitteeSnapshotValidationError
-from apps.congress.models import Representative, Vote, VoteRecord
+from apps.congress.models import Representative, RepresentativeTerm, Vote, VoteRecord
 from apps.ingestion import document_download, tasks
 from apps.ingestion.congress_client import CongressAPIError
 from apps.ingestion.models import (
@@ -87,7 +87,7 @@ def test_committee_snapshot_validation_failure_is_recorded_for_replay(monkeypatc
 
     failure = IngestionTaskFailure.objects.get()
     assert (failure.task_name, failure.args_json) == (
-        "sync_committee_memberships",
+        "apps.ingestion.tasks.sync_committee_memberships",
         {"args": [119], "kwargs": {}},
     )
 
@@ -610,7 +610,7 @@ def test_blocked_work_is_not_retried_or_dead_lettered_until_every_dependency_wak
     }
     work.refresh_from_db()
     assert work.status == IngestionWorkStatus.BLOCKED
-    assert work.attempt_count == 1
+    assert work.attempt_count == 0
     assert not IngestionTaskFailure.objects.filter(work_item=work).exists()
     assert tasks.dispatch_ingestion_work() == {"dispatched": 0}
     assert tasks.recover_stale_ingestion_work() == {"recovered": 0}
@@ -709,6 +709,35 @@ def test_work_processor_does_not_complete_after_its_lease_is_replaced(monkeypatc
     work.refresh_from_db()
     assert work.status == IngestionWorkStatus.PROCESSING
     assert work.dispatch_token == "replacement-lease"
+
+
+@pytest.mark.django_db
+def test_work_processor_requeues_when_payload_changes_during_processing(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-payload-revision",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original-lease",
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+
+    def attach_new_payload(_bill_key):
+        IngestionWorkItem.objects.filter(pk=work.id).update(
+            payload_json={"bill_key": "119-hr-1", "bill_id": 42}
+        )
+
+    monkeypatch.setattr(tasks, "_process_bill_impl", attach_new_payload)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks.process_ingestion_work_item(work.id, "original-lease")
+
+    work.refresh_from_db()
+    assert result == {"work_item_id": work.id, "status": "requeued"}
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.payload_json["bill_id"] == 42
+    assert work.completed_at is None
 
 
 @pytest.mark.django_db
@@ -2029,7 +2058,15 @@ def test_sync_representatives_ingests_the_complete_current_roster_before_retirin
             "state": "California",
             "officialWebsiteUrl": "https://doe.house.gov",
             "depiction": {"imageUrl": "https://images.example.com/doe.jpg"},
-            "terms": [{"chamber": "House of Representatives", "stateCode": "CA"}],
+            "terms": [
+                {
+                    "chamber": "House of Representatives",
+                    "stateCode": "CA",
+                    "district": 12,
+                    "startYear": 2025,
+                    "endYear": 2027,
+                }
+            ],
             "currentMember": True,
         },
     )
@@ -2066,6 +2103,19 @@ def test_sync_representatives_ingests_the_complete_current_roster_before_retirin
         True,
     )
     assert stale.is_current is False
+    assert list(
+        RepresentativeTerm.objects.filter(representative=representative).values(
+            "chamber", "state", "district", "start_date", "end_date"
+        )
+    ) == [
+        {
+            "chamber": "house",
+            "state": "CA",
+            "district": "12",
+            "start_date": datetime(2025, 1, 3, tzinfo=UTC).date(),
+            "end_date": datetime(2027, 1, 3, tzinfo=UTC).date(),
+        }
+    ]
 
 
 @pytest.mark.django_db
