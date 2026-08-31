@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -166,7 +167,7 @@ class BillChangeAcknowledgeView(APIView):
                 user=request.user,
                 bill=bill,
                 cursor=cursor,
-                acknowledged_at=cursor.created_at,
+                acknowledged_at=timezone.now(),
             )
         except (ChangeCursorValidationError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

@@ -262,6 +262,18 @@ export interface BillListItem {
   introduced_at: string | null;
   last_action_at: string | null;
   topics: BillTopicItem[];
+  search_rank?: number | null;
+  highlights?: SearchHighlight[];
+}
+
+export interface SearchHighlightSegment {
+  text: string;
+  matched: boolean;
+}
+
+export interface SearchHighlight {
+  kind: "metadata" | "contract" | "document";
+  segments: SearchHighlightSegment[];
 }
 
 export interface BillDocumentItem {
@@ -334,6 +346,8 @@ export interface GetBillsParams {
   jurisdiction?: string;
   topic?: string;
   topic_id?: number;
+  q?: string;
+  sort?: "recent_activity" | "relevance" | "updated";
 }
 
 export function parseTopicIdFromSearchParam(
@@ -355,6 +369,8 @@ export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   if (params?.jurisdiction?.trim()) sp.set("jurisdiction", params.jurisdiction.trim());
   if (params?.topic?.trim()) sp.set("topic", params.topic.trim());
   if (params?.topic_id != null) sp.set("topic_id", String(params.topic_id));
+  if (params?.q?.trim()) sp.set("q", params.q.trim());
+  if (params?.sort) sp.set("sort", params.sort);
   const q = sp.toString();
   return publicGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
 }
@@ -382,7 +398,8 @@ export async function getContracts(
 
 export interface VoteListItem {
   id: number;
-  bill: number;
+  bill: number | null;
+  congress?: number;
   chamber: string;
   session_number: number | null;
   roll_number: number;
@@ -390,11 +407,14 @@ export interface VoteListItem {
   result: string;
   yeas: number;
   nays: number;
+  question?: string;
+  source_url?: string;
 }
 
 export interface VoteRecordItem {
   representative: RepresentativeItem;
   position: string;
+  raw_position?: string;
 }
 
 export interface VoteDetailItem extends VoteListItem {
@@ -419,6 +439,102 @@ export async function getVotes(
 
 export async function getVote(voteId: number): Promise<VoteDetailItem> {
   return publicGet<VoteDetailItem>(`/api/votes/${voteId}/`);
+}
+
+export interface BillChangeEvent {
+  id: number;
+  type: string;
+  occurred_at: string;
+  summary: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  document_id: number | null;
+  contract_id: number | null;
+}
+
+export interface BillChangesPage {
+  results: BillChangeEvent[];
+  page_end_cursor: string | null;
+  stream_head_cursor: string | null;
+  older_cursor: string | null;
+  has_more_newer: boolean;
+  has_more_older: boolean;
+  unread_count: number | null;
+  personalized: boolean;
+  initial_window_truncated: boolean;
+}
+
+export function getBillChanges(
+  billId: number,
+  params?: { afterCursor?: string; beforeCursor?: string },
+): Promise<BillChangesPage> {
+  const search = new URLSearchParams();
+  if (params?.afterCursor) search.set("after_cursor", params.afterCursor);
+  if (params?.beforeCursor) search.set("before_cursor", params.beforeCursor);
+  const query = search.toString();
+  return authGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`)
+    .catch((error: unknown) => {
+      if (error instanceof ApiError && error.status === 401) {
+        return publicGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`);
+      }
+      throw error;
+    });
+}
+
+export function acknowledgeBillChanges(
+  billId: number,
+  cursor: string,
+): Promise<{ unread_count: number | null }> {
+  return authPost(`/api/bills/${billId}/changes/acknowledge/`, { cursor });
+}
+
+export interface ContractComparison {
+  before: number;
+  after: number;
+  changes: Array<{
+    path: string;
+    operation: "added" | "removed" | "changed";
+    before: unknown;
+    after: unknown;
+  }>;
+  total_change_count: number;
+  returned_change_count: number;
+  truncated: boolean;
+}
+
+export function compareBillContracts(
+  billId: number,
+  before: number,
+  after: number,
+): Promise<ContractComparison> {
+  return publicGet<ContractComparison>(
+    `/api/bills/${billId}/comparisons/contracts/?before=${before}&after=${after}`,
+  );
+}
+
+export interface DocumentComparison {
+  before: number;
+  after: number;
+  sections: Array<{
+    section_key: string;
+    operation: "added" | "removed" | "changed";
+    before_hash: string | null;
+    after_hash: string | null;
+  }>;
+  total_change_count: number;
+  returned_change_count: number;
+  truncated: boolean;
+  fallback: boolean;
+}
+
+export function compareBillDocuments(
+  billId: number,
+  before: number,
+  after: number,
+): Promise<DocumentComparison> {
+  return publicGet<DocumentComparison>(
+    `/api/bills/${billId}/comparisons/documents/?before=${before}&after=${after}`,
+  );
 }
 
 export interface RelatedBillItem {
@@ -476,6 +592,108 @@ export async function getRepresentatives(params?: {
   return publicGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
 }
 
+export interface RepresentativeInsight {
+  representative_id: number;
+  congress: number;
+  total_roll_calls: number;
+  ingested_roll_calls: number;
+  discovered_roll_calls: number;
+  participation_numerator: number;
+  participation_denominator: number;
+  participation_rate: number | null;
+  position_counts: Record<string, number>;
+  first_vote_at: string | null;
+  last_vote_at: string | null;
+  coverage_complete: boolean;
+  coverage_reason: string | null;
+  sponsored_bill_count: number;
+  active_cosponsored_bill_count: number;
+  committee_count: number;
+}
+
+export interface RepresentativeComparison {
+  left_representative_id: number;
+  right_representative_id: number;
+  congress: number;
+  shared_vote_count: number;
+  agree_count: number;
+  disagreement_count: number;
+  excluded_shared_vote_count: number;
+  agreement_rate: number | null;
+  coverage_complete: boolean;
+  reason: string | null;
+  shared_votes: Array<{
+    vote_id: number;
+    bill_id: number | null;
+    vote_date: string;
+    question: string;
+    result: string;
+    left_position: string;
+    right_position: string;
+  }>;
+}
+
+export interface CommitteeMembershipItem {
+  committee: {
+    id: number;
+    system_code: string;
+    name: string;
+    chamber: string;
+  };
+  congress: number;
+  rank: number | null;
+  role: string;
+  is_current: boolean;
+}
+
+export interface BillCosponsorItem {
+  bill: BillListItem;
+  sponsorship_date: string | null;
+  is_original_cosponsor: boolean;
+  withdrawn_at: string | null;
+}
+
+export function getRepresentative(id: number): Promise<RepresentativeItem> {
+  return publicGet<RepresentativeItem>(`/api/representatives/${id}/`);
+}
+
+export function getRepresentativeInsights(
+  id: number,
+  congress: number,
+): Promise<RepresentativeInsight> {
+  return publicGet<RepresentativeInsight>(`/api/representatives/${id}/insights/?congress=${congress}`);
+}
+
+export function getRepresentativeSponsoredBills(
+  id: number,
+  congress: number,
+): Promise<{ results: BillListItem[] }> {
+  return publicGet(`/api/representatives/${id}/sponsored-bills/?congress=${congress}`);
+}
+
+export function getRepresentativeCosponsoredBills(
+  id: number,
+  congress: number,
+): Promise<{ results: BillCosponsorItem[] }> {
+  return publicGet(`/api/representatives/${id}/cosponsored-bills/?congress=${congress}`);
+}
+
+export function getRepresentativeCommittees(
+  id: number,
+  congress: number,
+): Promise<{ results: CommitteeMembershipItem[] }> {
+  return publicGet(`/api/representatives/${id}/committees/?congress=${congress}`);
+}
+
+export function compareRepresentatives(
+  ids: [number, number],
+  congress: number,
+): Promise<RepresentativeComparison> {
+  return publicGet<RepresentativeComparison>(
+    `/api/representatives/compare/?ids=${ids.join(",")}&congress=${congress}`,
+  );
+}
+
 export interface TrackedBillItem {
   id: number;
   bill: BillListItem;
@@ -520,6 +738,44 @@ export interface TrackingFeed {
 
 export function getMyTracking(): Promise<TrackingSummary> {
   return authGet<TrackingSummary>("/api/tracking/");
+}
+
+export interface SavedBillSearch {
+  id: number;
+  name: string;
+  query_json: Record<string, unknown>;
+  last_opened_at: string | null;
+  last_opened_activity_sequence: number | null;
+  new_result_count: number;
+}
+
+export function getSavedBillSearches(): Promise<{
+  count: number;
+  results: SavedBillSearch[];
+}> {
+  return authGet("/api/saved-searches/");
+}
+
+export function createSavedBillSearch(
+  name: string,
+  query: Record<string, unknown>,
+): Promise<SavedBillSearch> {
+  return authPost("/api/saved-searches/", { name, query });
+}
+
+export function getSavedBillSearchResults(
+  id: number,
+): Promise<BillsPage & { result_watermark: string }> {
+  return authGet(`/api/saved-searches/${id}/results/`);
+}
+
+export function openSavedBillSearch(
+  id: number,
+  resultWatermark: string,
+): Promise<void> {
+  return authPost(`/api/saved-searches/${id}/open/`, {
+    result_watermark: resultWatermark,
+  });
 }
 
 export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFeed> {

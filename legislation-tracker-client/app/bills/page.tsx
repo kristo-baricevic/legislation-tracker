@@ -2,11 +2,15 @@
 
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import {
   getBillFilterOptions,
   getBills,
+  createSavedBillSearch,
+  getSavedBillSearches,
+  getSavedBillSearchResults,
+  openSavedBillSearch,
   getMyTracking,
   getSession,
   getTopics,
@@ -15,6 +19,7 @@ import {
   type BillListItem,
   type BillsPage,
   type TopicItem,
+  type SavedBillSearch,
   untrackTopic,
 } from "@/lib/api";
 
@@ -29,6 +34,7 @@ function parsePositiveIntegerFilter(value: string): number | undefined {
 
 function BillsTable() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [page, setPage] = useState<BillsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,11 +47,15 @@ function BillsTable() {
 
   const [pageNum, setPageNum] = useState(1);
   const [idFilter, setIdFilter] = useState("");
-  const [billNumberFilter, setBillNumberFilter] = useState("");
-  const [sessionFilter, setSessionFilter] = useState<string | null>(null);
-  const [jurisdictionFilter, setJurisdictionFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [sponsorFilter, setSponsorFilter] = useState("");
+  const [billNumberFilter, setBillNumberFilter] = useState(() => searchParams.get("bill_number") ?? "");
+  const [sessionFilter, setSessionFilter] = useState<string | null>(() => searchParams.get("session"));
+  const [jurisdictionFilter, setJurisdictionFilter] = useState(() => searchParams.get("jurisdiction") ?? "");
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+  const [sponsorFilter, setSponsorFilter] = useState(() => searchParams.get("sponsor") ?? "");
+  const [queryFilter, setQueryFilter] = useState(() => searchParams.get("q") ?? "");
+  const [sort, setSort] = useState<"recent_activity" | "relevance" | "updated">(
+    () => (searchParams.get("sort") === "relevance" || searchParams.get("sort") === "updated" ? searchParams.get("sort")! as "relevance" | "updated" : "recent_activity"),
+  );
   const rawTopicIdFromUrl = searchParams.get("topic_id");
   const topicIdFromUrl = parseTopicIdFromSearchParam(rawTopicIdFromUrl);
   const topicUrlError =
@@ -61,6 +71,8 @@ function BillsTable() {
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [savedSearches, setSavedSearches] = useState<SavedBillSearch[]>([]);
+  const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
 
   const loadFilterMeta = useCallback(async () => {
     setFilterMetaReady(false);
@@ -128,6 +140,15 @@ function BillsTable() {
   }, []);
 
   useEffect(() => {
+    if (!hasAccount) return;
+    let cancelled = false;
+    getSavedBillSearches()
+      .then((value) => { if (!cancelled) setSavedSearches(value.results); })
+      .catch(() => { if (!cancelled) setSavedSearchError("Could not load saved searches."); });
+    return () => { cancelled = true; };
+  }, [hasAccount]);
+
+  useEffect(() => {
     if (!filterMetaReady || sessionFilter === null) return;
     let cancelled = false;
 
@@ -168,6 +189,8 @@ function BillsTable() {
       sponsor: sponsorFilter || undefined,
       topic: topicFuzzyFilter || undefined,
       topic_id: topicIdParsed,
+      q: queryFilter || undefined,
+      sort,
     })
       .then((data) => {
         if (!cancelled) setPage(data);
@@ -194,7 +217,27 @@ function BillsTable() {
     topicFuzzyFilter,
     filterMetaReady,
     topicUrlError,
+    queryFilter,
+    sort,
   ]);
+
+  useEffect(() => {
+    if (!filterMetaReady) return;
+    const next = new URLSearchParams();
+    if (pageNum > 1) next.set("page", String(pageNum));
+    if (idFilter) next.set("id", idFilter);
+    if (billNumberFilter) next.set("bill_number", billNumberFilter);
+    if (sessionFilter) next.set("session", sessionFilter);
+    if (jurisdictionFilter) next.set("jurisdiction", jurisdictionFilter);
+    if (statusFilter) next.set("status", statusFilter);
+    if (sponsorFilter) next.set("sponsor", sponsorFilter);
+    if (topicIdFilter) next.set("topic_id", topicIdFilter);
+    if (topicFuzzyFilter) next.set("topic", topicFuzzyFilter);
+    if (queryFilter) next.set("q", queryFilter);
+    if (sort !== "recent_activity") next.set("sort", sort);
+    const target = `/bills${next.size ? `?${next}` : ""}`;
+    router.replace(target, { scroll: false });
+  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, sessionFilter, sort, sponsorFilter, statusFilter, topicFuzzyFilter, topicIdFilter]);
 
   const resetPageAndSet = useCallback(
     (setter: React.Dispatch<React.SetStateAction<string>>) =>
@@ -257,6 +300,60 @@ function BillsTable() {
     }
   }
 
+  function currentSearchQuery(): Record<string, unknown> {
+    const query: Record<string, unknown> = {};
+    const session = parsePositiveIntegerFilter(sessionFilter ?? "");
+    const id = parsePositiveIntegerFilter(idFilter);
+    const topicId = parsePositiveIntegerFilter(topicIdFilter);
+    if (session) query.session = session;
+    if (id) query.id = id;
+    if (billNumberFilter) query.bill_number = billNumberFilter;
+    if (jurisdictionFilter) query.jurisdiction = jurisdictionFilter;
+    if (statusFilter) query.status = statusFilter;
+    if (sponsorFilter) query.sponsor = sponsorFilter;
+    if (topicId) query.topic_id = topicId;
+    if (topicFuzzyFilter) query.topic = topicFuzzyFilter;
+    if (queryFilter) query.q = queryFilter;
+    if (sort !== "recent_activity") query.sort = sort;
+    return query;
+  }
+
+  async function saveCurrentSearch() {
+    const name = window.prompt("Name this saved search");
+    if (!name?.trim()) return;
+    setSavedSearchError(null);
+    try {
+      const saved = await createSavedBillSearch(name, currentSearchQuery());
+      setSavedSearches((items) => [saved, ...items]);
+    } catch (cause) {
+      setSavedSearchError(cause instanceof Error ? cause.message : "Could not save this search.");
+    }
+  }
+
+  async function openSavedSearch(search: SavedBillSearch) {
+    setSavedSearchError(null);
+    try {
+      const result = await getSavedBillSearchResults(search.id);
+      await openSavedBillSearch(search.id, result.result_watermark);
+      const query = search.query_json;
+      setSessionFilter(typeof query.session === "number" ? String(query.session) : "");
+      setIdFilter(typeof query.id === "number" ? String(query.id) : "");
+      setBillNumberFilter(typeof query.bill_number === "string" ? query.bill_number : "");
+      setJurisdictionFilter(typeof query.jurisdiction === "string" ? query.jurisdiction : "");
+      setStatusFilter(typeof query.status === "string" ? query.status : "");
+      setSponsorFilter(typeof query.sponsor === "string" ? query.sponsor : "");
+      setTopicIdFilter(typeof query.topic_id === "number" ? String(query.topic_id) : "");
+      setTopicFuzzyFilter(typeof query.topic === "string" ? query.topic : "");
+      setQueryFilter(typeof query.q === "string" ? query.q : "");
+      setSort(query.sort === "relevance" || query.sort === "updated" ? query.sort : "recent_activity");
+      setPage({ count: result.count, next: null, previous: null, results: result.results });
+      setPageNum(1);
+      setSavedSearches((items) => items.map((item) => item.id === search.id ? { ...item, new_result_count: 0 } : item));
+    } catch (cause) {
+      setSavedSearchError(cause instanceof Error ? cause.message : "Could not open saved search.");
+    }
+  }
+
   return (
     <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="w-full">
@@ -274,11 +371,16 @@ function BillsTable() {
 
         <div className="mb-6 rounded-lg border border-slate-400/70 bg-white/70 p-4 shadow-sm dark:border-green-900/60 dark:bg-green-950/10 dark:shadow-none">
           <p className="mb-3 text-sm text-slate-600 dark:text-green-500">
-            Filters apply automatically. Topic: use <strong>dropdown</strong> for
+            Search and filters apply automatically. Topic: use <strong>dropdown</strong> for
             an exact tag, or <strong>topic contains</strong> for a fuzzy match
             (not both).
           </p>
           <div className="responsive-field-grid">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-slate-600 dark:text-green-500">Full-text search</span>
+              <input type="search" value={queryFilter} onChange={resetPageAndSet(setQueryFilter)} placeholder="Words in title, summary, analysis, or text" className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300" />
+            </label>
+            <SelectField label="Sort" value={sort} options={[{ value: "recent_activity", label: "Recent activity" }, { value: "relevance", label: "Relevance" }, { value: "updated", label: "Last updated" }]} onChange={(value) => { setPageNum(1); setSort(value as "recent_activity" | "relevance" | "updated"); }} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-slate-600 dark:text-green-500">Bill ID</span>
               <input
@@ -401,6 +503,16 @@ function BillsTable() {
               <p className="mt-2 text-red-700 dark:text-red-300">{trackingError}</p>
             )}
           </div>
+          {hasAccount && (
+            <div className="mt-4 border-t border-slate-300 pt-3 text-sm dark:border-green-900/70">
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => void saveCurrentSearch()} className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40">Save this search</button>
+                {savedSearches.length > 0 && <span className="text-slate-600 dark:text-green-500">Saved searches:</span>}
+                {savedSearches.map((search) => <button key={search.id} type="button" onClick={() => void openSavedSearch(search)} className="cursor-pointer text-blue-900 underline dark:text-green-400">{search.name}{search.new_result_count ? ` (${search.new_result_count} new)` : ""}</button>)}
+              </div>
+              {savedSearchError && <p role="alert" className="mt-2 text-red-700 dark:text-red-300">{savedSearchError}</p>}
+            </div>
+          )}
         </div>
 
         {filterMetaError && (
@@ -476,6 +588,7 @@ function BillsTable() {
                       <td className="truncate p-3">{bill.session}</td>
                       <td className="truncate p-3" title={bill.title}>
                         {bill.title}
+                        {bill.highlights?.[0] && <p className="mt-1 text-xs text-slate-600 dark:text-green-600">{bill.highlights[0].segments.map((segment, index) => <span key={index} className={segment.matched ? "font-bold text-slate-900 dark:text-green-300" : ""}>{segment.text}</span>)}</p>}
                       </td>
                       <td className="truncate p-3" title={bill.status}>
                         {bill.status}

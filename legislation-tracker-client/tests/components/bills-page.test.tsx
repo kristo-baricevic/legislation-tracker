@@ -9,6 +9,7 @@ const searchState = vi.hoisted(() => ({ query: "topic_id=7" }));
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(searchState.query),
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 vi.mock("@/lib/api", () => ({

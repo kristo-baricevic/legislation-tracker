@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import BillDetailPage from "@/app/bills/[id]/page";
 import {
   getBill,
+  getBillChanges,
   getContracts,
   getVote,
   getVotes,
@@ -26,6 +27,10 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/api", () => ({
   getBill: vi.fn(),
+  getBillChanges: vi.fn(),
+  acknowledgeBillChanges: vi.fn(),
+  compareBillContracts: vi.fn(),
+  compareBillDocuments: vi.fn(),
   getContracts: vi.fn(),
   getVote: vi.fn(),
   getVotes: vi.fn(),
@@ -41,6 +46,17 @@ describe("BillDetailPage", () => {
     routeState.id = "10";
     vi.clearAllMocks();
     vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getBillChanges).mockResolvedValue({
+      results: [],
+      page_end_cursor: null,
+      stream_head_cursor: null,
+      older_cursor: null,
+      has_more_newer: false,
+      has_more_older: false,
+      unread_count: null,
+      personalized: false,
+      initial_window_truncated: false,
+    });
     vi.mocked(getBill).mockResolvedValue({
       id: 10,
       jurisdiction: "federal",

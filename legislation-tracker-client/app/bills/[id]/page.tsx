@@ -21,6 +21,7 @@ import {
 import { getContractSummary } from "@/lib/contracts";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
+import BillChangeExperience from "./bill-change-experience";
 
 function HistoryPagination({
   page,
@@ -530,6 +531,12 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         )}
 
         <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
+
+        <BillChangeExperience
+          billId={bill.id}
+          contracts={contractHistory ?? (bill.latest_contract ? [bill.latest_contract] : [])}
+          documents={bill.documents}
+        />
 
         {contractLoading && (
           <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
