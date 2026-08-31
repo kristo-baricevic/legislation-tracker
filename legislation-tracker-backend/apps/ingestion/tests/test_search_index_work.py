@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from django.utils import timezone
 
+from apps.changelog.services import record_bill_change
 from apps.ingestion import tasks
 from apps.ingestion.models import IngestionWorkItem
 from apps.legislation.models import Bill
@@ -68,3 +69,28 @@ def test_stale_search_work_is_a_successful_noop(monkeypatch):
 
     assert result["stale"] is True
     assert observed == []
+
+
+@pytest.mark.django_db
+def test_search_index_work_uses_new_bill_activity_for_a_changed_projection():
+    from apps.legislation.tasks import enqueue_search_index
+
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 904",
+        title="Projection version bill",
+        status="Introduced",
+    )
+
+    first = enqueue_search_index(bill)
+    record_bill_change(
+        bill=bill,
+        change_type="topic_update",
+        new_value={"topics": ["health"]},
+        event_key="projection-version-topic-update",
+    )
+    second = enqueue_search_index(bill)
+
+    assert second.pk != first.pk
+    assert second.source_updated_at > first.source_updated_at

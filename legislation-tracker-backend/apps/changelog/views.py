@@ -109,7 +109,9 @@ class BillChangeTimelineView(APIView):
                     )
                 )
             ).exists()
-        head = base.order_by("-created_at", "-id").first()
+        # Keep the acknowledgement head in the same read as the rendered page.
+        # A separate query could include an event committed during browsing.
+        head = entries[-1] if entries else None
         initial_window_truncated = (
             before_cursor is None and after_cursor is None and has_more_older
         )

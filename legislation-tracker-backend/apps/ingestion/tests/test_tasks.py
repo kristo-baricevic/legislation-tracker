@@ -1,5 +1,5 @@
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
@@ -1200,8 +1200,13 @@ def test_stale_roll_call_work_attaches_a_missing_bill_without_replacing_vote_dat
 
 
 @pytest.mark.django_db
-def test_bill_vote_reference_requeues_same_version_discovery_work_to_attach_bill(
+@pytest.mark.parametrize(
+    "initial_status",
+    [IngestionWorkStatus.SUCCEEDED, IngestionWorkStatus.DEAD],
+)
+def test_bill_vote_reference_requeues_terminal_discovery_work_to_attach_bill(
     monkeypatch,
+    initial_status,
 ):
     bill = Bill.objects.create(
         jurisdiction="federal",
@@ -1232,7 +1237,7 @@ def test_bill_vote_reference_requeues_same_version_discovery_work_to_attach_bill
         dedupe_key="vote:119:house:1:11",
         congress=119,
         source_updated_at=source_updated_at,
-        status=IngestionWorkStatus.SUCCEEDED,
+        status=initial_status,
         completed_at=timezone.now(),
         payload_json={
             "congress": 119,
@@ -1274,6 +1279,41 @@ def test_bill_vote_reference_requeues_same_version_discovery_work_to_attach_bill
     assert work.payload_json["bill_id"] == bill.id
     tasks.process_ingestion_work_item(work.id)
     assert Vote.objects.get(roll_number=11).bill == bill
+
+
+@pytest.mark.django_db
+def test_representative_detail_retains_terms_when_source_returns_empty_terms(monkeypatch):
+    representative = Representative.objects.create(
+        bioguide_id="T000001",
+        name="Term Member",
+        chamber="house",
+        party="Independent",
+        state="NY",
+    )
+    term = RepresentativeTerm.objects.create(
+        representative=representative,
+        chamber="house",
+        state="NY",
+        district="1",
+        start_date=date(2025, 1, 3),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "member_detail",
+        lambda _bioguide_id: {
+            "bioguideId": representative.bioguide_id,
+            "directOrderName": "Term Member",
+            "terms": [],
+        },
+    )
+
+    tasks._process_representative_detail_impl(representative.bioguide_id)
+
+    assert list(
+        RepresentativeTerm.objects.filter(representative=representative).values_list(
+            "id", flat=True
+        )
+    ) == [term.id]
 
 
 @pytest.mark.django_db

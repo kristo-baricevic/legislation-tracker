@@ -160,12 +160,12 @@ def saved_search_result_page(*, user, search: SavedBillSearch, page: int, page_s
         clock = BillActivityClock.objects.select_for_update().get(pk=1)
         captured_at = timezone.now()
         captured_sequence = clock.committed_sequence
-    result = search_bills(
-        queryset=saved_search_queryset(search),
-        query=BillSearchQuery.from_params(
-            {**search.query_json, "page": page, "page_size": page_size}
-        ),
-    )
+        result = search_bills(
+            queryset=saved_search_queryset(search),
+            query=BillSearchQuery.from_params(
+                {**search.query_json, "page": page, "page_size": page_size}
+            ),
+        )
     watermark = issue_saved_search_watermark(
         user_id=user.id,
         search=search,

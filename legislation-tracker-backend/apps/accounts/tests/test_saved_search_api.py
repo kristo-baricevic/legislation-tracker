@@ -3,8 +3,10 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from apps.accounts import saved_searches
 from apps.accounts.models import SavedBillSearch, User
 from apps.accounts.saved_searches import count_saved_search_new_results
+from apps.changelog.models import BillActivityClock
 from apps.changelog.services import record_bill_change
 from apps.legislation.models import Bill
 
@@ -133,3 +135,46 @@ def test_saved_search_activity_counts_are_computed_in_one_database_query():
     assert counts == {searches[0].id: 1, searches[1].id: 1}
     assert len(queries) == 1
     assert "UNION ALL" in queries[0]["sql"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_saved_search_evaluates_results_while_holding_its_activity_snapshot(
+    monkeypatch,
+):
+    user = User.objects.create_user(
+        username="snapshot@example.test",
+        email="snapshot@example.test",
+        password="safe-password-123",
+    )
+    Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 907",
+        title="Snapshot bill",
+        status="Introduced",
+    )
+    search = SavedBillSearch.objects.create(
+        user=user,
+        name="Snapshot",
+        query_json={"session": 119},
+        normalized_hash="snapshot-search",
+    )
+    BillActivityClock.objects.get_or_create(pk=1, defaults={"committed_sequence": 0})
+    real_search_bills = saved_searches.search_bills
+    observed_atomic_states = []
+
+    def observe_search_transaction(*, queryset, query):
+        observed_atomic_states.append(connection.in_atomic_block)
+        return real_search_bills(queryset=queryset, query=query)
+
+    monkeypatch.setattr(saved_searches, "search_bills", observe_search_transaction)
+
+    result, _watermark = saved_searches.saved_search_result_page(
+        user=user,
+        search=search,
+        page=1,
+        page_size=20,
+    )
+
+    assert result.count == 1
+    assert observed_atomic_states == [True]

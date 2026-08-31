@@ -203,6 +203,8 @@ REST_FRAMEWORK = {
         "llm_validation": LLM_ENHANCEMENT_VALIDATION_RATE,
         "bill_search_anon": env("BILL_SEARCH_ANON_RATE", default="30/min"),
         "bill_search_user": env("BILL_SEARCH_USER_RATE", default="120/min"),
+        "bill_comparison_anon": env("BILL_COMPARISON_ANON_RATE", default="10/min"),
+        "bill_comparison_user": env("BILL_COMPARISON_USER_RATE", default="60/min"),
     },
 }
 

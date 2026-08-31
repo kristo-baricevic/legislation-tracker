@@ -403,6 +403,8 @@ def _member_terms(summary, detail):
         terms = terms.get("item") or terms.get("terms") or []
     if not isinstance(terms, list):
         raise CongressAPIError("Congress member terms payload is invalid")
+    if not terms:
+        return None
     parsed = []
     for term in terms:
         if not isinstance(term, dict):
@@ -1740,7 +1742,10 @@ def _queue_roll_call_vote(*, bill, reference: dict):
             payload["bill_id"] = bill.id
             work_item.payload_json = payload
             update_fields = ["payload_json", "updated_at"]
-            if work_item.status == IngestionWorkStatus.SUCCEEDED:
+            if work_item.status in (
+                IngestionWorkStatus.SUCCEEDED,
+                IngestionWorkStatus.DEAD,
+            ):
                 work_item.status = IngestionWorkStatus.PENDING
                 work_item.attempt_count = 0
                 work_item.available_at = timezone.now()

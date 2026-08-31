@@ -1,4 +1,5 @@
 import pytest
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.db import connection
@@ -157,6 +158,33 @@ def test_bill_comparison_endpoints_require_versions_from_the_requested_bill():
 
     assert response.status_code == 200
     assert response.json()["changes"][0]["path"] == "plain_summary"
+
+
+@pytest.mark.django_db
+def test_public_comparison_endpoints_throttle_before_validating_or_diffing(
+    monkeypatch,
+):
+    from apps.legislation.throttles import BillComparisonThrottle
+
+    monkeypatch.setitem(
+        BillComparisonThrottle.THROTTLE_RATES,
+        "bill_comparison_anon",
+        "1/min",
+    )
+    client = APIClient()
+    endpoints = (
+        "/api/bills/1/comparisons/contracts/",
+        "/api/bills/1/comparisons/documents/",
+        "/api/bills/1/comparisons/documents/section/",
+    )
+
+    for endpoint in endpoints:
+        cache.clear()
+        first = client.get(endpoint)
+        second = client.get(endpoint)
+
+        assert first.status_code == 400
+        assert second.status_code == 429
 
 
 class FakeRemoteStorage:

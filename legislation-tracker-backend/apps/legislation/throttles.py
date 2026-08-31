@@ -1,16 +1,17 @@
 from rest_framework.throttling import SimpleRateThrottle
 
 
-class BillSearchThrottle(SimpleRateThrottle):
-    """Separate anonymous and authenticated search buckets."""
+class PublicBillThrottle(SimpleRateThrottle):
+    """Separate anonymous and authenticated public bill API buckets."""
 
-    scope = "bill_search_anon"
+    anonymous_scope = ""
+    authenticated_scope = ""
 
     def allow_request(self, request, view):
         self.scope = (
-            "bill_search_user"
+            self.authenticated_scope
             if getattr(request.user, "is_authenticated", False)
-            else "bill_search_anon"
+            else self.anonymous_scope
         )
         self.rate = self.get_rate()
         if self.rate is None:
@@ -24,3 +25,19 @@ class BillSearchThrottle(SimpleRateThrottle):
         else:
             ident = self.get_ident(request)
         return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class BillSearchThrottle(PublicBillThrottle):
+    """Separate anonymous and authenticated search buckets."""
+
+    scope = "bill_search_anon"
+    anonymous_scope = "bill_search_anon"
+    authenticated_scope = "bill_search_user"
+
+
+class BillComparisonThrottle(PublicBillThrottle):
+    """Separate anonymous and authenticated bounded-diff buckets."""
+
+    scope = "bill_comparison_anon"
+    anonymous_scope = "bill_comparison_anon"
+    authenticated_scope = "bill_comparison_user"

@@ -1,7 +1,9 @@
 import pytest
+from django.db.models.query import QuerySet
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
+from apps.changelog.cursors import decode_change_cursor
 from apps.changelog.models import ChangeLog
 from apps.legislation.models import Bill
 
@@ -111,3 +113,56 @@ def test_timeline_can_acknowledge_a_signed_stream_head_after_browsing_history():
 
     assert response.status_code == 200
     assert response.json()["unread_count"] == 0
+
+
+@pytest.mark.django_db
+def test_truncated_timeline_stream_head_excludes_events_committed_after_page_read(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 910",
+        title="Timeline snapshot bill",
+        status="Introduced",
+    )
+    for index in range(3):
+        ChangeLog.objects.create(
+            bill=bill,
+            change_type="status_update",
+            new_value={"status": f"Before {index}"},
+        )
+
+    original_fetch_all = QuerySet._fetch_all
+    injected = []
+
+    def insert_event_after_initial_page_read(queryset):
+        original_fetch_all(queryset)
+        if (
+            not injected
+            and queryset.model is ChangeLog
+            and tuple(queryset.query.order_by) == ("-created_at", "-id")
+            and queryset.query.high_mark == 3
+        ):
+            injected.append(
+                ChangeLog.objects.create(
+                    bill=bill,
+                    change_type="status_update",
+                    new_value={"status": "Arrived during browse"},
+                )
+            )
+
+    monkeypatch.setattr(QuerySet, "_fetch_all", insert_event_after_initial_page_read)
+
+    response = APIClient().get(f"/api/bills/{bill.id}/changes/?page_size=2")
+    result_ids = [entry["id"] for entry in response.json()["results"]]
+    stream_head = decode_change_cursor(
+        response.json()["stream_head_cursor"],
+        expected_bill_id=bill.id,
+        allowed_purposes=frozenset({"stream_head"}),
+        allowed_directions=frozenset({"head"}),
+    )
+
+    assert response.status_code == 200
+    assert injected[0].id not in result_ids
+    assert stream_head.event_id == result_ids[-1]

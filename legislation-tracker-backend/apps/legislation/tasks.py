@@ -152,10 +152,26 @@ def enqueue_similarity(bill, *, source_updated_at=None):
 
 def enqueue_search_index(bill, *, source_updated_at=None):
     """Persist a coalesced public-search projection request for a bill."""
+    if source_updated_at is None:
+        current_bill = (
+            Bill.objects.filter(pk=bill.pk)
+            .values("updated_at", "last_activity_at")
+            .first()
+        )
+        source_updated_at = max(
+            value
+            for value in (
+                current_bill["updated_at"] if current_bill else bill.updated_at,
+                current_bill["last_activity_at"]
+                if current_bill
+                else bill.last_activity_at,
+            )
+            if value is not None
+        )
     return enqueue_ingestion_work(
         kind=WORK_KIND_SEARCH_INDEX,
         dedupe_key=f"bill:{bill.id}",
-        source_updated_at=source_updated_at or bill.updated_at or timezone.now(),
+        source_updated_at=source_updated_at,
         payload_json={"bill_id": bill.id},
         jurisdiction=bill.jurisdiction,
         congress=bill.session,

@@ -12,6 +12,7 @@ from .comparison import (
     compare_document_sections,
 )
 from .models import Bill, BillContract, BillDocument
+from .throttles import BillComparisonThrottle
 
 
 class ComparisonQuerySerializer(StrictQuerySerializer):
@@ -26,6 +27,7 @@ class DocumentSectionQuerySerializer(ComparisonQuerySerializer):
 class BillContractComparisonView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [BillComparisonThrottle]
 
     def get(self, request, bill_id):
         query = ComparisonQuerySerializer(data=request.query_params)
@@ -57,6 +59,7 @@ class BillContractComparisonView(APIView):
 class BillDocumentComparisonView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [BillComparisonThrottle]
 
     def get(self, request, bill_id):
         query = ComparisonQuerySerializer(data=request.query_params)
@@ -90,6 +93,7 @@ class BillDocumentComparisonView(APIView):
 class BillDocumentSectionComparisonView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [BillComparisonThrottle]
 
     def get(self, request, bill_id):
         query = DocumentSectionQuerySerializer(data=request.query_params)
