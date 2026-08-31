@@ -16,6 +16,7 @@ from apps.accounts.throttles import LoginThrottle, RefreshThrottle
 from apps.accounts.views import (
     CSRFTokenView,
     RegisterView,
+    SavedBillSearchViewSet,
     SessionLoginView,
     SessionLogoutView,
     SessionRefreshView,
@@ -46,6 +47,7 @@ router.register(r"topics", TopicViewSet, basename="topic")
 router.register(r"representatives", RepresentativeViewSet, basename="representative")
 router.register(r"votes", VoteViewSet, basename="vote")
 router.register(r"preferences", UserPreferenceViewSet, basename="preference")
+router.register(r"saved-searches", SavedBillSearchViewSet, basename="saved-search")
 
 
 class ExtensionTokenObtainPairView(TokenObtainPairView):

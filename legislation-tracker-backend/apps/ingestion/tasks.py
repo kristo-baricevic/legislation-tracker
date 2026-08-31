@@ -761,6 +761,26 @@ def _process_durable_work(work_item):
         )
     if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
         return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
+    if work_item.kind == legislation_tasks.WORK_KIND_SEARCH_INDEX:
+        from apps.legislation.search_index import (
+            latest_search_index_at,
+            rebuild_bill_search_index,
+        )
+
+        indexed_at = latest_search_index_at(bill_id=payload["bill_id"])
+        if indexed_at is not None and indexed_at >= work_item.source_updated_at:
+            return {
+                "bill_id": payload["bill_id"],
+                "stale": True,
+                "changed": False,
+            }
+        result = rebuild_bill_search_index(bill_id=payload["bill_id"])
+        return {
+            "bill_id": result.bill_id,
+            "stale": False,
+            "changed": result.changed,
+            "chunk_count": result.chunk_count,
+        }
     raise ValueError(f"Unsupported ingestion work kind: {work_item.kind}")
 
 
@@ -1090,6 +1110,9 @@ def _process_bill_impl(bill_key_str):
     try:
         _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
         _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
+        from apps.legislation.tasks import enqueue_search_index
+
+        enqueue_search_index(bill)
     except Exception:
         bill.processing_status = ProcessingStatus.FAILED
         bill.save(update_fields=["processing_status"])
@@ -1539,6 +1562,9 @@ def _download_document_impl(document_id):
     from apps.legislation.tasks import enqueue_document_contract
 
     enqueue_document_contract(locked_doc)
+    from apps.legislation.tasks import enqueue_search_index
+
+    enqueue_search_index(locked_bill)
     return {
         "document_id": document_id,
         "object_storage_key": saved_key,

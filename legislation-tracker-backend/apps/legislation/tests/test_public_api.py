@@ -18,6 +18,51 @@ from apps.legislation.models import (
 )
 
 
+@pytest.mark.django_db
+def test_bill_search_uses_safe_highlight_segments_and_recent_activity_sorting():
+    early = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 89",
+        title="Rural hospitals support",
+        summary="Funding for rural hospitals.",
+        status="Introduced",
+        last_activity_sequence=2,
+    )
+    later = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 90",
+        title="Rural hospital workforce",
+        status="Introduced",
+        last_activity_sequence=3,
+    )
+
+    search = APIClient().get("/api/bills/?q=rural%20hospital&sort=relevance")
+    recent = APIClient().get("/api/bills/?sort=recent_activity")
+
+    assert search.status_code == 200
+    assert [item["id"] for item in search.json()["results"]] == [early.id, later.id]
+    assert search.json()["results"][0]["search_rank"] is None
+    segments = search.json()["results"][0]["highlights"][0]["segments"]
+    assert any(segment["matched"] for segment in segments)
+    assert all("<" not in segment["text"] for segment in segments)
+    assert [item["id"] for item in recent.json()["results"]][:2] == [later.id, early.id]
+
+
+@pytest.mark.django_db
+def test_bill_search_rejects_relevance_without_query_and_excessive_query():
+    client = APIClient()
+
+    relevance_without_query = client.get("/api/bills/?sort=relevance")
+    too_large = client.get("/api/bills/", {"q": "x" * 513})
+
+    assert relevance_without_query.status_code == 400
+    assert "sort" in relevance_without_query.json()
+    assert too_large.status_code == 400
+    assert "q" in too_large.json()
+
+
 class FakeRemoteStorage:
     def url(self, object_key):
         return f"https://documents.example.com/{object_key}?signature=abc"

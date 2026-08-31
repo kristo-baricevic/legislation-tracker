@@ -14,6 +14,7 @@ from apps.congress.current import current_congress
 from config.api import StrictQuerySerializer
 
 from .models import Bill, BillContract, BillDocument, BillSimilarity, BillTopic, Topic
+from .search import BillSearchQuery, apply_bill_list_filters, search_bills
 from .serializers import (
     BillContractListQuerySerializer,
     BillContractSerializer,
@@ -26,6 +27,7 @@ from .serializers import (
     TopicListQuerySerializer,
     TopicSerializer,
 )
+from .throttles import BillSearchThrottle
 from .topic_taxonomy import TOPICS
 
 
@@ -151,6 +153,11 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
             return BillListSerializer
         return BillDetailSerializer
 
+    def get_throttles(self):
+        if self.action == "list" and "q" in self.request.query_params:
+            return [BillSearchThrottle()]
+        return super().get_throttles()
+
     def get_queryset(self):
         qs = super().get_queryset()
         if self.action == "list":
@@ -163,52 +170,57 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         query.is_valid(raise_exception=True)
         if self.action != "list":
             return qs
-        params = query.validated_data
+        return apply_bill_list_filters(qs, query.validated_data)
 
-        session = params.get("session")
-        if session is not None:
-            qs = qs.filter(session=session)
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        query = BillListQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        search_page = search_bills(
+            queryset=queryset,
+            query=BillSearchQuery.from_params(query.validated_data),
+        )
+        hit_by_bill = {hit.bill_id: hit for hit in search_page.hits}
+        bill_ids = list(hit_by_bill)
+        bills = list(queryset.filter(pk__in=bill_ids))
+        bills.sort(key=lambda bill: bill_ids.index(bill.id))
+        serializer = self.get_serializer(
+            bills,
+            many=True,
+            context={
+                "search_ranks": {bill_id: hit.rank for bill_id, hit in hit_by_bill.items()},
+                "search_highlights": {
+                    bill_id: [
+                        {
+                            "kind": highlight.kind,
+                            "segments": [
+                                {"text": segment.text, "matched": segment.matched}
+                                for segment in highlight.segments
+                            ],
+                        }
+                        for highlight in hit.highlights
+                    ]
+                    for bill_id, hit in hit_by_bill.items()
+                },
+            },
+        )
+        page_number = query.validated_data.get("page", 1)
+        page_size = query.validated_data.get("page_size", 20)
+        def page_url(next_page):
+            if next_page < 1 or (next_page - 1) * page_size >= search_page.count:
+                return None
+            params = request.query_params.copy()
+            params["page"] = str(next_page)
+            return request.build_absolute_uri(f"{request.path}?{params.urlencode()}")
 
-        congress = params.get("congress")
-        if congress is not None:
-            qs = qs.filter(session=congress)
-
-        jurisdiction = params.get("jurisdiction")
-        if jurisdiction:
-            qs = qs.filter(jurisdiction=jurisdiction.strip())
-
-        bill_pk = params.get("id")
-        if bill_pk is not None:
-            qs = qs.filter(pk=bill_pk)
-
-        bill_number = params.get("bill_number")
-        if bill_number:
-            qs = qs.filter(bill_number__icontains=bill_number.strip())
-
-        status_q = params.get("status")
-        if status_q:
-            qs = qs.filter(status__icontains=status_q.strip())
-
-        sponsor_q = params.get("sponsor")
-        if sponsor_q:
-            s = sponsor_q.strip()
-            if s.isdigit():
-                qs = qs.filter(sponsor_id=int(s))
-            else:
-                qs = qs.filter(sponsor__name__icontains=s)
-
-        topic_id = params.get("topic_id")
-        topic_text = params.get("topic")
-        if topic_id is not None:
-            qs = qs.filter(bill_topics__topic_id=topic_id).distinct()
-        elif topic_text:
-            t = topic_text.strip()
-            qs = qs.filter(
-                Q(bill_topics__topic__name__icontains=t)
-                | Q(bill_topics__topic__slug__icontains=t)
-            ).distinct()
-
-        return qs
+        return Response(
+            {
+                "count": search_page.count,
+                "next": page_url(page_number + 1),
+                "previous": page_url(page_number - 1),
+                "results": serializer.data,
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="filter-options")
     def filter_options(self, request):

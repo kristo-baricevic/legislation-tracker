@@ -15,6 +15,25 @@ class BillListQuerySerializer(PaginatedQuerySerializer):
     sponsor = serializers.CharField(required=False, allow_blank=True)
     topic = serializers.CharField(required=False, allow_blank=True)
     topic_id = serializers.IntegerField(required=False, min_value=1)
+    q = serializers.CharField(required=False, allow_blank=False, trim_whitespace=True)
+    sort = serializers.ChoiceField(
+        choices=("recent_activity", "relevance"),
+        required=False,
+    )
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100)
+
+    def validate_q(self, value):
+        from .search import normalize_search_text
+
+        try:
+            return normalize_search_text(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def validate(self, attrs):
+        if attrs.get("sort") == "relevance" and not attrs.get("q"):
+            raise serializers.ValidationError({"sort": "relevance requires q."})
+        return attrs
 
 
 class BillContractListQuerySerializer(PaginatedQuerySerializer):
@@ -117,6 +136,8 @@ class BillListSerializer(serializers.ModelSerializer):
 
     sponsor_name = serializers.SerializerMethodField()
     topics = BillTopicSerializer(source="bill_topics", many=True, read_only=True)
+    search_rank = serializers.SerializerMethodField()
+    highlights = serializers.SerializerMethodField()
 
     class Meta:
         model = Bill
@@ -131,12 +152,20 @@ class BillListSerializer(serializers.ModelSerializer):
             "introduced_at",
             "last_action_at",
             "topics",
+            "search_rank",
+            "highlights",
         ]
 
     def get_sponsor_name(self, obj):
         if obj.sponsor_id is None:
             return None
         return str(obj.sponsor)
+
+    def get_search_rank(self, obj):
+        return self.context.get("search_ranks", {}).get(obj.id)
+
+    def get_highlights(self, obj):
+        return self.context.get("search_highlights", {}).get(obj.id, [])
 
 
 class BillDetailSerializer(serializers.ModelSerializer):

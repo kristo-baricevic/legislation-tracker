@@ -15,3 +15,4 @@ class StrictQuerySerializer(serializers.Serializer):
 
 class PaginatedQuerySerializer(StrictQuerySerializer):
     page = serializers.IntegerField(required=False, min_value=1)
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100)

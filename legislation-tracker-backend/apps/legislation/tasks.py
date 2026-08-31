@@ -64,6 +64,7 @@ WORK_KIND_DOCUMENT_CONTRACT = "document_contract"
 WORK_KIND_METADATA_CONTRACT = "metadata_contract"
 WORK_KIND_TOPIC_UPDATE = "topic_update"
 WORK_KIND_SIMILARITY = "similarity"
+WORK_KIND_SEARCH_INDEX = "search_index"
 SOURCE_REEXTRACTION_VERSION = "structured-source-1.0.0"
 
 _TAXONOMY_BY_SLUG = {entry["slug"]: entry for entry in TOPICS}
@@ -143,6 +144,18 @@ def enqueue_similarity(bill, *, source_updated_at=None):
         kind=WORK_KIND_SIMILARITY,
         dedupe_key=f"{bill.id}:{fingerprint}",
         source_updated_at=source_updated_at,
+        payload_json={"bill_id": bill.id},
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
+
+
+def enqueue_search_index(bill, *, source_updated_at=None):
+    """Persist a coalesced public-search projection request for a bill."""
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_SEARCH_INDEX,
+        dedupe_key=f"bill:{bill.id}",
+        source_updated_at=source_updated_at or bill.updated_at or timezone.now(),
         payload_json={"bill_id": bill.id},
         jurisdiction=bill.jurisdiction,
         congress=bill.session,
@@ -338,6 +351,7 @@ def _generate_contract_for_bill_impl(bill_id):
             )
 
     enqueue_topic_update(bill=bill)
+    enqueue_search_index(bill)
     logger.info(
         "generate_contract_for_bill: bill_id=%s contract_id=%s",
         bill.id,
@@ -499,6 +513,7 @@ def _generate_contract_impl(document_id, *, reextract_source=False):
 
     if document.is_active_version:
         enqueue_topic_update(contract=contract)
+        enqueue_search_index(bill)
 
     logger.info(
         "generate_contract: created contract_id=%s document_id=%s",
@@ -647,6 +662,7 @@ def _update_topics_impl(contract_id=None, bill_id=None):
         new_slugs,
     )
     enqueue_similarity(bill)
+    enqueue_search_index(bill)
     return {
         "contract_id": contract.id if contract else None,
         "bill_id": bill.id,

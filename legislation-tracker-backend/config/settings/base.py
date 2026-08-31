@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     # Third-party
     "rest_framework",
     "rest_framework_simplejwt",
@@ -200,6 +201,8 @@ REST_FRAMEWORK = {
         "auth_refresh": env("AUTH_REFRESH_RATE", default="30/hour"),
         "llm_enhancement": LLM_ENHANCEMENT_CREATE_RATE,
         "llm_validation": LLM_ENHANCEMENT_VALIDATION_RATE,
+        "bill_search_anon": env("BILL_SEARCH_ANON_RATE", default="30/min"),
+        "bill_search_user": env("BILL_SEARCH_USER_RATE", default="120/min"),
     },
 }
 
