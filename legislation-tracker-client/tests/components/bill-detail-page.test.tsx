@@ -8,12 +8,14 @@ import {
   getContracts,
   getVote,
   getVotes,
-  getStoredAccessToken,
+  getSession,
   type VoteDetailItem,
 } from "@/lib/api";
 
+const routeState = vi.hoisted(() => ({ id: "10" }));
+
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: "10" }),
+  useParams: () => ({ id: routeState.id }),
 }));
 
 vi.mock("next/link", () => ({
@@ -28,7 +30,7 @@ vi.mock("@/lib/api", () => ({
   getVote: vi.fn(),
   getVotes: vi.fn(),
   getApiBase: () => "http://localhost:8000",
-  getStoredAccessToken: vi.fn(),
+  getSession: vi.fn(),
   getMyTracking: vi.fn(),
   trackBill: vi.fn(),
   untrackBill: vi.fn(),
@@ -36,8 +38,9 @@ vi.mock("@/lib/api", () => ({
 
 describe("BillDetailPage", () => {
   beforeEach(() => {
+    routeState.id = "10";
     vi.clearAllMocks();
-    vi.mocked(getStoredAccessToken).mockReturnValue(null);
+    vi.mocked(getSession).mockResolvedValue(null);
     vi.mocked(getBill).mockResolvedValue({
       id: 10,
       jurisdiction: "federal",
@@ -163,6 +166,40 @@ describe("BillDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "View member positions" }));
     await waitFor(() => expect(getVote).toHaveBeenCalledWith(33));
     expect(await screen.findByText("Voting Representative")).toBeVisible();
+  });
+
+  it("discards all bill-specific state when navigating to another bill", async () => {
+    const nextBill = {
+      ...await getBill(10),
+      id: 11,
+      bill_number: "HR 11",
+      title: "A second public bill",
+      documents: [],
+    };
+    vi.mocked(getBill).mockResolvedValueOnce({
+      ...nextBill,
+      id: 10,
+      bill_number: "HR 10",
+      title: "A public bill",
+    });
+    const { rerender } = render(<BillDetailPage />);
+
+    expect(await screen.findByText("Contract history summary")).toBeVisible();
+    expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
+
+    vi.mocked(getBill).mockResolvedValueOnce(nextBill);
+    vi.mocked(getContracts).mockReturnValueOnce(new Promise(() => undefined));
+    vi.mocked(getVotes).mockReturnValueOnce(new Promise(() => undefined));
+    routeState.id = "11";
+    rerender(<BillDetailPage />);
+
+    expect(await screen.findByRole("heading", { name: "HR 11 (119)" })).toBeVisible();
+    expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
+    expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
+    expect(screen.getByText("Loading contract history…")).toBeVisible();
+    expect(screen.getByText("Loading vote history…")).toBeVisible();
+    expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1 });
+    expect(getVotes).toHaveBeenLastCalledWith(11, { page: 1 });
   });
 
   it("labels a legacy vote whose session is not known", async () => {
@@ -437,5 +474,119 @@ describe("BillDetailPage", () => {
     );
     expect(await screen.findByText(/roll call 16: Failed/)).toBeVisible();
     expect(getVotes).toHaveBeenLastCalledWith(10, { page: 2 });
+  });
+
+  it("keeps contract history visible when a later page fails and retries that section", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getContracts)
+      .mockResolvedValueOnce({
+        count: 21,
+        next: "http://localhost:8000/api/contracts/?bill=10&page=2",
+        previous: null,
+        results: [
+          {
+            id: 4,
+            schema_version: "1.1",
+            contract_json: { plain_summary: "Last loaded contract" },
+            contract_hash: "hash",
+            computed_at: "2026-08-19T00:00:00Z",
+            document: null,
+            document_version_label: null,
+            evidence_spans: [],
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("Contract service unavailable"))
+      .mockResolvedValueOnce({
+        count: 21,
+        next: null,
+        previous: "http://localhost:8000/api/contracts/?bill=10&page=1",
+        results: [
+          {
+            id: 3,
+            schema_version: "1.0",
+            contract_json: { plain_summary: "Recovered contract page" },
+            contract_hash: "older-hash",
+            computed_at: "2026-08-18T00:00:00Z",
+            document: null,
+            document_version_label: null,
+            evidence_spans: [],
+          },
+        ],
+      });
+
+    render(<BillDetailPage />);
+
+    expect(await screen.findByText("Last loaded contract")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "Next contract history page" }),
+    );
+
+    expect(await screen.findByText("Could not load contract history. Try again.")).toBeVisible();
+    expect(screen.getByText("Last loaded contract")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Roll-call votes" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Retry contract history" }));
+
+    expect(await screen.findByText("Recovered contract page")).toBeVisible();
+    expect(screen.queryByText("Could not load contract history. Try again.")).not.toBeInTheDocument();
+  });
+
+  it("keeps vote history visible when a later page fails and retries that section", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getVotes)
+      .mockResolvedValueOnce({
+        count: 21,
+        next: "http://localhost:8000/api/votes/?bill=10&page=2",
+        previous: null,
+        results: [
+          {
+            id: 33,
+            bill: 10,
+            chamber: "house",
+            session_number: 1,
+            roll_number: 17,
+            vote_date: "2026-08-19T00:00:00Z",
+            result: "Passed",
+            yeas: 220,
+            nays: 210,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("Vote service unavailable"))
+      .mockResolvedValueOnce({
+        count: 21,
+        next: null,
+        previous: "http://localhost:8000/api/votes/?bill=10&page=1",
+        results: [
+          {
+            id: 32,
+            bill: 10,
+            chamber: "house",
+            session_number: 1,
+            roll_number: 16,
+            vote_date: "2026-08-18T00:00:00Z",
+            result: "Recovered",
+            yeas: 218,
+            nays: 212,
+          },
+        ],
+      });
+
+    render(<BillDetailPage />);
+
+    expect(await screen.findByText(/roll call 17: Passed/)).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "Next vote history page" }),
+    );
+
+    expect(await screen.findByText("Could not load vote history. Try again.")).toBeVisible();
+    expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
+    expect(screen.getByText("Contract history summary")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Retry vote history" }));
+
+    expect(await screen.findByText(/roll call 16: Recovered/)).toBeVisible();
+    expect(screen.queryByText("Could not load vote history. Try again.")).not.toBeInTheDocument();
   });
 });

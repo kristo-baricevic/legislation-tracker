@@ -44,7 +44,9 @@ def _freeze(value):
 
 
 def claim_key(category: str, fields: Mapping[str, object]) -> tuple[object, ...]:
-    return (category,) + tuple(_freeze(fields.get(name)) for name in CORE_FIELDS[category])
+    return (category,) + tuple(
+        _freeze(fields.get(name)) for name in CORE_FIELDS[category]
+    )
 
 
 def _evidence_offsets(source_text, evidence):
@@ -61,9 +63,9 @@ def _evidence_offsets(source_text, evidence):
             cursor = start + 1
         assert starts, f"Fixture evidence quote is absent: {quote!r}"
         occurrence = entry.get("occurrence")
-        assert occurrence is not None or len(starts) == 1, (
-            f"Fixture evidence quote is ambiguous without occurrence: {quote!r}"
-        )
+        assert (
+            occurrence is not None or len(starts) == 1
+        ), f"Fixture evidence quote is ambiguous without occurrence: {quote!r}"
         selected = starts[occurrence or 0]
         offsets.append((selected, selected + len(quote)))
     return offsets
@@ -95,29 +97,25 @@ def load_fixtures(path: Path):
 def test_legal_nlp_evaluation_corpus_meets_release_gates():
     paths = sorted(FIXTURE_DIR.glob("*.json"))
     assert len(paths) >= 25, "Legal NLP evaluation requires at least 25 fixtures"
-    fixtures = [
-        fixture
-        for path in paths
-        for fixture in load_fixtures(path)
-    ]
+    fixtures = [fixture for path in paths for fixture in load_fixtures(path)]
     public_excerpts = [
         fixture
         for fixture in fixtures
         if fixture.get("corpus_kind") == "public_domain_excerpt"
     ]
-    assert len(public_excerpts) >= 25, (
-        "Legal NLP evaluation requires at least 25 public-domain federal excerpts"
-    )
-    assert len({fixture["source_reference"] for fixture in public_excerpts}) >= 3, (
-        "Public-domain excerpts must cover at least three source documents"
-    )
+    assert (
+        len(public_excerpts) >= 25
+    ), "Legal NLP evaluation requires at least 25 public-domain federal excerpts"
+    assert (
+        len({fixture["source_reference"] for fixture in public_excerpts}) >= 3
+    ), "Public-domain excerpts must cover at least three source documents"
     assert all(fixture.get("source_locator") for fixture in public_excerpts)
-    assert any(len(fixture["source_text"]) >= 1_000 for fixture in public_excerpts), (
-        "Public-domain corpus requires at least one long section"
-    )
-    assert sum(bool(fixture["forbidden_claims"]) for fixture in fixtures) >= 5, (
-        "Legal NLP evaluation requires at least five explicit negative cases"
-    )
+    assert any(
+        len(fixture["source_text"]) >= 1_000 for fixture in public_excerpts
+    ), "Public-domain corpus requires at least one long section"
+    assert (
+        sum(bool(fixture["forbidden_claims"]) for fixture in fixtures) >= 5
+    ), "Legal NLP evaluation requires at least five explicit negative cases"
 
     totals = Counter()
     by_category = defaultdict(Counter)
@@ -138,9 +136,13 @@ def test_legal_nlp_evaluation_corpus_meets_release_gates():
             version_label=fixture["version_label"],
         )
         result = extract_contract(document=document, bill=bill)
-        all_contracts_valid = all_contracts_valid and result.schema_version == "2.0-legal-nlp"
+        all_contracts_valid = (
+            all_contracts_valid and result.schema_version == "2.0-legal-nlp"
+        )
         if result.schema_version == "2.0-legal-nlp":
-            validate_contract(result.contract_json, result.evidence, fixture["source_text"])
+            validate_contract(
+                result.contract_json, result.evidence, fixture["source_text"]
+            )
         all_evidence_exact = all_evidence_exact and all(
             fixture["source_text"][span.start_char : span.end_char] == span.quoted_text
             for span in result.evidence
@@ -201,9 +203,9 @@ def test_legal_nlp_evaluation_corpus_meets_release_gates():
     assert all_contracts_valid, diagnostics
     assert all_evidence_exact, diagnostics
     assert not missing_expected_evidence, missing_expected_evidence
-    assert all(expected_by_category[category] >= 3 for category in CORE_FIELDS), (
-        expected_by_category
-    )
+    assert all(
+        expected_by_category[category] >= 3 for category in CORE_FIELDS
+    ), expected_by_category
     assert precision >= 0.95, f"precision={precision:.3f}; {diagnostics}"
     assert recall >= 0.70, f"recall={recall:.3f}; {diagnostics}"
     assert not forbidden_false_positives, forbidden_false_positives

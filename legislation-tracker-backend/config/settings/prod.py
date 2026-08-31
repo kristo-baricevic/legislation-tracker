@@ -19,9 +19,10 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
 SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=True)
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+AUTH_COOKIE_SECURE = True
 
 # Ensure these are set in production
-if SECRET_KEY == "change-me-in-production-use-env":
+if SECRET_KEY == INSECURE_DEFAULT_SECRET_KEY:
     raise ValueError("Set DJANGO_SECRET_KEY in production")
 
 if not ALLOWED_HOSTS:

@@ -6,7 +6,7 @@ import SelectField, { type SelectOption } from "../components/SelectField";
 import {
   getMyTracking,
   getRepresentatives,
-  getStoredAccessToken,
+  getSession,
   trackLegislator,
   type RepresentativeItem,
   untrackLegislator,
@@ -74,25 +74,31 @@ function RepresentativesTable() {
   }, [stateFilter, chamberFilter, pageNum]);
 
   useEffect(() => {
-    const signedIn = Boolean(getStoredAccessToken());
-    setHasAccount(signedIn);
-    if (!signedIn) return;
-
     let cancelled = false;
-    getMyTracking()
-      .then((summary) => {
-        if (!cancelled) {
-          setTrackedLegislatorIds(
-            summary.legislators.map((item) => item.representative.id),
-          );
-        }
+    void getSession()
+      .then((session) => {
+        if (cancelled) return;
+        const signedIn = Boolean(session);
+        setHasAccount(signedIn);
+        if (!signedIn) return;
+        void getMyTracking()
+          .then((summary) => {
+            if (!cancelled) {
+              setTrackedLegislatorIds(
+                summary.legislators.map((item) => item.representative.id),
+              );
+            }
+          })
+          .catch((e) => {
+            if (!cancelled) {
+              setTrackingError(
+                e instanceof Error ? e.message : "Failed to load tracked legislators",
+              );
+            }
+          });
       })
-      .catch((e) => {
-        if (!cancelled) {
-          setTrackingError(
-            e instanceof Error ? e.message : "Failed to load tracked legislators",
-          );
-        }
+      .catch(() => {
+        if (!cancelled) setHasAccount(false);
       });
     return () => {
       cancelled = true;

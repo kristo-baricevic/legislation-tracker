@@ -12,7 +12,16 @@ from apps.accounts.llm_views import (
     LLMSettingsView,
     PublicCapabilitiesView,
 )
-from apps.accounts.views import RegisterView, UserPreferenceViewSet
+from apps.accounts.throttles import LoginThrottle, RefreshThrottle
+from apps.accounts.views import (
+    CSRFTokenView,
+    RegisterView,
+    SessionLoginView,
+    SessionLogoutView,
+    SessionRefreshView,
+    SessionStatusView,
+    UserPreferenceViewSet,
+)
 from apps.congress.views import RepresentativeViewSet, VoteViewSet
 from apps.legislation.enhancements.views import (
     BillEnhancementDetailView,
@@ -38,14 +47,46 @@ router.register(r"representatives", RepresentativeViewSet, basename="representat
 router.register(r"votes", VoteViewSet, basename="vote")
 router.register(r"preferences", UserPreferenceViewSet, basename="preference")
 
+
+class ExtensionTokenObtainPairView(TokenObtainPairView):
+    throttle_classes = [LoginThrottle]
+
+
+class ExtensionTokenRefreshView(TokenRefreshView):
+    throttle_classes = [RefreshThrottle]
+
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/live/", health.live, name="health-live"),
     path("health/", health.ready, name="health-ready"),
     # Auth: JWT (use "username" = email, "password"); refresh with "refresh" token
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path(
+        "api/auth/token/",
+        ExtensionTokenObtainPairView.as_view(),
+        name="token_obtain_pair",
+    ),
+    path(
+        "api/auth/token/refresh/",
+        ExtensionTokenRefreshView.as_view(),
+        name="token_refresh",
+    ),
     path("api/auth/register/", RegisterView.as_view(), name="register"),
+    path("api/auth/csrf/", CSRFTokenView.as_view(), name="csrf_token"),
+    path("api/auth/session/", SessionLoginView.as_view(), name="session_login"),
+    path(
+        "api/auth/session/current/", SessionStatusView.as_view(), name="session_status"
+    ),
+    path(
+        "api/auth/session/refresh/",
+        SessionRefreshView.as_view(),
+        name="session_refresh",
+    ),
+    path(
+        "api/auth/session/logout/",
+        SessionLogoutView.as_view(),
+        name="session_logout",
+    ),
     path("api/capabilities/", PublicCapabilitiesView.as_view(), name="capabilities"),
     path("api/settings/llm/", LLMSettingsView.as_view(), name="llm-settings"),
     path(

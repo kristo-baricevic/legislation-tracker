@@ -12,8 +12,7 @@ MODAL_RE = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_TERM_RE = (
-    r"(?:[\"“](?P<term_double>[^\"”]+)[\"”]|"
-    r"[‘'](?P<term_single>[^’']+)[’'])"
+    r"(?:[\"“](?P<term_double>[^\"”]+)[\"”]|" r"[‘'](?P<term_single>[^’']+)[’'])"
 )
 _EXPLICIT_DEFINITION_RE = re.compile(
     rf"\bThe\s+term\s+{_QUOTED_TERM_RE}\s+"
@@ -21,8 +20,7 @@ _EXPLICIT_DEFINITION_RE = re.compile(
     re.IGNORECASE,
 )
 _SECTION_DEFINITION_RE = re.compile(
-    rf"^{_QUOTED_TERM_RE}\s+"
-    r"(?P<kind>means|includes)\s+(?P<definition>.+)",
+    rf"^{_QUOTED_TERM_RE}\s+" r"(?P<kind>means|includes)\s+(?P<definition>.+)",
     re.IGNORECASE,
 )
 _QUOTED_RANGE_RE = re.compile(r'“[^”]*”|"[^"]*"|‘[^’]*’|\'[^\']*\'')
@@ -38,8 +36,7 @@ _CONDITION_RE = re.compile(
     re.IGNORECASE,
 )
 _LEADING_CONDITION_RE = re.compile(
-    r"^(?P<condition>(?:if|when|unless|subject\s+to)\b.*?),\s*"
-    r"(?P<actor>.+)$",
+    r"^(?P<condition>(?:if|when|unless|subject\s+to)\b.*?),\s*" r"(?P<actor>.+)$",
     re.IGNORECASE,
 )
 _DOES_NOT_APPLY_RE = re.compile(
@@ -76,15 +73,15 @@ _MONEY_RE = re.compile(
     re.IGNORECASE,
 )
 _FISCAL_RANGE_RE = re.compile(
-    r"\bfiscal\s+years\s+(?P<start>\d{4})\s+"
-    r"(?:through|to|-)\s+(?P<end>\d{4})\b",
+    r"\bfiscal\s+years\s+(?P<start>\d{4})\s+" r"(?:through|to|-)\s+(?P<end>\d{4})\b",
     re.IGNORECASE,
 )
 _FISCAL_YEAR_RE = re.compile(r"\bfiscal\s+year\s+(?P<year>\d{4})\b", re.IGNORECASE)
-_SUCH_SUMS_RE = re.compile(r"\bsuch\s+sums\s+as\s+may\s+be\s+necessary\b", re.IGNORECASE)
+_SUCH_SUMS_RE = re.compile(
+    r"\bsuch\s+sums\s+as\s+may\s+be\s+necessary\b", re.IGNORECASE
+)
 _AFFIRMATIVE_FUNDING_RE = re.compile(
-    r"\b(?:there\s+)?(?:is|are)\s+"
-    r"(?:authorized\s+to\s+be\s+)?appropriated\b",
+    r"\b(?:there\s+)?(?:is|are)\s+" r"(?:authorized\s+to\s+be\s+)?appropriated\b",
     re.IGNORECASE,
 )
 _OPERATIVE_FUNDING_RE = re.compile(
@@ -134,9 +131,7 @@ _MONTHS = {
 _AMENDMENT_PATTERNS = (
     (
         "strike_and_insert",
-        re.compile(
-            r"\bstrik(?:e|ing)\b.+\band\s+insert(?:ing)?\b", re.IGNORECASE
-        ),
+        re.compile(r"\bstrik(?:e|ing)\b.+\band\s+insert(?:ing)?\b", re.IGNORECASE),
     ),
     ("replace", re.compile(r"\breplac(?:e|ing)\b.+\bwith\b", re.IGNORECASE)),
     (
@@ -173,7 +168,9 @@ def _parent_section(
         and candidate.span.start_char < section.span.start_char
         and section.span.end_char <= candidate.span.end_char
     ]
-    return max(candidates, key=lambda candidate: candidate.span.start_char, default=None)
+    return max(
+        candidates, key=lambda candidate: candidate.span.start_char, default=None
+    )
 
 
 def _inherited_modal_context(
@@ -265,8 +262,10 @@ def _is_modal_excluded(
         sentence.text
     ):
         return True
-    if sentence.text[modal_start:].casefold().startswith(
-        "is authorized to be appropriated"
+    if (
+        sentence.text[modal_start:]
+        .casefold()
+        .startswith("is authorized to be appropriated")
     ):
         return True
     such_sums = _SUCH_SUMS_RE.search(sentence.text)
@@ -317,9 +316,7 @@ def extract_modality_claims(
             leading_condition = _LEADING_CONDITION_RE.match(actor)
             if leading_condition is not None:
                 conditions.append(
-                    _strip_terminal_punctuation(
-                        leading_condition.group("condition")
-                    )
+                    _strip_terminal_punctuation(leading_condition.group("condition"))
                 )
                 actor = _strip_terminal_punctuation(leading_condition.group("actor"))
             condition_match = _CONDITION_RE.search(action)
@@ -462,15 +459,11 @@ def _fiscal_years(text: str) -> list[int]:
     return [int(year_match.group("year"))] if year_match else []
 
 
-def _funding_purpose(
-    text: str, *, normalize_whitespace: bool = False
-) -> str | None:
+def _funding_purpose(text: str, *, normalize_whitespace: bool = False) -> str | None:
     normalized_text = (
         re.sub(r"\s+", " ", text).strip() if normalize_whitespace else text
     )
-    carry_out = re.search(
-        r"\bto\s+(carry\s+out\b.+)$", normalized_text, re.IGNORECASE
-    )
+    carry_out = re.search(r"\bto\s+(carry\s+out\b.+)$", normalized_text, re.IGNORECASE)
     if carry_out is not None:
         return _strip_terminal_punctuation(carry_out.group(1))
     purposes = list(
@@ -609,7 +602,9 @@ def extract_timeline_claims(
         date_match = _DATE_RE.search(sentence.text)
         normalized_date = _normalized_date(date_match) if date_match else None
         effective = bool(
-            re.search(r"\b(?:takes\s+effect|effective\s+on)\b", sentence.text, re.IGNORECASE)
+            re.search(
+                r"\b(?:takes\s+effect|effective\s+on)\b", sentence.text, re.IGNORECASE
+            )
         )
         if effective and date_match is not None and normalized_date is None:
             continue

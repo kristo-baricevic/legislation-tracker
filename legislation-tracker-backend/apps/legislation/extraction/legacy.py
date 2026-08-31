@@ -96,14 +96,24 @@ def build_legacy_document_contract(
     )
     funding_sentences = _matching_sentences(
         sentences,
-        {"appropriated", "authorization", "authorized", "fund", "funding", "grant", "$"},
+        {
+            "appropriated",
+            "authorization",
+            "authorized",
+            "fund",
+            "funding",
+            "grant",
+            "$",
+        },
     )
     effective_date_sentences = _matching_sentences(
         sentences,
         {"effective", "takes effect", "enactment"},
     )
     summary_text = (
-        summary_sentence["text"] if summary_sentence else (bill.summary or bill.title or "")
+        summary_sentence["text"]
+        if summary_sentence
+        else (bill.summary or bill.title or "")
     )
     source_excerpt = source_text[:500]
     contract_json = {
@@ -113,9 +123,12 @@ def build_legacy_document_contract(
         "plain_summary": summary_text,
         "source_excerpt": source_excerpt,
         "summary": {"text": summary_text, "basis": "first substantive source sentence"},
-        "key_points": [_contract_item(sentence, "key_point") for sentence in key_sentences],
+        "key_points": [
+            _contract_item(sentence, "key_point") for sentence in key_sentences
+        ],
         "requirements": [
-            _contract_item(sentence, "requirement") for sentence in requirement_sentences
+            _contract_item(sentence, "requirement")
+            for sentence in requirement_sentences
         ],
         "funding_mentions": [
             _contract_item(sentence, "funding") for sentence in funding_sentences

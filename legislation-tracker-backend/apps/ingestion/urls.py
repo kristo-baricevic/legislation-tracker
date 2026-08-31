@@ -5,14 +5,19 @@ from apps.ingestion.views import (
     BackfillTopicsView,
     IngestBillView,
     IngestionFailureListView,
+    IngestionWorkStatusView,
     PollCongressView,
     ReplayIngestionFailureView,
     SyncRepresentativesView,
 )
 
-
 urlpatterns = [
     path("bills/", IngestBillView.as_view(), name="ingest-bill"),
+    path(
+        "work/<int:work_item_id>/",
+        IngestionWorkStatusView.as_view(),
+        name="ingestion-work-status",
+    ),
     path("poll-congress/", PollCongressView.as_view(), name="poll-congress"),
     path(
         "sync-representatives/",

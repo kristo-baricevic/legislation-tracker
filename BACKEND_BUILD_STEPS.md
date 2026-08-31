@@ -53,7 +53,7 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 ## Phase 4: Document storage (S3)
 
 - [x] **4.1** Configure django-storages + boto3 for S3 (and MinIO via custom endpoint in dev). Settings: `AWS_*`, `AWS_S3_ENDPOINT_URL` for MinIO; optional `USE_LOCAL_DOCUMENT_STORAGE=True` for filesystem under `local_media/` (no MinIO).
-- [x] **4.2** Implement `download_document(document_id)`: download from `BillDocument.source_url`, upload with key `bills/{session}/{bill_number}/{version_label}.{ext}`, set `object_storage_key`, `downloaded_at`, `file_size_bytes`, `content_hash`, `extracted_text` (PDF/XML/HTML), `parsed_at`; enqueue `generate_contract` stub. Short-circuit if `content_hash` unchanged. Retries on HTTP errors.
+- [x] **4.2** Implement `download_document(document_id)`: download from `BillDocument.source_url`, upload with key `bills/{session}/{bill_number}/{version_label}.{ext}`, set `object_storage_key`, `downloaded_at`, `file_size_bytes`, `content_hash`, `extracted_text` (PDF/XML/HTML), `parsed_at`; enqueue deterministic contract generation. Short-circuit if `content_hash` unchanged. Retries on HTTP errors.
 - [x] **4.3** `process_bill_versions` already enqueues `download_document` per document (unchanged from Phase 3).
 
 ---
@@ -62,7 +62,7 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 - [x] **5.1** Canonical JSON + hash: `apps/legislation/contract_json.py` — `canonical_json_string`, `contract_hash_from_dict` (sorted keys, normalized strings).
 - [x] **5.2** `generate_contract(document_id)`: builds deterministic structured `contract_json` from source text (summary, key points, requirements, funding mentions, effective dates); skips if hash unchanged; creates `BillContract`, sets `Bill.latest_contract`, `BillDocument.contract_generated_at`, `ChangeLog(contract_update)`, and exact `EvidenceSpan` citations for source-backed fields; enqueues `update_topics` and `schedule_similarity_for_bill`. See **[legislation-tracker-backend/docs/PHASE_5_CONTRACT.md](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)**.
-- [ ] **5.3** (Later) Replace deterministic extraction with richer NLP extraction producing deeper contract_json and EvidenceSpans. See **[legislation-tracker-backend/docs/PHASE_5_3_PLAN.md](legislation-tracker-backend/docs/PHASE_5_3_PLAN.md)** (schema versioning, extraction pipeline, evidence offsets).
+- [x] **5.3** Implement the provider-free, versioned deterministic legal-NLP v2 pipeline with validated schema and exact evidence spans. The earlier LLM-oriented **[Phase 5.3 plan](legislation-tracker-backend/docs/PHASE_5_3_PLAN.md)** is retained as historical context only.
 
 ---
 
@@ -120,7 +120,7 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 | 2     | All Django apps and models, migrations, ChangeLog partitioning, indexes                       |
 | 3     | Celery: poll_congress, process_bill, process_bill_versions, process_bill_votes, Beat, retries |
 | 4     | S3 + download_document task                                                                   |
-| 5     | BillContract + EvidenceSpan + generate_contract (stub then real)                              |
+| 5     | BillContract + EvidenceSpan + deterministic legal-NLP v2                                   |
 | 6     | update_topics, recompute_similarity_batch                                                     |
 | 7     | DRF API: auth, bills, documents, contracts, reps, votes, preferences, pre-signed URLs         |
 | 8     | RSS endpoint from ChangeLog                                                                   |

@@ -8,8 +8,8 @@ WORKDIR /app
 
 RUN addgroup --system app && adduser --system --ingroup app app
 
-COPY requirements/base.txt requirements/base.txt
-RUN pip install --upgrade pip && pip install -r requirements/base.txt
+COPY requirements/production.lock requirements/production.lock
+RUN pip install --upgrade pip && pip install --require-hashes -r requirements/production.lock
 
 COPY . .
 RUN python manage.py collectstatic --noinput \

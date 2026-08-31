@@ -2,9 +2,9 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
+from apps.accounts.models import TrackedTopic, UserPreference
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
-from apps.accounts.models import TrackedTopic, UserPreference
 from apps.legislation.models import Bill, BillTopic, Topic
 
 
@@ -121,22 +121,36 @@ def test_tracking_summary_includes_topics_and_legislators_for_current_user_only(
     client = authenticated_client(user)
     other_client = authenticated_client(other_user)
 
-    assert client.post("/api/tracking/topics/", {"topic": topic.id}, format="json").status_code == 201
-    assert client.post(
-        "/api/tracking/legislators/",
-        {"representative": representative.id},
-        format="json",
-    ).status_code == 201
-    assert other_client.post(
-        "/api/tracking/topics/",
-        {"topic": other_topic.id},
-        format="json",
-    ).status_code == 201
-    assert other_client.post(
-        "/api/tracking/legislators/",
-        {"representative": other_representative.id},
-        format="json",
-    ).status_code == 201
+    assert (
+        client.post(
+            "/api/tracking/topics/", {"topic": topic.id}, format="json"
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/tracking/legislators/",
+            {"representative": representative.id},
+            format="json",
+        ).status_code
+        == 201
+    )
+    assert (
+        other_client.post(
+            "/api/tracking/topics/",
+            {"topic": other_topic.id},
+            format="json",
+        ).status_code
+        == 201
+    )
+    assert (
+        other_client.post(
+            "/api/tracking/legislators/",
+            {"representative": other_representative.id},
+            format="json",
+        ).status_code
+        == 201
+    )
 
     summary = client.get("/api/tracking/")
 
@@ -154,9 +168,7 @@ def test_tracking_topics_collection_lists_the_current_users_followed_topics():
     client = authenticated_client(user)
     topic = Topic.objects.create(name="Health", slug="health")
 
-    created = client.post(
-        "/api/tracking/topics/", {"topic": topic.id}, format="json"
-    )
+    created = client.post("/api/tracking/topics/", {"topic": topic.id}, format="json")
     listed = client.get("/api/tracking/topics/")
 
     assert created.status_code == 201
@@ -206,7 +218,11 @@ def test_preferences_collection_returns_non_tracking_preferences():
 
     assert response.status_code == 200
     assert response.json()["results"] == [
-        {"id": UserPreference.objects.get(user=user).id, "state": "NY", "chamber": "house"}
+        {
+            "id": UserPreference.objects.get(user=user).id,
+            "state": "NY",
+            "chamber": "house",
+        }
     ]
 
 
@@ -241,28 +257,50 @@ def test_tracking_feed_includes_direct_topic_and_legislator_matches_for_current_
     client = authenticated_client(user)
     other_client = authenticated_client(other_user)
 
-    assert client.post("/api/tracking/bills/", {"bill": direct_bill.id}, format="json").status_code == 201
-    assert client.post("/api/tracking/topics/", {"topic": topic.id}, format="json").status_code == 201
-    assert client.post(
-        "/api/tracking/legislators/",
-        {"representative": representative.id},
-        format="json",
-    ).status_code == 201
-    assert other_client.post(
-        "/api/tracking/bills/",
-        {"bill": other_user_bill.id},
-        format="json",
-    ).status_code == 201
-    assert other_client.post(
-        "/api/tracking/topics/",
-        {"topic": other_topic.id},
-        format="json",
-    ).status_code == 201
-    assert other_client.post(
-        "/api/tracking/legislators/",
-        {"representative": other_representative.id},
-        format="json",
-    ).status_code == 201
+    assert (
+        client.post(
+            "/api/tracking/bills/", {"bill": direct_bill.id}, format="json"
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/tracking/topics/", {"topic": topic.id}, format="json"
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/tracking/legislators/",
+            {"representative": representative.id},
+            format="json",
+        ).status_code
+        == 201
+    )
+    assert (
+        other_client.post(
+            "/api/tracking/bills/",
+            {"bill": other_user_bill.id},
+            format="json",
+        ).status_code
+        == 201
+    )
+    assert (
+        other_client.post(
+            "/api/tracking/topics/",
+            {"topic": other_topic.id},
+            format="json",
+        ).status_code
+        == 201
+    )
+    assert (
+        other_client.post(
+            "/api/tracking/legislators/",
+            {"representative": other_representative.id},
+            format="json",
+        ).status_code
+        == 201
+    )
 
     for bill in [
         direct_bill,

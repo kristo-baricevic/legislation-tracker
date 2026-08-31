@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getStoredAccessToken } from "../../lib/api";
+import { getSession } from "../../lib/api";
 
 /**
  * Redirects to /login if the user is not signed in. Renders children once auth is confirmed.
@@ -16,11 +16,22 @@ export default function RequireAuth({
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    if (!getStoredAccessToken()) {
-      router.replace("/login");
-      return;
-    }
-    setAllowed(true);
+    let active = true;
+    getSession()
+      .then((session) => {
+        if (!active) return;
+        if (!session) {
+          router.replace("/login");
+          return;
+        }
+        setAllowed(true);
+      })
+      .catch(() => {
+        if (active) router.replace("/login");
+      });
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   if (!allowed) {

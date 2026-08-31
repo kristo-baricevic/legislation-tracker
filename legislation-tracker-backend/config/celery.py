@@ -21,7 +21,7 @@ try:
 
     _key = getattr(settings, "CONGRESS_API_KEY", "") or ""
     if _key:
-        print("[config] CONGRESS_API_KEY is set (length=%s)" % len(_key))
+        print(f"[config] CONGRESS_API_KEY is set (length={len(_key)})")
     else:
         print(
             "[config] CONGRESS_API_KEY is NOT set — set it in .env and restart worker"
@@ -34,12 +34,11 @@ app.conf.beat_schedule = {
     "poll-congress": {
         "task": "apps.ingestion.tasks.poll_congress",
         "schedule": 600.0,  # every 10 minutes (in seconds)
-        "kwargs": {"jurisdiction": "federal", "congress": 119},
+        "kwargs": {"jurisdiction": "federal"},
     },
     "recompute-similarity-batch": {
         "task": "apps.legislation.tasks.recompute_similarity_batch",
         "schedule": 3600.0,  # every hour
-        "kwargs": {"session": 119},
     },
     "poll-tracked-bills": {
         "task": "apps.ingestion.tasks.poll_tracked_bills",
@@ -56,7 +55,6 @@ app.conf.beat_schedule = {
     "sync-representatives": {
         "task": "apps.ingestion.tasks.sync_representatives",
         "schedule": 86400.0,
-        "kwargs": {"congress": 119},
     },
     "ensure-changelog-partitions": {
         "task": "apps.changelog.tasks.ensure_change_log_partitions_task",

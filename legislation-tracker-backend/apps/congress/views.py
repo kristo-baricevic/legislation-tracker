@@ -1,10 +1,14 @@
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 
+from config.api import StrictQuerySerializer
+
 from .models import Representative, Vote
 from .serializers import (
+    RepresentativeListQuerySerializer,
     RepresentativeSerializer,
     VoteDetailSerializer,
+    VoteListQuerySerializer,
     VoteListSerializer,
 )
 
@@ -19,12 +23,25 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        state = self.request.query_params.get("state", "").strip().upper()[:2]
+        query_serializer = (
+            RepresentativeListQuerySerializer
+            if self.action == "list"
+            else StrictQuerySerializer
+        )
+        query = query_serializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        if self.action != "list":
+            return qs
+        params = query.validated_data
+
+        state = params.get("state")
         if state:
             qs = qs.filter(state=state)
-        chamber = self.request.query_params.get("chamber", "").strip().lower()
-        if chamber in ("house", "senate"):
+        chamber = params.get("chamber")
+        if chamber:
             qs = qs.filter(chamber=chamber)
+        if "is_current" in params:
+            qs = qs.filter(is_current=params["is_current"])
         return qs
 
 
@@ -42,10 +59,31 @@ class VoteViewSet(viewsets.ReadOnlyModelViewSet):
         qs = super().get_queryset()
         if self.action == "retrieve":
             qs = qs.prefetch_related("records__representative")
-        bill = self.request.query_params.get("bill")
-        if bill:
-            try:
-                qs = qs.filter(bill_id=int(bill))
-            except ValueError:
-                pass
+        query_serializer = (
+            VoteListQuerySerializer if self.action == "list" else StrictQuerySerializer
+        )
+        query = query_serializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        if self.action != "list":
+            return qs
+        params = query.validated_data
+
+        bill = params.get("bill")
+        if bill is not None:
+            qs = qs.filter(bill_id=bill)
+        congress = params.get("congress")
+        if congress is not None:
+            qs = qs.filter(bill__session=congress)
+        chamber = params.get("chamber")
+        if chamber:
+            qs = qs.filter(chamber=chamber)
+        session_number = params.get("session_number")
+        if session_number is not None:
+            qs = qs.filter(session_number=session_number)
+        roll_number = params.get("roll_number")
+        if roll_number is not None:
+            qs = qs.filter(roll_number=roll_number)
+        vote_date = params.get("vote_date")
+        if vote_date is not None:
+            qs = qs.filter(vote_date__date=vote_date)
         return qs

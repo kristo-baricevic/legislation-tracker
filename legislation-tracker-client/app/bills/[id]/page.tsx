@@ -8,7 +8,7 @@ import {
   getApiBase,
   getContracts,
   getMyTracking,
-  getStoredAccessToken,
+  getSession,
   getVote,
   getVotes,
   trackBill,
@@ -194,9 +194,8 @@ function VoteHistorySection({
   );
 }
 
-function BillDetailInner() {
-  const params = useParams();
-  const id = parseInt(params?.id as string, 10);
+function BillDetailInner({ routeId }: { routeId: string }) {
+  const id = parseInt(routeId, 10);
   const [bill, setBill] = useState<BillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -206,10 +205,18 @@ function BillDetailInner() {
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [contractHistory, setContractHistory] = useState<BillContractItem[] | null>(null);
   const [contractPage, setContractPage] = useState(1);
+  const [contractLoadedPage, setContractLoadedPage] = useState(1);
   const [contractHasNext, setContractHasNext] = useState(false);
+  const [contractLoading, setContractLoading] = useState(true);
+  const [contractError, setContractError] = useState<string | null>(null);
+  const [contractRetry, setContractRetry] = useState(0);
   const [votes, setVotes] = useState<VoteListItem[] | null>(null);
   const [votePage, setVotePage] = useState(1);
+  const [voteLoadedPage, setVoteLoadedPage] = useState(1);
   const [voteHasNext, setVoteHasNext] = useState(false);
+  const [voteHistoryLoading, setVoteHistoryLoading] = useState(true);
+  const [voteHistoryError, setVoteHistoryError] = useState<string | null>(null);
+  const [voteHistoryRetry, setVoteHistoryRetry] = useState(0);
   const [selectedVote, setSelectedVote] = useState<VoteDetailItem | null>(null);
   const [loadingVoteId, setLoadingVoteId] = useState<number | null>(null);
   const [voteError, setVoteError] = useState<string | null>(null);
@@ -217,11 +224,15 @@ function BillDetailInner() {
 
   useEffect(() => {
     if (Number.isNaN(id)) {
+      setBill(null);
       setError("Invalid bill ID");
       setLoading(false);
       return;
     }
     let cancelled = false;
+    setBill(null);
+    setError(null);
+    setLoading(true);
     getBill(id)
       .then((data) => {
         if (!cancelled) setBill(data);
@@ -240,73 +251,80 @@ function BillDetailInner() {
   useEffect(() => {
     if (Number.isNaN(id)) return;
     let cancelled = false;
+    setContractLoading(true);
+    setContractError(null);
     getContracts(id, { page: contractPage })
       .then((contracts) => {
         if (!cancelled) {
           setContractHistory(contracts.results);
+          setContractLoadedPage(contractPage);
           setContractHasNext(Boolean(contracts.next));
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setContractHistory([]);
-          setContractHasNext(false);
+          setContractError("Could not load contract history. Try again.");
         }
+      })
+      .finally(() => {
+        if (!cancelled) setContractLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [contractPage, id]);
+  }, [contractPage, contractRetry, id]);
 
   useEffect(() => {
     if (Number.isNaN(id)) return;
     let cancelled = false;
+    setVoteHistoryLoading(true);
+    setVoteHistoryError(null);
     getVotes(id, { page: votePage })
       .then((voteResult) => {
         if (!cancelled) {
           setVotes(voteResult.results);
+          setVoteLoadedPage(votePage);
           setVoteHasNext(Boolean(voteResult.next));
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setVotes([]);
-          setVoteHasNext(false);
+          setVoteHistoryError("Could not load vote history. Try again.");
         }
+      })
+      .finally(() => {
+        if (!cancelled) setVoteHistoryLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [id, votePage]);
+  }, [id, voteHistoryRetry, votePage]);
 
   useEffect(() => {
-    voteRequestId.current += 1;
-    setContractPage(1);
-    setVotePage(1);
-    setSelectedVote(null);
-    setLoadingVoteId(null);
-    setVoteError(null);
-  }, [id]);
-
-  useEffect(() => {
-    const signedIn = Boolean(getStoredAccessToken());
-    setHasAccount(signedIn);
-    if (!signedIn || Number.isNaN(id)) return;
-
     let cancelled = false;
     setTrackingError(null);
-    getMyTracking()
-      .then((summary) => {
-        if (!cancelled) {
-          setIsTracked(summary.bills.some((item) => item.bill.id === id));
-        }
+    void getSession()
+      .then((session) => {
+        if (cancelled) return;
+        const signedIn = Boolean(session);
+        setHasAccount(signedIn);
+        if (!signedIn || Number.isNaN(id)) return;
+        void getMyTracking()
+          .then((summary) => {
+            if (!cancelled) {
+              setIsTracked(summary.bills.some((item) => item.bill.id === id));
+            }
+          })
+          .catch((e) => {
+            if (!cancelled) {
+              setTrackingError(
+                e instanceof Error ? e.message : "Failed to load tracking status",
+              );
+            }
+          });
       })
-      .catch((e) => {
-        if (!cancelled) {
-          setTrackingError(
-            e instanceof Error ? e.message : "Failed to load tracking status",
-          );
-        }
+      .catch(() => {
+        if (!cancelled) setHasAccount(false);
       });
     return () => {
       cancelled = true;
@@ -360,7 +378,7 @@ function BillDetailInner() {
     setSelectedVote(null);
     setLoadingVoteId(null);
     setVoteError(null);
-    setVotePage(update);
+    setVotePage(update(voteLoadedPage));
   }
 
   if (loading) {
@@ -513,29 +531,88 @@ function BillDetailInner() {
 
         <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
 
-        {contractHistory && (
+        {contractLoading && (
+          <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
+            {contractHistory ? "Refreshing contract history…" : "Loading contract history…"}
+          </p>
+        )}
+        {contractError && (
+          <div
+            role="alert"
+            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <span>{contractError}</span>
+            <button
+              type="button"
+              onClick={() => setContractRetry((attempt) => attempt + 1)}
+              className="cursor-pointer border border-current px-2 py-1 font-semibold"
+            >
+              Retry contract history
+            </button>
+          </div>
+        )}
+        {contractHistory && contractHistory.length > 0 && (
           <ContractHistorySection
             contracts={contractHistory}
-            page={contractPage}
+            page={contractLoadedPage}
             hasNext={contractHasNext}
-            onPrevious={() => setContractPage((current) => Math.max(1, current - 1))}
-            onNext={() => setContractPage((current) => current + 1)}
+            onPrevious={() => setContractPage(Math.max(1, contractLoadedPage - 1))}
+            onNext={() => setContractPage(contractLoadedPage + 1)}
           />
         )}
-        {votes && (
+        {contractHistory &&
+          contractHistory.length === 0 &&
+          !contractLoading &&
+          !contractError && (
+            <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
+              <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
+                Contract history
+              </h2>
+              <p>No contract history is available.</p>
+            </section>
+          )}
+        {voteHistoryLoading && (
+          <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
+            {votes ? "Refreshing vote history…" : "Loading vote history…"}
+          </p>
+        )}
+        {voteHistoryError && (
+          <div
+            role="alert"
+            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <span>{voteHistoryError}</span>
+            <button
+              type="button"
+              onClick={() => setVoteHistoryRetry((attempt) => attempt + 1)}
+              className="cursor-pointer border border-current px-2 py-1 font-semibold"
+            >
+              Retry vote history
+            </button>
+          </div>
+        )}
+        {votes && votes.length > 0 && (
           <VoteHistorySection
             votes={votes}
             selectedVote={selectedVote}
             loadingVoteId={loadingVoteId}
             voteError={voteError}
             onViewPositions={viewVotePositions}
-            page={votePage}
+            page={voteLoadedPage}
             hasNext={voteHasNext}
             onPrevious={() =>
               changeVoteHistoryPage((current) => Math.max(1, current - 1))
             }
             onNext={() => changeVoteHistoryPage((current) => current + 1)}
           />
+        )}
+        {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
+          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
+            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
+              Roll-call votes
+            </h2>
+            <p>No roll-call votes are available.</p>
+          </section>
         )}
 
         <div className="mb-6">
@@ -611,5 +688,7 @@ function BillDetailInner() {
 }
 
 export default function BillDetailPage() {
-  return <BillDetailInner />;
+  const params = useParams();
+  const routeId = params?.id as string;
+  return <BillDetailInner key={routeId} routeId={routeId} />;
 }

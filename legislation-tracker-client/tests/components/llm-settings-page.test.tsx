@@ -6,7 +6,7 @@ import SettingsPage from "@/app/settings/page";
 import {
   deleteLLMSettings,
   getLLMSettings,
-  getStoredAccessToken,
+  getSession,
   updateLLMSettings,
   validateLLMCredential,
 } from "@/lib/api";
@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   deleteLLMSettings: vi.fn(),
   getLLMSettings: vi.fn(),
-  getStoredAccessToken: vi.fn(),
+  getSession: vi.fn(),
   updateLLMSettings: vi.fn(),
   validateLLMCredential: vi.fn(),
 }));
@@ -39,7 +39,10 @@ const configured = {
 describe("LLM settings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({
+      authenticated: true,
+      user: { email: "person@example.com" },
+    });
     vi.mocked(getLLMSettings).mockResolvedValue(configured);
     vi.mocked(updateLLMSettings).mockResolvedValue({
       ...configured,

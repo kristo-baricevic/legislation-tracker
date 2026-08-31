@@ -1,7 +1,6 @@
 """PostgreSQL monthly-partition maintenance for the append-only ChangeLog."""
 
-from datetime import date, datetime
-from datetime import timezone as datetime_timezone
+from datetime import UTC, date, datetime
 
 from django.db import connection as django_connection
 from django.db import transaction
@@ -32,8 +31,8 @@ def month_bounds(value: date) -> tuple[datetime, datetime]:
     else:
         next_start = date(start.year, start.month + 1, 1)
     return (
-        datetime.combine(start, datetime.min.time(), tzinfo=datetime_timezone.utc),
-        datetime.combine(next_start, datetime.min.time(), tzinfo=datetime_timezone.utc),
+        datetime.combine(start, datetime.min.time(), tzinfo=UTC),
+        datetime.combine(next_start, datetime.min.time(), tzinfo=UTC),
     )
 
 
@@ -69,7 +68,7 @@ def _partition_exists(cursor, name: str) -> bool:
 
 def _utc_partition_bound(value: datetime) -> str:
     """Render a generated UTC boundary as a typed PostgreSQL literal."""
-    utc_value = value.astimezone(datetime_timezone.utc)
+    utc_value = value.astimezone(UTC)
     return utc_value.strftime("TIMESTAMPTZ '%Y-%m-%d %H:%M:%S+00'")
 
 

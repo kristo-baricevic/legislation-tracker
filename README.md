@@ -12,10 +12,11 @@ Use this path if you have **PostgreSQL** and **Redis** installed on your machine
 
 | Piece            | Role                                                     |
 | ---------------- | -------------------------------------------------------- |
-| **Python 3.11+** | Backend                                                  |
+| **Python 3.12**  | Backend and production dependency lock                   |
 | **PostgreSQL**   | Main database                                            |
 | **Redis**        | Celery queue (ingestion, downloads, contract generation) |
-| **Node.js 18+**  | Frontend                                                 |
+| **Node.js 22**   | Frontend                                                 |
+| **pnpm 11**      | Frontend package manager (version pinned in `package.json`) |
 
 ---
 
@@ -119,8 +120,9 @@ The Django app alone will run without Celery; **polling Congress, downloading do
 
 ```bash
 cd legislation-tracker-client
-npm install
-npm run dev
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 App: **http://localhost:3000**
@@ -156,6 +158,17 @@ for rollout and key-rotation instructions.
 ---
 
 ## More documentation
+
+Before opening a pull request, run the complete local verification gate from
+the repository root:
+
+```bash
+./scripts/check-local.sh
+```
+
+It runs backend checks/tests/lint/dependency audit, frontend tests/typecheck/
+lint/audit/production build, and the extension test and syntax checks. GitHub
+Actions remain intentionally deferred.
 
 - **Backend detail:** [legislation-tracker-backend/README.md](legislation-tracker-backend/README.md) (includes Docker-based Postgres/Redis/MinIO if you prefer that later.)
 - **User-owned AI enhancements:** [legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md](legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md)

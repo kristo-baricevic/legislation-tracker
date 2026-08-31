@@ -1,15 +1,18 @@
+import hashlib
+from datetime import UTC, datetime, timedelta
+from io import BytesIO
+from tempfile import SpooledTemporaryFile
+
 import pytest
 from botocore.exceptions import ClientError
-from django.db import IntegrityError
 from django.contrib.auth import get_user_model
-from datetime import datetime, timedelta, timezone as dt_timezone
-
+from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative, Vote, VoteRecord
-from apps.ingestion import tasks
+from apps.ingestion import document_download, tasks
 from apps.ingestion.congress_client import CongressAPIError
 from apps.ingestion.models import (
     IngestionState,
@@ -18,16 +21,60 @@ from apps.ingestion.models import (
     IngestionWorkStatus,
 )
 from apps.legislation.extraction.service import extract_contract
-from apps.legislation.models import Bill, BillDocument, BillTopic, ProcessingStatus, Topic
+from apps.legislation.models import (
+    Bill,
+    BillDocument,
+    BillTopic,
+    ProcessingStatus,
+    Topic,
+)
+
+
+def downloaded_document(payload, content_type):
+    return document_download.DownloadedDocument(
+        file=BytesIO(payload),
+        content_type=content_type,
+        size=len(payload),
+        checksum=hashlib.sha256(payload).hexdigest(),
+    )
+
+
+@pytest.mark.django_db
+def test_poll_congress_resolves_current_congress_when_task_executes(monkeypatch):
+    monkeypatch.setattr(tasks, "current_congress", lambda: 121)
+    observed = []
+    monkeypatch.setattr(
+        tasks,
+        "bill_list",
+        lambda congress, *args, **kwargs: observed.append(congress) or [],
+    )
+
+    result = tasks.poll_congress(congress=None)
+
+    assert observed == [121, 121]
+    assert result["congress"] == 121
+
+
+@pytest.mark.django_db
+def test_sync_representatives_resolves_current_congress_when_task_executes(monkeypatch):
+    monkeypatch.setattr(tasks, "current_congress", lambda: 121)
+    monkeypatch.setattr(tasks, "member_list", lambda congress, **kwargs: [])
+
+    with pytest.raises(CongressAPIError, match="roster was empty"):
+        tasks.sync_representatives(congress=None)
 
 
 def test_sync_representatives_has_bounded_congress_api_retries():
-    assert getattr(tasks.sync_representatives, "autoretry_for", ()) == (CongressAPIError,)
+    assert getattr(tasks.sync_representatives, "autoretry_for", ()) == (
+        CongressAPIError,
+    )
     assert tasks.sync_representatives.max_retries == 2
 
 
 @pytest.mark.django_db
-def test_poll_congress_does_not_advance_cursor_or_enqueue_after_partial_failure(monkeypatch):
+def test_poll_congress_does_not_advance_cursor_or_enqueue_after_partial_failure(
+    monkeypatch,
+):
     state = IngestionState.objects.create(jurisdiction="federal", congress=119)
     enqueued = []
 
@@ -61,7 +108,7 @@ def test_poll_congress_does_not_advance_cursor_or_enqueue_after_partial_failure(
 
 @pytest.mark.django_db
 def test_poll_congress_keeps_cursor_when_offset_pagination_repeats(monkeypatch):
-    initial_cursor = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
+    initial_cursor = datetime(2026, 1, 1, tzinfo=UTC)
     state = IngestionState.objects.create(
         jurisdiction="federal",
         congress=119,
@@ -95,7 +142,9 @@ def test_poll_congress_keeps_cursor_when_offset_pagination_repeats(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_poll_congress_persists_discovered_work_and_cursor_when_dispatch_fails(monkeypatch):
+def test_poll_congress_persists_discovered_work_and_cursor_when_dispatch_fails(
+    monkeypatch,
+):
     state = IngestionState.objects.create(jurisdiction="federal", congress=119)
 
     monkeypatch.setattr(
@@ -136,10 +185,10 @@ def test_poll_congress_persists_discovered_work_and_cursor_when_dispatch_fails(m
 
 @pytest.mark.django_db
 def test_poll_congress_replays_a_cursor_overlap_before_advancing(monkeypatch):
-    state = IngestionState.objects.create(
+    IngestionState.objects.create(
         jurisdiction="federal",
         congress=119,
-        last_bill_update_seen_at=datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+        last_bill_update_seen_at=datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
     )
     observed_from_dates = []
 
@@ -169,7 +218,9 @@ def test_poll_congress_replays_a_cursor_overlap_before_advancing(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(monkeypatch):
+def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(
+    monkeypatch,
+):
     work = IngestionWorkItem.objects.create(
         kind="bill",
         dedupe_key="119-hr-1",
@@ -199,7 +250,9 @@ def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(mo
 
 
 @pytest.mark.django_db
-def test_dispatch_does_not_release_a_replacement_lease_after_enqueue_failure(monkeypatch):
+def test_dispatch_does_not_release_a_replacement_lease_after_enqueue_failure(
+    monkeypatch,
+):
     work = IngestionWorkItem.objects.create(
         kind="bill",
         dedupe_key="119-hr-2",
@@ -347,7 +400,9 @@ def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatc
     monkeypatch.setattr(
         tasks,
         "_process_bill_impl",
-        lambda bill_key: (_ for _ in ()).throw(CongressAPIError("Congress unavailable")),
+        lambda bill_key: (_ for _ in ()).throw(
+            CongressAPIError("Congress unavailable")
+        ),
     )
 
     result = tasks.process_ingestion_work_item(work.id)
@@ -357,6 +412,35 @@ def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatc
     assert work.status == IngestionWorkStatus.DEAD
     failure = IngestionTaskFailure.objects.get(work_item=work)
     assert "Congress unavailable" in failure.error_message
+
+
+@pytest.mark.django_db
+def test_bounded_document_validation_failure_dead_letters_without_retrying(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="document_download",
+        dedupe_key="document-1",
+        source_updated_at=timezone.now(),
+        payload_json={"document_id": 1},
+        status=IngestionWorkStatus.DISPATCHED,
+    )
+    monkeypatch.setattr(
+        tasks,
+        "_download_document_impl",
+        lambda document_id: (_ for _ in ()).throw(
+            document_download.DocumentByteLimitExceeded(
+                "Document contains more than 4 bytes"
+            )
+        ),
+    )
+
+    result = tasks.process_ingestion_work_item(work.id)
+
+    work.refresh_from_db()
+    assert result == {"work_item_id": work.id, "status": "dead"}
+    assert work.status == IngestionWorkStatus.DEAD
+    assert work.attempt_count == 1
+    failure = IngestionTaskFailure.objects.get(work_item=work)
+    assert "more than 4 bytes" in failure.error_message
 
 
 @pytest.mark.django_db
@@ -526,7 +610,9 @@ def test_process_bill_votes_surfaces_vote_detail_failures_for_retry(monkeypatch)
 
 
 @pytest.mark.django_db
-def test_process_bill_votes_preserves_positions_from_grouped_member_payload(monkeypatch):
+def test_process_bill_votes_preserves_positions_from_grouped_member_payload(
+    monkeypatch,
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -678,7 +764,7 @@ def test_process_bill_votes_adopts_a_legacy_vote_with_unknown_session(monkeypatc
         chamber="house",
         session_number=None,
         roll_number=10,
-        vote_date=datetime(2025, 1, 3, tzinfo=dt_timezone.utc),
+        vote_date=datetime(2025, 1, 3, tzinfo=UTC),
         result="Unknown",
     )
     monkeypatch.setattr(
@@ -776,11 +862,15 @@ def test_vote_records_are_unique_per_vote_and_representative():
     VoteRecord.objects.create(vote=vote, representative=representative, position="yes")
 
     with pytest.raises(IntegrityError):
-        VoteRecord.objects.create(vote=vote, representative=representative, position="yes")
+        VoteRecord.objects.create(
+            vote=vote, representative=representative, position="yes"
+        )
 
 
 @pytest.mark.django_db
-def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(monkeypatch):
+def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
+    monkeypatch,
+):
     monkeypatch.setattr(
         tasks,
         "bill_detail",
@@ -868,8 +958,12 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
             "url": "https://api.congress.gov/v3/bill/119/hr/1",
         },
     )
-    monkeypatch.setattr(tasks.process_bill_versions, "apply_async", lambda args=None, kwargs=None: None)
-    monkeypatch.setattr(tasks.process_bill_votes, "apply_async", lambda args=None, kwargs=None: None)
+    monkeypatch.setattr(
+        tasks.process_bill_versions, "apply_async", lambda args=None, kwargs=None: None
+    )
+    monkeypatch.setattr(
+        tasks.process_bill_votes, "apply_async", lambda args=None, kwargs=None: None
+    )
 
     result = tasks._process_bill_impl("119-hr-1")
 
@@ -880,7 +974,9 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
 
 
 @pytest.mark.django_db
-def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_document(monkeypatch):
+def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_document(
+    monkeypatch,
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -917,13 +1013,17 @@ def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_documen
     second_result = tasks.process_bill_versions(bill.id)
 
     assert second_result == {"bill_id": bill.id, "versions": 1}
-    assert BillDocument.objects.filter(bill=bill, version_label="Introduced").count() == 1
+    assert (
+        BillDocument.objects.filter(bill=bill, version_label="Introduced").count() == 1
+    )
     assert BillDocument.objects.filter(bill=bill, is_active_version=True).count() == 1
     assert IngestionWorkItem.objects.filter(kind="document_download").count() == 1
 
 
 @pytest.mark.django_db
-def test_process_bill_versions_enqueues_metadata_contract_when_no_text_versions_exist(monkeypatch):
+def test_process_bill_versions_enqueues_metadata_contract_when_no_text_versions_exist(
+    monkeypatch,
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -1030,11 +1130,15 @@ def test_download_document_marks_retryable_s3_failures_for_celery_retry(monkeypa
         },
         "PutObject",
     )
-    monkeypatch.setattr(tasks, "download_url", lambda *args: (b"<bill />", "application/xml"))
+    monkeypatch.setattr(
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(b"<bill />", "application/xml"),
+    )
     monkeypatch.setattr(
         tasks,
         "upload_and_metadata",
-        lambda *args: (_ for _ in ()).throw(storage_error),
+        lambda *args, **kwargs: (_ for _ in ()).throw(storage_error),
     )
 
     with pytest.raises(Exception) as raised:
@@ -1045,6 +1149,44 @@ def test_download_document_marks_retryable_s3_failures_for_celery_retry(monkeypa
         error.__name__ == "RetryableDocumentStorageError"
         for error in tasks.download_document.autoretry_for
     )
+
+
+@pytest.mark.django_db
+def test_download_document_closes_spooled_file_when_extraction_fails(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 402",
+        title="Bounded document bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/bill.pdf",
+    )
+    spool = SpooledTemporaryFile(max_size=2, mode="w+b")
+    spool.write(b"%PDF-test")
+    spool.seek(0)
+    downloaded = document_download.DownloadedDocument(
+        file=spool,
+        content_type="application/pdf",
+        size=9,
+        checksum="test-checksum",
+    )
+    monkeypatch.setattr(tasks, "download_url", lambda *args, **kwargs: downloaded)
+    monkeypatch.setattr(
+        tasks,
+        "extract_document_text",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            document_download.MalformedDocumentError("Malformed PDF")
+        ),
+    )
+
+    with pytest.raises(document_download.MalformedDocumentError, match="Malformed PDF"):
+        tasks._download_document_impl(document.id)
+
+    assert spool.closed
 
 
 @pytest.mark.django_db
@@ -1083,11 +1225,15 @@ def test_downloaded_congress_text_reaches_legal_nlp_v2(
         version_label="Introduced",
         source_url="https://example.test/hr1",
     )
-    monkeypatch.setattr(tasks, "download_url", lambda *args: (payload, content_type))
+    monkeypatch.setattr(
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(payload, content_type),
+    )
     monkeypatch.setattr(
         tasks,
         "upload_and_metadata",
-        lambda *args: ("congress/119/hr-1/introduced", len(payload)),
+        lambda *args, **kwargs: ("congress/119/hr-1/introduced", len(payload)),
     )
     monkeypatch.setattr(
         "apps.legislation.tasks.enqueue_document_contract", lambda document: None
@@ -1125,12 +1271,14 @@ def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
         source_url="https://example.test/hr5.xml",
     )
     monkeypatch.setattr(
-        tasks, "download_url", lambda *args: (payload, "application/xml")
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(payload, "application/xml"),
     )
     monkeypatch.setattr(
         tasks,
         "upload_and_metadata",
-        lambda *args: ("congress/119/hr-5/introduced.xml", len(payload)),
+        lambda *args, **kwargs: ("congress/119/hr-5/introduced.xml", len(payload)),
     )
     monkeypatch.setattr(
         "apps.legislation.tasks.enqueue_document_contract", lambda document: None
@@ -1142,10 +1290,7 @@ def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
     result = extract_contract(document=document, bill=bill)
     assert "DIVISION A Programs" in document.extracted_text
     assert "SUBCHAPTER I Reports" in document.extracted_text
-    assert (
-        "(AA) The Secretary shall publish a grant report."
-        in document.extracted_text
-    )
+    assert "(AA) The Secretary shall publish a grant report." in document.extracted_text
     assert result.schema_version == "2.0-legal-nlp"
     assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
     assert result.contract_json["requirements"][0]["action"] == (
@@ -1175,11 +1320,15 @@ def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_t
         version_label="Introduced",
         source_url="https://example.test/hr2.xml",
     )
-    monkeypatch.setattr(tasks, "download_url", lambda *args: (payload, content_type))
+    monkeypatch.setattr(
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(payload, content_type),
+    )
     monkeypatch.setattr(
         tasks,
         "upload_and_metadata",
-        lambda *args: ("congress/119/hr-2/introduced.xml", len(payload)),
+        lambda *args, **kwargs: ("congress/119/hr-2/introduced.xml", len(payload)),
     )
     monkeypatch.setattr(
         "apps.legislation.tasks.enqueue_document_contract", lambda document: None
@@ -1221,12 +1370,14 @@ def test_downloaded_xml_quoted_amendment_payload_falls_back_without_current_clai
         source_url="https://example.test/hr3.xml",
     )
     monkeypatch.setattr(
-        tasks, "download_url", lambda *args: (payload, "application/xml")
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(payload, "application/xml"),
     )
     monkeypatch.setattr(
         tasks,
         "upload_and_metadata",
-        lambda *args: ("congress/119/hr-3/introduced.xml", len(payload)),
+        lambda *args, **kwargs: ("congress/119/hr-3/introduced.xml", len(payload)),
     )
     monkeypatch.setattr(
         "apps.legislation.tasks.enqueue_document_contract", lambda document: None
@@ -1264,12 +1415,14 @@ def test_downloaded_xml_direct_quoted_funding_falls_back_without_current_claims(
         source_url="https://example.test/hr4.xml",
     )
     monkeypatch.setattr(
-        tasks, "download_url", lambda *args: (payload, "application/xml")
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(payload, "application/xml"),
     )
     monkeypatch.setattr(
         tasks,
         "upload_and_metadata",
-        lambda *args: ("congress/119/hr-4/introduced.xml", len(payload)),
+        lambda *args, **kwargs: ("congress/119/hr-4/introduced.xml", len(payload)),
     )
     monkeypatch.setattr(
         "apps.legislation.tasks.enqueue_document_contract", lambda document: None
@@ -1320,7 +1473,13 @@ def test_existing_sponsor_profiles_are_refreshed_from_new_metadata():
     )
 
     result.refresh_from_db()
-    assert (result.name, result.chamber, result.party, result.state, result.district) == (
+    assert (
+        result.name,
+        result.chamber,
+        result.party,
+        result.state,
+        result.district,
+    ) == (
         "New Name",
         "senate",
         "New Party",
@@ -1381,7 +1540,7 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
         title="Topic bill",
         status="Introduced",
     )
-    legislator_bill = Bill.objects.create(
+    Bill.objects.create(
         jurisdiction="federal",
         session=119,
         bill_number="HR 303",
@@ -1389,7 +1548,7 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
         status="Introduced",
         sponsor=representative,
     )
-    unrelated_bill = Bill.objects.create(
+    Bill.objects.create(
         jurisdiction="federal",
         session=119,
         bill_number="HR 404",
@@ -1402,9 +1561,11 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
     TrackedTopic.objects.create(user=user, topic=topic)
     TrackedLegislator.objects.create(user=user, representative=representative)
     dispatched = []
-    now = datetime(2026, 1, 2, 12, 3, tzinfo=dt_timezone.utc)
+    now = datetime(2026, 1, 2, 12, 3, tzinfo=UTC)
     monkeypatch.setattr(tasks.timezone, "now", lambda: now)
-    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: dispatched.append(True))
+    monkeypatch.setattr(
+        tasks.dispatch_ingestion_work, "delay", lambda: dispatched.append(True)
+    )
     monkeypatch.setattr(
         tasks.process_bill,
         "apply_async",
@@ -1425,26 +1586,28 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
         (
             "119-hr-101",
             IngestionWorkStatus.PENDING,
-            datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+            datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
             {"bill_key": "119-hr-101"},
         ),
         (
             "119-hr-303",
             IngestionWorkStatus.PENDING,
-            datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+            datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
             {"bill_key": "119-hr-303"},
         ),
         (
             "119-s-202",
             IngestionWorkStatus.PENDING,
-            datetime(2026, 1, 2, 12, 0, tzinfo=dt_timezone.utc),
+            datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
             {"bill_key": "119-s-202"},
         ),
     ]
 
 
 @pytest.mark.django_db
-def test_sync_representatives_ingests_the_complete_current_roster_before_retiring_stale_rows(monkeypatch):
+def test_sync_representatives_ingests_the_complete_current_roster_before_retiring_stale_rows(
+    monkeypatch,
+):
     stale = Representative.objects.create(
         bioguide_id="S000001",
         name="Stale Member",
@@ -1522,7 +1685,9 @@ def test_sync_representatives_ingests_the_complete_current_roster_before_retirin
 
 
 @pytest.mark.django_db
-def test_sync_representatives_does_not_retire_existing_members_after_an_incomplete_pull(monkeypatch):
+def test_sync_representatives_does_not_retire_existing_members_after_an_incomplete_pull(
+    monkeypatch,
+):
     stale = Representative.objects.create(
         bioguide_id="S000001",
         name="Stale Member",
@@ -1534,14 +1699,16 @@ def test_sync_representatives_does_not_retire_existing_members_after_an_incomple
     monkeypatch.setattr(
         tasks,
         "member_list",
-        lambda congress, current_member=True, limit=250, offset=0: [
-            {"bioguideId": "C000001", "name": "Doe, Jane"}
-        ] if offset == 0 else [],
+        lambda congress, current_member=True, limit=250, offset=0: (
+            [{"bioguideId": "C000001", "name": "Doe, Jane"}] if offset == 0 else []
+        ),
     )
     monkeypatch.setattr(
         tasks,
         "member_detail",
-        lambda bioguide_id: (_ for _ in ()).throw(CongressAPIError("member unavailable")),
+        lambda bioguide_id: (_ for _ in ()).throw(
+            CongressAPIError("member unavailable")
+        ),
     )
 
     with pytest.raises(CongressAPIError, match="member unavailable"):

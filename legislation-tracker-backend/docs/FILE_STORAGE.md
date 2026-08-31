@@ -78,7 +78,7 @@ See **`.env.example`** in the backend root for copy-paste defaults.
 |----------|----------------|
 | `config/settings/base.py` | Defines `STORAGES` (S3 vs filesystem) from env. |
 | `apps/ingestion/document_download.py` | HTTP download, hashing, PDF/XML text extraction, optional bucket creation, `default_storage.save`. |
-| `apps/ingestion/tasks.py` | **`download_document`** Celery task (orchestrates download → upload → DB fields → enqueues `generate_contract` stub). |
+| `apps/ingestion/tasks.py` | **`download_document`** Celery task (orchestrates bounded download → upload → DB fields → enqueues deterministic legal-NLP v2 contract generation). |
 | `apps/legislation/models.py` | **`BillDocument`** holds `source_url`, `object_storage_key`, `content_hash`, etc. |
 
 ---

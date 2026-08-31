@@ -41,7 +41,9 @@ def test_senate_xml_transport_errors_are_retryable_congress_api_errors(monkeypat
 
     monkeypatch.setattr(congress_client.requests, "get", fake_get)
 
-    with pytest.raises(congress_client.CongressAPIError, match="Senate roll-call source failed"):
+    with pytest.raises(
+        congress_client.CongressAPIError, match="Senate roll-call source failed"
+    ):
         congress_client._request_senate_xml("https://www.senate.gov/example.xml")
 
 
@@ -102,7 +104,9 @@ def test_bill_actions_pages_through_recorded_vote_references(monkeypatch):
     ]
 
 
-def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(monkeypatch):
+def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(
+    monkeypatch,
+):
     calls = []
 
     def fake_request(method, path, params=None):
@@ -236,11 +240,7 @@ def test_senate_vote_detail_uses_official_senate_xml_with_bioguide_ids(monkeypat
 
     def fake_get(url, timeout=None):
         calls.append((url, timeout))
-        return Response(
-            vote_xml
-            if "roll_call_votes" in url
-            else members_xml
-        )
+        return Response(vote_xml if "roll_call_votes" in url else members_xml)
 
     monkeypatch.setattr(
         congress_client,
@@ -304,9 +304,7 @@ def test_senate_vote_detail_resolves_former_senators_from_congress_history(
     current_members_xml = b"<contact_information />"
 
     def fake_get(url, timeout=None):
-        return Response(
-            vote_xml if "roll_call_votes" in url else current_members_xml
-        )
+        return Response(vote_xml if "roll_call_votes" in url else current_members_xml)
 
     monkeypatch.setattr(congress_client.requests, "get", fake_get)
     monkeypatch.setattr(

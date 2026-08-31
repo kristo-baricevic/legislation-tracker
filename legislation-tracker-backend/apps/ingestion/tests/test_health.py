@@ -1,9 +1,10 @@
 from types import SimpleNamespace
 
 import pytest
-from config import health
 from django.conf import settings
 from rest_framework.test import APIClient
+
+from config import health
 
 
 def test_liveness_endpoint_does_not_depend_on_external_services():

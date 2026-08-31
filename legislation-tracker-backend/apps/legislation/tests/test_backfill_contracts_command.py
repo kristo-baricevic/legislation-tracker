@@ -132,7 +132,9 @@ def test_backfill_contracts_execute_is_durable_and_idempotent(monkeypatch):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(monkeypatch):
+def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
+    monkeypatch,
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,

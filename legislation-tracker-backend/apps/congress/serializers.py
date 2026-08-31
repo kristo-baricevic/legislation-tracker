@@ -1,6 +1,40 @@
 from rest_framework import serializers
 
+from config.api import PaginatedQuerySerializer
+
 from .models import Representative, Vote, VoteRecord
+
+CHAMBER_CHOICES = ("house", "senate")
+
+
+class RepresentativeListQuerySerializer(PaginatedQuerySerializer):
+    state = serializers.RegexField(
+        regex=r"^[A-Za-z]{2}$",
+        required=False,
+        allow_blank=True,
+    )
+    chamber = serializers.ChoiceField(
+        choices=CHAMBER_CHOICES,
+        required=False,
+        allow_blank=True,
+    )
+    is_current = serializers.BooleanField(required=False)
+
+    def validate_state(self, value):
+        return value.upper()
+
+
+class VoteListQuerySerializer(PaginatedQuerySerializer):
+    bill = serializers.IntegerField(required=False, min_value=1)
+    congress = serializers.IntegerField(required=False, min_value=1)
+    chamber = serializers.ChoiceField(
+        choices=CHAMBER_CHOICES,
+        required=False,
+        allow_blank=True,
+    )
+    session_number = serializers.IntegerField(required=False, min_value=1)
+    roll_number = serializers.IntegerField(required=False, min_value=1)
+    vote_date = serializers.DateField(required=False)
 
 
 class RepresentativeSerializer(serializers.ModelSerializer):

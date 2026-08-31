@@ -2,6 +2,7 @@
 Canonical JSON serialization for BillContract.contract_hash stability.
 Same logical content → same string → same hash (ignores key order and extra whitespace in strings).
 """
+
 from __future__ import annotations
 
 import json

@@ -2,10 +2,11 @@
 Congress.gov API v3 client for ingestion.
 Uses CONGRESS_API_KEY from Django settings. Base URL: https://api.congress.gov/v3.
 """
+
 import logging
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
@@ -102,7 +103,12 @@ def _request(method, path, params=None):
         )
     if api_key:
         params.setdefault("api_key", api_key)
-    logger.debug("Congress API request: %s %s (params keys: %s)", method, path, list(params.keys()) if params else [])
+    logger.debug(
+        "Congress API request: %s %s (params keys: %s)",
+        method,
+        path,
+        list(params.keys()) if params else [],
+    )
     try:
         resp = requests.request(method, url, params=params, timeout=30)
     except requests.RequestException as exc:
@@ -111,7 +117,10 @@ def _request(method, path, params=None):
     if not resp.ok:
         logger.error(
             "Congress API error: %s %s -> %s %s",
-            method, path, resp.status_code, (resp.text[:200] if resp.text else ""),
+            method,
+            path,
+            resp.status_code,
+            (resp.text[:200] if resp.text else ""),
         )
         raise CongressAPIError(
             f"Congress API error: {resp.status_code}",
@@ -145,26 +154,46 @@ def bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
         num = inner.get("number")
         if num is None:
             num = b.get("number")
-        update_date = inner.get("updateDateIncludingText") or inner.get("updateDate") or b.get("updateDateIncludingText") or b.get("updateDate")
-        out.append({
-            "congress": congress,
-            "type": bill_type,
-            "number": str(num) if num is not None else "",
-            "updateDate": update_date,
-        })
+        update_date = (
+            inner.get("updateDateIncludingText")
+            or inner.get("updateDate")
+            or b.get("updateDateIncludingText")
+            or b.get("updateDate")
+        )
+        out.append(
+            {
+                "congress": congress,
+                "type": bill_type,
+                "number": str(num) if num is not None else "",
+                "updateDate": update_date,
+            }
+        )
     logger.info(
         "bill_list: congress=%s bill_type=%s offset=%s from_date_time=%s -> %s bills (raw response had %s items)",
-        congress, bill_type, offset, from_date_time, len(out), len(bills),
+        congress,
+        bill_type,
+        offset,
+        from_date_time,
+        len(out),
+        len(bills),
     )
     if bills and not out:
-        logger.warning("bill_list: API returned %s raw items but parsed 0; check response shape.", len(bills))
+        logger.warning(
+            "bill_list: API returned %s raw items but parsed 0; check response shape.",
+            len(bills),
+        )
     return out
 
 
 def bill_detail(congress, bill_type, bill_number):
     """GET /bill/{congress}/{billType}/{billNumber}. Returns full bill object."""
     bill_type = (bill_type or "hr").lower()
-    logger.debug("bill_detail: congress=%s bill_type=%s bill_number=%s", congress, bill_type, bill_number)
+    logger.debug(
+        "bill_detail: congress=%s bill_type=%s bill_number=%s",
+        congress,
+        bill_type,
+        bill_number,
+    )
     data = _request("GET", f"bill/{congress}/{bill_type}/{bill_number}")
     _throttle()
     return data.get("bill") or data
@@ -184,7 +213,9 @@ def bill_actions(congress, bill_type, bill_number, limit=250):
         _throttle()
         page = data.get("actions") or []
         if not isinstance(page, list):
-            raise CongressAPIError("Congress bill actions returned an invalid actions payload")
+            raise CongressAPIError(
+                "Congress bill actions returned an invalid actions payload"
+            )
         actions.extend(action for action in page if isinstance(action, dict))
         if len(page) < limit:
             break
@@ -235,7 +266,10 @@ def bill_text_list(congress, bill_type, bill_number):
         result.append({"version_label": str(label), "url": url or ""})
     logger.info(
         "bill_text_list: congress=%s bill_type=%s bill_number=%s -> %s versions",
-        congress, bill_type, bill_number, len(result),
+        congress,
+        bill_type,
+        bill_number,
+        len(result),
     )
     return result
 
@@ -367,18 +401,21 @@ def _member_summary_is_senator(member):
     if isinstance(terms, dict):
         terms = terms.get("item") or terms.get("terms") or []
     return isinstance(terms, list) and any(
-        isinstance(term, dict)
-        and str(term.get("chamber") or "").casefold() == "senate"
+        isinstance(term, dict) and str(term.get("chamber") or "").casefold() == "senate"
         for term in terms
     )
 
 
 def _normalized_member_name(value):
-    return "".join(
-        char
-        for char in unicodedata.normalize("NFKD", value or "")
-        if not unicodedata.combining(char)
-    ).strip().casefold()
+    return (
+        "".join(
+            char
+            for char in unicodedata.normalize("NFKD", value or "")
+            if not unicodedata.combining(char)
+        )
+        .strip()
+        .casefold()
+    )
 
 
 def _senate_bioguide_ids(root):
@@ -469,7 +506,7 @@ def _parse_senate_vote_date(value):
         ).replace(tzinfo=ZoneInfo("America/New_York"))
     except ValueError:
         return value
-    return local_time.astimezone(timezone.utc).isoformat()
+    return local_time.astimezone(UTC).isoformat()
 
 
 def _senate_vote_detail(congress, session_number, roll_number):
@@ -485,9 +522,7 @@ def _senate_vote_detail(congress, session_number, roll_number):
     )
     vote_root = _request_senate_xml(vote_url)
     current_members_root = _request_senate_xml(SENATE_CURRENT_MEMBERS_URL)
-    bioguide_ids, fallback_bioguide_ids = _senate_bioguide_ids(
-        current_members_root
-    )
+    bioguide_ids, fallback_bioguide_ids = _senate_bioguide_ids(current_members_root)
     historical_bioguide_ids = None
     members = []
     for member in vote_root.findall("./members/member"):
@@ -543,7 +578,9 @@ def _senate_vote_detail(congress, session_number, roll_number):
     }
 
 
-def vote_detail(congress, chamber, roll_number, *, session_number=None, source_url=None):
+def vote_detail(
+    congress, chamber, roll_number, *, session_number=None, source_url=None
+):
     """Return a normalized House or Senate roll-call vote and member positions.
 
     Congress.gov provides House roll-call endpoints. Senate roll calls are
@@ -617,7 +654,9 @@ def member_list(congress, current_member=True, limit=250, offset=0):
     _throttle()
     members = data.get("members") or []
     if not isinstance(members, list):
-        raise CongressAPIError("Congress member list returned an invalid members payload")
+        raise CongressAPIError(
+            "Congress member list returned an invalid members payload"
+        )
     return members
 
 

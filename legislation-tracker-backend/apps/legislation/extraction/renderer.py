@@ -134,7 +134,11 @@ def _render_amendment(fields: dict[str, object]) -> str:
         else:
             text = f"{prefix}strikes and inserts text"
     elif operation == "strike":
-        text = f"{prefix}strikes {_quoted(removed)}" if removed else f"{prefix}strikes text"
+        text = (
+            f"{prefix}strikes {_quoted(removed)}"
+            if removed
+            else f"{prefix}strikes text"
+        )
     elif operation in {"add", "insert"}:
         verb = "adds" if operation == "add" else "inserts"
         payload = _quoted(inserted) if inserted else "text"
@@ -236,9 +240,7 @@ def render_contract(
         stored_by_category[category] = category_claims[:_CATEGORY_LIMIT]
 
     stored_claims = tuple(
-        claim
-        for claim in ordered_claims
-        if claim in stored_by_category[claim.category]
+        claim for claim in ordered_claims if claim in stored_by_category[claim.category]
     )
     display_by_identity = {
         id(claim): _RENDERERS[claim.category](claim.fields) for claim in stored_claims

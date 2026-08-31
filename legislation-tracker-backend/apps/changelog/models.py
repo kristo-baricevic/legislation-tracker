@@ -41,6 +41,8 @@ class ChangeLog(models.Model):
             models.Index(fields=["-created_at"]),
             models.Index(fields=["bill"]),
             models.Index(fields=["change_type"]),
-            models.Index(fields=["-created_at", "bill"], name="changelog_created_bill_idx"),
+            models.Index(
+                fields=["-created_at", "bill"], name="changelog_created_bill_idx"
+            ),
         ]
         ordering = ["-created_at"]

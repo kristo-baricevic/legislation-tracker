@@ -5,6 +5,7 @@ Usage:
     python manage.py seed_topics          # create missing topics
     python manage.py seed_topics --reset  # delete all topics + BillTopics, re-create
 """
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 

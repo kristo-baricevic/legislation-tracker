@@ -18,6 +18,11 @@ from apps.legislation.models import (
 )
 
 
+class FakeRemoteStorage:
+    def url(self, object_key):
+        return f"https://documents.example.com/{object_key}?signature=abc"
+
+
 @pytest.mark.django_db
 def test_public_corpus_endpoints_ignore_stale_bearer_token():
     representative = Representative.objects.create(
@@ -99,7 +104,17 @@ def test_related_bills_endpoint_returns_similarity_ranked_public_results():
         0.91,
         0.42,
     ]
-    assert all(item["method"] == "deterministic-v1" for item in response.json()["results"])
+    assert all(
+        item["method"] == "deterministic-v1" for item in response.json()["results"]
+    )
+
+    limited = APIClient().get(f"/api/bills/{first.id}/related/?limit=1")
+    invalid = APIClient().get(f"/api/bills/{first.id}/related/?limit=not-an-integer")
+
+    assert limited.status_code == 200
+    assert [item["bill"]["id"] for item in limited.json()["results"]] == [second.id]
+    assert invalid.status_code == 400
+    assert "limit" in invalid.json()
 
 
 @pytest.mark.django_db
@@ -162,11 +177,7 @@ def test_public_document_download_uses_the_stored_object_url(monkeypatch):
         content_type="application/pdf",
         file_size_bytes=123,
     )
-    monkeypatch.setattr(
-        views.default_storage,
-        "url",
-        lambda object_key: f"https://documents.example.com/{object_key}?signature=abc",
-    )
+    monkeypatch.setattr(views, "default_storage", FakeRemoteStorage())
 
     response = APIClient().get(f"/api/documents/{document.id}/download/")
     detail = APIClient().get(f"/api/bills/{bill.id}/")
@@ -191,7 +202,9 @@ def test_public_document_download_uses_the_stored_object_url(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_public_document_download_streams_filesystem_stored_objects(monkeypatch, tmp_path):
+def test_public_document_download_streams_filesystem_stored_objects(
+    monkeypatch, tmp_path
+):
     storage = FileSystemStorage(location=tmp_path, base_url="/media/")
     object_key = "bills/119/HR_104/Introduced.pdf"
     storage.save(object_key, ContentFile(b"stored bill bytes"))
@@ -442,4 +455,151 @@ def test_vote_list_does_not_query_member_positions():
         response = APIClient().get(f"/api/votes/?bill={bill.id}")
 
     assert response.status_code == 200
-    assert not any("congress_voterecord" in query["sql"] for query in queries.captured_queries)
+    assert not any(
+        "congress_voterecord" in query["sql"] for query in queries.captured_queries
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("/api/bills/?id=not-an-integer", "id"),
+        ("/api/bills/?session=not-an-integer", "session"),
+        ("/api/bills/?congress=not-an-integer", "congress"),
+        ("/api/contracts/?bill=not-an-integer", "bill"),
+        ("/api/votes/?bill=not-an-integer", "bill"),
+        ("/api/votes/?congress=not-an-integer", "congress"),
+        ("/api/votes/?session_number=not-an-integer", "session_number"),
+        ("/api/votes/?roll_number=not-an-integer", "roll_number"),
+        ("/api/votes/?vote_date=not-a-date", "vote_date"),
+        ("/api/votes/?chamber=executive", "chamber"),
+        ("/api/representatives/?is_current=perhaps", "is_current"),
+        ("/api/representatives/?chamber=executive", "chamber"),
+    ],
+)
+def test_public_list_endpoints_reject_invalid_typed_filters(path, field):
+    response = APIClient().get(path)
+
+    assert response.status_code == 400
+    assert field in response.json()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("/api/bills/?congres=119", "congres"),
+        ("/api/contracts/?bill_id=7", "bill_id"),
+        ("/api/votes/?bill_id=7", "bill_id"),
+        ("/api/representatives/?state_code=NY", "state_code"),
+        ("/api/topics/?topic_id=7", "topic_id"),
+        ("/api/documents/?bill=7", "bill"),
+    ],
+)
+def test_public_list_endpoints_reject_unknown_filters(path, field):
+    response = APIClient().get(path)
+
+    assert response.status_code == 400
+    assert response.json()[field] == ["Unknown query parameter."]
+
+
+@pytest.mark.django_db
+def test_public_paginated_list_accepts_the_declared_page_parameter():
+    response = APIClient().get("/api/bills/?page=1")
+
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_bill_list_supports_congress_as_a_typed_session_filter():
+    matching = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 201",
+        title="Matching Congress bill",
+        status="introduced",
+    )
+    Bill.objects.create(
+        jurisdiction="federal",
+        session=118,
+        bill_number="HR 202",
+        title="Older Congress bill",
+        status="introduced",
+    )
+
+    response = APIClient().get("/api/bills/?congress=119")
+
+    assert response.status_code == 200
+    assert [bill["id"] for bill in response.json()["results"]] == [matching.id]
+
+
+@pytest.mark.django_db
+def test_vote_list_applies_typed_congress_session_roll_date_and_chamber_filters():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 203",
+        title="Filtered vote bill",
+        status="introduced",
+    )
+    matching = Vote.objects.create(
+        bill=bill,
+        chamber="house",
+        session_number=1,
+        roll_number=22,
+        vote_date="2026-08-20T12:00:00Z",
+        result="Passed",
+    )
+    Vote.objects.create(
+        bill=bill,
+        chamber="senate",
+        session_number=2,
+        roll_number=23,
+        vote_date="2026-08-21T12:00:00Z",
+        result="Failed",
+    )
+
+    response = APIClient().get(
+        "/api/votes/",
+        {
+            "congress": "119",
+            "session_number": "1",
+            "roll_number": "22",
+            "vote_date": "2026-08-20",
+            "chamber": "house",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [vote["id"] for vote in response.json()["results"]] == [matching.id]
+
+
+@pytest.mark.django_db
+def test_representative_list_applies_typed_boolean_and_chamber_filters():
+    matching = Representative.objects.create(
+        bioguide_id="R000001",
+        name="Current House Representative",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=True,
+    )
+    Representative.objects.create(
+        bioguide_id="R000002",
+        name="Former House Representative",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=False,
+    )
+
+    response = APIClient().get(
+        "/api/representatives/",
+        {"is_current": "true", "chamber": "house"},
+    )
+
+    assert response.status_code == 200
+    assert [representative["id"] for representative in response.json()["results"]] == [
+        matching.id
+    ]
