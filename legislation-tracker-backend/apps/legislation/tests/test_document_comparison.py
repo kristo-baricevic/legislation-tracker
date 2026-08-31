@@ -35,6 +35,45 @@ def test_document_comparison_matches_federal_sections_by_label_not_position():
 
 
 @pytest.mark.django_db
+def test_document_comparison_scopes_duplicate_subsection_labels_to_their_parent_path():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 910",
+        title="Nested section diff bill",
+        status="Introduced",
+    )
+    before = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text=(
+            "SEC. 1. FIRST\n"
+            "(a) First provision.\n"
+            "SEC. 2. SECOND\n"
+            "(a) Second provision."
+        ),
+    )
+    after = BillDocument.objects.create(
+        bill=bill,
+        version_label="Reported",
+        extracted_text=(
+            "SEC. 1. FIRST\n"
+            "(a) First provision.\n"
+            "(a) Added provision.\n"
+            "SEC. 2. SECOND\n"
+            "(a) Second provision."
+        ),
+    )
+
+    diff = compare_document_sections(before=before, after=after)
+
+    assert [(item.section_key, item.operation) for item in diff.sections] == [
+        ("sec. 1#1", "modified"),
+        ("sec. 1#1/(a)#2", "added"),
+    ]
+
+
+@pytest.mark.django_db
 def test_document_comparison_reports_source_truncation_instead_of_hiding_tail_changes():
     bill = Bill.objects.create(
         jurisdiction="federal",

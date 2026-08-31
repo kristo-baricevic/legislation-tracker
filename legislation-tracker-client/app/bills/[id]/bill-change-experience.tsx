@@ -163,6 +163,10 @@ export default function BillChangeExperience({
       );
       setChanges((current) => {
         if (!current) return page;
+        const completedInitialHistory =
+          direction === "older" &&
+          current.initial_window_truncated &&
+          !page.has_more_older;
         return {
           ...current,
           results: mergeEvents(current.results, page.results),
@@ -171,12 +175,17 @@ export default function BillChangeExperience({
           page_end_cursor:
             direction === "newer"
               ? page.page_end_cursor ?? current.page_end_cursor
-              : current.page_end_cursor,
+              : completedInitialHistory
+                ? current.stream_head_cursor
+                : current.page_end_cursor,
           has_more_older:
             direction === "older" ? page.has_more_older : current.has_more_older,
           has_more_newer:
             direction === "newer" ? page.has_more_newer : current.has_more_newer,
           unread_count: page.unread_count,
+          initial_window_truncated: completedInitialHistory
+            ? false
+            : current.initial_window_truncated,
         };
       });
     } catch (cause) {
@@ -259,7 +268,9 @@ export default function BillChangeExperience({
             relationships, and votes.
           </p>
         </div>
-        {changes?.personalized && changes.page_end_cursor && (
+        {changes?.personalized &&
+          changes.page_end_cursor &&
+          !changes.initial_window_truncated && (
           <button
             type="button"
             onClick={acknowledge}

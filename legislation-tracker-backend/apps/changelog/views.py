@@ -110,16 +110,19 @@ class BillChangeTimelineView(APIView):
                 )
             ).exists()
         head = base.order_by("-created_at", "-id").first()
+        initial_window_truncated = (
+            before_cursor is None and after_cursor is None and has_more_older
+        )
         page_end_cursor = (
             _cursor_for_event(entries[-1], direction="after", purpose="acknowledge")
-            if entries and before_cursor is None
+            if entries and before_cursor is None and not initial_window_truncated
             else None
         )
         unread_count = None
         if request.user.is_authenticated:
             unread_count = unread_change_count(user=request.user, bill=bill)
             if unread_count is None:
-                unread_count = len(entries)
+                unread_count = base.count()
         return Response(
             {
                 "results": [
@@ -143,7 +146,7 @@ class BillChangeTimelineView(APIView):
                 "has_more_older": has_more_older,
                 "unread_count": unread_count,
                 "personalized": bool(request.user.is_authenticated),
-                "initial_window_truncated": before_cursor is None and after_cursor is None and has_more_older,
+                "initial_window_truncated": initial_window_truncated,
             }
         )
 
@@ -160,8 +163,8 @@ class BillChangeAcknowledgeView(APIView):
             cursor = decode_change_cursor(
                 cursor_value,
                 expected_bill_id=bill.id,
-                allowed_purposes=frozenset({"acknowledge"}),
-                allowed_directions=frozenset({"after"}),
+                allowed_purposes=frozenset({"acknowledge", "stream_head"}),
+                allowed_directions=frozenset({"after", "head"}),
             )
             state = acknowledge_bill_changes(
                 user=request.user,

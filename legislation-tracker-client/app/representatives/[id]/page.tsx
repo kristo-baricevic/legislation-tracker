@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getRepresentative,
@@ -80,6 +80,8 @@ function RepresentativeDetailContent() {
   const [committees, setCommittees] = useState<CommitteeMembershipItem[]>([]);
   const [historyPages, setHistoryPages] = useState({ sponsored: 1, cosponsored: 1, committees: 1 });
   const [historyHasMore, setHistoryHasMore] = useState({ sponsored: false, cosponsored: false, committees: false });
+  const [historyLoading, setHistoryLoading] = useState({ sponsored: false, cosponsored: false, committees: false });
+  const historyInFlight = useRef({ sponsored: false, cosponsored: false, committees: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -145,7 +147,9 @@ function RepresentativeDetailContent() {
   async function loadMoreHistory(
     kind: "sponsored" | "cosponsored" | "committees",
   ) {
-    if (congress === null) return;
+    if (congress === null || historyInFlight.current[kind]) return;
+    historyInFlight.current[kind] = true;
+    setHistoryLoading((current) => ({ ...current, [kind]: true }));
     const nextPage = historyPages[kind] + 1;
     try {
       if (kind === "sponsored") {
@@ -176,6 +180,9 @@ function RepresentativeDetailContent() {
       setHistoryPages((current) => ({ ...current, [kind]: nextPage }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load more history.");
+    } finally {
+      historyInFlight.current[kind] = false;
+      setHistoryLoading((current) => ({ ...current, [kind]: false }));
     }
   }
 
@@ -203,13 +210,13 @@ function RepresentativeDetailContent() {
               <p className="mt-1 text-sm text-slate-600 dark:text-green-600">{insight.ingested_roll_calls} persisted of {insight.discovered_roll_calls} discovered chamber roll calls. Percentages above show raw counts, not a score.</p>
             </section>
             <section className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20"><h2 className="mb-3 text-lg font-semibold">Sponsored bills</h2><BillRows bills={sponsored} />{historyHasMore.sponsored && <button type="button" className="mt-3 underline" onClick={() => void loadMoreHistory("sponsored")}>Load more sponsored bills</button>}</div>
-              <div className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20"><h2 className="mb-3 text-lg font-semibold">Cosponsored bills</h2><BillRows bills={activeCosponsoredBills.map((item) => item.bill)} />{cosponsored.some((item) => item.withdrawn_at) && <p className="mt-3 text-sm text-slate-600 dark:text-green-600">Withdrawn cosponsorships are retained in the record.</p>}{historyHasMore.cosponsored && <button type="button" className="mt-3 underline" onClick={() => void loadMoreHistory("cosponsored")}>Load more cosponsored bills</button>}</div>
+              <div className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20"><h2 className="mb-3 text-lg font-semibold">Sponsored bills</h2><BillRows bills={sponsored} />{historyHasMore.sponsored && <button type="button" className="mt-3 underline disabled:opacity-50" disabled={historyLoading.sponsored} onClick={() => void loadMoreHistory("sponsored")}>Load more sponsored bills</button>}</div>
+              <div className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20"><h2 className="mb-3 text-lg font-semibold">Cosponsored bills</h2><BillRows bills={activeCosponsoredBills.map((item) => item.bill)} />{cosponsored.some((item) => item.withdrawn_at) && <p className="mt-3 text-sm text-slate-600 dark:text-green-600">Withdrawn cosponsorships are retained in the record.</p>}{historyHasMore.cosponsored && <button type="button" className="mt-3 underline disabled:opacity-50" disabled={historyLoading.cosponsored} onClick={() => void loadMoreHistory("cosponsored")}>Load more cosponsored bills</button>}</div>
             </section>
             <section className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20">
               <h2 className="mb-3 text-lg font-semibold">Committee assignments</h2>
               {committees.length ? <ul className="divide-y divide-slate-300 dark:divide-green-900/70">{committees.map((membership) => <li key={`${membership.committee.id}-${membership.congress}`} className="py-2"><span className="font-semibold">{membership.committee.name}</span> · {membership.role.replaceAll("_", " ")}{membership.rank ? ` · rank ${membership.rank}` : ""}{!membership.is_current ? " · former" : ""}</li>)}</ul> : <p className="text-sm text-slate-600 dark:text-green-600">No committee assignments are recorded for this Congress.</p>}
-              {historyHasMore.committees && <button type="button" className="mt-3 underline" onClick={() => void loadMoreHistory("committees")}>Load more committee assignments</button>}
+              {historyHasMore.committees && <button type="button" className="mt-3 underline disabled:opacity-50" disabled={historyLoading.committees} onClick={() => void loadMoreHistory("committees")}>Load more committee assignments</button>}
             </section>
           </>
         )}

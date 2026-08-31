@@ -193,11 +193,16 @@ def _section_map(document):
     result = {}
     if sections:
         occurrences: dict[str, int] = {}
+        ancestry: list[tuple[int, str]] = []
         for section in sections:
-            base = _normalize_identity(section.label)
+            while ancestry and ancestry[-1][0] <= section.span.start_char:
+                ancestry.pop()
+            label = _normalize_identity(section.label)
+            base = "/".join([*(key for _end, key in ancestry), label])
             occurrences[base] = occurrences.get(base, 0) + 1
             key = f"{base}#{occurrences[base]}"
             result[key] = section.span.text
+            ancestry.append((section.span.end_char, key))
     else:
         for index, paragraph in enumerate(re.split(r"\n\s*\n+", source), start=1):
             if paragraph.strip():

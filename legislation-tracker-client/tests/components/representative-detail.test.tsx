@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepresentativeDetailPage from "@/app/representatives/[id]/page";
@@ -43,5 +44,38 @@ describe("RepresentativeDetailPage", () => {
     expect(screen.getByText("8 / 10 roll calls")).toBeVisible();
     expect(screen.getByText(/Partial coverage/)).toBeVisible();
     expect(screen.getByText(/Not voting 2/)).toBeVisible();
+  });
+
+  it("prevents a second sponsored-history request while the next page is loading", async () => {
+    type SponsoredBillsPage = Awaited<ReturnType<typeof getRepresentativeSponsoredBills>>;
+    let resolveNextPage: (value: SponsoredBillsPage) => void;
+    const nextPage = new Promise<SponsoredBillsPage>((resolve) => {
+      resolveNextPage = resolve;
+    });
+    vi.mocked(getRepresentativeSponsoredBills)
+      .mockResolvedValueOnce({
+        count: 2,
+        next: "/api/representatives/8/sponsored/?page=2",
+        previous: null,
+        results: [{ id: 101, jurisdiction: "federal", session: 119, bill_number: "HR 101", title: "First sponsored bill", status: "Introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }],
+      })
+      .mockReturnValue(nextPage);
+    const user = userEvent.setup();
+
+    render(<RepresentativeDetailPage />);
+
+    const button = await screen.findByRole("button", { name: "Load more sponsored bills" });
+    await user.click(button);
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(getRepresentativeSponsoredBills).toHaveBeenCalledTimes(2);
+
+    resolveNextPage!({
+      count: 2,
+      next: null,
+      previous: "/api/representatives/8/sponsored/?page=1",
+      results: [{ id: 102, jurisdiction: "federal", session: 119, bill_number: "HR 102", title: "Second sponsored bill", status: "Introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }],
+    });
+    expect(await screen.findByText(/Second sponsored bill/)).toBeVisible();
   });
 });

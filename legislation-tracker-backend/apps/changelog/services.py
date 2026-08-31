@@ -8,6 +8,18 @@ from apps.changelog.models import BillActivityClock, ChangeLog
 from apps.legislation.models import Bill, BillContract, BillDocument
 
 
+def lock_bill_activity(*, bill_id: int) -> tuple[Bill, BillActivityClock]:
+    """Acquire the bill row before the shared activity clock.
+
+    Several ingestion paths update a bill before recording its activity.  This
+    order prevents those paths from forming a cycle with the global clock.
+    """
+    locked_bill = Bill.objects.select_for_update().get(pk=bill_id)
+    BillActivityClock.objects.get_or_create(pk=1, defaults={"committed_sequence": 0})
+    clock = BillActivityClock.objects.select_for_update().get(pk=1)
+    return locked_bill, clock
+
+
 def record_bill_change(
     *,
     bill: Bill,
@@ -28,11 +40,9 @@ def record_bill_change(
 
     with transaction.atomic():
         # Test databases and pre-migration operational restores can lack the
-        # seeded singleton. Creating it before taking the canonical lock keeps
-        # the normal lock ordering while making the service self-healing.
-        BillActivityClock.objects.get_or_create(pk=1, defaults={"committed_sequence": 0})
-        clock = BillActivityClock.objects.select_for_update().get(pk=1)
-        locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
+        # seeded singleton. Ensuring it after locking the bill preserves the
+        # canonical bill-then-clock order while making the service self-healing.
+        locked_bill, clock = lock_bill_activity(bill_id=bill.pk)
 
         if event_key:
             existing = ChangeLog.objects.filter(

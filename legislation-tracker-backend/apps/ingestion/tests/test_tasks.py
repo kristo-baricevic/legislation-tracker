@@ -720,6 +720,7 @@ def test_work_processor_requeues_when_payload_changes_during_processing(monkeypa
         payload_json={"bill_key": "119-hr-1"},
         status=IngestionWorkStatus.DISPATCHED,
         dispatch_token="original-lease",
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1,
         lease_expires_at=timezone.now() + timedelta(minutes=5),
     )
 
@@ -736,8 +737,41 @@ def test_work_processor_requeues_when_payload_changes_during_processing(monkeypa
     work.refresh_from_db()
     assert result == {"work_item_id": work.id, "status": "requeued"}
     assert work.status == IngestionWorkStatus.PENDING
+    assert work.attempt_count == 0
     assert work.payload_json["bill_id"] == 42
     assert work.completed_at is None
+
+
+@pytest.mark.django_db
+def test_work_processor_requeues_a_revised_payload_after_the_final_attempt(monkeypatch):
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-payload-revision-failure",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original-lease",
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1,
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+
+    def revise_payload_then_fail(_bill_key):
+        IngestionWorkItem.objects.filter(pk=work.id).update(
+            payload_json={"bill_key": "119-hr-1", "bill_id": 42}
+        )
+        raise CongressAPIError("stale claim failed")
+
+    monkeypatch.setattr(tasks, "_process_bill_impl", revise_payload_then_fail)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks.process_ingestion_work_item(work.id, "original-lease")
+
+    work.refresh_from_db()
+    assert result == {"work_item_id": work.id, "status": "requeued"}
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.attempt_count == 0
+    assert work.payload_json["bill_id"] == 42
+    assert not IngestionTaskFailure.objects.filter(work_item=work).exists()
 
 
 @pytest.mark.django_db
@@ -1095,6 +1129,74 @@ def test_stale_roll_call_work_is_a_successful_no_op(monkeypatch):
     vote.refresh_from_db()
     assert vote.result == "Current result"
     assert VoteRecord.objects.get(vote=vote).position == "yes"
+
+
+@pytest.mark.django_db
+def test_stale_roll_call_work_attaches_a_missing_bill_without_replacing_vote_data(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 10",
+        title="Late vote attachment",
+        status="Introduced",
+    )
+    representative = Representative.objects.create(
+        bioguide_id="A000012",
+        name="Member",
+        chamber="house",
+        party="",
+        state="NY",
+    )
+    vote = Vote.objects.create(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        roll_number=12,
+        vote_date=datetime(2026, 1, 2, tzinfo=UTC),
+        result="Current result",
+        question="Current question",
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    VoteRecord.objects.create(vote=vote, representative=representative, position="yes")
+    work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key="vote:119:house:1:12",
+        congress=119,
+        source_updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        payload_json={
+            "bill_id": bill.id,
+            "congress": 119,
+            "chamber": "house",
+            "session_number": 1,
+            "roll_number": 12,
+        },
+    )
+    monkeypatch.setattr(
+        tasks,
+        "vote_detail",
+        lambda *_args, **_kwargs: {
+            "date": "2026-01-01T00:00:00Z",
+            "result": "Stale result",
+            "question": "Stale question",
+            "members": [{"bioguideId": representative.bioguide_id, "position": "Nay"}],
+        },
+    )
+
+    result = tasks._process_roll_call_vote_impl(work)
+
+    vote.refresh_from_db()
+    assert result == {
+        "vote_id": vote.id,
+        "created_or_updated": True,
+        "member_count": 0,
+        "stale": True,
+    }
+    assert vote.bill == bill
+    assert (vote.result, vote.question) == ("Current result", "Current question")
+    assert VoteRecord.objects.get(vote=vote).position == "yes"
+    assert ChangeLog.objects.filter(bill=bill, change_type="vote").count() == 1
 
 
 @pytest.mark.django_db

@@ -233,7 +233,7 @@ Add:
 
 The timeline has two distinct navigation contracts. `after_cursor` requests unread progression strictly newer than the supplied tuple and returns events oldest-first. `before_cursor` requests older history strictly before the supplied tuple and returns a bounded newest-first database page normalized into display order. An initial request returns the newest bounded window. Responses expose `page_end_cursor`, `older_cursor`, `stream_head_cursor`, `has_more_newer`, `has_more_older`, and authenticated `unread_count`.
 
-Only an initial canonical page or an unfiltered `after_cursor` page returns an acknowledgement-purpose `page_end_cursor`. `before_cursor` is browse-only. The API rejects a server-side `type` parameter; type filters remain client-side, so acknowledgement can never leap over hidden events.
+An untruncated initial canonical page or an unfiltered `after_cursor` page returns an acknowledgement-purpose `page_end_cursor`. A truncated initial page deliberately returns no `page_end_cursor`: the client must first load every older page. Once it has rendered the complete initial history, it acknowledges the original signed `stream_head_cursor`; changes committed after that head remain unread. `before_cursor` is otherwise browse-only. The API rejects a server-side `type` parameter; type filters remain client-side, so acknowledgement can never leap over hidden events.
 
 Contract comparison is a schema-aware JSON diff. A versioned `CONTRACT_ITEM_IDENTITIES` registry defines the normalized field tuple for every array category. Duplicate identity groups consume exact matches first, then pair remaining entries deterministically and suffix duplicate paths, so a removal cannot be misreported as a mutation of a surviving identical row. Results are capped at 200 changes and report truncation.
 
@@ -243,7 +243,7 @@ Document comparison accepts inactive historical predecessors as long as both doc
 
 Bill detail gains a unified change timeline with older/newer navigation, explicit unread acknowledgement, and rendered before/after facts. Existing contract history and vote history remain. Compare actions open accessible contract/document diffs, including on-demand section line operations and explicit truncation reasons, using semantic labels rather than color alone.
 
-The client acknowledges only the returned page-end cursor after every event through that cursor has rendered for the current bill. Fetch errors, render errors, or a route change never acknowledge unseen data. If more unread pages or a concurrently arriving event remain, the next response continues after the stored page-end cursor.
+The client acknowledges a returned page-end cursor only after every event through that cursor has rendered for the current bill. For a truncated first page it withholds acknowledgement until all older history is rendered, then uses that first response's stream head. Fetch errors, render errors, or a route change never acknowledge unseen data. If more unread pages or a concurrently arriving event remain, the next response continues after the stored page-end cursor.
 
 ## Security and privacy
 

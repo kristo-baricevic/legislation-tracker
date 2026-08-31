@@ -16,8 +16,7 @@ from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
-from apps.changelog.models import BillActivityClock
-from apps.changelog.services import record_bill_change
+from apps.changelog.services import lock_bill_activity, record_bill_change
 from apps.congress.current import current_congress, current_congress_session
 from apps.congress.models import Representative, RepresentativeTerm, Vote, VoteRecord
 from apps.ingestion.committee_sources import (
@@ -1012,6 +1011,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         return {"work_item_id": work_item_id, "status": "blocked"}
     except Exception as exc:
         error_message = str(exc)[:10000]
+        requeued = False
         with transaction.atomic():
             work_item = IngestionWorkItem.objects.select_for_update().get(
                 pk=work_item_id
@@ -1021,7 +1021,30 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 or work_item.dispatch_token != claimed_dispatch_token
             ):
                 return {"work_item_id": work_item.id, "status": "superseded"}
-            if isinstance(exc, DocumentValidationError) or (
+            if work_item.payload_json != claimed_payload_json:
+                # The failure belongs to the stale claim, not the newer work
+                # payload that arrived while it was executing.
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.attempt_count = 0
+                work_item.available_at = timezone.now()
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.completed_at = None
+                work_item.last_error = ""
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "attempt_count",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "completed_at",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                requeued = True
+            elif isinstance(exc, DocumentValidationError) or (
                 work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
             ):
                 work_item.status = IngestionWorkStatus.DEAD
@@ -1048,23 +1071,33 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 )
                 return {"work_item_id": work_item.id, "status": "dead"}
 
-            work_item.status = IngestionWorkStatus.PENDING
-            work_item.available_at = timezone.now() + _retry_delay(
-                work_item.attempt_count
-            )
-            work_item.lease_expires_at = None
-            work_item.dispatch_token = ""
-            work_item.last_error = error_message
-            work_item.save(
-                update_fields=[
-                    "status",
-                    "available_at",
-                    "lease_expires_at",
-                    "dispatch_token",
-                    "last_error",
-                    "updated_at",
-                ]
-            )
+            elif not requeued:
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.available_at = timezone.now() + _retry_delay(
+                    work_item.attempt_count
+                )
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.last_error = error_message
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+        if requeued:
+            try:
+                dispatch_ingestion_work.delay()
+            except Exception:
+                logger.exception(
+                    "process_ingestion_work_item: could not re-dispatch revised work_item=%s",
+                    work_item_id,
+                )
+            return {"work_item_id": work_item_id, "status": "requeued"}
         logger.warning(
             "process_ingestion_work_item: retrying work_item=%s attempt=%s: %s",
             work_item_id,
@@ -1082,6 +1115,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             return {"work_item_id": work_item.id, "status": "superseded"}
         if work_item.payload_json != claimed_payload_json:
             work_item.status = IngestionWorkStatus.PENDING
+            work_item.attempt_count = 0
             work_item.available_at = timezone.now()
             work_item.lease_expires_at = None
             work_item.dispatch_token = ""
@@ -1090,6 +1124,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             work_item.save(
                 update_fields=[
                     "status",
+                    "attempt_count",
                     "available_at",
                     "lease_expires_at",
                     "dispatch_token",
@@ -1888,9 +1923,31 @@ def _process_roll_call_vote_impl(work_item):
             and vote.source_updated_at is not None
             and work_item.source_updated_at < vote.source_updated_at
         ):
+            attached_bill = bill is not None and vote.bill_id is None
+            if attached_bill:
+                vote.bill = bill
+                vote.save(update_fields=["bill"])
+                record_bill_change(
+                    bill=bill,
+                    change_type="vote",
+                    new_value={
+                        "vote_id": vote.id,
+                        "congress": congress,
+                        "chamber": chamber,
+                        "session_number": session_number,
+                        "roll_number": roll_number,
+                        "result": vote.result,
+                        "yeas": vote.yeas,
+                        "nays": vote.nays,
+                    },
+                    event_key=(
+                        f"vote:{congress}:{chamber}:{session_number}:{roll_number}:"
+                        f"{work_item.source_updated_at.isoformat()}"
+                    ),
+                )
             return {
                 "vote_id": vote.id,
-                "created_or_updated": False,
+                "created_or_updated": attached_bill,
                 "member_count": 0,
                 "stale": True,
             }
@@ -2096,8 +2153,7 @@ def _download_document_impl(document_id):
 
     now = timezone.now()
     with transaction.atomic():
-        BillActivityClock.objects.select_for_update().get(pk=1)
-        locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
+        locked_bill, _clock = lock_bill_activity(bill_id=bill.pk)
         locked_doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
 
         update_fields = ["downloaded_at"]

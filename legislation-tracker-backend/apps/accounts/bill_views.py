@@ -9,7 +9,10 @@ from .models import BillViewState
 
 
 def acknowledge_bill_changes(*, user, bill, cursor: ChangeCursor, acknowledged_at):
-    if cursor.bill_id != bill.id or cursor.purpose != "acknowledge":
+    if cursor.bill_id != bill.id or cursor.purpose not in {
+        "acknowledge",
+        "stream_head",
+    }:
         raise ValueError("Cursor cannot acknowledge this bill.")
     with transaction.atomic():
         # The user row always exists and serializes the first acknowledgement,

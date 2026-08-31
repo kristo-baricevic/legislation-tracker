@@ -49,6 +49,25 @@ describe("BillChangeExperience", () => {
     expect(await screen.findByRole("button", { name: "Changes seen" })).toBeVisible();
   });
 
+  it("withholds acknowledgement while the initial timeline window omits older changes", async () => {
+    vi.mocked(getBillChanges).mockResolvedValueOnce({
+      results: [{ id: 1, type: "status_update", occurred_at: "2026-01-01T00:00:00Z", summary: "Recent change", before: null, after: {}, document_id: null, contract_id: null }],
+      page_end_cursor: "unsafe-ack-cursor",
+      stream_head_cursor: "head-cursor",
+      older_cursor: "older-cursor",
+      has_more_newer: false,
+      has_more_older: true,
+      unread_count: 2,
+      personalized: true,
+      initial_window_truncated: true,
+    });
+
+    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
+
+    expect(await screen.findByText("Recent change")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Mark .* as seen/ })).toBeNull();
+  });
+
   it("uses the active document and newest inactive predecessor regardless of API order", () => {
     const pair = selectDocumentComparisonPair([
       { id: 3, version_label: "old", is_active_version: false, content_type: null, file_size_bytes: null, source_url: null, downloaded_at: "2026-01-01T00:00:00Z", download_url: null, text_url: null },
@@ -65,7 +84,7 @@ describe("BillChangeExperience", () => {
     vi.mocked(getBillChanges)
       .mockResolvedValueOnce({
         results: [{ id: 2, type: "status_update", occurred_at: "2026-01-02T00:00:00Z", summary: "New change", before: null, after: {}, document_id: null, contract_id: null }],
-        page_end_cursor: "ack-2",
+        page_end_cursor: null,
         stream_head_cursor: "head",
         older_cursor: "older-2",
         has_more_newer: false,
@@ -90,6 +109,7 @@ describe("BillChangeExperience", () => {
     await user.click(await screen.findByRole("button", { name: "Load older changes" }));
     expect(await screen.findByText("Old change")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Mark 3 as seen" }));
+    expect(acknowledgeBillChanges).toHaveBeenCalledWith(10, "head");
     expect(await screen.findByRole("button", { name: "Mark 2 as seen" })).toBeVisible();
   });
 
