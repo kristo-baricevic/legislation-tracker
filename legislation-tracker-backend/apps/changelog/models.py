@@ -64,6 +64,9 @@ class ChangeLog(models.Model):
             models.Index(fields=["change_type"]),
             models.Index(fields=["bill", "event_key"], name="changelog_bill_event_key_idx"),
             models.Index(
+                fields=["bill", "created_at", "id"], name="changelog_bill_cursor_idx"
+            ),
+            models.Index(
                 fields=["-created_at", "bill"], name="changelog_created_bill_idx"
             ),
         ]

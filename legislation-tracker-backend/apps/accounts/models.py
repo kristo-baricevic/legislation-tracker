@@ -169,6 +169,35 @@ class SavedBillSearch(models.Model):
         return f"{self.user_id}:{self.name}"
 
 
+class BillViewState(models.Model):
+    """Per-user acknowledgement cursor, intentionally not a ChangeLog foreign key."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="bill_view_states",
+    )
+    bill = models.ForeignKey(
+        "legislation.Bill",
+        on_delete=models.CASCADE,
+        related_name="view_states",
+    )
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_seen_change_created_at = models.DateTimeField(null=True, blank=True)
+    last_seen_change_id = models.BigIntegerField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "accounts_billviewstate"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "bill"],
+                name="accounts_bill_view_state_user_bill_uniq",
+            )
+        ]
+        indexes = [models.Index(fields=["user", "updated_at"])]
+
+
 class TrackedBill(models.Model):
     """A bill a user is personally tracking."""
 

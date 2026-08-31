@@ -895,6 +895,7 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
     ) == [
         ("bill_versions", {"bill_id": bill.id}),
         ("bill_votes", {"bill_id": bill.id}),
+        ("search_index", {"bill_id": bill.id}),
     ]
 
 
@@ -969,8 +970,8 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
 
     assert result == {"bill_id": bill.id, "unchanged": False}
     change = ChangeLog.objects.get(change_type="status_update")
-    assert change.old_value == {"status": "Old action", "title": "Old title"}
-    assert change.new_value == {"status": "New action", "title": "New title"}
+    assert change.old_value == {"status": "Old action"}
+    assert change.new_value == {"status": "New action"}
 
 
 @pytest.mark.django_db

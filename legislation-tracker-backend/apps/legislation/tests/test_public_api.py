@@ -63,6 +63,35 @@ def test_bill_search_rejects_relevance_without_query_and_excessive_query():
     assert "q" in too_large.json()
 
 
+@pytest.mark.django_db
+def test_bill_comparison_endpoints_require_versions_from_the_requested_bill():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 91",
+        title="Comparison bill",
+        status="Introduced",
+    )
+    before = BillContract.objects.create(
+        bill=bill,
+        contract_hash="comparison-before",
+        contract_json={"plain_summary": "Before"},
+    )
+    after = BillContract.objects.create(
+        bill=bill,
+        contract_hash="comparison-after",
+        contract_json={"plain_summary": "After"},
+    )
+
+    response = APIClient().get(
+        f"/api/bills/{bill.id}/comparisons/contracts/",
+        {"before": before.id, "after": after.id},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["changes"][0]["path"] == "plain_summary"
+
+
 class FakeRemoteStorage:
     def url(self, object_key):
         return f"https://documents.example.com/{object_key}?signature=abc"

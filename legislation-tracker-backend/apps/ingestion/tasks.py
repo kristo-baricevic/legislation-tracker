@@ -14,6 +14,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
+from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
 from apps.changelog.models import BillActivityClock
 from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress
@@ -1071,8 +1072,7 @@ def _process_bill_impl(bill_key_str):
                     bill_number=bill_number,
                 )
                 return {"bill_id": bill.id, "unchanged": True}
-            old_status = bill.status
-            old_title = bill.title
+            before_metadata = snapshot_bill_metadata(bill)
             bill.processing_status = ProcessingStatus.PROCESSING
             bill.title = title or bill.title
             bill.summary = summary if summary is not None else bill.summary
@@ -1087,13 +1087,20 @@ def _process_bill_impl(bill_key_str):
             bill.source_api_id = source_api_id
             bill.metadata_hash = metadata_hash
             bill.save()
-            record_bill_change(
-                bill=bill,
-                change_type="status_update",
-                old_value={"status": old_status, "title": old_title},
-                new_value={"status": bill.status, "title": bill.title},
-                event_key=f"bill:metadata:{bill.metadata_hash}",
-            )
+            for pending_change in diff_bill_metadata(
+                before_metadata,
+                snapshot_bill_metadata(bill),
+            ):
+                record_bill_change(
+                    bill=bill,
+                    change_type=pending_change.change_type,
+                    old_value=pending_change.old_value,
+                    new_value=pending_change.new_value,
+                    event_key=(
+                        f"bill:metadata:{bill.metadata_hash}:"
+                        f"{pending_change.change_type}"
+                    ),
+                )
         else:
             record_bill_change(
                 bill=bill,
