@@ -464,7 +464,7 @@ DJANGO_SECRET_KEY=...
 2. **Core models**: Bill (with processing_status, latest_contract), BillDocument (is_active_version, downloaded_at, parsed_at, contract_generated_at), Representative, Topic, BillTopic, ChangeLog (document, contract FKs), User, UserPreference, IngestionState. **ChangeLog**: create as partitioned table (monthly by created_at) from the start.
 3. **Ingestion pipeline**: Celery + Beat, `poll_congress`, `process_bill`, `process_bill_versions`, `process_bill_votes`.
 4. **Document storage**: `download_document` task, S3 upload, BillDocument content_hash.
-5. **Interpretation layer**: BillContract, EvidenceSpan, `generate_contract` task (stub first, NLP later).
+5. **Interpretation layer**: BillContract, EvidenceSpan, and the implemented versioned deterministic legal-NLP v2 pipeline. User-triggered BYOK LLM enhancements are a separate optional overlay.
 6. **Topics + similarity**: `update_topics`, `recompute_similarity_batch`, BillSimilarity.
 7. **API**: DRF endpoints for bills, documents, contracts, representatives, votes. JWT auth. Pre-signed S3 URLs.
 8. **RSS + feeds**: ChangeLog-powered RSS endpoint (`/rss?topic=X&state=Y`).

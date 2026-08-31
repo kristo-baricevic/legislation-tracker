@@ -150,7 +150,9 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
     if not section_markers:
         raise ExpectedExtractionRejection("unrecognized_federal_structure")
 
-    markers = sorted(container_markers + section_markers, key=lambda marker: marker.start)
+    markers = sorted(
+        container_markers + section_markers, key=lambda marker: marker.start
+    )
     subdivisions = _subdivision_markers(source_text, markers)
     markers = sorted(markers + subdivisions, key=lambda marker: marker.start)
 
@@ -166,7 +168,7 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
             if later_marker.rank <= marker.rank:
                 end = later_marker.start
                 break
-        span = SourceSpan(source_text[marker.start:end], marker.start, end)
+        span = SourceSpan(source_text[marker.start : end], marker.start, end)
         section = StructuralSection(
             label=marker.label,
             heading=marker.heading,

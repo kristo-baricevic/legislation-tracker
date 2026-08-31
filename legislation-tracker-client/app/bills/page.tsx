@@ -8,7 +8,7 @@ import {
   getBillFilterOptions,
   getBills,
   getMyTracking,
-  getStoredAccessToken,
+  getSession,
   getTopics,
   parseTopicIdFromSearchParam,
   trackTopic,
@@ -20,6 +20,13 @@ import {
 
 const PAGE_SIZE = 20;
 
+function parsePositiveIntegerFilter(value: string): number | undefined {
+  const normalized = value.trim();
+  if (!normalized || !/^\d+$/.test(normalized)) return undefined;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function BillsTable() {
   const searchParams = useSearchParams();
   const [page, setPage] = useState<BillsPage | null>(null);
@@ -28,16 +35,25 @@ function BillsTable() {
 
   const [jurisdictions, setJurisdictions] = useState<string[]>([]);
   const [topics, setTopics] = useState<TopicItem[]>([]);
+  const [filterMetaReady, setFilterMetaReady] = useState(false);
+  const [filterMetaError, setFilterMetaError] = useState<string | null>(null);
+  const [topicOptionsError, setTopicOptionsError] = useState<string | null>(null);
 
   const [pageNum, setPageNum] = useState(1);
   const [idFilter, setIdFilter] = useState("");
   const [billNumberFilter, setBillNumberFilter] = useState("");
-  const [sessionFilter, setSessionFilter] = useState("119");
+  const [sessionFilter, setSessionFilter] = useState<string | null>(null);
   const [jurisdictionFilter, setJurisdictionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sponsorFilter, setSponsorFilter] = useState("");
+  const rawTopicIdFromUrl = searchParams.get("topic_id");
+  const topicIdFromUrl = parseTopicIdFromSearchParam(rawTopicIdFromUrl);
+  const topicUrlError =
+    rawTopicIdFromUrl !== null && topicIdFromUrl === undefined
+      ? "topic_id must be a positive integer."
+      : null;
   const [topicIdFilter, setTopicIdFilter] = useState<string>(() => {
-    const topicId = parseTopicIdFromSearchParam(searchParams.get("topic_id"));
+    const topicId = parseTopicIdFromSearchParam(rawTopicIdFromUrl);
     return topicId ? String(topicId) : "";
   });
   const [topicFuzzyFilter, setTopicFuzzyFilter] = useState("");
@@ -47,47 +63,64 @@ function BillsTable() {
   const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const loadFilterMeta = useCallback(async () => {
+    setFilterMetaReady(false);
+    setFilterMetaError(null);
+    setLoading(true);
     try {
-      const [opts, topicList] = await Promise.all([
-        getBillFilterOptions(),
-        getTopics(),
-      ]);
+      const opts = await getBillFilterOptions();
       setJurisdictions(opts.jurisdictions ?? []);
-      setTopics(topicList);
+      setSessionFilter((current) => current ?? String(opts.current_congress));
+      setFilterMetaReady(true);
     } catch {
-      /* non-fatal: filters still work with manual input */
+      setFilterMetaError("Could not load bill filter metadata.");
+      setLoading(false);
+    }
+  }, []);
+
+  const loadTopicOptions = useCallback(async () => {
+    setTopicOptionsError(null);
+    try {
+      setTopics(await getTopics());
+    } catch {
+      setTopicOptionsError("Could not load topic choices.");
     }
   }, []);
 
   useEffect(() => {
-    loadFilterMeta();
-  }, [loadFilterMeta]);
+    void loadFilterMeta();
+    void loadTopicOptions();
+  }, [loadFilterMeta, loadTopicOptions]);
 
-  const topicIdFromUrl = parseTopicIdFromSearchParam(searchParams.get("topic_id"));
   useEffect(() => {
     const nextTopicId = topicIdFromUrl ? String(topicIdFromUrl) : "";
     setTopicIdFilter((current) => (current === nextTopicId ? current : nextTopicId));
     setPageNum(1);
-  }, [topicIdFromUrl]);
+  }, [topicIdFromUrl, topicUrlError]);
 
   useEffect(() => {
-    const signedIn = Boolean(getStoredAccessToken());
-    setHasAccount(signedIn);
-    if (!signedIn) return;
-
     let cancelled = false;
-    getMyTracking()
-      .then((summary) => {
-        if (!cancelled) {
-          setTrackedTopicIds(summary.topics.map((item) => item.topic.id));
-        }
+    void getSession()
+      .then((session) => {
+        if (cancelled) return;
+        const signedIn = Boolean(session);
+        setHasAccount(signedIn);
+        if (!signedIn) return;
+        void getMyTracking()
+          .then((summary) => {
+            if (!cancelled) {
+              setTrackedTopicIds(summary.topics.map((item) => item.topic.id));
+            }
+          })
+          .catch((e) => {
+            if (!cancelled) {
+              setTrackingError(
+                e instanceof Error ? e.message : "Failed to load tracked topics",
+              );
+            }
+          });
       })
-      .catch((e) => {
-        if (!cancelled) {
-          setTrackingError(
-            e instanceof Error ? e.message : "Failed to load tracked topics",
-          );
-        }
+      .catch(() => {
+        if (!cancelled) setHasAccount(false);
       });
     return () => {
       cancelled = true;
@@ -95,28 +128,46 @@ function BillsTable() {
   }, []);
 
   useEffect(() => {
+    if (!filterMetaReady || sessionFilter === null) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     const sessionParsed = sessionFilter.trim()
-      ? parseInt(sessionFilter.trim(), 10)
-      : NaN;
-    const idParsed = idFilter.trim() ? parseInt(idFilter.trim(), 10) : NaN;
+      ? parsePositiveIntegerFilter(sessionFilter)
+      : undefined;
+    const idParsed = idFilter.trim()
+      ? parsePositiveIntegerFilter(idFilter)
+      : undefined;
+    const validationError =
+      topicUrlError ??
+      (sessionFilter.trim() && sessionParsed === undefined
+        ? "Session must be a positive integer."
+        : null) ??
+      (idFilter.trim() && idParsed === undefined
+        ? "Bill ID must be a positive integer."
+        : null);
+    if (validationError) {
+      setPage(null);
+      setError(validationError);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
     const topicIdParsed = topicIdFilter
-      ? parseInt(topicIdFilter, 10)
-      : NaN;
+      ? parsePositiveIntegerFilter(topicIdFilter)
+      : undefined;
 
     getBills({
       page: pageNum,
-      session: !Number.isNaN(sessionParsed) ? sessionParsed : undefined,
-      id: !Number.isNaN(idParsed) ? idParsed : undefined,
+      session: sessionParsed,
+      id: idParsed,
       bill_number: billNumberFilter || undefined,
       jurisdiction: jurisdictionFilter || undefined,
       status: statusFilter || undefined,
       sponsor: sponsorFilter || undefined,
       topic: topicFuzzyFilter || undefined,
-      topic_id: !Number.isNaN(topicIdParsed) ? topicIdParsed : undefined,
+      topic_id: topicIdParsed,
     })
       .then((data) => {
         if (!cancelled) setPage(data);
@@ -141,6 +192,8 @@ function BillsTable() {
     sponsorFilter,
     topicIdFilter,
     topicFuzzyFilter,
+    filterMetaReady,
+    topicUrlError,
   ]);
 
   const resetPageAndSet = useCallback(
@@ -251,9 +304,12 @@ function BillsTable() {
               <span className="text-slate-600 dark:text-green-500">Session (Congress)</span>
               <input
                 type="text"
-                value={sessionFilter}
-                onChange={resetPageAndSet(setSessionFilter)}
-                placeholder="119"
+                value={sessionFilter ?? ""}
+                onChange={(event) => {
+                  setPageNum(1);
+                  setSessionFilter(event.target.value);
+                }}
+                placeholder="Current Congress"
                 className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
               />
             </label>
@@ -346,6 +402,38 @@ function BillsTable() {
             )}
           </div>
         </div>
+
+        {filterMetaError && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <span>{filterMetaError}</span>
+            <button
+              type="button"
+              onClick={() => void loadFilterMeta()}
+              className="cursor-pointer border border-current px-2 py-1 font-semibold"
+            >
+              Retry bill metadata
+            </button>
+          </div>
+        )}
+
+        {topicOptionsError && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+          >
+            <span>{topicOptionsError}</span>
+            <button
+              type="button"
+              onClick={() => void loadTopicOptions()}
+              className="cursor-pointer border border-current px-2 py-1 font-semibold"
+            >
+              Retry topic choices
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">

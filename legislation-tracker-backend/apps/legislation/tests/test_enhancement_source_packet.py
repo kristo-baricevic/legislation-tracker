@@ -278,10 +278,13 @@ def test_large_document_finds_bounded_prefix_without_linear_reserialization(
 @pytest.mark.django_db
 def test_preflight_fails_when_fixed_request_overhead_cannot_fit():
     bill = _bill_with_contract_and_evidence()
-    with override_settings(
-        LLM_ENHANCEMENT_MAX_REQUEST_BYTES=100,
-        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=50,
-    ), pytest.raises(PreflightUnavailable, match="fixed request overhead"):
+    with (
+        override_settings(
+            LLM_ENHANCEMENT_MAX_REQUEST_BYTES=100,
+            LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=50,
+        ),
+        pytest.raises(PreflightUnavailable, match="fixed request overhead"),
+    ):
         build_enhancement_preflight(bill)
 
 

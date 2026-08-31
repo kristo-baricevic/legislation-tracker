@@ -1,20 +1,21 @@
 """
 Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 """
+
 import hashlib
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 
 import requests
-from django.utils import timezone
-
 from celery import shared_task
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.models import ChangeLog
+from apps.congress.current import current_congress
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion.congress_client import (
     CongressAPIError,
@@ -28,13 +29,13 @@ from apps.ingestion.congress_client import (
     vote_detail,
 )
 from apps.ingestion.document_download import (
+    DocumentValidationError,
     RetryableDocumentStorageError,
     build_object_key,
     download_url,
     extract_document_text,
     guess_extension,
     retryable_storage_error,
-    sha256_hex,
     upload_and_metadata,
 )
 from apps.ingestion.models import (
@@ -43,7 +44,10 @@ from apps.ingestion.models import (
     IngestionWorkItem,
     IngestionWorkStatus,
 )
-from apps.ingestion.work_queue import enqueue_ingestion_work
+from apps.ingestion.work_queue import (
+    enqueue_ingestion_work,
+    fulfill_tracking_requests_for_bill,
+)
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -52,8 +56,7 @@ CURSOR_OVERLAP = timedelta(minutes=5)
 TRACKED_REFRESH_INTERVAL = timedelta(minutes=5)
 WORK_LEASE_DURATION = timedelta(minutes=10)
 MAX_INGESTION_WORK_ATTEMPTS = 5
-UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
-CURRENT_CONGRESS = 119
+UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=UTC)
 
 WORK_KIND_BILL = "bill"
 WORK_KIND_BILL_VERSIONS = "bill_versions"
@@ -84,6 +87,7 @@ def _queue_document_download(document):
         jurisdiction=document.bill.jurisdiction,
         congress=document.bill.session,
     )
+
 
 # Bill key format: "119-hr-1234" -> congress, bill_type, bill_number
 def parse_bill_key(bill_key):
@@ -116,7 +120,7 @@ def _ensure_utc_aware(dt):
     if dt is None:
         return None
     if timezone.is_naive(dt):
-        return timezone.make_aware(dt, dt_timezone.utc)
+        return timezone.make_aware(dt, UTC)
     return dt
 
 
@@ -160,15 +164,17 @@ def compute_metadata_hash(
     sponsor_id=None,
     source_api_id=None,
 ):
-    raw = "|".join([
-        (status or "").strip(),
-        (title or "").strip(),
-        (summary or "").strip(),
-        str(last_action_at or ""),
-        str(introduced_at or ""),
-        str(sponsor_id or ""),
-        (source_api_id or "").strip(),
-    ])
+    raw = "|".join(
+        [
+            (status or "").strip(),
+            (title or "").strip(),
+            (summary or "").strip(),
+            str(last_action_at or ""),
+            str(introduced_at or ""),
+            str(sponsor_id or ""),
+            (source_api_id or "").strip(),
+        ]
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -316,11 +322,14 @@ def _member_profile(summary, detail):
     retry_backoff_max=600,
     max_retries=2,
 )
-def sync_representatives(congress=119):
+def sync_representatives(congress=None):
     """Synchronize the full current member roster without retiring on partial pulls."""
-    if congress != CURRENT_CONGRESS:
+    active_congress = current_congress()
+    if congress is None:
+        congress = active_congress
+    if congress != active_congress:
         raise ValueError(
-            f"Representative roster sync only supports the current Congress ({CURRENT_CONGRESS})"
+            f"Representative roster sync only supports the current Congress ({active_congress})"
         )
     limit = 250
     offset = 0
@@ -338,12 +347,16 @@ def sync_representatives(congress=119):
         offset += limit
 
     if not summaries:
-        raise CongressAPIError("Congress member roster was empty; refusing to retire members")
+        raise CongressAPIError(
+            "Congress member roster was empty; refusing to retire members"
+        )
 
     profiles = []
     for summary in summaries:
         if not isinstance(summary, dict):
-            raise CongressAPIError("Congress member list contained an invalid member payload")
+            raise CongressAPIError(
+                "Congress member list contained an invalid member payload"
+            )
         bioguide_id = summary.get("bioguideId") or summary.get("bioguide_id")
         if not bioguide_id:
             raise CongressAPIError("Congress member list entry is missing bioguideId")
@@ -376,14 +389,18 @@ def sync_representatives(congress=119):
 
 
 @shared_task
-def poll_congress(jurisdiction="federal", congress=119):
+def poll_congress(jurisdiction="federal", congress=None):
     """
     Discover updated Congress bills and persist them before advancing the cursor.
 
     The worker dispatcher is intentionally separate: a temporary broker outage
     cannot lose a discovered bill or force the cursor to stay behind forever.
     """
-    logger.info("poll_congress: starting jurisdiction=%s congress=%s", jurisdiction, congress)
+    if congress is None:
+        congress = current_congress()
+    logger.info(
+        "poll_congress: starting jurisdiction=%s congress=%s", jurisdiction, congress
+    )
     state, _ = IngestionState.objects.get_or_create(
         jurisdiction=jurisdiction,
         congress=congress,
@@ -431,9 +448,7 @@ def poll_congress(jurisdiction="federal", congress=119):
             if not items:
                 break
             page_keys = tuple(
-                sorted(
-                    bill_key(b["congress"], b["type"], b["number"]) for b in items
-                )
+                sorted(bill_key(b["congress"], b["type"], b["number"]) for b in items)
             )
             if offset > 0 and previous_page_keys == page_keys:
                 raise CongressAPIError(
@@ -493,7 +508,11 @@ def poll_congress(jurisdiction="federal", congress=119):
         created_count,
         latest_update,
     )
-    return {"discovered": len(discovered_bills), "created": created_count}
+    return {
+        "congress": congress,
+        "discovered": len(discovered_bills),
+        "created": created_count,
+    }
 
 
 def _retry_delay(attempt_count):
@@ -506,7 +525,7 @@ def _tracked_refresh_bucket(now):
     timestamp = int(_ensure_utc_aware(now).timestamp())
     return datetime.fromtimestamp(
         timestamp - (timestamp % interval_seconds),
-        tz=dt_timezone.utc,
+        tz=UTC,
     )
 
 
@@ -581,16 +600,26 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     now = timezone.now()
     claimed_dispatch_token = ""
     with transaction.atomic():
-        work_item = IngestionWorkItem.objects.select_for_update().filter(pk=work_item_id).first()
+        work_item = (
+            IngestionWorkItem.objects.select_for_update()
+            .filter(pk=work_item_id)
+            .first()
+        )
         if work_item is None:
             return {"work_item_id": work_item_id, "status": "missing"}
-        if work_item.status in (IngestionWorkStatus.SUCCEEDED, IngestionWorkStatus.DEAD):
+        if work_item.status in (
+            IngestionWorkStatus.SUCCEEDED,
+            IngestionWorkStatus.DEAD,
+        ):
             return {"work_item_id": work_item.id, "status": work_item.status}
         if dispatch_token and work_item.dispatch_token != dispatch_token:
             return {"work_item_id": work_item.id, "status": "superseded"}
         if work_item.status == IngestionWorkStatus.PROCESSING:
             return {"work_item_id": work_item.id, "status": "processing"}
-        if work_item.status == IngestionWorkStatus.PENDING and work_item.available_at > now:
+        if (
+            work_item.status == IngestionWorkStatus.PENDING
+            and work_item.available_at > now
+        ):
             return {"work_item_id": work_item.id, "status": "not_ready"}
 
         work_item.status = IngestionWorkStatus.PROCESSING
@@ -613,13 +642,17 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     except Exception as exc:
         error_message = str(exc)[:10000]
         with transaction.atomic():
-            work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item_id)
+            work_item = IngestionWorkItem.objects.select_for_update().get(
+                pk=work_item_id
+            )
             if (
                 work_item.status != IngestionWorkStatus.PROCESSING
                 or work_item.dispatch_token != claimed_dispatch_token
             ):
                 return {"work_item_id": work_item.id, "status": "superseded"}
-            if work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS:
+            if isinstance(exc, DocumentValidationError) or (
+                work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
+            ):
                 work_item.status = IngestionWorkStatus.DEAD
                 work_item.lease_expires_at = None
                 work_item.dispatch_token = ""
@@ -645,7 +678,9 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 return {"work_item_id": work_item.id, "status": "dead"}
 
             work_item.status = IngestionWorkStatus.PENDING
-            work_item.available_at = timezone.now() + _retry_delay(work_item.attempt_count)
+            work_item.available_at = timezone.now() + _retry_delay(
+                work_item.attempt_count
+            )
             work_item.lease_expires_at = None
             work_item.dispatch_token = ""
             work_item.last_error = error_message
@@ -735,7 +770,10 @@ def recover_stale_ingestion_work():
     with transaction.atomic():
         stale_items = list(
             IngestionWorkItem.objects.select_for_update().filter(
-                status__in=[IngestionWorkStatus.DISPATCHED, IngestionWorkStatus.PROCESSING],
+                status__in=[
+                    IngestionWorkStatus.DISPATCHED,
+                    IngestionWorkStatus.PROCESSING,
+                ],
                 lease_expires_at__lt=now,
             )
         )
@@ -847,7 +885,9 @@ def poll_tracked_bills():
     return {"enqueued": created_count}
 
 
-def _record_task_failure(task_id, task_name, args, kwargs, bill_id, exc, work_item=None):
+def _record_task_failure(
+    task_id, task_name, args, kwargs, bill_id, exc, work_item=None
+):
     try:
         IngestionTaskFailure.objects.create(
             task_id=task_id or "",
@@ -877,8 +917,16 @@ def process_bill(self, bill_key_str):
     try:
         return _process_bill_impl(bill_key_str)
     except Exception as exc:
-        logger.exception("process_bill failed: bill_key=%s retries=%s: %s", bill_key_str, self.request.retries, exc)
-        if not isinstance(exc, CongressAPIError) or self.request.retries >= self.max_retries:
+        logger.exception(
+            "process_bill failed: bill_key=%s retries=%s: %s",
+            bill_key_str,
+            self.request.retries,
+            exc,
+        )
+        if (
+            not isinstance(exc, CongressAPIError)
+            or self.request.retries >= self.max_retries
+        ):
             if isinstance(bill_key_str, str):
                 try:
                     congress, bill_type, bill_number = parse_bill_key(bill_key_str)
@@ -922,7 +970,9 @@ def _process_bill_impl(bill_key_str):
     introduced_at = None
     if detail.get("introducedDate"):
         try:
-            introduced_at = datetime.strptime(detail["introducedDate"][:10], "%Y-%m-%d").date()
+            introduced_at = datetime.strptime(
+                detail["introducedDate"][:10], "%Y-%m-%d"
+            ).date()
         except Exception:
             pass
     last_action_at = None
@@ -960,10 +1010,13 @@ def _process_bill_impl(bill_key_str):
                 "metadata_hash": metadata_hash,
             },
         )
-        bill_id = bill.id
         if not created:
             if bill.metadata_hash == metadata_hash:
-                logger.info("process_bill: unchanged (hash match) bill_id=%s bill_key=%s", bill.id, bill_key_str)
+                logger.info(
+                    "process_bill: unchanged (hash match) bill_id=%s bill_key=%s",
+                    bill.id,
+                    bill_key_str,
+                )
                 # Still run the document pipeline if we never stored files. Votes are
                 # refreshed independently because vote corrections can arrive without a
                 # bill metadata change.
@@ -991,6 +1044,11 @@ def _process_bill_impl(bill_key_str):
                         bill.id,
                     )
                     raise
+                fulfill_tracking_requests_for_bill(
+                    bill,
+                    bill_type=bill_type,
+                    bill_number=bill_number,
+                )
                 return {"bill_id": bill.id, "unchanged": True}
             old_status = bill.status
             old_title = bill.title
@@ -998,8 +1056,12 @@ def _process_bill_impl(bill_key_str):
             bill.title = title or bill.title
             bill.summary = summary if summary is not None else bill.summary
             bill.status = status or bill.status
-            bill.introduced_at = introduced_at if introduced_at is not None else bill.introduced_at
-            bill.last_action_at = last_action_at if last_action_at is not None else bill.last_action_at
+            bill.introduced_at = (
+                introduced_at if introduced_at is not None else bill.introduced_at
+            )
+            bill.last_action_at = (
+                last_action_at if last_action_at is not None else bill.last_action_at
+            )
             bill.sponsor = sponsor if sponsor is not None else bill.sponsor
             bill.source_api_id = source_api_id
             bill.metadata_hash = metadata_hash
@@ -1017,6 +1079,11 @@ def _process_bill_impl(bill_key_str):
                 old_value=None,
                 new_value={"status": status, "title": title},
             )
+        fulfill_tracking_requests_for_bill(
+            bill,
+            bill_type=bill_type,
+            bill_number=bill_number,
+        )
     try:
         _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
         _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
@@ -1024,7 +1091,11 @@ def _process_bill_impl(bill_key_str):
         bill.processing_status = ProcessingStatus.FAILED
         bill.save(update_fields=["processing_status"])
         raise
-    logger.info("process_bill: success bill_id=%s bill_key=%s (updated, enqueued versions+votes)", bill.id, bill_key_str)
+    logger.info(
+        "process_bill: success bill_id=%s bill_key=%s (updated, enqueued versions+votes)",
+        bill.id,
+        bill_key_str,
+    )
     return {"bill_id": bill.id, "unchanged": False}
 
 
@@ -1062,7 +1133,9 @@ def _process_bill_versions_impl(bill_id):
     try:
         versions = bill_text_list(congress, bill_type, num)
     except CongressAPIError as e:
-        logger.warning("process_bill_versions: bill_id=%s bill_text_list failed: %s", bill_id, e)
+        logger.warning(
+            "process_bill_versions: bill_id=%s bill_text_list failed: %s", bill_id, e
+        )
         raise
     if not versions:
         logger.info("process_bill_versions: bill_id=%s no versions returned", bill_id)
@@ -1095,7 +1168,9 @@ def _process_bill_versions_impl(bill_id):
         )
         if needs_download:
             _queue_document_download(doc)
-    logger.info("process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions))
+    logger.info(
+        "process_bill_versions: success bill_id=%s versions=%s", bill_id, len(versions)
+    )
     return {"bill_id": bill_id, "versions": len(versions)}
 
 
@@ -1147,7 +1222,9 @@ def _process_bill_votes_impl(bill_id):
         logger.warning("process_bill_votes: bill_id=%s not found", bill_id)
         return
     parts = bill.bill_number.strip().split()
-    bill_type = (parts[0].lower() if parts else "hr").replace("hr", "hr").replace("s", "s")
+    bill_type = (
+        (parts[0].lower() if parts else "hr").replace("hr", "hr").replace("s", "s")
+    )
     num = parts[1] if len(parts) >= 2 else bill.bill_number.replace(" ", "")
     congress = bill.session
     actions = bill_actions(congress, bill_type, num)
@@ -1171,8 +1248,10 @@ def _process_bill_votes_impl(bill_id):
         raw_session_number = ref.get("sessionNumber") or ref.get("session_number")
         try:
             session_number = int(raw_session_number)
-        except (TypeError, ValueError):
-            raise CongressAPIError("recorded vote is missing a valid session number")
+        except (TypeError, ValueError) as exc:
+            raise CongressAPIError(
+                "recorded vote is missing a valid session number"
+            ) from exc
         vote_data = vote_detail(
             congress,
             chamber,
@@ -1188,7 +1267,9 @@ def _process_bill_votes_impl(bill_id):
                 vote_date = timezone.now()
         if vote_date and timezone.is_naive(vote_date):
             vote_date = timezone.make_aware(vote_date)
-        result = (vote_data.get("result") or vote_data.get("question") or "unknown")[:50]
+        result = (vote_data.get("result") or vote_data.get("question") or "unknown")[
+            :50
+        ]
         yeas = int(vote_data.get("yeas") or vote_data.get("total", {}).get("yeas") or 0)
         nays = int(vote_data.get("nays") or vote_data.get("total", {}).get("nays") or 0)
         effective_vote_date = vote_date or timezone.now()
@@ -1255,7 +1336,12 @@ def _process_bill_votes_impl(bill_id):
                     for member in members.get(group_name, []):
                         if isinstance(member, dict):
                             grouped_members.append(
-                                {**member, "position": member.get("position") or member.get("vote") or position}
+                                {
+                                    **member,
+                                    "position": member.get("position")
+                                    or member.get("vote")
+                                    or position,
+                                }
                             )
                 members = grouped_members
             records_updated = False
@@ -1302,7 +1388,9 @@ def _process_bill_votes_impl(bill_id):
                     },
                 )
                 votes_created += 1
-    logger.info("process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created)
+    logger.info(
+        "process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created
+    )
     return {"bill_id": bill_id, "votes_created": votes_created}
 
 
@@ -1333,60 +1421,76 @@ def _download_document_impl(document_id):
         return {"document_id": document_id, "skipped": True, "reason": "not_found"}
 
     if not doc.source_url:
-        logger.warning("download_document: no source_url for document_id=%s", document_id)
+        logger.warning(
+            "download_document: no source_url for document_id=%s", document_id
+        )
         return {"document_id": document_id, "skipped": True, "reason": "no_source_url"}
 
     bill = doc.bill
     try:
-        data, content_type = download_url(doc.source_url)
-    except requests.RequestException as e:
-        logger.warning("download_document: HTTP error document_id=%s: %s", document_id, e)
-        raise
-
-    new_hash = sha256_hex(data)
-    if doc.content_hash == new_hash and doc.object_storage_key:
-        logger.info(
-            "download_document: unchanged hash, skipping upload document_id=%s", document_id
+        downloaded = download_url(doc.source_url)
+    except requests.RequestException as exc:
+        logger.warning(
+            "download_document: HTTP error document_id=%s: %s",
+            document_id,
+            exc,
         )
-        doc.downloaded_at = timezone.now()
-        doc.save(update_fields=["downloaded_at"])
-        from apps.legislation.tasks import enqueue_document_contract
-
-        enqueue_document_contract(doc)
-        return {"document_id": document_id, "unchanged": True}
-
-    ext = ""
-    if content_type and "pdf" in content_type.lower():
-        ext = ".pdf"
-    elif content_type and "xml" in content_type.lower():
-        ext = ".xml"
-    elif content_type and "html" in content_type.lower():
-        ext = ".html"
-    else:
-        ext = guess_extension(doc.source_url, content_type)
-
-    object_key = build_object_key(
-        bill.session,
-        bill.bill_number,
-        doc.version_label,
-        ext,
-    )
-
-    try:
-        saved_key, size = upload_and_metadata(object_key, data, content_type)
-    except Exception as exc:
-        retryable_error = retryable_storage_error(exc)
-        if retryable_error:
-            raise retryable_error from exc
         raise
 
-    extracted = extract_document_text(data, content_type, doc.source_url)
+    with downloaded:
+        content_type = downloaded.content_type
+        new_hash = downloaded.checksum
+        if doc.content_hash == new_hash and doc.object_storage_key:
+            logger.info(
+                "download_document: unchanged hash, skipping upload document_id=%s",
+                document_id,
+            )
+            doc.downloaded_at = timezone.now()
+            doc.save(update_fields=["downloaded_at"])
+            from apps.legislation.tasks import enqueue_document_contract
+
+            enqueue_document_contract(doc)
+            return {"document_id": document_id, "unchanged": True}
+
+        ext = ""
+        if content_type and "pdf" in content_type.lower():
+            ext = ".pdf"
+        elif content_type and "xml" in content_type.lower():
+            ext = ".xml"
+        elif content_type and "html" in content_type.lower():
+            ext = ".html"
+        else:
+            ext = guess_extension(doc.source_url, content_type)
+
+        object_key = build_object_key(
+            bill.session,
+            bill.bill_number,
+            doc.version_label,
+            ext,
+        )
+        extracted = extract_document_text(
+            downloaded.file,
+            content_type,
+            doc.source_url,
+        )
+        try:
+            saved_key, size = upload_and_metadata(
+                object_key,
+                downloaded.file,
+                content_type,
+                size=downloaded.size,
+            )
+        except Exception as exc:
+            retryable_error = retryable_storage_error(exc)
+            if retryable_error:
+                raise retryable_error from exc
+            raise
 
     now = timezone.now()
     doc.object_storage_key = saved_key
     doc.file_size_bytes = size
     doc.content_hash = new_hash
-    doc.content_type = (content_type[:128] if content_type else None)
+    doc.content_type = content_type[:128] if content_type else None
     doc.extracted_text = extracted or None
     doc.downloaded_at = now
     doc.parsed_at = now if extracted else None

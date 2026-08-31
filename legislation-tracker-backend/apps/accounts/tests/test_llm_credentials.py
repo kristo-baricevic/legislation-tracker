@@ -176,8 +176,11 @@ def test_decryption_uses_row_key_id_and_fails_when_key_was_removed(
             api_key="sk-test-secret",
         )
 
-    with override_settings(
-        LLM_CREDENTIAL_ENCRYPTION_KEYS=f"old:{SECOND_FERNET_KEY}",
-        LLM_CREDENTIAL_ACTIVE_KEY_ID="old",
-    ), pytest.raises(CredentialDecryptionError, match="key id"):
+    with (
+        override_settings(
+            LLM_CREDENTIAL_ENCRYPTION_KEYS=f"old:{SECOND_FERNET_KEY}",
+            LLM_CREDENTIAL_ACTIVE_KEY_ID="old",
+        ),
+        pytest.raises(CredentialDecryptionError, match="key id"),
+    ):
         decrypt_credential(credential)

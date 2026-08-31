@@ -22,7 +22,8 @@ env_file = BASE_DIR / ".env"
 if env_file.exists():
     environ.Env.read_env(env_file)
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="change-me-in-production-use-env")
+INSECURE_DEFAULT_SECRET_KEY = "change-me-in-production-use-env-at-least-32-bytes"
+SECRET_KEY = env("DJANGO_SECRET_KEY", default=INSECURE_DEFAULT_SECRET_KEY)
 
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
@@ -37,6 +38,7 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     # Local apps
     "apps.congress",
@@ -184,6 +186,7 @@ LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED = env.bool(
 # REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.accounts.authentication.CookieJWTAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -192,6 +195,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_THROTTLE_RATES": {
+        "auth_register": env("AUTH_REGISTER_RATE", default="5/hour"),
+        "auth_login": env("AUTH_LOGIN_RATE", default="10/minute"),
+        "auth_refresh": env("AUTH_REFRESH_RATE", default="30/hour"),
         "llm_enhancement": LLM_ENHANCEMENT_CREATE_RATE,
         "llm_validation": LLM_ENHANCEMENT_VALIDATION_RATE,
     },
@@ -201,13 +207,41 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
+
+AUTH_ACCESS_COOKIE_NAME = "auth_access"
+AUTH_REFRESH_COOKIE_NAME = "auth_refresh"
+AUTH_REFRESH_COOKIE_PATH = "/api/auth/session/"
+AUTH_COOKIE_SECURE = False
+AUTH_COOKIE_SAMESITE = env("AUTH_COOKIE_SAMESITE", default="Lax")
+if AUTH_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
+    raise ValueError("AUTH_COOKIE_SAMESITE must be Lax, Strict, or None")
 
 # Congress.gov API (ingestion)
 CONGRESS_API_KEY = env("CONGRESS_API_KEY", default="")
+CURRENT_CONGRESS_OVERRIDE = env("CURRENT_CONGRESS_OVERRIDE", default="").strip()
 
 # Document storage — MinIO (S3-compatible, local) or AWS S3; see README
 # When USE_LOCAL_DOCUMENT_STORAGE=True, files go to local_media/ (no MinIO/S3 needed).
+DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS = env.int(
+    "DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS",
+    default=120,
+)
+DOCUMENT_DOWNLOAD_MAX_BYTES = env.int(
+    "DOCUMENT_DOWNLOAD_MAX_BYTES",
+    default=50 * 1024 * 1024,
+)
+DOCUMENT_DOWNLOAD_SPOOL_MAX_BYTES = env.int(
+    "DOCUMENT_DOWNLOAD_SPOOL_MAX_BYTES",
+    default=5 * 1024 * 1024,
+)
+DOCUMENT_PDF_MAX_PAGES = env.int("DOCUMENT_PDF_MAX_PAGES", default=1000)
+DOCUMENT_EXTRACTED_TEXT_MAX_CHARS = env.int(
+    "DOCUMENT_EXTRACTED_TEXT_MAX_CHARS",
+    default=5_000_000,
+)
 USE_LOCAL_DOCUMENT_STORAGE = env.bool("USE_LOCAL_DOCUMENT_STORAGE", default=False)
 AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
@@ -249,6 +283,13 @@ CORS_ALLOWED_ORIGINS = env.list(
     default=["http://localhost:3000", "http://127.0.0.1:3000"],
 )
 CORS_ALLOWED_ORIGIN_REGEXES = env.list("CORS_ALLOWED_ORIGIN_REGEXES", default=[])
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["http://localhost:3000", "http://127.0.0.1:3000"],
+)
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

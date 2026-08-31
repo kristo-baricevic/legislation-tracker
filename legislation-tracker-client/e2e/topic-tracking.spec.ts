@@ -7,12 +7,18 @@ test("an authenticated user follows a topic and the live API persists it", async
   request,
 }) => {
   const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
-  const password = "e2e-password";
+  const password = "E2e-secure-password-2026!";
 
+  await request.get(`${API_BASE}/api/auth/csrf/`);
+  const csrfToken = (await request.storageState()).cookies.find(
+    (cookie) => cookie.name === "csrftoken",
+  )?.value;
+  expect(csrfToken).toBeTruthy();
   const registration = await request.post(`${API_BASE}/api/auth/register/`, {
+    headers: { "X-CSRFToken": csrfToken! },
     data: { email, password },
   });
-  expect(registration.status()).toBe(201);
+  expect(registration.status()).toBe(202);
 
   const tokenResponse = await request.post(`${API_BASE}/api/auth/token/`, {
     data: { email, password },
@@ -29,9 +35,12 @@ test("an authenticated user follows a topic and the live API persists it", async
   const education = topics.find((topic) => topic.name === "Education");
   expect(education).toBeDefined();
 
-  await page.addInitScript((accessToken) => {
-    localStorage.setItem("legislation_tracker_access", accessToken);
-  }, access);
+  const sessionResponse = await request.post(`${API_BASE}/api/auth/session/`, {
+    headers: { "X-CSRFToken": csrfToken! },
+    data: { email, password },
+  });
+  expect(sessionResponse.status()).toBe(200);
+  await page.context().addCookies((await request.storageState()).cookies);
   await page.goto("/topics");
 
   await expect(page.getByRole("heading", { name: "Policy Topics" })).toBeVisible();

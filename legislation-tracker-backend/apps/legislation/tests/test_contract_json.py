@@ -18,4 +18,3 @@ def test_contract_hash_is_stable_for_key_order_and_string_whitespace():
 
     assert canonical_json_string(left) == canonical_json_string(right)
     assert contract_hash_from_dict(left) == contract_hash_from_dict(right)
-

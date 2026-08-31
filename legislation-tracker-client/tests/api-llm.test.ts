@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
   createBillEnhancement,
@@ -14,8 +14,16 @@ import {
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
 
+beforeEach(() => {
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: { cookie: "csrftoken=csrf-test-token" },
+  });
+});
+
 afterEach(() => {
   process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+  Reflect.deleteProperty(globalThis, "document");
 });
 
 describe("LLM API helpers", () => {

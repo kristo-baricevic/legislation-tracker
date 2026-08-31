@@ -23,7 +23,9 @@ The Secretary shall publish a report.
 
     sections = parse_federal_structure(source)
 
-    assert [(section.level, section.label, section.heading) for section in sections] == [
+    assert [
+        (section.level, section.label, section.heading) for section in sections
+    ] == [
         ("title", "Title I", "GENERAL PROVISIONS"),
         ("subtitle", "Subtitle A", "Administration"),
         ("part", "Part I", "PROGRAMS"),
@@ -38,7 +40,9 @@ The Secretary shall publish a report.
     assert sections[4].parent_label == "Sec. 101A-1"
     assert sections[-1].parent_label == "Part I"
     for section in sections:
-        assert source[section.span.start_char : section.span.end_char] == section.span.text
+        assert (
+            source[section.span.start_char : section.span.end_char] == section.span.text
+        )
 
 
 def test_sentence_spans_preserve_repeated_unicode_and_terminal_text():
@@ -80,7 +84,9 @@ The Secretary shall administer the program.
     assert sections[0].heading == "HEALTH PROGRAMS"
     assert sections[1].parent_label == "Title II"
     for section in sections:
-        assert source[section.span.start_char : section.span.end_char] == section.span.text
+        assert (
+            source[section.span.start_char : section.span.end_char] == section.span.text
+        )
 
 
 def test_container_heading_does_not_jump_across_a_blank_line():

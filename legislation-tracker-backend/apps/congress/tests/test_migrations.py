@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from django.db import connection
@@ -27,7 +27,7 @@ def test_vote_session_migration_preserves_unknown_legacy_sessions():
         bill_id=bill.id,
         chamber="house",
         roll_number=1,
-        vote_date=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        vote_date=datetime(2026, 1, 2, tzinfo=UTC),
         result="Passed",
     )
 

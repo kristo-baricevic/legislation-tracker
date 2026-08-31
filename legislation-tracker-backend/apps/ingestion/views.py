@@ -9,19 +9,16 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import TrackedBill
-from apps.accounts.serializers import TrackedBillSerializer
-from apps.ingestion.congress_client import CongressAPIError
+from apps.congress.current import current_congress
 from apps.ingestion.models import (
+    BillTrackingRequest,
     IngestionTaskFailure,
     IngestionWorkItem,
     IngestionWorkStatus,
 )
+from apps.ingestion.serializers import ManualBillIngestionSerializer
 from apps.ingestion.tasks import (
-    CURRENT_CONGRESS,
-    _process_bill_impl,
     backfill_process_bill_versions_for_all_bills,
-    bill_key,
     dispatch_ingestion_work,
     download_document,
     poll_congress,
@@ -29,8 +26,7 @@ from apps.ingestion.tasks import (
     process_bill_votes,
     sync_representatives,
 )
-from apps.legislation.models import Bill
-from apps.legislation.serializers import BillListSerializer
+from apps.ingestion.work_queue import enqueue_manual_bill_request
 from apps.legislation.tasks import (
     backfill_update_topics,
     generate_contract,
@@ -68,60 +64,85 @@ class IngestBillView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request):
-        raw_congress = request.data.get("congress") or request.data.get("session") or 119
-        raw_bill_type = (
-            request.data.get("bill_type")
-            or request.data.get("type")
-            or request.data.get("billType")
-        )
-        raw_bill_number = (
-            request.data.get("bill_number")
-            or request.data.get("number")
-            or request.data.get("billNumber")
-        )
+        missing = object()
 
-        if raw_bill_type in (None, ""):
-            return Response(
-                {"error": "bill_type is required"},
-                status=status.HTTP_400_BAD_REQUEST,
+        def first_present(*keys, default=missing):
+            return next(
+                (request.data.get(key) for key in keys if key in request.data),
+                default,
             )
-        if raw_bill_number in (None, ""):
-            return Response(
-                {"error": "bill_number is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+
+        raw_bill_type = first_present("bill_type", "type", "billType")
+        raw_bill_number = first_present("bill_number", "number", "billNumber")
+        raw_congress = first_present("congress", "session")
+        if raw_congress is missing:
+            raw_congress = current_congress()
         congress, error_response = parse_int_param(raw_congress, "congress")
         if error_response is not None:
             return error_response
+        serializer = ManualBillIngestionSerializer(
+            data={
+                "congress": congress,
+                "bill_type": (
+                    str(raw_bill_type).strip().lower()
+                    if raw_bill_type is not missing
+                    else None
+                ),
+                "bill_number": (
+                    raw_bill_number if raw_bill_number is not missing else None
+                ),
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        congress = serializer.validated_data["congress"]
+        bill_type = serializer.validated_data["bill_type"]
+        bill_number = serializer.validated_data["bill_number"]
 
-        bill_type = str(raw_bill_type).strip().lower()
-        bill_number = str(raw_bill_number).strip()
-        if bill_type not in ("hr", "s"):
-            return Response(
-                {"error": "bill_type must be 'hr' or 's'"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            result = _process_bill_impl(bill_key(congress, bill_type, bill_number))
-        except CongressAPIError as exc:
-            return Response(
-                {"error": str(exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        bill = Bill.objects.get(pk=result["bill_id"])
-        tracked, created = TrackedBill.objects.get_or_create(
+        work_item, tracking_request = enqueue_manual_bill_request(
             user=request.user,
-            bill=bill,
+            congress=congress,
+            bill_type=bill_type,
+            bill_number=bill_number,
         )
         return Response(
             {
-                "bill": BillListSerializer(bill).data,
-                "tracked_bill": TrackedBillSerializer(tracked).data,
-                "ingestion": result,
+                "work_item_id": work_item.id,
+                "status": work_item.status,
+                "status_url": f"/api/ingestion/work/{work_item.id}/",
+                "tracking_status": tracking_request.status,
+                "bill_id": tracking_request.bill_id,
             },
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class IngestionWorkStatusView(APIView):
+    """Return durable manual ingestion and tracking status for its owner."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, work_item_id):
+        tracking_request = (
+            BillTrackingRequest.objects.select_related("work_item")
+            .filter(work_item_id=work_item_id, user=request.user)
+            .first()
+        )
+        if tracking_request is None:
+            return Response(
+                {"error": "work item not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        work_item = tracking_request.work_item
+        return Response(
+            {
+                "work_item_id": work_item.id,
+                "status": work_item.status,
+                "attempt_count": work_item.attempt_count,
+                "last_error": work_item.last_error,
+                "completed_at": work_item.completed_at,
+                "tracking_status": tracking_request.status,
+                "bill_id": tracking_request.bill_id,
+            }
         )
 
 
@@ -135,7 +156,7 @@ class PollCongressView(APIView):
         congress, error_response = parse_int_param(
             request.data.get("congress"),
             "congress",
-            default=119,
+            default=current_congress(),
         )
         if error_response is not None:
             return error_response
@@ -161,13 +182,14 @@ class SyncRepresentativesView(APIView):
         congress, error_response = parse_int_param(
             request.data.get("congress"),
             "congress",
-            default=119,
+            default=current_congress(),
         )
         if error_response is not None:
             return error_response
-        if congress != CURRENT_CONGRESS:
+        active_congress = current_congress()
+        if congress != active_congress:
             return Response(
-                {"error": f"congress must be the current Congress ({CURRENT_CONGRESS})"},
+                {"error": f"congress must be the current Congress ({active_congress})"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         result = sync_representatives.delay(congress=congress)
@@ -254,7 +276,9 @@ class ReplayIngestionFailureView(APIView):
                 .first()
             )
             if failure is None:
-                return Response({"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"error": "failure not found"}, status=status.HTTP_404_NOT_FOUND
+                )
             if failure.resolved_at is not None:
                 return Response(
                     {"error": "failure has already been replayed"},
@@ -273,8 +297,10 @@ class ReplayIngestionFailureView(APIView):
                 stage_task = REPLAYABLE_STAGE_TASKS.get(failure.task_name)
                 stage_args = failure.args_json.get("args") or []
                 stage_kwargs = failure.args_json.get("kwargs") or {}
-                if stage_task is None or not isinstance(stage_args, list) or not isinstance(
-                    stage_kwargs, dict
+                if (
+                    stage_task is None
+                    or not isinstance(stage_args, list)
+                    or not isinstance(stage_kwargs, dict)
                 ):
                     return Response(
                         {"error": "this failure has no replayable work item"},
@@ -391,7 +417,9 @@ class BackfillDocumentsView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request):
-        session, error_response = parse_int_param(request.data.get("session"), "session")
+        session, error_response = parse_int_param(
+            request.data.get("session"), "session"
+        )
         if error_response is not None:
             return error_response
 
@@ -411,7 +439,9 @@ class BackfillTopicsView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request):
-        session, error_response = parse_int_param(request.data.get("session"), "session")
+        session, error_response = parse_int_param(
+            request.data.get("session"), "session"
+        )
         if error_response is not None:
             return error_response
 

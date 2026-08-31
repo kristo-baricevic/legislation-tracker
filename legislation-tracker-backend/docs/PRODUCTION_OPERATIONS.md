@@ -22,7 +22,23 @@ DATABASE_URL=postgres://...
 REDIS_URL=redis://...
 CONGRESS_API_KEY=<congress-api-key>
 CORS_ALLOWED_ORIGINS=https://app.example.com
+CSRF_TRUSTED_ORIGINS=https://app.example.com
+AUTH_COOKIE_SAMESITE=Lax
 ```
+
+Leave `CURRENT_CONGRESS_OVERRIDE` unset during normal operation. Polling,
+representative synchronization, similarity recomputation, and UI defaults
+resolve the active Congress when work executes, using the January 3 boundary
+in Washington, DC. Set the override identically on the API, worker, and Beat
+only for an intentional backfill or emergency pin, then remove it.
+
+The web application uses HttpOnly JWT cookies with CSRF protection and refresh
+rotation/blacklisting. The browser extension continues to use the separate
+Bearer-token endpoints. Use `AUTH_COOKIE_SAMESITE=None` only when the app and
+API are genuinely cross-site; it requires HTTPS and exact CORS/CSRF origins.
+The CSRF bootstrap endpoint also returns the token in JSON so a separately
+hosted app can retain it in memory and send it as `X-CSRFToken`; the JWTs remain
+HttpOnly. Browser tabs serialize refresh rotation through the Web Locks API.
 
 For a production extension, add its fixed ID as a second explicit origin, for
 example `CORS_ALLOWED_ORIGINS=https://app.example.com,chrome-extension://<extension-id>`.
@@ -37,6 +53,11 @@ AWS_SECRET_ACCESS_KEY=<secret>
 AWS_STORAGE_BUCKET_NAME=<bucket>
 AWS_S3_REGION_NAME=us-east-1
 AWS_S3_ENDPOINT_URL=<optional-s3-compatible-endpoint>
+DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS=120
+DOCUMENT_DOWNLOAD_MAX_BYTES=52428800
+DOCUMENT_DOWNLOAD_SPOOL_MAX_BYTES=5242880
+DOCUMENT_PDF_MAX_PAGES=1000
+DOCUMENT_EXTRACTED_TEXT_MAX_CHARS=5000000
 ```
 
 `USE_LOCAL_DOCUMENT_STORAGE=True` is only appropriate for local development or a single-node deployment where local disk persistence is explicitly managed.
@@ -157,6 +178,11 @@ celery -A config beat -l info
 Do not run multiple Beat schedulers against the same environment unless you also add a distributed scheduler/lock. Multiple Beat instances can enqueue duplicate ingestion work.
 
 ## Container deployment
+
+The backend image installs `requirements/production.lock` with
+`--require-hashes`. Regenerate that lock with Python 3.12 whenever
+`requirements/base.txt` changes, audit it, and review the resulting version
+changes before building the image.
 
 The repository root includes `docker-compose.production.yml`, which runs the
 API, worker, single Beat process, PostgreSQL, Redis, the standalone Next.js

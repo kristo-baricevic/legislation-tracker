@@ -3,8 +3,9 @@
 import Link from "next/link";
 import React from "react";
 import {
+  getBillFilterOptions,
   getMyTracking,
-  getStoredAccessToken,
+  getSession,
   getTrackingFeed,
   triggerDocumentBackfill,
   triggerPollCongress,
@@ -16,8 +17,8 @@ import {
 type WorkflowKey = "poll" | "backfill";
 
 export default function Dashboard() {
-  const [congress, setCongress] = React.useState("119");
-  const [documentSession, setDocumentSession] = React.useState("119");
+  const [congress, setCongress] = React.useState("");
+  const [documentSession, setDocumentSession] = React.useState("");
   const [running, setRunning] = React.useState<WorkflowKey | null>(null);
   const [result, setResult] = React.useState<IngestionTaskResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -32,31 +33,53 @@ export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
 
   React.useEffect(() => {
-    const signedIn = Boolean(getStoredAccessToken());
-    setIsAuthenticated(signedIn);
-    if (!signedIn) return;
     let cancelled = false;
-    getMyTracking()
-      .then((summary) => {
-        if (!cancelled) setTrackingSummary(summary);
+    void getBillFilterOptions()
+      .then((options) => {
+        if (cancelled || !Number.isInteger(options.current_congress)) return;
+        const currentCongress = String(options.current_congress);
+        setCongress(currentCongress);
+        setDocumentSession(currentCongress);
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setTrackingSummaryError(
-            err instanceof Error ? err.message : "Failed to load tracked items",
-          );
-        }
-      });
-    getTrackingFeed({ limit: 5 })
-      .then((feed) => {
-        if (!cancelled) setTrackingFeed(feed);
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void getSession()
+      .then((session) => {
+        if (cancelled) return;
+        const signedIn = Boolean(session);
+        setIsAuthenticated(signedIn);
+        if (!signedIn) return;
+        void getMyTracking()
+          .then((summary) => {
+            if (!cancelled) setTrackingSummary(summary);
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setTrackingSummaryError(
+                err instanceof Error ? err.message : "Failed to load tracked items",
+              );
+            }
+          });
+        void getTrackingFeed({ limit: 5 })
+          .then((feed) => {
+            if (!cancelled) setTrackingFeed(feed);
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setTrackingFeedError(
+                err instanceof Error ? err.message : "Failed to load tracked changes",
+              );
+            }
+          });
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setTrackingFeedError(
-            err instanceof Error ? err.message : "Failed to load tracked changes",
-          );
-        }
+      .catch(() => {
+        if (!cancelled) setIsAuthenticated(false);
       });
     return () => {
       cancelled = true;

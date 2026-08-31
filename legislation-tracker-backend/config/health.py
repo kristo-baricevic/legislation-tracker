@@ -3,12 +3,13 @@
 import uuid
 from pathlib import Path
 
-from apps.accounts.llm_credentials import llm_feature_configuration_errors
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db import connections
 from django.http import JsonResponse
+
+from apps.accounts.llm_credentials import llm_feature_configuration_errors
 
 
 def check_database():

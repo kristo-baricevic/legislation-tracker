@@ -1,6 +1,7 @@
 """
 Development settings.
 """
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = True
@@ -26,6 +27,10 @@ LOGGING = {
         },
     },
     "loggers": {
-        "apps.ingestion": {"level": "INFO", "handlers": ["console"], "propagate": False},
+        "apps.ingestion": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
     },
 }

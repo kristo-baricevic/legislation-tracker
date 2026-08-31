@@ -1,28 +1,37 @@
 """
 Auth API, user preferences, and private tracking APIs.
 """
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.middleware.csrf import get_token
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
 from apps.legislation.models import Bill, Topic
 
+from .authentication import enforce_csrf
 from .models import TrackedBill, TrackedLegislator, TrackedTopic, UserPreference
 from .serializers import (
-    TrackingFeedEntrySerializer,
+    RegistrationSerializer,
+    SessionTokenObtainPairSerializer,
     TrackedBillSerializer,
     TrackedLegislatorSerializer,
     TrackedTopicSerializer,
+    TrackingFeedEntrySerializer,
     UserPreferenceSerializer,
 )
+from .throttles import LoginThrottle, RefreshThrottle, RegistrationThrottle
 
 User = get_user_model()
 
@@ -43,38 +52,162 @@ def parse_required_int_param(raw_value, field_name):
 
 
 class RegisterView(APIView):
-    """POST email, password -> create user. No auth required."""
+    """Accept a valid registration without disclosing account existence."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [RegistrationThrottle]
 
     def post(self, request: Request) -> Response:
-        email = request.data.get("email")
-        password = request.data.get("password")
-        if not email or not password:
-            return Response(
-                {"error": "email and password required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        email = email.strip().lower()
-        if User.objects.filter(email=email).exists():
-            return Response(
-                {"error": "A user with this email already exists."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if len(password) < 8:
-            return Response(
-                {"error": "Password must be at least 8 characters."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        user = User.objects.create_user(
-            username=email,
-            email=email,
-            password=password,
-        )
+        enforce_csrf(request)
+        serializer = RegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.register()
         return Response(
-            {"id": user.pk, "email": user.email},
-            status=status.HTTP_201_CREATED,
+            {
+                "detail": (
+                    "If the address can be registered, the account is ready to sign in."
+                )
+            },
+            status=status.HTTP_202_ACCEPTED,
         )
+
+
+def _set_auth_cookie(response, name, value, *, max_age, path="/"):
+    response.set_cookie(
+        name,
+        value,
+        max_age=max_age,
+        secure=settings.AUTH_COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+        path=path,
+    )
+
+
+def _set_token_cookies(response, *, access, refresh=None):
+    _set_auth_cookie(
+        response,
+        settings.AUTH_ACCESS_COOKIE_NAME,
+        access,
+        max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
+    )
+    if refresh is not None:
+        _set_auth_cookie(
+            response,
+            settings.AUTH_REFRESH_COOKIE_NAME,
+            refresh,
+            max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+            path=settings.AUTH_REFRESH_COOKIE_PATH,
+        )
+
+
+def _clear_token_cookies(response):
+    response.delete_cookie(
+        settings.AUTH_ACCESS_COOKIE_NAME,
+        path="/",
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+    )
+    response.delete_cookie(
+        settings.AUTH_REFRESH_COOKIE_NAME,
+        path=settings.AUTH_REFRESH_COOKIE_PATH,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+    )
+
+
+class SessionLoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [LoginThrottle]
+
+    def post(self, request: Request) -> Response:
+        enforce_csrf(request)
+        serializer = SessionTokenObtainPairSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        get_token(request._request)
+        response = Response(
+            {
+                "authenticated": True,
+                "user": {"email": serializer.user.email},
+            }
+        )
+        _set_token_cookies(
+            response,
+            access=serializer.validated_data["access"],
+            refresh=serializer.validated_data["refresh"],
+        )
+        return response
+
+
+class CSRFTokenView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request: Request) -> Response:
+        return Response({"csrf_token": get_token(request._request)})
+
+
+class SessionStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        return Response(
+            {
+                "authenticated": True,
+                "user": {"email": request.user.email},
+            }
+        )
+
+
+class SessionRefreshView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [RefreshThrottle]
+
+    def post(self, request: Request) -> Response:
+        enforce_csrf(request)
+        refresh = request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        if not refresh:
+            return Response(
+                {"detail": "No refresh session is available."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        serializer = TokenRefreshSerializer(data={"refresh": refresh})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError:
+            return Response(
+                {"detail": "The refresh session is invalid."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        get_token(request._request)
+        response = Response({"authenticated": True})
+        _set_token_cookies(
+            response,
+            access=serializer.validated_data["access"],
+            refresh=serializer.validated_data.get("refresh"),
+        )
+        return response
+
+
+class SessionLogoutView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request: Request) -> Response:
+        enforce_csrf(request)
+        refresh = request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        if refresh:
+            try:
+                RefreshToken(refresh).blacklist()
+            except (AttributeError, TokenError):
+                pass
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        _clear_token_cookies(response)
+        return response
 
 
 class UserPreferenceViewSet(viewsets.ModelViewSet):
@@ -112,6 +245,7 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
             return error_response
         return super().partial_update(request, *args, **kwargs)
 
+
 class TrackingSummaryView(APIView):
     """Current user's tracked bills, topics, and legislators."""
 
@@ -123,9 +257,9 @@ class TrackingSummaryView(APIView):
             "bill__sponsor",
         )
         topics = TrackedTopic.objects.filter(user=request.user).select_related("topic")
-        legislators = TrackedLegislator.objects.filter(user=request.user).select_related(
-            "representative"
-        )
+        legislators = TrackedLegislator.objects.filter(
+            user=request.user
+        ).select_related("representative")
         return Response(
             {
                 "bills": TrackedBillSerializer(bills, many=True).data,

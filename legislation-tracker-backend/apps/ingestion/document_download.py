@@ -2,15 +2,18 @@
 Download bill document bytes from source_url, hash, optional text extraction, upload via Django storage.
 Supports MinIO (S3-compatible) or local filesystem via STORAGES in settings.
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
 import mimetypes
 import re
+from dataclasses import dataclass
 from html import unescape
 from io import BytesIO
-from typing import Optional, Tuple
+from tempfile import SpooledTemporaryFile
+from typing import BinaryIO
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 
@@ -18,7 +21,7 @@ import requests
 from boto3.exceptions import S3UploadFailedError
 from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
-from django.core.files.base import ContentFile
+from django.core.files.base import ContentFile, File
 from django.core.files.storage import default_storage
 
 logger = logging.getLogger(__name__)
@@ -73,6 +76,41 @@ class RetryableDocumentStorageError(Exception):
     """A transient object-storage failure that should use the Celery retry policy."""
 
 
+class DocumentValidationError(ValueError):
+    """Terminal validation failure retained by durable ingestion for replay."""
+
+
+class DocumentByteLimitExceeded(DocumentValidationError):
+    """The decoded response exceeded the configured document byte limit."""
+
+
+class DocumentPageLimitExceeded(DocumentValidationError):
+    """A PDF exceeded the configured page limit."""
+
+
+class DocumentTextLimitExceeded(DocumentValidationError):
+    """Extracted text exceeded the configured character limit."""
+
+
+class MalformedDocumentError(DocumentValidationError):
+    """A recognized document type could not be parsed safely."""
+
+
+@dataclass
+class DownloadedDocument:
+    file: BinaryIO
+    content_type: str | None
+    size: int
+    checksum: str
+
+    def __enter__(self):
+        self.file.seek(0)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.file.close()
+
+
 _RETRYABLE_STORAGE_ERROR_CODES = {
     "InternalError",
     "RequestLimitExceeded",
@@ -95,7 +133,11 @@ def retryable_storage_error(exc: Exception) -> RetryableDocumentStorageError | N
     response = exc.response or {}
     error_code = response.get("Error", {}).get("Code", "")
     status_code = response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
-    if status_code == 429 or status_code >= 500 or error_code in _RETRYABLE_STORAGE_ERROR_CODES:
+    if (
+        status_code == 429
+        or status_code >= 500
+        or error_code in _RETRYABLE_STORAGE_ERROR_CODES
+    ):
         return RetryableDocumentStorageError(str(exc))
     return None
 
@@ -104,7 +146,7 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def guess_extension(url: str, content_type: Optional[str]) -> str:
+def guess_extension(url: str, content_type: str | None) -> str:
     path = urlparse(url).path
     ext = ""
     if "." in path:
@@ -121,36 +163,156 @@ def guess_extension(url: str, content_type: Optional[str]) -> str:
     return ".bin"
 
 
-def download_url(url: str, timeout: int = 120) -> Tuple[bytes, Optional[str]]:
-    """GET url; return (body, content-type header value)."""
+def download_url(
+    url: str,
+    timeout: int | float | None = None,
+    *,
+    max_bytes: int | None = None,
+    spool_max_bytes: int | None = None,
+) -> DownloadedDocument:
+    """Stream a remote document into a bounded, checksum-tracked spool file."""
     headers = {
         "User-Agent": "LegislationTracker/1.0 (document ingestion; +https://github.com/)",
     }
-    resp = requests.get(url, timeout=timeout, headers=headers, allow_redirects=True)
-    resp.raise_for_status()
-    ct = resp.headers.get("Content-Type")
-    if ct and ";" in ct:
-        ct = ct.split(";")[0].strip()
-    return resp.content, ct
+    timeout = (
+        timeout
+        if timeout is not None
+        else getattr(settings, "DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS", 120)
+    )
+    max_bytes = (
+        max_bytes
+        if max_bytes is not None
+        else getattr(settings, "DOCUMENT_DOWNLOAD_MAX_BYTES", 50 * 1024 * 1024)
+    )
+    spool_max_bytes = (
+        spool_max_bytes
+        if spool_max_bytes is not None
+        else getattr(settings, "DOCUMENT_DOWNLOAD_SPOOL_MAX_BYTES", 5 * 1024 * 1024)
+    )
+    response = requests.get(
+        url,
+        timeout=timeout,
+        headers=headers,
+        allow_redirects=True,
+        stream=True,
+    )
+    try:
+        response.raise_for_status()
+        declared_length = response.headers.get("Content-Length")
+        if declared_length not in (None, ""):
+            try:
+                declared_bytes = int(declared_length)
+            except (TypeError, ValueError) as exc:
+                raise MalformedDocumentError(
+                    f"Invalid Content-Length header: {declared_length!r}"
+                ) from exc
+            if declared_bytes < 0:
+                raise MalformedDocumentError(
+                    f"Invalid Content-Length header: {declared_length!r}"
+                )
+            if declared_bytes > max_bytes:
+                raise DocumentByteLimitExceeded(
+                    f"Document declares {declared_bytes} bytes; limit is {max_bytes}"
+                )
+
+        spool = SpooledTemporaryFile(max_size=spool_max_bytes, mode="w+b")
+        checksum = hashlib.sha256()
+        size = 0
+        try:
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > max_bytes:
+                    raise DocumentByteLimitExceeded(
+                        f"Document contains more than {max_bytes} decoded bytes"
+                    )
+                checksum.update(chunk)
+                spool.write(chunk)
+            spool.seek(0)
+            content_type = response.headers.get("Content-Type")
+            if content_type and ";" in content_type:
+                content_type = content_type.split(";", 1)[0].strip()
+            return DownloadedDocument(
+                file=spool,
+                content_type=content_type,
+                size=size,
+                checksum=checksum.hexdigest(),
+            )
+        except Exception:
+            spool.close()
+            raise
+    finally:
+        response.close()
 
 
-def extract_text_from_pdf(data: bytes) -> str:
+def _configured_positive_limit(name: str, fallback: int, override: int | None) -> int:
+    value = override if override is not None else getattr(settings, name, fallback)
+    return max(int(value), 1)
+
+
+def extract_text_from_pdf(
+    data: bytes | BinaryIO,
+    *,
+    max_pages: int | None = None,
+    max_text_chars: int | None = None,
+) -> str:
     try:
         from pypdf import PdfReader
-    except ImportError:
-        logger.warning("pypdf not installed; PDF text extraction skipped")
-        return ""
+    except ImportError as exc:
+        raise RuntimeError("pypdf is required for PDF document extraction") from exc
+    max_pages = _configured_positive_limit(
+        "DOCUMENT_PDF_MAX_PAGES",
+        1000,
+        max_pages,
+    )
+    max_text_chars = _configured_positive_limit(
+        "DOCUMENT_EXTRACTED_TEXT_MAX_CHARS",
+        5_000_000,
+        max_text_chars,
+    )
+    if hasattr(data, "seek"):
+        data.seek(0)
+        stream = data
+    else:
+        stream = BytesIO(data)
     try:
-        reader = PdfReader(BytesIO(data))
-        parts = []
+        reader = PdfReader(stream)
+        page_count = len(reader.pages)
+        if page_count > max_pages:
+            raise DocumentPageLimitExceeded(
+                f"PDF contains {page_count} pages; limit is {max_pages}"
+            )
+        parts = _BoundedTextLines(max_text_chars)
         for page in reader.pages:
-            t = page.extract_text()
-            if t:
-                parts.append(t)
-        return "\n".join(parts).strip()
-    except Exception as e:
-        logger.warning("PDF text extraction failed: %s", e)
-        return ""
+            text = page.extract_text()
+            if text:
+                parts.append(text)
+        return parts.render().strip()
+    except DocumentValidationError:
+        raise
+    except Exception as exc:
+        raise MalformedDocumentError(f"Malformed PDF: {exc}") from exc
+
+
+class _BoundedTextLines:
+    def __init__(self, max_chars: int):
+        self.max_chars = max_chars
+        self.parts: list[str] = []
+        self.length = 0
+
+    def append(self, value: str) -> None:
+        separator_length = 1 if self.parts else 0
+        next_length = self.length + separator_length + len(value)
+        if next_length > self.max_chars:
+            raise DocumentTextLimitExceeded(
+                f"Extracted document text exceeds {self.max_chars} characters"
+            )
+        self.parts.append(value)
+        self.length = next_length
+
+    def render(self) -> str:
+        return "\n".join(self.parts)
 
 
 def _xml_tag(element: ElementTree.Element) -> str:
@@ -167,7 +329,7 @@ def _direct_xml_child_text(element: ElementTree.Element, tag: str) -> str:
 
 
 def _render_congress_xml_element(
-    element: ElementTree.Element, lines: list[str]
+    element: ElementTree.Element, lines: _BoundedTextLines
 ) -> None:
     tag = _xml_tag(element)
     enum = _direct_xml_child_text(element, "enum")
@@ -226,34 +388,46 @@ def _render_congress_xml_element(
                 lines.append(value)
 
 
-def _extract_congress_xml(text: str) -> str | None:
+def _extract_congress_xml(text: str, max_text_chars: int) -> str | None:
     try:
         root = ElementTree.fromstring(text)
-    except ElementTree.ParseError:
-        return None
+    except ElementTree.ParseError as exc:
+        raise MalformedDocumentError(f"Malformed XML: {exc}") from exc
     legislative_body = next(
         (element for element in root.iter() if _xml_tag(element) == "legis-body"),
         None,
     )
     if legislative_body is None:
         return None
-    lines: list[str] = []
+    lines = _BoundedTextLines(max_text_chars)
     for child in legislative_body:
         if _xml_tag(child) in _XML_STRUCTURAL_TAGS:
             _render_congress_xml_element(child, lines)
-    return "\n".join(line for line in lines if line).strip()
+    return lines.render().strip()
 
 
-def extract_text_from_xml_or_html(data: bytes, content_type: str | None) -> str:
+def extract_text_from_xml_or_html(
+    data: bytes,
+    content_type: str | None,
+    *,
+    max_text_chars: int | None = None,
+) -> str:
+    max_text_chars = _configured_positive_limit(
+        "DOCUMENT_EXTRACTED_TEXT_MAX_CHARS",
+        5_000_000,
+        max_text_chars,
+    )
     try:
         text = data.decode("utf-8", errors="replace")
     except Exception:
         return ""
-    if not text.strip():
-        return ""
     content_type = (content_type or "").casefold()
+    if not text.strip():
+        if "xml" in content_type:
+            raise MalformedDocumentError("Malformed XML: document is empty")
+        return ""
     if "xml" in content_type:
-        structured_text = _extract_congress_xml(text)
+        structured_text = _extract_congress_xml(text, max_text_chars)
         if structured_text:
             return structured_text
     if "xml" in content_type or "html" in content_type:
@@ -261,24 +435,40 @@ def extract_text_from_xml_or_html(data: bytes, content_type: str | None) -> str:
         text = _MARKUP_TAG_RE.sub("", text)
         text = unescape(text)
 
-    lines = []
+    lines = _BoundedTextLines(max_text_chars)
     for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = re.sub(r"[\t\f\v ]+", " ", raw_line).strip()
         if line:
             lines.append(line)
-    return "\n".join(lines)[:500_000]
+    return lines.render()
+
+
+def _read_document_bytes(data: bytes | BinaryIO) -> bytes:
+    if isinstance(data, bytes):
+        return data
+    data.seek(0)
+    payload = data.read()
+    data.seek(0)
+    return payload
 
 
 def extract_document_text(
-    data: bytes,
+    data: bytes | BinaryIO,
     content_type: str | None,
     source_url: str | None,
+    *,
+    max_pdf_pages: int | None = None,
+    max_text_chars: int | None = None,
 ) -> str:
     """Extract text using the document type, with extension fallback for bad MIME."""
     ext = guess_extension(source_url or "", content_type)
     normalized_content_type = (content_type or "").casefold()
     if "pdf" in normalized_content_type or ext == ".pdf":
-        return extract_text_from_pdf(data)
+        return extract_text_from_pdf(
+            data,
+            max_pages=max_pdf_pages,
+            max_text_chars=max_text_chars,
+        )
     if not (
         any(kind in normalized_content_type for kind in ("xml", "html", "text/plain"))
         or ext in {".xml", ".html", ".htm", ".txt"}
@@ -292,7 +482,11 @@ def extract_document_text(
         extraction_content_type = "text/html"
     elif "text/plain" not in normalized_content_type and ext == ".txt":
         extraction_content_type = "text/plain"
-    return extract_text_from_xml_or_html(data, extraction_content_type)
+    return extract_text_from_xml_or_html(
+        _read_document_bytes(data),
+        extraction_content_type,
+        max_text_chars=max_text_chars,
+    )
 
 
 def reextract_stored_document_text(document) -> str:
@@ -350,7 +544,9 @@ def ensure_s3_bucket_exists() -> None:
             raise
 
 
-def build_object_key(bill_session: int, bill_number: str, version_label: str, ext: str) -> str:
+def build_object_key(
+    bill_session: int, bill_number: str, version_label: str, ext: str
+) -> str:
     """bills/{session}/{bill_number}/{version_label}.{ext}"""
     safe_bn = re.sub(r"[^\w\-]+", "_", bill_number.strip())[:80]
     safe_v = re.sub(r"[^\w\-]+", "_", version_label.strip())[:50]
@@ -361,14 +557,31 @@ def build_object_key(bill_session: int, bill_number: str, version_label: str, ex
 
 def upload_and_metadata(
     object_key: str,
-    data: bytes,
-    content_type: Optional[str],
-) -> Tuple[str, int]:
+    data: bytes | BinaryIO,
+    content_type: str | None,
+    *,
+    size: int | None = None,
+) -> tuple[str, int]:
     """
     Save to default_storage; return (stored name/key, size in bytes).
     """
     ensure_s3_bucket_exists()
-    ct = content_type or mimetypes.guess_type(object_key)[0] or "application/octet-stream"
-    saved_name = default_storage.save(object_key, ContentFile(data))
-    size = len(data)
-    return saved_name, size
+    ct = (
+        content_type
+        or mimetypes.guess_type(object_key)[0]
+        or "application/octet-stream"
+    )
+    if isinstance(data, bytes):
+        content = ContentFile(data)
+        content_size = len(data)
+    else:
+        data.seek(0)
+        content = File(data, name=object_key)
+        content_size = size if size is not None else getattr(content, "size", None)
+        if content_size is None:
+            data.seek(0, 2)
+            content_size = data.tell()
+            data.seek(0)
+    content.content_type = ct
+    saved_name = default_storage.save(object_key, content)
+    return saved_name, int(content_size)

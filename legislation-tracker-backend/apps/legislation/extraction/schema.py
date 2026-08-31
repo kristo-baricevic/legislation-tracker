@@ -10,9 +10,7 @@ from jsonschema import Draft202012Validator
 from .types import EvidenceCandidate
 
 MAX_QUOTED_TEXT_LENGTH = 4_000
-FIELD_PATH_SEGMENT = re.compile(
-    r"^(?P<key>[a-z_][a-z0-9_]*)(?:\[(?P<index>\d+)\])?$"
-)
+FIELD_PATH_SEGMENT = re.compile(r"^(?P<key>[a-z_][a-z0-9_]*)(?:\[(?P<index>\d+)\])?$")
 
 
 class ContractValidationError(ValueError):
@@ -103,14 +101,15 @@ def _validate_evidence(
                 "evidence_validation_failed",
                 "Evidence quoted text cannot exceed 4,000 characters",
             )
-        if not (
-            0 <= candidate.start_char < candidate.end_char <= len(source_text)
-        ):
+        if not (0 <= candidate.start_char < candidate.end_char <= len(source_text)):
             raise ContractValidationError(
                 "evidence_validation_failed",
                 f"Evidence span for {candidate.field_path!r} is outside source text",
             )
-        if source_text[candidate.start_char : candidate.end_char] != candidate.quoted_text:
+        if (
+            source_text[candidate.start_char : candidate.end_char]
+            != candidate.quoted_text
+        ):
             raise ContractValidationError(
                 "evidence_validation_failed",
                 f"Evidence quote for {candidate.field_path!r} does not match source text",

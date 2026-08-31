@@ -104,7 +104,9 @@ def test_validate_contract_rejects_invalid_json_shape(mutate, message):
             "does not resolve",
         ),
         (
-            EvidenceCandidate("requirements[0].display_text", SOURCE, 0, len(SOURCE) + 1),
+            EvidenceCandidate(
+                "requirements[0].display_text", SOURCE, 0, len(SOURCE) + 1
+            ),
             "outside source text",
         ),
         (
@@ -148,7 +150,9 @@ def test_validate_contract_requires_evidence_for_each_visible_field():
         if item.field_path != "requirements[0].display_text"
     )
 
-    with pytest.raises(ContractValidationError, match=r"requirements\[0\].display_text"):
+    with pytest.raises(
+        ContractValidationError, match=r"requirements\[0\].display_text"
+    ):
         validate_contract(valid_contract(), evidence, SOURCE)
 
 

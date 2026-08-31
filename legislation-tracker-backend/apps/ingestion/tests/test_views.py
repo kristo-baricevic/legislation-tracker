@@ -7,6 +7,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import TrackedBill
+from apps.ingestion import models as ingestion_models
+from apps.ingestion import tasks as ingestion_tasks
 from apps.ingestion import views
 from apps.ingestion.congress_client import CongressAPIError
 from apps.ingestion.models import (
@@ -350,7 +352,8 @@ def test_staff_can_replay_a_dead_lettered_document_stage(monkeypatch):
     monkeypatch.setattr(
         views.process_bill_versions,
         "apply_async",
-        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        lambda args=None, kwargs=None: calls.append((args, kwargs))
+        or FakeAsyncResult(),
         raising=False,
     )
 
@@ -390,11 +393,14 @@ def test_staff_can_replay_a_dead_lettered_contract_stage(monkeypatch):
     monkeypatch.setattr(
         views.generate_contract,
         "apply_async",
-        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        lambda args=None, kwargs=None: calls.append((args, kwargs))
+        or FakeAsyncResult(),
     )
 
     listed = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
-    replayed = authenticated_client("contract-operator@example.com", is_staff=True).post(
+    replayed = authenticated_client(
+        "contract-operator@example.com", is_staff=True
+    ).post(
         f"/api/ingestion/failures/{failure.id}/replay/",
         {},
         format="json",
@@ -422,13 +428,16 @@ def test_staff_can_replay_a_dead_lettered_representative_sync(monkeypatch):
     monkeypatch.setattr(
         views.sync_representatives,
         "apply_async",
-        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        lambda args=None, kwargs=None: calls.append((args, kwargs))
+        or FakeAsyncResult(),
         raising=False,
     )
     client = authenticated_client("roster-replay-operator@example.com", is_staff=True)
 
     listed = client.get("/api/ingestion/failures/")
-    replayed = client.post(f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json")
+    replayed = client.post(
+        f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json"
+    )
 
     failure.refresh_from_db()
     assert [item["id"] for item in listed.json()["results"]] == [failure.id]
@@ -458,13 +467,18 @@ def test_resolved_dead_lettered_stage_cannot_be_replayed_twice(monkeypatch):
     monkeypatch.setattr(
         views.process_bill_versions,
         "apply_async",
-        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        lambda args=None, kwargs=None: calls.append((args, kwargs))
+        or FakeAsyncResult(),
         raising=False,
     )
     client = authenticated_client("one-time-operator@example.com", is_staff=True)
 
-    first = client.post(f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json")
-    second = client.post(f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json")
+    first = client.post(
+        f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json"
+    )
+    second = client.post(
+        f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json"
+    )
 
     assert first.status_code == 202
     assert second.status_code == 409
@@ -552,11 +566,14 @@ def test_stage_replay_remains_recoverable_when_the_web_process_stops_after_claim
     monkeypatch.setattr(
         views.process_bill_versions,
         "apply_async",
-        lambda args=None, kwargs=None: calls.append((args, kwargs)) or FakeAsyncResult(),
+        lambda args=None, kwargs=None: calls.append((args, kwargs))
+        or FakeAsyncResult(),
         raising=False,
     )
 
-    response = client.post(f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json")
+    response = client.post(
+        f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json"
+    )
 
     failure.refresh_from_db()
     assert response.status_code == 202
@@ -646,57 +663,293 @@ def test_backfill_topics_endpoint_enqueues_task_for_staff_user(monkeypatch):
     assert calls == [{"session": 119}]
 
 
-@pytest.mark.django_db
-def test_staff_ingest_bill_creates_shared_public_bill_and_private_tracking(monkeypatch):
-    def fake_process_bill(bill_key):
-        assert bill_key == "119-hr-42"
-        bill, created = Bill.objects.get_or_create(
-            session=119,
-            bill_number="HR 42",
-            defaults={
-                "jurisdiction": "federal",
-                "title": "Shared public bill",
-                "status": "Introduced",
-            },
-        )
-        return {"bill_id": bill.id, "unchanged": not created}
+@pytest.mark.django_db(transaction=True)
+def test_staff_ingest_bill_persists_work_and_tracking_intent_when_broker_is_down(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work,
+        "delay",
+        lambda: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+    client = authenticated_client("owner@example.com", is_staff=True)
 
-    monkeypatch.setattr(views, "_process_bill_impl", fake_process_bill, raising=False)
+    response = client.post(
+        "/api/ingestion/bills/",
+        {"congress": 119, "bill_type": "HR", "bill_number": "42"},
+        format="json",
+    )
+
+    work = IngestionWorkItem.objects.get()
+    request = ingestion_models.BillTrackingRequest.objects.get()
+    assert response.status_code == 202
+    assert response.json() == {
+        "work_item_id": work.id,
+        "status": "pending",
+        "status_url": f"/api/ingestion/work/{work.id}/",
+        "tracking_status": "pending",
+        "bill_id": None,
+    }
+    assert (work.kind, work.dedupe_key, work.payload_json) == (
+        "bill",
+        "119-hr-42",
+        {"bill_key": "119-hr-42"},
+    )
+    assert request.work_item_id == work.id
+    assert request.user.email == "owner@example.com"
+    assert request.status == "pending"
+    assert not Bill.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicate_manual_bill_requests_reuse_work_and_per_user_intent(monkeypatch):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
     owner_client = authenticated_client("owner@example.com", is_staff=True)
     other_client = authenticated_client("other@example.com", is_staff=True)
+    payload = {"congress": 119, "bill_type": "hr", "bill_number": "42"}
 
-    first = owner_client.post(
+    first = owner_client.post("/api/ingestion/bills/", payload, format="json")
+    duplicate = owner_client.post("/api/ingestion/bills/", payload, format="json")
+    other_user = other_client.post("/api/ingestion/bills/", payload, format="json")
+
+    assert first.status_code == duplicate.status_code == other_user.status_code == 202
+    assert first.json()["work_item_id"] == duplicate.json()["work_item_id"]
+    assert first.json()["work_item_id"] == other_user.json()["work_item_id"]
+    assert IngestionWorkItem.objects.count() == 1
+    assert ingestion_models.BillTrackingRequest.objects.count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        ({"congress": -1, "bill_type": "hr", "bill_number": "42"}, "congress"),
+        ({"congress": 119, "bill_type": "hr", "bill_number": "   "}, "bill_number"),
+        ({"congress": 119, "bill_type": "hr", "bill_number": "4A"}, "bill_number"),
+        (
+            {"congress": 119, "bill_type": "hr", "bill_number": "1" * 33},
+            "bill_number",
+        ),
+    ],
+)
+def test_manual_bill_request_rejects_values_that_cannot_be_persisted(
+    monkeypatch,
+    payload,
+    field,
+):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+
+    response = authenticated_client(is_staff=True).post(
+        "/api/ingestion/bills/",
+        payload,
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert field in response.json()
+    assert not IngestionWorkItem.objects.exists()
+    assert not ingestion_models.BillTrackingRequest.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_manual_bill_request_canonicalizes_numeric_bill_numbers(monkeypatch):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+    client = authenticated_client(is_staff=True)
+
+    first = client.post(
+        "/api/ingestion/bills/",
+        {"congress": 119, "bill_type": "HR", "bill_number": "00042"},
+        format="json",
+    )
+    duplicate = client.post(
         "/api/ingestion/bills/",
         {"congress": 119, "bill_type": "hr", "bill_number": "42"},
         format="json",
     )
-    duplicate_owner = owner_client.post(
+
+    assert first.status_code == duplicate.status_code == 202
+    assert first.json()["work_item_id"] == duplicate.json()["work_item_id"]
+    work = IngestionWorkItem.objects.get()
+    tracking_request = ingestion_models.BillTrackingRequest.objects.get()
+    assert work.dedupe_key == "119-hr-42"
+    assert tracking_request.bill_number == "42"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_manual_request_for_existing_bill_tracks_immediately(monkeypatch):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 42",
+        title="Shared public bill",
+        status="Introduced",
+    )
+    client = authenticated_client("owner@example.com", is_staff=True)
+
+    response = client.post(
         "/api/ingestion/bills/",
         {"congress": 119, "bill_type": "hr", "bill_number": "42"},
         format="json",
     )
-    other_user = other_client.post(
+
+    request = ingestion_models.BillTrackingRequest.objects.get()
+    assert response.status_code == 202
+    assert response.json()["tracking_status"] == "fulfilled"
+    assert response.json()["bill_id"] == bill.id
+    assert request.status == "fulfilled"
+    assert request.fulfilled_at is not None
+    assert request.bill_id == bill.id
+    assert TrackedBill.objects.filter(user=request.user, bill=bill).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_repeated_manual_request_restores_tracking_after_the_user_untracks(monkeypatch):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 42",
+        title="Shared public bill",
+        status="Introduced",
+    )
+    client = authenticated_client("owner@example.com", is_staff=True)
+    payload = {"congress": 119, "bill_type": "hr", "bill_number": "42"}
+    first = client.post("/api/ingestion/bills/", payload, format="json")
+    tracking_request = ingestion_models.BillTrackingRequest.objects.get()
+    TrackedBill.objects.get(user=tracking_request.user, bill=bill).delete()
+
+    repeated = client.post("/api/ingestion/bills/", payload, format="json")
+
+    tracking_request.refresh_from_db()
+    assert first.status_code == repeated.status_code == 202
+    assert repeated.json()["tracking_status"] == "fulfilled"
+    assert repeated.json()["bill_id"] == bill.id
+    assert TrackedBill.objects.filter(user=tracking_request.user, bill=bill).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_repeated_manual_request_requeues_succeeded_work_when_the_bill_is_missing(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+    client = authenticated_client("owner@example.com", is_staff=True)
+    payload = {"congress": 119, "bill_type": "hr", "bill_number": "42"}
+    accepted = client.post("/api/ingestion/bills/", payload, format="json")
+    work = IngestionWorkItem.objects.get(pk=accepted.json()["work_item_id"])
+    work.status = IngestionWorkStatus.SUCCEEDED
+    work.attempt_count = 2
+    work.completed_at = timezone.now()
+    work.last_error = "old diagnostic"
+    work.save(update_fields=["status", "attempt_count", "completed_at", "last_error"])
+
+    repeated = client.post("/api/ingestion/bills/", payload, format="json")
+
+    work.refresh_from_db()
+    assert repeated.status_code == 202
+    assert repeated.json()["status"] == "pending"
+    assert repeated.json()["tracking_status"] == "pending"
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.attempt_count == 0
+    assert work.completed_at is None
+    assert work.last_error == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_manual_ingestion_status_is_scoped_to_the_requesting_user(monkeypatch):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+    owner_client = authenticated_client("owner@example.com", is_staff=True)
+    other_client = authenticated_client("other@example.com", is_staff=True)
+    accepted = owner_client.post(
         "/api/ingestion/bills/",
         {"congress": 119, "bill_type": "hr", "bill_number": "42"},
         format="json",
     )
 
-    assert first.status_code == 201
-    assert duplicate_owner.status_code == 200
-    assert other_user.status_code == 201
+    owner_status = owner_client.get(accepted.json()["status_url"])
+    other_status = other_client.get(accepted.json()["status_url"])
 
-    bill = Bill.objects.get()
+    assert owner_status.status_code == 200
+    assert owner_status.json() == {
+        "work_item_id": accepted.json()["work_item_id"],
+        "status": "pending",
+        "attempt_count": 0,
+        "last_error": "",
+        "completed_at": None,
+        "tracking_status": "pending",
+        "bill_id": None,
+    }
+    assert other_status.status_code == 404
 
-    public_detail = APIClient().get(f"/api/bills/{bill.id}/")
-    owner_summary = owner_client.get("/api/tracking/")
-    other_summary = other_client.get("/api/tracking/")
 
-    assert first.json()["bill"]["id"] == bill.id
-    assert duplicate_owner.json()["bill"]["id"] == bill.id
-    assert other_user.json()["bill"]["id"] == bill.id
-    assert Bill.objects.count() == 1
-    assert TrackedBill.objects.count() == 2
-    assert public_detail.status_code == 200
-    assert public_detail.json()["id"] == bill.id
-    assert [item["bill"]["id"] for item in owner_summary.json()["bills"]] == [bill.id]
-    assert [item["bill"]["id"] for item in other_summary.json()["bills"]] == [bill.id]
+@pytest.mark.django_db(transaction=True)
+def test_replayed_manual_bill_work_fulfills_the_original_tracking_request(monkeypatch):
+    monkeypatch.setattr(
+        views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
+    )
+    client = authenticated_client("owner@example.com", is_staff=True)
+    accepted = client.post(
+        "/api/ingestion/bills/",
+        {"congress": 119, "bill_type": "hr", "bill_number": "42"},
+        format="json",
+    )
+    work = IngestionWorkItem.objects.get(pk=accepted.json()["work_item_id"])
+    work.status = IngestionWorkStatus.DEAD
+    work.attempt_count = ingestion_tasks.MAX_INGESTION_WORK_ATTEMPTS
+    work.last_error = "Congress unavailable"
+    work.save(update_fields=["status", "attempt_count", "last_error"])
+    failure = IngestionTaskFailure.objects.create(
+        task_id="manual-bill-42",
+        task_name="process_ingestion_work_item",
+        work_item=work,
+        args_json={"args": [work.id], "kwargs": {}},
+        error_message="Congress unavailable",
+    )
+    monkeypatch.setattr(
+        ingestion_tasks,
+        "bill_detail",
+        lambda congress, bill_type, bill_number: {
+            "title": "Recovered bill",
+            "latestAction": {
+                "actionDate": "2026-08-31",
+                "text": "Introduced",
+            },
+            "url": "https://api.congress.gov/v3/bill/119/hr/42",
+        },
+    )
+    monkeypatch.setattr(
+        ingestion_tasks, "_queue_bill_stage", lambda *args, **kwargs: None
+    )
+
+    replayed = client.post(
+        f"/api/ingestion/failures/{failure.id}/replay/",
+        {},
+        format="json",
+    )
+    processed = ingestion_tasks.process_ingestion_work_item(work.id)
+
+    work.refresh_from_db()
+    request = ingestion_models.BillTrackingRequest.objects.get()
+    bill = Bill.objects.get(session=119, bill_number="HR 42")
+    assert replayed.status_code == 202
+    assert processed == {"work_item_id": work.id, "status": "succeeded"}
+    assert request.status == "fulfilled"
+    assert request.bill_id == bill.id
+    assert TrackedBill.objects.filter(user=request.user, bill=bill).exists()
+    status_response = client.get(accepted.json()["status_url"])
+    assert status_response.json()["status"] == "succeeded"
+    assert status_response.json()["tracking_status"] == "fulfilled"

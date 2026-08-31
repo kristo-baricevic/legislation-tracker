@@ -10,7 +10,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.legislation.enhancements.provider_registry import get_provider
 from apps.legislation.enhancements.providers.base import ProviderError
@@ -80,7 +79,6 @@ def _settings_payload(credential: LLMCredential | None) -> dict:
 
 @method_decorator(sensitive_post_parameters("api_key"), name="dispatch")
 class LLMSettingsView(PrivateNoStoreMixin, APIView):
-    authentication_classes = (JWTAuthentication,)
     permission_classes = (IsAuthenticated,)
 
     def _credential(self, request):
@@ -157,7 +155,6 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
 
 
 class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
-    authentication_classes = (JWTAuthentication,)
     permission_classes = (IsAuthenticated,)
     throttle_classes = (LLMValidationThrottle,)
 

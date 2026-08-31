@@ -11,7 +11,7 @@ import {
   getBillEnhancementEstimate,
   getLatestBillEnhancement,
   getPublicCapabilities,
-  getStoredAccessToken,
+  getSession,
   type BillEnhancement,
 } from "@/lib/api";
 
@@ -39,7 +39,7 @@ vi.mock("@/lib/api", () => {
     getBillEnhancementEstimate: vi.fn(),
     getLatestBillEnhancement: vi.fn(),
     getPublicCapabilities: vi.fn(),
-    getStoredAccessToken: vi.fn(),
+    getSession: vi.fn(),
     retryBillEnhancement: vi.fn(),
   };
 });
@@ -119,7 +119,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("offers login without calling private endpoints for an anonymous reader", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue(null);
+    vi.mocked(getSession).mockResolvedValue(null);
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
     expect(await screen.findByRole("link", { name: "Log in to use AI enhancement" })).toHaveAttribute(
@@ -130,7 +130,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("does not advertise authentication or key setup for an anonymous state bill", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue(null);
+    vi.mocked(getSession).mockResolvedValue(null);
 
     render(<BillEnhancementPanel billId={10} jurisdiction="california" />);
 
@@ -142,7 +142,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("omits the panel for an anonymous reader when the deployment disables it", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue(null);
+    vi.mocked(getSession).mockResolvedValue(null);
     vi.mocked(getPublicCapabilities).mockResolvedValue({ llm_enhancements: false });
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
@@ -155,7 +155,7 @@ describe("BillEnhancementPanel", () => {
 
   it("requires a cost confirmation containing the complete request estimate", async () => {
     const user = userEvent.setup();
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     vi.mocked(createBillEnhancement).mockResolvedValue({
       id: 9,
@@ -210,7 +210,7 @@ describe("BillEnhancementPanel", () => {
       request_fingerprint: "d".repeat(64),
       estimated_input_tokens: 700,
     };
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate)
       .mockResolvedValueOnce(estimate)
       .mockResolvedValueOnce(refreshedEstimate);
@@ -233,7 +233,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("renders server-owned citations as cited sources, never verified evidence", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     vi.mocked(getLatestBillEnhancement).mockResolvedValue({
       id: 9,
@@ -287,7 +287,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("keeps a stale success readable and offers the current request identity", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     vi.mocked(getLatestBillEnhancement).mockResolvedValue({
       id: 12,
@@ -331,7 +331,7 @@ describe("BillEnhancementPanel", () => {
   it("retries polling after a transient detail failure and then renders success", async () => {
     vi.useFakeTimers();
     try {
-      vi.mocked(getStoredAccessToken).mockReturnValue("token");
+      vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
       vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
       vi.mocked(getLatestBillEnhancement).mockResolvedValue(
         enhancementPayload({
@@ -406,7 +406,7 @@ describe("BillEnhancementPanel", () => {
         uncertain_language: [],
       },
     });
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
     vi.mocked(getBillEnhancements).mockResolvedValue({
@@ -426,7 +426,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("explains missing bill text without incorrectly sending the user to key settings", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue({
       feature_available: true,
       can_enhance: false,
@@ -442,7 +442,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("explains that state bills are outside the federal-first scope", async () => {
-    vi.mocked(getStoredAccessToken).mockReturnValue("token");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue({
       feature_available: true,
       can_enhance: false,

@@ -3,23 +3,36 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearStoredTokens, getStoredAccessToken } from "../../lib/api";
+import { getSession, logout } from "../../lib/api";
 
 export default function AuthNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const [hasToken, setHasToken] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
 
-  // Re-check token on mount and when route changes (e.g. after login redirect)
   useEffect(() => {
-    setHasToken(!!getStoredAccessToken());
+    let active = true;
+    getSession()
+      .then((session) => {
+        if (active) setHasSession(Boolean(session));
+      })
+      .catch(() => {
+        if (active) setHasSession(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [pathname]);
 
-  const handleLogout = () => {
-    clearStoredTokens();
-    setHasToken(false);
-    router.push("/");
-    router.refresh();
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setHasSession(false);
+      router.push("/");
+      router.refresh();
+    } catch {
+      // Keep the authenticated navigation visible so the user can retry.
+    }
   };
 
   return (
@@ -39,7 +52,7 @@ export default function AuthNav() {
       >
         Representatives
       </Link>
-      {hasToken ? (
+      {hasSession ? (
         <>
           <Link
             href="/settings"

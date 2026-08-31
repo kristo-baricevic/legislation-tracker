@@ -22,6 +22,7 @@ from apps.accounts.llm_credentials import (
 )
 from apps.accounts.models import LLMCredential
 from apps.changelog.models import ChangeLog
+from apps.congress.current import current_congress
 from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.contract_json import contract_hash_from_dict
@@ -735,9 +736,10 @@ def _schedule_similarity_for_bill_impl(bill_id):
 @shared_task
 def recompute_similarity_batch(session=None, batch_size=None):
     """Enqueue deterministic similarity recomputation for matching bills."""
+    if session is None:
+        session = current_congress()
     bills = Bill.objects.all().order_by("id")
-    if session is not None:
-        bills = bills.filter(session=int(session))
+    bills = bills.filter(session=int(session))
     bill_ids = bills.values_list("id", flat=True)
     if batch_size is not None:
         bill_ids = bill_ids[: int(batch_size)]

@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import Topic, Bill, BillDocument, BillContract, EvidenceSpan, BillTopic, BillSimilarity
+
+from .models import (
+    Bill,
+    BillContract,
+    BillDocument,
+    BillSimilarity,
+    BillTopic,
+    EvidenceSpan,
+    Topic,
+)
 
 admin.site.register(Topic)
 admin.site.register(Bill)

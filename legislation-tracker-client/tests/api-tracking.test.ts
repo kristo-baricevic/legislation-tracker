@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
   getRelatedBills,
@@ -17,8 +17,16 @@ import {
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
 
+beforeEach(() => {
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: { cookie: "csrftoken=csrf-test-token" },
+  });
+});
+
 afterEach(() => {
   process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+  Reflect.deleteProperty(globalThis, "document");
 });
 
 describe("tracking API helpers", () => {
@@ -104,7 +112,13 @@ describe("tracking API helpers", () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     globalThis.fetch = async (url, init) => {
       requests.push({ url: String(url), init });
-      return Response.json({ bill: { id: 10 }, tracked_bill: { id: 20 } });
+      return Response.json({
+        work_item_id: 10,
+        status: "pending",
+        status_url: "/api/ingestion/work/10/",
+        tracking_status: "pending",
+        bill_id: null,
+      });
     };
 
     const result = await ingestBill({
@@ -113,7 +127,13 @@ describe("tracking API helpers", () => {
       billNumber: "42",
     });
 
-    assert.deepEqual(result, { bill: { id: 10 }, tracked_bill: { id: 20 } });
+    assert.deepEqual(result, {
+      work_item_id: 10,
+      status: "pending",
+      status_url: "/api/ingestion/work/10/",
+      tracking_status: "pending",
+      bill_id: null,
+    });
     assert.equal(requests[0].url, "http://api.test/api/ingestion/bills/");
     assert.equal(requests[0].init?.method, "POST");
     assert.equal(

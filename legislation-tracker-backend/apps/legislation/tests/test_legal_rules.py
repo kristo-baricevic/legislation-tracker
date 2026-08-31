@@ -74,12 +74,12 @@ If an application is complete, the Secretary shall approve it.
 
 
 def test_extract_definitions_requires_explicit_syntax_or_definition_context():
-    source = '''SEC. 3. DEFINITIONS
+    source = """SEC. 3. DEFINITIONS
 The term "covered entity" means a rural hospital.
 “Covered service” includes hospital care and emergency transport.
 SEC. 4. FINDINGS
 Coverage means access to insurance.
-'''
+"""
 
     claims = extract_definition_claims(source, parse_federal_structure(source))
 
@@ -154,7 +154,7 @@ The program excludes for-profit hospitals.
 
 
 def test_extract_claims_filters_nonoperative_and_quoted_modal_language():
-    source = '''SEC. 1. TABLE OF CONTENTS
+    source = """SEC. 1. TABLE OF CONTENTS
 Sec. 4. The Secretary shall report
 SEC. 2. DEFINITIONS
 The term "requirement" means a rule that shall apply to covered entities.
@@ -165,7 +165,7 @@ The report may discuss whether the agency should act.
 A notice states “the agency may waive a rule”.
 SEC. 5. DUTY
 The Secretary shall publish a current report.
-'''
+"""
 
     claims = extract_claims(source, parse_federal_structure(source))
     modality_claims = [claim for claim in claims if claim.category == "requirements"]
@@ -391,7 +391,7 @@ The Secretary shall administer the program under 15 U.S.C. 78d.
 
 
 def test_extract_amendments_applies_precedence_and_captures_payloads():
-    source = '''SEC. 9. AMENDMENTS
+    source = """SEC. 9. AMENDMENTS
 Section 5 of the Example Act is amended by adding at the end the following: “new subsection”.
 In section 6, insert “new text” after “old text”.
 In section 7, strike “obsolete text”.
@@ -400,7 +400,7 @@ In section 9, replace “old term” with “new term”.
 Paragraph (2) is redesignated as paragraph (3).
 Section 10 is repealed.
 Section 11 is amended.
-'''
+"""
 
     sections = parse_federal_structure(source)
     claims = extract_amendment_claims(source, sections)
@@ -427,10 +427,10 @@ Section 11 is amended.
 
 
 def test_extract_amendments_inherits_target_for_numbered_gerund_instruction():
-    source = '''SEC. 9. AMENDMENTS
+    source = """SEC. 9. AMENDMENTS
 Section 5 is amended—
 (1) by striking “old text” and inserting “new text”.
-'''
+"""
 
     claims = extract_amendment_claims(source, parse_federal_structure(source))
 

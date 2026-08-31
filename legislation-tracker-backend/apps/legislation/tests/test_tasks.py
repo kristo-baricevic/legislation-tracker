@@ -54,7 +54,9 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
     spans = EvidenceSpan.objects.filter(contract_id=first["contract_id"])
     assert spans.count() > 0
     for span in spans:
-        assert document.extracted_text[span.start_char:span.end_char] == span.quoted_text
+        assert (
+            document.extracted_text[span.start_char : span.end_char] == span.quoted_text
+        )
     assert list(
         IngestionWorkItem.objects.filter(kind="topic_update").values_list(
             "payload_json", flat=True
@@ -196,9 +198,7 @@ def test_generate_contract_refreshes_evidence_when_reusing_an_older_hash():
     assert reused["contract_id"] == original["contract_id"]
     assert refreshed_evidence.start_char == original_evidence.start_char + 1
     assert (
-        reflowed_source[
-            refreshed_evidence.start_char : refreshed_evidence.end_char
-        ]
+        reflowed_source[refreshed_evidence.start_char : refreshed_evidence.end_char]
         == refreshed_evidence.quoted_text
     )
 
@@ -269,7 +269,9 @@ def test_unexpected_extraction_error_propagates_for_durable_retry(monkeypatch):
 
 @pytest.mark.django_db
 def test_generate_contract_builds_structured_contract_with_source_evidence(monkeypatch):
-    monkeypatch.setattr(tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None)
+    monkeypatch.setattr(
+        tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None
+    )
     monkeypatch.setattr(
         tasks.schedule_similarity_for_bill,
         "apply_async",
@@ -326,13 +328,15 @@ def test_generate_contract_builds_structured_contract_with_source_evidence(monke
         "source_excerpt",
     }.issubset(field_paths)
     for span in spans:
-        assert source_text[span.start_char:span.end_char] == span.quoted_text
+        assert source_text[span.start_char : span.end_char] == span.quoted_text
         assert span.quoted_text
 
 
 @pytest.mark.django_db
 def test_contract_evidence_uses_the_actual_repeated_sentence_location(monkeypatch):
-    monkeypatch.setattr(tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None)
+    monkeypatch.setattr(
+        tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None
+    )
     monkeypatch.setattr(
         tasks.schedule_similarity_for_bill,
         "apply_async",
@@ -368,7 +372,9 @@ def test_contract_evidence_uses_the_actual_repeated_sentence_location(monkeypatc
 def test_generate_contract_for_inactive_document_does_not_replace_latest_contract(
     monkeypatch,
 ):
-    monkeypatch.setattr(tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None)
+    monkeypatch.setattr(
+        tasks.update_topics, "apply_async", lambda args=None, kwargs=None: None
+    )
     monkeypatch.setattr(
         tasks.schedule_similarity_for_bill,
         "apply_async",
@@ -470,7 +476,11 @@ def test_update_topics_infers_bill_topics_and_is_idempotent(monkeypatch):
     assert ChangeLog.objects.filter(change_type="topic_update").count() == 1
     change = ChangeLog.objects.get(change_type="topic_update")
     assert change.old_value == {"topics": []}
-    assert set(change.new_value["topics"]) == {"energy", "environment-climate", "health"}
+    assert set(change.new_value["topics"]) == {
+        "energy",
+        "environment-climate",
+        "health",
+    }
 
     second = tasks.update_topics(contract.id)
 
@@ -831,3 +841,29 @@ def test_recompute_similarity_batch_enqueues_all_bills(monkeypatch):
         .order_by("payload_json__bill_id")
         .values_list("payload_json", flat=True)
     ) == [{"bill_id": first.id}, {"bill_id": second.id}]
+
+
+@pytest.mark.django_db
+def test_recompute_similarity_batch_resolves_current_congress_at_execution(monkeypatch):
+    current = Bill.objects.create(
+        jurisdiction="federal",
+        session=121,
+        bill_number="HR 1",
+        title="Current bill",
+        status="Introduced",
+    )
+    Bill.objects.create(
+        jurisdiction="federal",
+        session=120,
+        bill_number="HR 2",
+        title="Historical bill",
+        status="Introduced",
+    )
+    monkeypatch.setattr(tasks, "current_congress", lambda: 121)
+
+    result = tasks.recompute_similarity_batch(session=None)
+
+    assert result == {"enqueued": 1, "session": 121}
+    assert IngestionWorkItem.objects.get(kind="similarity").payload_json == {
+        "bill_id": current.id
+    }

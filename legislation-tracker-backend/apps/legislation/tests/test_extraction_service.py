@@ -33,7 +33,11 @@ def test_extract_contract_selects_v2_for_supported_federal_text():
 @pytest.mark.parametrize(
     ("jurisdiction", "text", "reason"),
     [
-        ("state", "SEC. 2. REPORTS\nThe Secretary shall report.", "unsupported_jurisdiction"),
+        (
+            "state",
+            "SEC. 2. REPORTS\nThe Secretary shall report.",
+            "unsupported_jurisdiction",
+        ),
         ("federal", "  ", "missing_source_text"),
         ("federal", "This bill creates a program.", "unrecognized_federal_structure"),
         ("federal", "SEC. 2. FINDINGS\nCongress finds a need.", "no_supported_claims"),
@@ -71,10 +75,13 @@ def test_extract_contract_uses_legacy_for_validation_failures(reason, expected):
 
 
 def test_extract_contract_does_not_swallow_unexpected_rule_errors():
-    with patch(
-        "apps.legislation.extraction.legal_rules.extract_claims",
-        side_effect=RuntimeError("rule bug"),
-    ), pytest.raises(RuntimeError, match="rule bug"):
+    with (
+        patch(
+            "apps.legislation.extraction.legal_rules.extract_claims",
+            side_effect=RuntimeError("rule bug"),
+        ),
+        pytest.raises(RuntimeError, match="rule bug"),
+    ):
         extract_contract(
             document=document("SEC. 2. REPORTS\nThe Secretary shall report."),
             bill=bill(),

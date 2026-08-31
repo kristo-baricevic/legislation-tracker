@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getApiBase, getStoredAccessToken, login, register, setStoredTokens } from "../../lib/api";
+import { getApiBase, getSession, login, register } from "../../lib/api";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -15,9 +15,15 @@ export default function SignUpPage() {
 
   // Redirect to home if already signed in
   useEffect(() => {
-    if (getStoredAccessToken()) {
-      router.replace("/");
-    }
+    let active = true;
+    getSession()
+      .then((session) => {
+        if (active && session) router.replace("/");
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,8 +40,7 @@ export default function SignUpPage() {
     setLoading(true);
     try {
       await register(email, password);
-      const { access, refresh } = await login(email, password);
-      setStoredTokens(access, refresh);
+      await login(email, password);
       router.push("/");
       router.refresh();
     } catch (err) {

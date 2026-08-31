@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 from django.db import connection, connections
@@ -39,8 +39,8 @@ _EXPECTED_PARENT_INDEXES = {
 
 def test_month_bounds_roll_over_december():
     assert month_bounds(date(2026, 12, 25)) == (
-        datetime(2026, 12, 1, tzinfo=timezone.utc),
-        datetime(2027, 1, 1, tzinfo=timezone.utc),
+        datetime(2026, 12, 1, tzinfo=UTC),
+        datetime(2027, 1, 1, tzinfo=UTC),
     )
 
 
@@ -81,8 +81,8 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations():
         old_value={"version": 1},
         new_value={"version": 2},
     )
-    first_created_at = datetime(2026, 1, 31, 23, 59, tzinfo=timezone.utc)
-    second_created_at = datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc)
+    first_created_at = datetime(2026, 1, 31, 23, 59, tzinfo=UTC)
+    second_created_at = datetime(2026, 2, 1, 0, 0, tzinfo=UTC)
     OldChangeLog.objects.filter(pk=first.pk).update(created_at=first_created_at)
     OldChangeLog.objects.filter(pk=second.pk).update(created_at=second_created_at)
     source_sequence_high_water_mark = second.pk + 50
@@ -238,7 +238,7 @@ def test_partition_maintenance_uses_utc_boundaries_when_session_timezone_differs
             change_type="status_update",
             new_value={"status": "updated"},
         )
-        created_at = datetime(2030, 2, 1, 0, 0, tzinfo=timezone.utc)
+        created_at = datetime(2030, 2, 1, 0, 0, tzinfo=UTC)
         ChangeLog.objects.filter(pk=event.pk).update(created_at=created_at)
         with connection.cursor() as cursor:
             cursor.execute(

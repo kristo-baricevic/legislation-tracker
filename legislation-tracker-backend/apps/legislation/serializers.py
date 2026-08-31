@@ -1,6 +1,36 @@
 from rest_framework import serializers
 
+from config.api import PaginatedQuerySerializer, StrictQuerySerializer
+
 from .models import Bill, BillContract, BillDocument, BillTopic, EvidenceSpan, Topic
+
+
+class BillListQuerySerializer(PaginatedQuerySerializer):
+    session = serializers.IntegerField(required=False, min_value=1)
+    congress = serializers.IntegerField(required=False, min_value=1)
+    id = serializers.IntegerField(required=False, min_value=1)
+    jurisdiction = serializers.CharField(required=False, allow_blank=True)
+    bill_number = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.CharField(required=False, allow_blank=True)
+    sponsor = serializers.CharField(required=False, allow_blank=True)
+    topic = serializers.CharField(required=False, allow_blank=True)
+    topic_id = serializers.IntegerField(required=False, min_value=1)
+
+
+class BillContractListQuerySerializer(PaginatedQuerySerializer):
+    bill = serializers.IntegerField(required=False, min_value=1)
+
+
+class BillRelatedQuerySerializer(StrictQuerySerializer):
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=50)
+
+
+class BillDocumentListQuerySerializer(PaginatedQuerySerializer):
+    pass
+
+
+class TopicListQuerySerializer(StrictQuerySerializer):
+    pass
 
 
 class TopicSerializer(serializers.ModelSerializer):

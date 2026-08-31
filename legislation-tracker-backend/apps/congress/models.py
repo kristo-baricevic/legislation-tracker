@@ -41,7 +41,9 @@ class Vote(models.Model):
     )
     chamber = models.CharField(max_length=20)
     # Legacy rows predate authoritative Congress API session references.
-    session_number = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
+    session_number = models.PositiveSmallIntegerField(
+        null=True, blank=True, default=None
+    )
     roll_number = models.PositiveIntegerField()
     vote_date = models.DateTimeField()
     result = models.CharField(max_length=50)  # passed, failed, etc.

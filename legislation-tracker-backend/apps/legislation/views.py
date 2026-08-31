@@ -1,22 +1,29 @@
 import re
 from collections import Counter
 
-from django.core.files.storage import FileSystemStorage
-from django.core.files.storage import default_storage
-from django.http import FileResponse, HttpResponse, HttpResponseRedirect
+from django.core.files.storage import FileSystemStorage, default_storage
 from django.db.models import Q
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.congress.current import current_congress
+from config.api import StrictQuerySerializer
+
 from .models import Bill, BillContract, BillDocument, BillSimilarity, BillTopic, Topic
 from .serializers import (
+    BillContractListQuerySerializer,
     BillContractSerializer,
     BillDetailSerializer,
+    BillDocumentListQuerySerializer,
     BillDocumentSerializer,
+    BillListQuerySerializer,
     BillListSerializer,
+    BillRelatedQuerySerializer,
+    TopicListQuerySerializer,
     TopicSerializer,
 )
 from .topic_taxonomy import TOPICS
@@ -31,6 +38,11 @@ class TopicViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TopicSerializer
     pagination_class = None
 
+    def get_queryset(self):
+        query = TopicListQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        return super().get_queryset()
+
 
 class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     """Public access to the stored original and extracted text for a bill version."""
@@ -39,6 +51,16 @@ class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     queryset = BillDocument.objects.select_related("bill").order_by("id")
     serializer_class = BillDocumentSerializer
+
+    def get_queryset(self):
+        query_serializer = (
+            BillDocumentListQuerySerializer
+            if self.action == "list"
+            else StrictQuerySerializer
+        )
+        query = query_serializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        return super().get_queryset()
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
@@ -57,7 +79,9 @@ class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
                 return response
             # S3-backed storage yields its configured signed/public object URL
             # without exposing the internal object key in API payloads.
-            return HttpResponseRedirect(default_storage.url(document.object_storage_key))
+            return HttpResponseRedirect(
+                default_storage.url(document.object_storage_key)
+            )
 
         text = document.raw_text or document.extracted_text
         if not text:
@@ -91,12 +115,18 @@ class BillContractViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        bill = self.request.query_params.get("bill")
-        if bill:
-            try:
-                qs = qs.filter(bill_id=int(bill))
-            except ValueError:
-                pass
+        query_serializer = (
+            BillContractListQuerySerializer
+            if self.action == "list"
+            else StrictQuerySerializer
+        )
+        query = query_serializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        if self.action != "list":
+            return qs
+        bill = query.validated_data.get("bill")
+        if bill is not None:
+            qs = qs.filter(bill_id=bill)
         return qs
 
 
@@ -123,25 +153,33 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
+        if self.action == "list":
+            query_serializer = BillListQuerySerializer
+        elif self.action == "related":
+            query_serializer = BillRelatedQuerySerializer
+        else:
+            query_serializer = StrictQuerySerializer
+        query = query_serializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        if self.action != "list":
+            return qs
+        params = query.validated_data
 
         session = params.get("session")
-        if session is not None and str(session).strip() != "":
-            try:
-                qs = qs.filter(session=int(session))
-            except ValueError:
-                pass
+        if session is not None:
+            qs = qs.filter(session=session)
+
+        congress = params.get("congress")
+        if congress is not None:
+            qs = qs.filter(session=congress)
 
         jurisdiction = params.get("jurisdiction")
         if jurisdiction:
             qs = qs.filter(jurisdiction=jurisdiction.strip())
 
         bill_pk = params.get("id")
-        if bill_pk:
-            try:
-                qs = qs.filter(pk=int(bill_pk))
-            except ValueError:
-                pass
+        if bill_pk is not None:
+            qs = qs.filter(pk=bill_pk)
 
         bill_number = params.get("bill_number")
         if bill_number:
@@ -161,11 +199,8 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
 
         topic_id = params.get("topic_id")
         topic_text = params.get("topic")
-        if topic_id:
-            try:
-                qs = qs.filter(bill_topics__topic_id=int(topic_id)).distinct()
-            except ValueError:
-                pass
+        if topic_id is not None:
+            qs = qs.filter(bill_topics__topic_id=topic_id).distinct()
         elif topic_text:
             t = topic_text.strip()
             qs = qs.filter(
@@ -178,12 +213,19 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"], url_path="filter-options")
     def filter_options(self, request):
         """Distinct jurisdiction values present in the DB for dropdowns."""
+        query = StrictQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
         jurisdictions = (
             Bill.objects.order_by("jurisdiction")
             .values_list("jurisdiction", flat=True)
             .distinct()
         )
-        return Response({"jurisdictions": list(jurisdictions)})
+        return Response(
+            {
+                "jurisdictions": list(jurisdictions),
+                "current_congress": current_congress(),
+            }
+        )
 
     @action(detail=True, methods=["get"])
     def documents(self, request, pk=None):
@@ -243,17 +285,97 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         matched_topics = matched_topics[:5]
 
         stopwords = {
-            "a", "an", "the", "of", "to", "and", "in", "for", "on", "at",
-            "by", "or", "is", "it", "be", "as", "no", "not", "are", "was",
-            "were", "has", "have", "had", "been", "will", "would", "could",
-            "should", "their", "they", "them", "this", "that", "these",
-            "those", "with", "from", "but", "its", "than", "more", "also",
-            "about", "into", "over", "such", "can", "may", "just", "any",
-            "new", "some", "all", "his", "her", "he", "she", "who", "which",
-            "what", "when", "where", "how", "said", "says", "one", "two",
-            "per", "out", "up", "so", "if", "do", "did", "get", "got",
-            "like", "many", "much", "very", "other", "after", "before",
-            "between", "through", "under", "only", "then", "each", "own",
+            "a",
+            "an",
+            "the",
+            "of",
+            "to",
+            "and",
+            "in",
+            "for",
+            "on",
+            "at",
+            "by",
+            "or",
+            "is",
+            "it",
+            "be",
+            "as",
+            "no",
+            "not",
+            "are",
+            "was",
+            "were",
+            "has",
+            "have",
+            "had",
+            "been",
+            "will",
+            "would",
+            "could",
+            "should",
+            "their",
+            "they",
+            "them",
+            "this",
+            "that",
+            "these",
+            "those",
+            "with",
+            "from",
+            "but",
+            "its",
+            "than",
+            "more",
+            "also",
+            "about",
+            "into",
+            "over",
+            "such",
+            "can",
+            "may",
+            "just",
+            "any",
+            "new",
+            "some",
+            "all",
+            "his",
+            "her",
+            "he",
+            "she",
+            "who",
+            "which",
+            "what",
+            "when",
+            "where",
+            "how",
+            "said",
+            "says",
+            "one",
+            "two",
+            "per",
+            "out",
+            "up",
+            "so",
+            "if",
+            "do",
+            "did",
+            "get",
+            "got",
+            "like",
+            "many",
+            "much",
+            "very",
+            "other",
+            "after",
+            "before",
+            "between",
+            "through",
+            "under",
+            "only",
+            "then",
+            "each",
+            "own",
         }
         words = re.findall(r"[a-z][a-z']{2,}", text_lower)
         word_counts = Counter(w for w in words if w not in stopwords)
@@ -262,8 +384,9 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         topic_bill_ids = set()
         if matched_slugs:
             topic_bill_ids = set(
-                BillTopic.objects.filter(topic__slug__in=matched_slugs)
-                .values_list("bill_id", flat=True)
+                BillTopic.objects.filter(topic__slug__in=matched_slugs).values_list(
+                    "bill_id", flat=True
+                )
             )
 
         keyword_q = Q()
@@ -273,8 +396,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         keyword_bill_ids = set()
         if key_phrases:
             keyword_bill_ids = set(
-                Bill.objects.filter(keyword_q)
-                .values_list("id", flat=True)[:200]
+                Bill.objects.filter(keyword_q).values_list("id", flat=True)[:200]
             )
 
         all_bill_ids = topic_bill_ids | keyword_bill_ids
@@ -311,9 +433,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
             title_lower = (bill.title or "").lower()
             summary_lower = (bill.summary or "").lower()
             kw_hits = sum(
-                1
-                for kw in key_phrases[:10]
-                if kw in title_lower or kw in summary_lower
+                1 for kw in key_phrases[:10] if kw in title_lower or kw in summary_lower
             )
 
             score = (topic_overlap * 3) + kw_hits
@@ -329,9 +449,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
                         f"https://www.congress.gov/bill/{ordinal}/house-bill/{parts[1]}"
                     )
                 elif parts[0] == "S":
-                    congress_url = (
-                        f"https://www.congress.gov/bill/{ordinal}/senate-bill/{parts[1]}"
-                    )
+                    congress_url = f"https://www.congress.gov/bill/{ordinal}/senate-bill/{parts[1]}"
 
             scored.append(
                 {
@@ -361,16 +479,16 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"])
     def related(self, request, pk=None):
         """Ranked bills related to this bill by precomputed similarity."""
+        query = BillRelatedQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
         bill = self.get_object()
-        try:
-            limit = int(request.query_params.get("limit") or 10)
-        except ValueError:
-            limit = 10
-        limit = max(1, min(limit, 50))
+        limit = query.validated_data.get("limit", 10)
         rows = (
             BillSimilarity.objects.filter(Q(bill_a=bill) | Q(bill_b=bill))
             .select_related("bill_a", "bill_a__sponsor", "bill_b", "bill_b__sponsor")
-            .prefetch_related("bill_a__bill_topics__topic", "bill_b__bill_topics__topic")
+            .prefetch_related(
+                "bill_a__bill_topics__topic", "bill_b__bill_topics__topic"
+            )
             .order_by("-similarity_score", "id")[:limit]
         )
         results = []

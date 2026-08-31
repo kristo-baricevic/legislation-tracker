@@ -10,6 +10,11 @@ class IngestionWorkStatus(models.TextChoices):
     DEAD = "dead", "Dead"
 
 
+class BillTrackingRequestStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    FULFILLED = "fulfilled", "Fulfilled"
+
+
 class IngestionState(models.Model):
     """Tracks polling cursors so we only fetch bills updated since last run."""
 
@@ -74,6 +79,74 @@ class IngestionWorkItem(models.Model):
 
     def __str__(self):
         return f"{self.kind}:{self.dedupe_key} ({self.status})"
+
+
+class BillTrackingRequest(models.Model):
+    """Durable user intent to track a bill created by manual ingestion."""
+
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="bill_tracking_requests",
+    )
+    work_item = models.ForeignKey(
+        IngestionWorkItem,
+        on_delete=models.PROTECT,
+        related_name="tracking_requests",
+    )
+    bill = models.ForeignKey(
+        "legislation.Bill",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tracking_requests",
+    )
+    jurisdiction = models.CharField(max_length=20, default="federal")
+    congress = models.PositiveIntegerField()
+    bill_type = models.CharField(max_length=10)
+    bill_number = models.CharField(max_length=32)
+    status = models.CharField(
+        max_length=20,
+        choices=BillTrackingRequestStatus.choices,
+        default=BillTrackingRequestStatus.PENDING,
+        db_index=True,
+    )
+    fulfilled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "ingestion_billtrackingrequest"
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "jurisdiction",
+                    "congress",
+                    "bill_type",
+                    "bill_number",
+                ],
+                name="ingest_tracking_request_user_bill_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "status",
+                    "jurisdiction",
+                    "congress",
+                    "bill_type",
+                    "bill_number",
+                ],
+                name="ingest_track_pending_bill_idx",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"user={self.user_id} {self.congress}-{self.bill_type}-{self.bill_number} "
+            f"({self.status})"
+        )
 
 
 class IngestionTaskFailure(models.Model):

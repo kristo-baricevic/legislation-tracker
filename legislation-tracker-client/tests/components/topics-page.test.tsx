@@ -6,7 +6,7 @@ import TopicsPage from "@/app/topics/page";
 import {
   getTopics,
   getTrackedTopics,
-  isLoggedIn,
+  getSession,
   trackTopic,
   untrackTopic,
 } from "@/lib/api";
@@ -14,14 +14,17 @@ import {
 vi.mock("@/lib/api", () => ({
   getTopics: vi.fn(),
   getTrackedTopics: vi.fn(),
-  isLoggedIn: vi.fn(),
+  getSession: vi.fn(),
   trackTopic: vi.fn(),
   untrackTopic: vi.fn(),
 }));
 
 describe("TopicsPage", () => {
   beforeEach(() => {
-    vi.mocked(isLoggedIn).mockReturnValue(true);
+    vi.mocked(getSession).mockResolvedValue({
+      authenticated: true,
+      user: { email: "person@example.com" },
+    });
     vi.mocked(getTopics).mockResolvedValue([
       { id: 7, name: "Health", slug: "health" },
       { id: 8, name: "Education", slug: "education" },
@@ -68,5 +71,57 @@ describe("TopicsPage", () => {
       "Tracking service unavailable",
     );
     expect(screen.getByRole("button", { name: "Follow" })).toBeEnabled();
+  });
+
+  it("keeps topics visible when refresh fails and retries only the topic list", async () => {
+    const user = userEvent.setup();
+    render(<TopicsPage />);
+
+    expect(await screen.findByRole("link", { name: "Health" })).toBeVisible();
+    vi.mocked(getTopics).mockRejectedValueOnce(new Error("Topic service unavailable"));
+    await user.click(screen.getByRole("button", { name: "Refresh topics" }));
+
+    expect(await screen.findByText("Could not load topics. Try again.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Health" })).toBeVisible();
+    expect(getTrackedTopics).toHaveBeenCalledTimes(1);
+
+    vi.mocked(getTopics).mockResolvedValueOnce([
+      { id: 9, name: "Housing", slug: "housing" },
+    ]);
+    await user.click(screen.getByRole("button", { name: "Retry topics" }));
+
+    expect(await screen.findByRole("link", { name: "Housing" })).toBeVisible();
+    expect(screen.queryByText("Could not load topics. Try again.")).not.toBeInTheDocument();
+  });
+
+  it("keeps followed topics when refresh fails and retries only tracking state", async () => {
+    const user = userEvent.setup();
+    render(<TopicsPage />);
+
+    await screen.findByRole("button", { name: "Following" });
+    vi.mocked(getTrackedTopics).mockRejectedValueOnce(
+      new Error("Tracked topic service unavailable"),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Refresh followed topics" }),
+    );
+
+    expect(await screen.findByText("Could not load followed topics. Try again.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Following" })).toBeVisible();
+    expect(getTopics).toHaveBeenCalledTimes(1);
+
+    vi.mocked(getTrackedTopics).mockResolvedValueOnce([
+      {
+        id: 2,
+        topic: { id: 8, name: "Education", slug: "education" },
+        created_at: "2026-08-20T00:00:00Z",
+      },
+    ]);
+    await user.click(
+      screen.getByRole("button", { name: "Retry followed topics" }),
+    );
+
+    expect(await screen.findByRole("button", { name: "Following" })).toBeVisible();
+    expect(screen.queryByText("Could not load followed topics. Try again.")).not.toBeInTheDocument();
   });
 });

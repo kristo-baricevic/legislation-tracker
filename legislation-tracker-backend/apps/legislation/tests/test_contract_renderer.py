@@ -130,7 +130,7 @@ def test_render_contract_uses_controlled_templates_and_exact_evidence_paths():
         "A deadline occurs 90 days after enactment."
     )
     assert contract["definitions"][0]["display_text"] == (
-        '“covered entity” means a rural hospital.'
+        "“covered entity” means a rural hospital."
     )
     assert contract["applicability"][0]["display_text"] == (
         "The program applies to rural hospitals."

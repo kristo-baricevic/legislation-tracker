@@ -14,7 +14,17 @@ def test_celery_beat_recomputes_similarity_for_the_entire_session():
 
     schedule = app.conf.beat_schedule
 
-    assert schedule["recompute-similarity-batch"]["kwargs"] == {"session": 119}
+    assert "kwargs" not in schedule["recompute-similarity-batch"]
+
+
+def test_celery_beat_resolves_congress_when_polling_executes():
+    from config.celery import app
+
+    assert app.conf.beat_schedule["poll-congress"] == {
+        "task": "apps.ingestion.tasks.poll_congress",
+        "schedule": 600.0,
+        "kwargs": {"jurisdiction": "federal"},
+    }
 
 
 def test_celery_beat_dispatches_and_recovers_durable_ingestion_work():
@@ -45,7 +55,6 @@ def test_celery_beat_syncs_the_full_current_representative_roster_daily():
     assert app.conf.beat_schedule["sync-representatives"] == {
         "task": "apps.ingestion.tasks.sync_representatives",
         "schedule": 86400.0,
-        "kwargs": {"congress": 119},
     }
 
 
@@ -73,9 +82,8 @@ def test_celery_beat_dispatches_and_recovers_durable_bill_enhancements():
 
 
 def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
-    from config.celery import _on_task_failure
-
     from apps.ingestion import tasks
+    from config.celery import _on_task_failure
 
     recorded = []
     monkeypatch.setattr(
@@ -108,9 +116,8 @@ def test_task_failure_handler_records_legislation_task_failures(monkeypatch):
 
 
 def test_task_failure_handler_records_changelog_maintenance_failures(monkeypatch):
-    from config.celery import _on_task_failure
-
     from apps.ingestion import tasks
+    from config.celery import _on_task_failure
 
     recorded = []
     monkeypatch.setattr(

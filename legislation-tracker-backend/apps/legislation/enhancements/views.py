@@ -9,7 +9,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.accounts.llm_credentials import llm_feature_available
 from apps.accounts.models import LLMCredential
@@ -27,7 +26,6 @@ from .source_packet import PreflightUnavailable, build_enhancement_preflight
 
 
 class PrivateEnhancementMixin:
-    authentication_classes = (JWTAuthentication,)
     permission_classes = (IsAuthenticated,)
 
     def finalize_response(self, request, response, *args, **kwargs):

@@ -12,37 +12,45 @@ const getApiUrl = () =>
     ? (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
     : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const AUTH_TOKEN_KEY = "legislation_tracker_access";
-const AUTH_REFRESH_KEY = "legislation_tracker_refresh";
-
 export function getApiBase(): string {
   return getApiUrl().replace(/\/$/, "");
 }
 
-export function getStoredAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(AUTH_TOKEN_KEY);
+let bootstrappedCsrfToken: string | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
+const AUTH_REFRESH_LOCK = "legislation-tracker-auth-refresh";
+
+function getCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const cookie = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("csrftoken="));
+  return cookie
+    ? decodeURIComponent(cookie.slice("csrftoken=".length))
+    : bootstrappedCsrfToken;
 }
 
-export function getStoredRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(AUTH_REFRESH_KEY);
+function csrfHeaders(headers?: HeadersInit): Headers {
+  const result = new Headers(headers);
+  const csrfToken = getCsrfToken();
+  if (csrfToken) result.set("X-CSRFToken", csrfToken);
+  return result;
 }
 
-export function setStoredTokens(access: string, refresh: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(AUTH_TOKEN_KEY, access);
-  localStorage.setItem(AUTH_REFRESH_KEY, refresh);
+async function bootstrapCsrf(): Promise<void> {
+  const base = getApiBase();
+  const res = await fetch(`${base}/api/auth/csrf/`, { credentials: "include" });
+  if (!res.ok) throw await responseError(res, "Failed to initialize sign-in security");
+  const data = (await res.json()) as { csrf_token?: string };
+  bootstrappedCsrfToken = data.csrf_token ?? getCsrfToken();
+  if (!bootstrappedCsrfToken) {
+    throw new ApiError("Failed to initialize sign-in security", res.status);
+  }
 }
 
-export function clearStoredTokens(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(AUTH_REFRESH_KEY);
-}
-
-export function isLoggedIn(): boolean {
-  return !!getStoredAccessToken();
+async function ensureCsrf(): Promise<void> {
+  if (!getCsrfToken()) await bootstrapCsrf();
 }
 
 export class ApiError extends Error {
@@ -60,61 +68,99 @@ async function responseError(res: Response, fallback: string): Promise<ApiError>
   return new ApiError(data.detail ?? data.error ?? fallback, res.status);
 }
 
-export interface LoginResponse {
-  access: string;
-  refresh: string;
+export interface AuthSession {
+  authenticated: true;
+  user: {
+    email: string;
+  };
 }
 
 export interface RegisterResponse {
-  id: number;
-  email: string;
+  detail: string;
 }
 
-/** Login: send "email" (backend User.USERNAME_FIELD is email). */
-export async function login(email: string, password: string): Promise<LoginResponse> {
+export async function login(email: string, password: string): Promise<AuthSession> {
   const base = getApiBase();
-  const res = await fetch(`${base}/api/auth/token/`, {
+  await bootstrapCsrf();
+  const res = await fetch(`${base}/api/auth/session/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    credentials: "include",
     body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? data.error ?? "Login failed");
+    throw await responseError(res, "Login failed");
   }
   return res.json();
 }
 
 export async function register(email: string, password: string): Promise<RegisterResponse> {
   const base = getApiBase();
+  await bootstrapCsrf();
   const res = await fetch(`${base}/api/auth/register/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    credentials: "include",
     body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error ?? "Registration failed");
+    throw await responseError(res, "Registration failed");
   }
   return res.json();
 }
 
-async function tryRefreshToken(): Promise<string | null> {
-  const refresh = getStoredRefreshToken();
-  if (!refresh) return null;
-  const base = getApiBase();
-  const res = await fetch(`${base}/api/auth/token/refresh/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh }),
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { access: string };
-  if (data.access) {
-    setStoredTokens(data.access, refresh);
-    return data.access;
+async function refreshSession(): Promise<boolean> {
+  try {
+    await ensureCsrf();
+  } catch {
+    return false;
   }
-  return null;
+  const base = getApiBase();
+  const res = await fetch(`${base}/api/auth/session/refresh/`, {
+    method: "POST",
+    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    credentials: "include",
+  });
+  return res.ok;
+}
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  const refresh: Promise<boolean> =
+    typeof navigator !== "undefined" && navigator.locks
+      ? navigator.locks
+          .request<Promise<boolean>>(AUTH_REFRESH_LOCK, refreshSession)
+          .then((result) => result)
+      : refreshSession();
+  const trackedRefresh = refresh.finally(() => {
+    refreshInFlight = null;
+  });
+  refreshInFlight = trackedRefresh;
+  return trackedRefresh;
+}
+
+export async function getSession(retried = false): Promise<AuthSession | null> {
+  const base = getApiBase();
+  const res = await fetch(`${base}/api/auth/session/current/`, {
+    credentials: "include",
+  });
+  if (res.status === 401 && !retried && (await tryRefreshSession())) {
+    return getSession(true);
+  }
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) throw await responseError(res, "Failed to load session");
+  return res.json();
+}
+
+export async function logout(): Promise<void> {
+  const base = getApiBase();
+  await ensureCsrf();
+  const res = await fetch(`${base}/api/auth/session/logout/`, {
+    method: "POST",
+    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    credentials: "include",
+  });
+  if (!res.ok) throw await responseError(res, "Logout failed");
 }
 
 export async function publicGet<T = unknown>(path: string): Promise<T> {
@@ -128,17 +174,9 @@ export async function publicGet<T = unknown>(path: string): Promise<T> {
 
 export async function authGet<T = unknown>(path: string, retried = false): Promise<T> {
   const base = getApiBase();
-  const token = getStoredAccessToken();
-  const headers: HeadersInit = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${base}${path}`, { headers });
+  const res = await fetch(`${base}${path}`, { credentials: "include" });
   if (res.status === 401 && !retried) {
-    const newToken = await tryRefreshToken();
-    if (newToken) return authGet<T>(path, true);
-    if (token) {
-      clearStoredTokens();
-      return authGet<T>(path, true);
-    }
+    if (await tryRefreshSession()) return authGet<T>(path, true);
   }
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
@@ -152,18 +190,15 @@ export async function authPost<T = unknown>(
   retried = false,
 ): Promise<T> {
   const base = getApiBase();
-  const token = getStoredAccessToken();
-  const headers: HeadersInit = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  await ensureCsrf();
   const res = await fetch(`${base}${path}`, {
     method: "POST",
-    headers,
+    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    credentials: "include",
     body: body == null ? undefined : JSON.stringify(body),
   });
   if (res.status === 401 && !retried) {
-    const newToken = await tryRefreshToken();
-    if (newToken) return authPost<T>(path, body, true);
-    clearStoredTokens();
+    if (await tryRefreshSession()) return authPost<T>(path, body, true);
   }
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
@@ -177,18 +212,15 @@ export async function authPut<T = unknown>(
   retried = false,
 ): Promise<T> {
   const base = getApiBase();
-  const token = getStoredAccessToken();
-  const headers: HeadersInit = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  await ensureCsrf();
   const res = await fetch(`${base}${path}`, {
     method: "PUT",
-    headers,
+    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    credentials: "include",
     body: JSON.stringify(body),
   });
   if (res.status === 401 && !retried) {
-    const newToken = await tryRefreshToken();
-    if (newToken) return authPut<T>(path, body, true);
-    clearStoredTokens();
+    if (await tryRefreshSession()) return authPut<T>(path, body, true);
   }
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
@@ -198,17 +230,14 @@ export async function authPut<T = unknown>(
 
 export async function authDelete(path: string, retried = false): Promise<void> {
   const base = getApiBase();
-  const token = getStoredAccessToken();
-  const headers: HeadersInit = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  await ensureCsrf();
   const res = await fetch(`${base}${path}`, {
     method: "DELETE",
-    headers,
+    headers: csrfHeaders(),
+    credentials: "include",
   });
   if (res.status === 401 && !retried) {
-    const newToken = await tryRefreshToken();
-    if (newToken) return authDelete(path, true);
-    clearStoredTokens();
+    if (await tryRefreshSession()) return authDelete(path, true);
   }
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
@@ -292,6 +321,7 @@ export interface TopicItem {
 
 export interface BillFilterOptions {
   jurisdictions: string[];
+  current_congress: number;
 }
 
 export interface GetBillsParams {
@@ -536,12 +566,11 @@ export interface IngestionTaskResponse {
 }
 
 export interface IngestBillResponse {
-  bill: BillListItem;
-  tracked_bill: TrackedBillItem;
-  ingestion: {
-    bill_id: number;
-    unchanged?: boolean;
-  };
+  work_item_id: number;
+  status: "pending" | "dispatched" | "processing" | "succeeded" | "dead";
+  status_url: string;
+  tracking_status: "pending" | "fulfilled";
+  bill_id: number | null;
 }
 
 export function ingestBill(params: {

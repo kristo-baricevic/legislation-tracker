@@ -11,7 +11,7 @@ import {
   getBillEnhancements,
   getLatestBillEnhancement,
   getPublicCapabilities,
-  getStoredAccessToken,
+  getSession,
   retryBillEnhancement,
   type BillEnhancement,
   type BillEnhancementEstimate,
@@ -182,9 +182,8 @@ export default function BillEnhancementPanel({
   const isFederal = jurisdiction.trim().toLowerCase() === "federal";
 
   useEffect(() => {
-    const authenticated = Boolean(getStoredAccessToken());
     let active = true;
-    setSignedIn(authenticated);
+    setSignedIn(null);
     setFeatureAvailable(null);
     setEstimate(null);
     setEnhancement(null);
@@ -199,6 +198,9 @@ export default function BillEnhancementPanel({
         setFeatureAvailable(false);
         return;
       }
+      const authenticated = Boolean(await getSession().catch(() => null));
+      if (!active) return;
+      setSignedIn(authenticated);
       try {
         const capabilities = await getPublicCapabilities();
         if (!active) return;

@@ -6,6 +6,7 @@ Usage:
     python manage.py backfill_topics --sync        # run synchronously (no Celery)
     python manage.py backfill_topics --session 119 # filter by congress session
 """
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
