@@ -1249,6 +1249,46 @@ def test_downloaded_congress_text_reaches_legal_nlp_v2(
 
 
 @pytest.mark.django_db
+def test_download_document_records_one_atomic_new_version_event(monkeypatch):
+    payload = b"SEC. 1. REPORTS\nThe Secretary shall publish a report."
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 9011",
+        title="Document activity bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_url="https://example.test/hr9011.txt",
+    )
+    monkeypatch.setattr(
+        tasks,
+        "download_url",
+        lambda *args: downloaded_document(payload, "text/plain"),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "upload_and_metadata",
+        lambda *args, **kwargs: ("documents/hr9011.txt", len(payload)),
+    )
+    monkeypatch.setattr(
+        "apps.legislation.tasks.enqueue_document_contract", lambda document: None
+    )
+
+    tasks._download_document_impl(document.id)
+
+    document.refresh_from_db()
+    bill.refresh_from_db()
+    events = ChangeLog.objects.filter(bill=bill, change_type="new_version")
+    assert events.count() == 1
+    assert events.get().document_id == document.id
+    assert document.object_storage_key == "documents/hr9011.txt"
+    assert bill.last_activity_sequence == 1
+
+
+@pytest.mark.django_db
 def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
     payload = (
         b"<bill><legis-body><division><enum>A</enum><header>Programs</header>"

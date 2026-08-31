@@ -14,7 +14,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
-from apps.changelog.models import ChangeLog
+from apps.changelog.models import BillActivityClock
+from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion.congress_client import (
@@ -1066,18 +1067,20 @@ def _process_bill_impl(bill_key_str):
             bill.source_api_id = source_api_id
             bill.metadata_hash = metadata_hash
             bill.save()
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 change_type="status_update",
                 old_value={"status": old_status, "title": old_title},
                 new_value={"status": bill.status, "title": bill.title},
+                event_key=f"bill:metadata:{bill.metadata_hash}",
             )
         else:
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
-                change_type="status_update",
+                change_type="bill_created",
                 old_value=None,
                 new_value={"status": status, "title": title},
+                event_key=f"bill:create:{bill.id}",
             )
         fulfill_tracking_requests_for_bill(
             bill,
@@ -1376,7 +1379,7 @@ def _process_bill_votes_impl(bill_id):
                     records_updated = True
                 records_updated = records_updated or record_created
             if vote_created or vote_updated or records_updated:
-                ChangeLog.objects.create(
+                record_bill_change(
                     bill=bill,
                     change_type="vote",
                     new_value={
@@ -1386,6 +1389,10 @@ def _process_bill_votes_impl(bill_id):
                         "result": vote.result,
                         "chamber": vote.chamber,
                     },
+                    event_key=(
+                        f"vote:{bill.session}:{vote.chamber}:"
+                        f"{vote.session_number}:{vote.roll_number}:{vote.result}"
+                    ),
                 )
                 votes_created += 1
     logger.info(
@@ -1440,71 +1447,89 @@ def _download_document_impl(document_id):
     with downloaded:
         content_type = downloaded.content_type
         new_hash = downloaded.checksum
-        if doc.content_hash == new_hash and doc.object_storage_key:
+        unchanged = doc.content_hash == new_hash and bool(doc.object_storage_key)
+        extracted = None
+        if unchanged:
+            saved_key = doc.object_storage_key
+            size = doc.file_size_bytes
             logger.info(
-                "download_document: unchanged hash, skipping upload document_id=%s",
+                "download_document: unchanged hash, reconciling event document_id=%s",
                 document_id,
             )
-            doc.downloaded_at = timezone.now()
-            doc.save(update_fields=["downloaded_at"])
-            from apps.legislation.tasks import enqueue_document_contract
-
-            enqueue_document_contract(doc)
-            return {"document_id": document_id, "unchanged": True}
-
-        ext = ""
-        if content_type and "pdf" in content_type.lower():
-            ext = ".pdf"
-        elif content_type and "xml" in content_type.lower():
-            ext = ".xml"
-        elif content_type and "html" in content_type.lower():
-            ext = ".html"
         else:
-            ext = guess_extension(doc.source_url, content_type)
+            ext = ""
+            if content_type and "pdf" in content_type.lower():
+                ext = ".pdf"
+            elif content_type and "xml" in content_type.lower():
+                ext = ".xml"
+            elif content_type and "html" in content_type.lower():
+                ext = ".html"
+            else:
+                ext = guess_extension(doc.source_url, content_type)
 
-        object_key = build_object_key(
-            bill.session,
-            bill.bill_number,
-            doc.version_label,
-            ext,
-        )
-        extracted = extract_document_text(
-            downloaded.file,
-            content_type,
-            doc.source_url,
-        )
-        try:
-            saved_key, size = upload_and_metadata(
-                object_key,
+            object_key = build_object_key(
+                bill.session,
+                bill.bill_number,
+                doc.version_label,
+                ext,
+            )
+            extracted = extract_document_text(
                 downloaded.file,
                 content_type,
-                size=downloaded.size,
+                doc.source_url,
             )
-        except Exception as exc:
-            retryable_error = retryable_storage_error(exc)
-            if retryable_error:
-                raise retryable_error from exc
-            raise
+            try:
+                saved_key, size = upload_and_metadata(
+                    object_key,
+                    downloaded.file,
+                    content_type,
+                    size=downloaded.size,
+                )
+            except Exception as exc:
+                retryable_error = retryable_storage_error(exc)
+                if retryable_error:
+                    raise retryable_error from exc
+                raise
 
     now = timezone.now()
-    doc.object_storage_key = saved_key
-    doc.file_size_bytes = size
-    doc.content_hash = new_hash
-    doc.content_type = content_type[:128] if content_type else None
-    doc.extracted_text = extracted or None
-    doc.downloaded_at = now
-    doc.parsed_at = now if extracted else None
-    doc.save(
-        update_fields=[
-            "object_storage_key",
-            "file_size_bytes",
-            "content_hash",
-            "content_type",
-            "extracted_text",
-            "downloaded_at",
-            "parsed_at",
-        ]
-    )
+    with transaction.atomic():
+        BillActivityClock.objects.select_for_update().get(pk=1)
+        locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
+        locked_doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
+
+        update_fields = ["downloaded_at"]
+        locked_doc.downloaded_at = now
+        if not unchanged:
+            locked_doc.object_storage_key = saved_key
+            locked_doc.file_size_bytes = size
+            locked_doc.content_hash = new_hash
+            locked_doc.content_type = content_type[:128] if content_type else None
+            locked_doc.extracted_text = extracted or None
+            locked_doc.parsed_at = now if extracted else None
+            update_fields.extend(
+                [
+                    "object_storage_key",
+                    "file_size_bytes",
+                    "content_hash",
+                    "content_type",
+                    "extracted_text",
+                    "parsed_at",
+                ]
+            )
+        locked_doc.save(update_fields=update_fields)
+        record_bill_change(
+            bill=locked_bill,
+            document=locked_doc,
+            change_type="new_version",
+            new_value={
+                "document_id": locked_doc.id,
+                "version_label": locked_doc.version_label,
+                "content_hash": new_hash,
+                "is_active_version": locked_doc.is_active_version,
+            },
+            event_key=f"document:{locked_doc.id}:{new_hash}",
+        )
+
     logger.info(
         "download_document: success document_id=%s key=%s bytes=%s",
         document_id,
@@ -1513,5 +1538,10 @@ def _download_document_impl(document_id):
     )
     from apps.legislation.tasks import enqueue_document_contract
 
-    enqueue_document_contract(doc)
-    return {"document_id": document_id, "object_storage_key": saved_key, "size": size}
+    enqueue_document_contract(locked_doc)
+    return {
+        "document_id": document_id,
+        "object_storage_key": saved_key,
+        "size": size,
+        "unchanged": unchanged,
+    }

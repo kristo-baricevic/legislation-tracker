@@ -21,7 +21,7 @@ from apps.accounts.llm_credentials import (
     llm_feature_available,
 )
 from apps.accounts.models import LLMCredential
-from apps.changelog.models import ChangeLog
+from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress
 from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
@@ -324,7 +324,7 @@ def _generate_contract_for_bill_impl(bill_id):
             bill.save(update_fields=["latest_contract"])
 
         if contract_created:
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 contract=contract,
                 change_type="contract_update",
@@ -334,6 +334,7 @@ def _generate_contract_for_bill_impl(bill_id):
                     "contract_hash": new_hash,
                     "schema_version": CONTRACT_SCHEMA_VERSION,
                 },
+                event_key=f"contract:{contract.id}:{new_hash}",
             )
 
     enqueue_topic_update(bill=bill)
@@ -476,7 +477,7 @@ def _generate_contract_impl(document_id, *, reextract_source=False):
         document.save(update_fields=["contract_generated_at"])
 
         if contract_created and document.is_active_version:
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 document=document,
                 contract=contract,
@@ -487,6 +488,7 @@ def _generate_contract_impl(document_id, *, reextract_source=False):
                     "contract_hash": new_hash,
                     "schema_version": extraction_result.schema_version,
                 },
+                event_key=f"contract:{contract.id}:{new_hash}",
             )
         _replace_evidence_spans(
             bill=bill,
@@ -622,7 +624,7 @@ def _update_topics_impl(contract_id=None, bill_id=None):
                 bill_topic.save(update_fields=["confidence_score"])
 
         if set(old_slugs) != set(new_slugs):
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 contract=contract,
                 change_type="topic_update",
@@ -631,6 +633,11 @@ def _update_topics_impl(contract_id=None, bill_id=None):
                     "topics": new_slugs,
                     "contract_id": contract.id if contract else None,
                 },
+                event_key=(
+                    "topic:"
+                    f"{contract.id if contract else bill.id}:"
+                    f"{','.join(sorted(new_slugs))}"
+                ),
             )
 
     logger.info(

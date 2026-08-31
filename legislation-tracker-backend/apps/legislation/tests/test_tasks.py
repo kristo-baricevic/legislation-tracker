@@ -78,6 +78,30 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
 
 
 @pytest.mark.django_db
+def test_contract_change_advances_the_bill_activity_sequence():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 9010",
+        title="Activity contract bill",
+        status="Introduced",
+        processing_status=ProcessingStatus.PROCESSING,
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 1. REPORTS\nThe Secretary shall publish a report.",
+    )
+
+    tasks.generate_contract(document.id)
+
+    bill.refresh_from_db()
+    assert bill.last_activity_sequence == 1
+    assert bill.last_activity_at is not None
+
+
+@pytest.mark.django_db
 def test_generate_contract_persists_v2_and_reuses_unchanged_result():
     source_text = "SEC. 2. REPORTS\nThe Secretary shall publish a report."
     bill = Bill.objects.create(

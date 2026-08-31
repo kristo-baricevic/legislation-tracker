@@ -60,6 +60,10 @@ class Bill(models.Model):
     metadata_hash = models.CharField(
         max_length=64, null=True, blank=True, db_index=True
     )
+    last_activity_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_activity_sequence = models.BigIntegerField(
+        null=True, blank=True, db_index=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
