@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.models import ChangeLog
+from apps.congress.committee_sync import CommitteeSnapshotValidationError
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.ingestion import document_download, tasks
 from apps.ingestion.congress_client import CongressAPIError
@@ -20,7 +21,7 @@ from apps.ingestion.models import (
     IngestionWorkItem,
     IngestionWorkStatus,
 )
-from apps.ingestion.vote_sources import RollCallRef
+from apps.ingestion.vote_sources import RollCallPage, RollCallRef
 from apps.legislation.extraction.service import extract_contract
 from apps.legislation.models import (
     Bill,
@@ -73,6 +74,25 @@ def test_sync_representatives_has_bounded_congress_api_retries():
 
 
 @pytest.mark.django_db
+def test_committee_snapshot_validation_failure_is_recorded_for_replay(monkeypatch):
+    def fail_sync(**_kwargs):
+        raise CommitteeSnapshotValidationError("roster validation failed")
+
+    monkeypatch.setattr(
+        "apps.congress.committee_sync.sync_committee_memberships", fail_sync
+    )
+
+    with pytest.raises(CommitteeSnapshotValidationError, match="validation failed"):
+        tasks.sync_committee_memberships(congress=119)
+
+    failure = IngestionTaskFailure.objects.get()
+    assert (failure.task_name, failure.args_json) == (
+        "sync_committee_memberships",
+        {"args": [119], "kwargs": {}},
+    )
+
+
+@pytest.mark.django_db
 def test_roll_call_discovery_persists_work_and_cursor_before_dispatch(monkeypatch):
     reference = RollCallRef(
         congress=119,
@@ -84,12 +104,12 @@ def test_roll_call_discovery_persists_work_and_cursor_before_dispatch(monkeypatc
     )
 
     class House:
-        def discover(self, **_kwargs):
-            return [reference]
+        def discover_page(self, **_kwargs):
+            return RollCallPage(refs=(reference,), next_cursor=None)
 
     class Senate:
-        def discover(self, **_kwargs):
-            return []
+        def discover_page(self, **_kwargs):
+            return RollCallPage(refs=(), next_cursor=None)
 
     monkeypatch.setattr(tasks, "HouseVoteSource", House)
     monkeypatch.setattr(tasks, "SenateVoteSource", Senate)
@@ -104,6 +124,122 @@ def test_roll_call_discovery_persists_work_and_cursor_before_dispatch(monkeypatc
     )
     assert state.discovered_roll_count == 1
     assert state.source_exhausted_at is not None
+
+
+@pytest.mark.django_db
+def test_roll_call_discovery_commits_each_house_page_before_advancing_cursor(
+    monkeypatch,
+):
+    references = (
+        RollCallRef(119, "house", 1, 1, datetime(2026, 1, 1, tzinfo=UTC), ""),
+        RollCallRef(119, "house", 1, 2, datetime(2026, 1, 2, tzinfo=UTC), ""),
+    )
+    observed_cursors = []
+
+    class House:
+        def discover_page(self, *, cursor, **_kwargs):
+            observed_cursors.append(cursor)
+            if cursor == "":
+                return RollCallPage(refs=(references[0],), next_cursor="250")
+            assert cursor == "250"
+            return RollCallPage(refs=(references[1],), next_cursor=None)
+
+    class Senate:
+        def discover_page(self, **_kwargs):
+            return RollCallPage(refs=(), next_cursor=None)
+
+    monkeypatch.setattr(tasks, "HouseVoteSource", House)
+    monkeypatch.setattr(tasks, "SenateVoteSource", Senate)
+    monkeypatch.setattr(tasks, "current_congress_session", lambda: 1)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks.discover_roll_calls(congress=119)
+
+    state = tasks.RollCallIngestionState.objects.get(
+        congress=119, chamber="house", session_number=1
+    )
+    assert result["created"] == 2
+    assert observed_cursors == ["", "250"]
+    assert (state.next_page_or_roll, state.discovered_roll_count) == ("", 2)
+    assert state.source_exhausted_at is not None
+
+
+@pytest.mark.django_db
+def test_roll_call_discovery_advances_past_stable_rows_after_a_new_head(monkeypatch):
+    """An offset page can contain only rows already seen before a head update."""
+
+    reference = RollCallRef(
+        119,
+        "house",
+        1,
+        1,
+        datetime(2026, 1, 1, tzinfo=UTC),
+        "https://example.test/house/1",
+    )
+    IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key="vote:119:house:1:1",
+        source_updated_at=reference.source_updated_at,
+        congress=119,
+        payload_json={},
+    )
+    tasks.RollCallIngestionState.objects.create(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        next_page_or_roll="250",
+    )
+
+    class House:
+        def discover_page(self, *, cursor, **_kwargs):
+            if cursor == "250":
+                return RollCallPage(refs=(reference,), next_cursor="500")
+            assert cursor == "500"
+            return RollCallPage(refs=(), next_cursor=None)
+
+    class Senate:
+        def discover_page(self, **_kwargs):
+            return RollCallPage(refs=(), next_cursor=None)
+
+    monkeypatch.setattr(tasks, "HouseVoteSource", House)
+    monkeypatch.setattr(tasks, "SenateVoteSource", Senate)
+    monkeypatch.setattr(tasks, "current_congress_session", lambda: 1)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    assert tasks.discover_roll_calls(congress=119) == {"congress": 119, "created": 0}
+    state = tasks.RollCallIngestionState.objects.get(
+        congress=119, chamber="house", session_number=1
+    )
+    assert state.next_page_or_roll == ""
+    assert state.source_exhausted_at is not None
+
+
+@pytest.mark.django_db
+def test_historical_roll_call_discovery_covers_both_sessions(monkeypatch):
+    observed_sessions = []
+
+    class House:
+        def discover_page(self, *, session_number, **_kwargs):
+            observed_sessions.append(("house", session_number))
+            return RollCallPage(refs=(), next_cursor=None)
+
+    class Senate:
+        def discover_page(self, *, session_number, **_kwargs):
+            observed_sessions.append(("senate", session_number))
+            return RollCallPage(refs=(), next_cursor=None)
+
+    monkeypatch.setattr(tasks, "HouseVoteSource", House)
+    monkeypatch.setattr(tasks, "SenateVoteSource", Senate)
+    monkeypatch.setattr(tasks, "current_congress", lambda: 120)
+    monkeypatch.setattr(tasks, "current_congress_session", lambda: 1)
+
+    assert tasks.discover_roll_calls(congress=119) == {"congress": 119, "created": 0}
+    assert observed_sessions == [
+        ("house", 1),
+        ("senate", 1),
+        ("house", 2),
+        ("senate", 2),
+    ]
 
 
 @pytest.mark.django_db
@@ -482,9 +618,12 @@ def test_blocked_work_is_not_retried_or_dead_lettered_until_every_dependency_wak
     assert tasks._wake_blocked_work_for_dependencies({"bioguide:A000001"}) == 0
     work.refresh_from_db()
     assert work.status == IngestionWorkStatus.BLOCKED
-    assert tasks._wake_blocked_work_for_dependencies(
-        {"bioguide:A000001", "bioguide:B000001"}
-    ) == 1
+    assert (
+        tasks._wake_blocked_work_for_dependencies(
+            {"bioguide:A000001", "bioguide:B000001"}
+        )
+        == 1
+    )
     work.refresh_from_db()
     assert work.status == IngestionWorkStatus.PENDING
 
@@ -647,7 +786,9 @@ def test_recover_stale_ingestion_work_dead_letters_an_exhausted_lease():
 
 
 @pytest.mark.django_db
-def test_process_bill_votes_surfaces_vote_detail_failures_for_retry(monkeypatch):
+def test_process_bill_votes_only_queues_canonical_work_without_direct_vote_writes(
+    monkeypatch,
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -677,7 +818,9 @@ def test_process_bill_votes_surfaces_vote_detail_failures_for_retry(monkeypatch)
     assert result == {"bill_id": bill.id, "queued": 1}
     assert Vote.objects.count() == 0
     assert ChangeLog.objects.count() == 0
-    assert IngestionWorkItem.objects.get().kind == tasks.WORK_KIND_ROLL_CALL_VOTE
+    work = IngestionWorkItem.objects.get()
+    assert work.kind == tasks.WORK_KIND_ROLL_CALL_VOTE
+    assert work.source_updated_at == tasks.UNKNOWN_SOURCE_UPDATED_AT
 
 
 @pytest.mark.django_db
@@ -879,6 +1022,130 @@ def test_canonical_roll_call_blocks_until_exact_members_are_available(monkeypatc
 
 
 @pytest.mark.django_db
+def test_stale_roll_call_work_is_a_successful_no_op(monkeypatch):
+    representative = Representative.objects.create(
+        bioguide_id="A000010",
+        name="Member",
+        chamber="house",
+        party="",
+        state="NY",
+    )
+    vote = Vote.objects.create(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        roll_number=10,
+        vote_date=datetime(2026, 1, 2, tzinfo=UTC),
+        result="Current result",
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    VoteRecord.objects.create(vote=vote, representative=representative, position="yes")
+    work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key="vote:119:house:1:10",
+        congress=119,
+        source_updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        payload_json={
+            "congress": 119,
+            "chamber": "house",
+            "session_number": 1,
+            "roll_number": 10,
+        },
+    )
+    monkeypatch.setattr(
+        tasks,
+        "vote_detail",
+        lambda *_args, **_kwargs: {
+            "date": "2026-01-01T00:00:00Z",
+            "result": "Stale result",
+            "members": [{"bioguideId": representative.bioguide_id, "position": "Nay"}],
+        },
+    )
+
+    assert tasks._process_roll_call_vote_impl(work)["stale"] is True
+    vote.refresh_from_db()
+    assert vote.result == "Current result"
+    assert VoteRecord.objects.get(vote=vote).position == "yes"
+
+
+@pytest.mark.django_db
+def test_bill_vote_reference_requeues_same_version_discovery_work_to_attach_bill(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 11",
+        title="Vote attachment",
+        status="Introduced",
+    )
+    representative = Representative.objects.create(
+        bioguide_id="A000011",
+        name="Member",
+        chamber="house",
+        party="",
+        state="NY",
+    )
+    source_updated_at = datetime(2026, 1, 2, tzinfo=UTC)
+    Vote.objects.create(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        roll_number=11,
+        vote_date=source_updated_at,
+        result="Passed",
+        source_updated_at=source_updated_at,
+    )
+    work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key="vote:119:house:1:11",
+        congress=119,
+        source_updated_at=source_updated_at,
+        status=IngestionWorkStatus.SUCCEEDED,
+        completed_at=timezone.now(),
+        payload_json={
+            "congress": 119,
+            "chamber": "house",
+            "session_number": 1,
+            "roll_number": 11,
+        },
+    )
+    monkeypatch.setattr(
+        tasks,
+        "bill_actions",
+        lambda *_args: [
+            {
+                "recordedVotes": [
+                    {
+                        "chamber": "house",
+                        "sessionNumber": 1,
+                        "rollNumber": 11,
+                        "actionDate": "2026-01-02T00:00:00Z",
+                    }
+                ]
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        tasks,
+        "vote_detail",
+        lambda *_args, **_kwargs: {
+            "date": "2026-01-02T00:00:00Z",
+            "result": "Passed",
+            "members": [{"bioguideId": representative.bioguide_id, "position": "Yea"}],
+        },
+    )
+
+    tasks.process_bill_votes(bill.id)
+
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.payload_json["bill_id"] == bill.id
+    tasks.process_ingestion_work_item(work.id)
+    assert Vote.objects.get(roll_number=11).bill == bill
+
+
+@pytest.mark.django_db
 def test_process_bill_votes_keeps_same_roll_number_from_two_sessions(monkeypatch):
     bill = Bill.objects.create(
         jurisdiction="federal",
@@ -902,9 +1169,10 @@ def test_process_bill_votes_keeps_same_roll_number_from_two_sessions(monkeypatch
     result = tasks.process_bill_votes(bill.id)
 
     assert result == {"bill_id": bill.id, "queued": 2}
-    assert set(
-        IngestionWorkItem.objects.values_list("dedupe_key", flat=True)
-    ) == {"vote:119:house:1:10", "vote:119:house:2:10"}
+    assert set(IngestionWorkItem.objects.values_list("dedupe_key", flat=True)) == {
+        "vote:119:house:1:10",
+        "vote:119:house:2:10",
+    }
 
 
 @pytest.mark.django_db

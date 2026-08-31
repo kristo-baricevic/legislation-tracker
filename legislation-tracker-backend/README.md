@@ -240,3 +240,21 @@ pytest
 # or
 python manage.py test
 ```
+
+### PostgreSQL browser-test database
+
+The browser suite can run against an isolated PostgreSQL 16 database rather
+than the default disposable SQLite database. It seeds a bill contract plus two
+House representatives, their committee assignments, bill relationship, and
+complete/non-bill roll calls so the representative evidence journey is backed
+by real API queries.
+
+```bash
+docker compose -f docker-compose.e2e-postgres.yml up -d
+cd ../legislation-tracker-client
+E2E_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/legislation_e2e \
+  pnpm test:e2e -- e2e/representative-insights.spec.ts
+```
+
+When finished, remove the isolated data with
+`docker compose -f docker-compose.e2e-postgres.yml down -v` from this directory.

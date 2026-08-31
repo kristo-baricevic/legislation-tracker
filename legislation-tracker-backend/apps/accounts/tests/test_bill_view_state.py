@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from apps.accounts.models import User
 from apps.accounts.bill_views import acknowledge_bill_changes
+from apps.accounts.models import User
 from apps.changelog.cursors import ChangeCursor
 from apps.changelog.models import ChangeLog
 from apps.legislation.models import Bill

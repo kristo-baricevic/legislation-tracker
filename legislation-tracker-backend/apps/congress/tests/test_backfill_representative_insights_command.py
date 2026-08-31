@@ -34,7 +34,17 @@ def test_representative_insights_backfill_queues_relationship_work(monkeypatch):
         "apps.congress.management.commands.backfill_representative_insights.current_congress",
         lambda: 119,
     )
-    monkeypatch.setattr("apps.ingestion.tasks.dispatch_ingestion_work.delay", lambda: None)
+    monkeypatch.setattr(
+        "apps.congress.management.commands.backfill_representative_insights.discover_roll_calls",
+        lambda **_kwargs: {"created": 0},
+    )
+    monkeypatch.setattr(
+        "apps.congress.management.commands.backfill_representative_insights.sync_committee_memberships",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.ingestion.tasks.dispatch_ingestion_work.delay", lambda: None
+    )
 
     call_command("backfill_representative_insights", congress=119, execute=True)
 

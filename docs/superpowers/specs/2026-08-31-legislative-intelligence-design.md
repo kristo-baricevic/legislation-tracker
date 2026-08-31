@@ -1,6 +1,6 @@
 # Legislative Intelligence Design
 
-**Status:** Implemented foundations and product surfaces; representative source backfills remain operational follow-up
+**Status:** Implemented; current-Congress source population remains an operational rollout step
 
 **Date:** 2026-08-31
 
@@ -21,7 +21,8 @@ The tracks ship in that order. Discovery owns the shared activity timestamp and 
 - Discovery is implemented: bounded bill search indexing, full-text query/highlight API, recent-activity sorting, private saved searches, and the public URL-backed search UI.
 - What changed is implemented: normalized activity events, signed timeline cursors, signed-in view state, explicit acknowledgement, and bounded contract/document comparison APIs and UI.
 - Representative product and persistence foundations are implemented: Congress-scoped canonical vote identities, committee/cosponsor tables, exact-identity dependency blocking, representative detail/comparison APIs, and UI.
-- The preview-first relationship backfill command is implemented. The remaining operational work is official committee-roster snapshot synchronization before committee coverage can be labelled complete. Roll-call discovery is scheduled for the current Congress and current/past session scope, but coverage remains explicitly partial until source cursors exhaust and every durable detail item succeeds.
+- Official House and Senate committee-roster synchronization is implemented as a bounded, XML-safe, validation-first replacement path. The preview-first backfill command now queues relationship and roll-call discovery, and runs a committee snapshot sync only for the current Congress. Roll-call discovery is scheduled for the current Congress and current/past session scope, but coverage remains explicitly partial until source cursors exhaust and every durable detail item succeeds.
+- The representative browser journey now runs against an isolated PostgreSQL fixture with complete House-session coverage, a non-bill roll call, committee membership, and bill relationship evidence. It is repeatable without touching the normal local database.
 
 ## Goals
 
@@ -159,9 +160,9 @@ Add:
 - `BillCommittee`: bill, committee, relationship/activity label, and source timestamp.
 - `BillCosponsor`: bill, representative, sponsorship date, original-cosponsor flag, optional withdrawal date, and source timestamp.
 
-All upstream identities have database uniqueness constraints. Synchronization upserts by those identities. Committee adapters preserve the raw source code but resolve it through `normalize_committee_system_code(source, chamber, raw_code)`: House `II00` becomes `hsii00`, Senate codes receive the `ss` prefix, joint committees receive `js`, and canonical codes are lowercase. House assignment XML and Congress.gov bill committee payloads must resolve to the same canonical `Committee` row.
+All upstream identities have database uniqueness constraints. Synchronization upserts by those identities. Committee adapters preserve the raw source code but resolve it through `normalize_committee_system_code(source, chamber, raw_code)`: House `II00` becomes `hsii00`; Congress.gov and Senate codes retain their official canonical prefix (including `ss`, `sl`, `sp`, `sc`, `js`, or `jc`) in lowercase. House assignment XML and Congress.gov bill committee payloads must resolve to the same canonical `Committee` row.
 
-A roster parser returns a `CommitteeRosterSnapshot` containing Congress, chamber, publication time, source URL/hash, and assignments. Before changing current flags, synchronization verifies that the embedded Congress matches the requested Congress, the publication time satisfies the configured freshness window, the snapshot is non-empty, and its representative/committee coverage is not materially incomplete. A failed validation leaves the prior current roster intact.
+A roster parser returns a `CommitteeRosterSnapshot` containing Congress, chamber, publication time, source URL/hash, and assignments. Before changing current flags, synchronization verifies the House feed's embedded Congress (the Senate feed is explicitly current-only and is rejected for historical requests), the publication time freshness window, non-empty unique identities, representative availability, and that coverage has not materially regressed. The configured URLs, timeout, payload cap, freshness window, safe member fraction, and unknown-member allowance are all operator-controlled. A failed validation leaves the prior current roster intact.
 
 ### Upstream sources
 

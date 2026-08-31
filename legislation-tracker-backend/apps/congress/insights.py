@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from django.db.models import Max, Min
 
+from .current import current_congress, current_congress_session
 from .models import BillCosponsor, CommitteeMembership, Representative, Vote, VoteRecord
 
 CAST_POSITIONS = {"yes", "no", "present", "other"}
@@ -55,6 +56,20 @@ def _coverage(*, representative: Representative, congress: int) -> tuple[bool, s
         RollCallIngestionState,
     )
 
+    active_congress = current_congress()
+    if congress > active_congress:
+        return False, "Roll-call discovery cannot cover a future Congress.", 0
+    expected_sessions = set(
+        range(
+            1,
+            (
+                current_congress_session()
+                if congress == active_congress
+                else 2
+            )
+            + 1,
+        )
+    )
     states = RollCallIngestionState.objects.filter(
         congress=congress,
         chamber=representative.chamber,
@@ -62,16 +77,19 @@ def _coverage(*, representative: Representative, congress: int) -> tuple[bool, s
     state_rows = list(
         states.values("session_number", "discovered_roll_count", "source_exhausted_at")
     )
-    if not state_rows:
-        return False, "Roll-call discovery has not started for this chamber.", 0
+    if {row["session_number"] for row in state_rows} != expected_sessions:
+        return (
+            False,
+            "Roll-call discovery has not started for every applicable session.",
+            sum(row["discovered_roll_count"] for row in state_rows),
+        )
     discovered = sum(row["discovered_roll_count"] for row in state_rows)
     if any(row["source_exhausted_at"] is None for row in state_rows):
         return False, "Roll-call discovery has not reached the source end.", discovered
-    sessions = [row["session_number"] for row in state_rows]
     persisted = Vote.objects.filter(
         congress=congress,
         chamber=representative.chamber,
-        session_number__in=sessions,
+        session_number__in=expected_sessions,
     ).count()
     open_work = IngestionWorkItem.objects.filter(
         kind="roll_call_vote",

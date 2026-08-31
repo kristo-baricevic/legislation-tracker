@@ -8,10 +8,11 @@ import time
 import unicodedata
 from datetime import UTC, datetime
 from functools import lru_cache
-from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 import requests
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -405,7 +406,12 @@ def _roll_call_members(payload, chamber):
 
 def _request_senate_xml(url):
     try:
-        response = requests.get(url, timeout=30)
+        try:
+            response = requests.get(url, timeout=30, stream=True)
+        except TypeError:
+            # Lightweight test doubles predating bounded streaming accept only
+            # the historical timeout argument.
+            response = requests.get(url, timeout=30)
     except requests.RequestException as exc:
         logger.warning("Senate roll-call source request failed: %s", exc)
         raise CongressAPIError(f"Senate roll-call source failed: {exc}") from exc
@@ -415,10 +421,32 @@ def _request_senate_xml(url):
             status_code=response.status_code,
             response_text=(response.text or "")[:500],
         )
+    maximum = getattr(settings, "SENATE_ROLL_CALL_MAX_BYTES", 2 * 1024 * 1024)
     try:
-        return ElementTree.fromstring(response.content)
-    except ElementTree.ParseError as exc:
+        if hasattr(response, "iter_content"):
+            chunks = []
+            size = 0
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > maximum:
+                    raise CongressAPIError(
+                        "Senate roll-call source exceeds the byte limit"
+                    )
+                chunks.append(chunk)
+            content = b"".join(chunks)
+        else:
+            content = response.content
+            if len(content) > maximum:
+                raise CongressAPIError("Senate roll-call source exceeds the byte limit")
+        return ElementTree.fromstring(content)
+    except (DefusedXmlException, ElementTree.ParseError) as exc:
         raise CongressAPIError("Senate roll-call source returned invalid XML") from exc
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
 
 
 def _xml_text(element, tag):

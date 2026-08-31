@@ -59,6 +59,7 @@ class Vote(models.Model):
     nays = models.PositiveIntegerField(default=0)
     question = models.TextField(blank=True, default="")
     source_url = models.URLField(max_length=1024, blank=True, default="")
+    source_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "congress_vote"
@@ -77,7 +78,11 @@ class Vote(models.Model):
             models.Index(
                 fields=["congress", "chamber", "vote_date"],
                 name="congress_vote_scope_date_idx",
-            )
+            ),
+            models.Index(
+                fields=["congress", "chamber", "source_updated_at"],
+                name="congress_vote_source_idx",
+            ),
         ]
 
     def __str__(self):
@@ -97,6 +102,7 @@ class VoteRecord(models.Model):
         on_delete=models.CASCADE,
         related_name="vote_records",
     )
+
     class Position(models.TextChoices):
         YES = "yes", "Yes"
         NO = "no", "No"
@@ -177,6 +183,7 @@ class CommitteeMembership(models.Model):
     party_side = models.CharField(max_length=32, blank=True, default="")
     source_name = models.CharField(max_length=32)
     source_code = models.CharField(max_length=32)
+    source_hash = models.CharField(max_length=64, blank=True, default="")
     is_current = models.BooleanField(default=True)
     source_updated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -199,6 +206,29 @@ class CommitteeMembership(models.Model):
                 fields=["committee", "congress", "is_current"],
                 name="cong_mem_comm_scope_idx",
             ),
+        ]
+
+
+class CommitteeRosterSnapshot(models.Model):
+    """Last accepted complete official roster for a chamber/Congress scope."""
+
+    congress = models.PositiveSmallIntegerField()
+    chamber = models.CharField(max_length=16, choices=Committee.Chamber.choices)
+    source_url = models.URLField(max_length=1024)
+    source_hash = models.CharField(max_length=64)
+    published_at = models.DateTimeField()
+    assignment_count = models.PositiveIntegerField()
+    representative_count = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "congress_committeerostersnapshot"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["congress", "chamber"],
+                name="congress_committee_roster_scope_uniq",
+            )
         ]
 
 

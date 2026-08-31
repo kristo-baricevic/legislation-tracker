@@ -1,0 +1,16 @@
+name: legislation-tracker-e2e
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: legislation_e2e
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d legislation_e2e"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -226,6 +226,35 @@ if AUTH_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
 CONGRESS_API_KEY = env("CONGRESS_API_KEY", default="")
 CURRENT_CONGRESS_OVERRIDE = env("CURRENT_CONGRESS_OVERRIDE", default="").strip()
 
+# Official current-Congress committee roster sources. Both are deliberately
+# configurable: their publishers occasionally move feeds and an operator must
+# be able to redirect a source without a code deployment. Historical roster
+# sync is intentionally unsupported because these feeds publish current data.
+HOUSE_COMMITTEE_ROSTER_URL = env(
+    "HOUSE_COMMITTEE_ROSTER_URL",
+    default="https://clerk.house.gov/xml/lists/MemberData.xml",
+)
+SENATE_COMMITTEE_ROSTER_URL = env(
+    "SENATE_COMMITTEE_ROSTER_URL",
+    default="https://www.senate.gov/legislative/LIS_MEMBER/cvc_member_data.xml",
+)
+COMMITTEE_ROSTER_TIMEOUT_SECONDS = env.int(
+    "COMMITTEE_ROSTER_TIMEOUT_SECONDS", default=30
+)
+COMMITTEE_ROSTER_MAX_BYTES = env.int(
+    "COMMITTEE_ROSTER_MAX_BYTES", default=2 * 1024 * 1024
+)
+COMMITTEE_ROSTER_MAX_AGE_DAYS = env.int("COMMITTEE_ROSTER_MAX_AGE_DAYS", default=90)
+COMMITTEE_ROSTER_MIN_MEMBER_FRACTION = env.float(
+    "COMMITTEE_ROSTER_MIN_MEMBER_FRACTION", default=0.65
+)
+COMMITTEE_ROSTER_MAX_UNKNOWN_MEMBER_RATIO = env.float(
+    "COMMITTEE_ROSTER_MAX_UNKNOWN_MEMBER_RATIO", default=0.0
+)
+SENATE_ROLL_CALL_MAX_BYTES = env.int(
+    "SENATE_ROLL_CALL_MAX_BYTES", default=2 * 1024 * 1024
+)
+
 # Document storage — MinIO (S3-compatible, local) or AWS S3; see README
 # When USE_LOCAL_DOCUMENT_STORAGE=True, files go to local_media/ (no MinIO/S3 needed).
 DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS = env.int(

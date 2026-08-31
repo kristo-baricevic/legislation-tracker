@@ -19,6 +19,10 @@ from apps.changelog.models import BillActivityClock
 from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress, current_congress_session
 from apps.congress.models import Representative, Vote, VoteRecord
+from apps.ingestion.committee_sources import (
+    CommitteeRosterError,
+    CommitteeRosterTransportError,
+)
 from apps.ingestion.congress_client import (
     CongressAPIError,
     bill_actions,
@@ -466,12 +470,54 @@ def sync_representatives(congress=None):
             bioguide_id__in=seen_ids
         ).update(is_current=False)
 
+    try:
+        sync_committee_memberships.delay()
+    except Exception:
+        # The roster is durable only after its own validated sync; a later
+        # scheduled representative run will request it again if this handoff
+        # fails while the broker is unavailable.
+        logger.exception("sync_representatives: could not queue committee roster sync")
+
     return {
         "congress": congress,
         "members": len(profiles),
         "created": created_count,
         "updated": updated_count,
     }
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(CommitteeRosterTransportError,),
+    retry_backoff=True,
+    retry_backoff_max=3600,
+    max_retries=3,
+)
+def sync_committee_memberships(self, congress=None):
+    """Atomically replace validated current House and Senate committee rosters."""
+
+    from apps.congress.committee_sync import sync_committee_memberships as sync
+
+    resolved_congress = current_congress() if congress is None else int(congress)
+    try:
+        results = sync(congress=resolved_congress)
+    except CommitteeRosterError as exc:
+        # Validation failures are immediately actionable. Transport failures
+        # are recorded only after Celery's bounded retry budget is exhausted.
+        if (
+            not isinstance(exc, CommitteeRosterTransportError)
+            or self.request.retries >= self.max_retries
+        ):
+            _record_task_failure(
+                self.request.id,
+                "sync_committee_memberships",
+                (resolved_congress,),
+                {},
+                None,
+                exc,
+            )
+        raise
+    return [result.__dict__ for result in results]
 
 
 @shared_task
@@ -610,42 +656,115 @@ def poll_congress(jurisdiction="federal", congress=None):
 def discover_roll_calls(congress=None):
     """Durably discover every current Congress chamber/session roll call."""
 
-    active_congress = current_congress() if congress is None else int(congress)
-    current_session = current_congress_session()
+    runtime_congress = current_congress()
+    active_congress = runtime_congress if congress is None else int(congress)
+    if active_congress > runtime_congress:
+        raise ValueError("Roll-call discovery cannot run for a future Congress")
+    session_count = (
+        current_congress_session() if active_congress == runtime_congress else 2
+    )
     created_count = 0
-    for session_number in range(1, current_session + 1):
-        for source, chamber in ((HouseVoteSource(), "house"), (SenateVoteSource(), "senate")):
-            refs = source.discover(congress=active_congress, session_number=session_number)
-            now = timezone.now()
-            with transaction.atomic():
-                state, _ = RollCallIngestionState.objects.select_for_update().get_or_create(
+    for session_number in range(1, session_count + 1):
+        for source, chamber in (
+            (HouseVoteSource(), "house"),
+            (SenateVoteSource(), "senate"),
+        ):
+            while True:
+                state, _ = RollCallIngestionState.objects.get_or_create(
                     congress=active_congress,
                     chamber=chamber,
                     session_number=session_number,
                 )
-                for ref in refs:
-                    _, created = IngestionWorkItem.objects.get_or_create(
-                        kind=WORK_KIND_ROLL_CALL_VOTE,
-                        dedupe_key=f"vote:{ref.congress}:{ref.chamber}:{ref.session_number}:{ref.roll_number}",
-                        source_updated_at=ref.source_updated_at,
-                        defaults={
-                            "congress": ref.congress,
-                            "payload_json": {
-                                "congress": ref.congress,
-                                "chamber": ref.chamber,
-                                "session_number": ref.session_number,
-                                "roll_number": ref.roll_number,
-                                "source_url": ref.source_url,
-                            },
-                            "available_at": now,
-                        },
+                was_exhausted = state.source_exhausted_at is not None
+                cursor = "" if was_exhausted else state.next_page_or_roll
+                page = source.discover_page(
+                    congress=active_congress,
+                    session_number=session_number,
+                    cursor=cursor,
+                )
+                page_updated_at = max(
+                    (reference.source_updated_at for reference in page.refs),
+                    default=None,
+                )
+                now = timezone.now()
+                retry_with_new_state = False
+                with transaction.atomic():
+                    locked_state = (
+                        RollCallIngestionState.objects.select_for_update().get(
+                            pk=state.pk
+                        )
                     )
-                    created_count += int(created)
-                state.discovered_roll_count = len(refs)
-                state.source_exhausted_at = now
-                state.source_updated_at = max((ref.source_updated_at for ref in refs), default=None)
-                state.last_polled_at = now
-                state.save()
+                    if (
+                        locked_state.source_exhausted_at is not None
+                    ) != was_exhausted or (
+                        not was_exhausted and locked_state.next_page_or_roll != cursor
+                    ):
+                        retry_with_new_state = True
+                    elif (
+                        was_exhausted
+                        and page_updated_at is not None
+                        and locked_state.source_updated_at is not None
+                        and page_updated_at <= locked_state.source_updated_at
+                    ):
+                        locked_state.last_polled_at = now
+                        locked_state.save(update_fields=["last_polled_at"])
+                    else:
+                        page_created = 0
+                        for reference in page.refs:
+                            _, created = IngestionWorkItem.objects.get_or_create(
+                                kind=WORK_KIND_ROLL_CALL_VOTE,
+                                dedupe_key=(
+                                    f"vote:{reference.congress}:{reference.chamber}:"
+                                    f"{reference.session_number}:{reference.roll_number}"
+                                ),
+                                source_updated_at=reference.source_updated_at,
+                                defaults={
+                                    "congress": reference.congress,
+                                    "payload_json": {
+                                        "congress": reference.congress,
+                                        "chamber": reference.chamber,
+                                        "session_number": reference.session_number,
+                                        "roll_number": reference.roll_number,
+                                        "source_url": reference.source_url,
+                                    },
+                                    "available_at": now,
+                                },
+                            )
+                            page_created += int(created)
+                        # An inserted head item shifts stable rows into later
+                        # offset pages. Replaying such a page creates no work,
+                        # but its persisted next cursor is still required to
+                        # reach the authoritative end without a gap.
+                        prefix = f"vote:{active_congress}:{chamber}:{session_number}:"
+                        locked_state.discovered_roll_count = (
+                            IngestionWorkItem.objects.filter(
+                                kind=WORK_KIND_ROLL_CALL_VOTE,
+                                dedupe_key__startswith=prefix,
+                            )
+                            .values("dedupe_key")
+                            .distinct()
+                            .count()
+                        )
+                        locked_state.next_page_or_roll = page.next_cursor or ""
+                        locked_state.source_exhausted_at = (
+                            now if page.next_cursor is None else None
+                        )
+                        if page_updated_at is not None:
+                            locked_state.source_updated_at = max(
+                                item
+                                for item in (
+                                    locked_state.source_updated_at,
+                                    page_updated_at,
+                                )
+                                if item is not None
+                            )
+                        locked_state.last_polled_at = now
+                        locked_state.save()
+                        created_count += page_created
+                if retry_with_new_state:
+                    continue
+                if was_exhausted or page.next_cursor is None:
+                    break
     if created_count:
         try:
             dispatch_ingestion_work.delay()
@@ -1422,7 +1541,9 @@ def process_bill_votes(self, bill_id):
 
 
 def _queue_roll_call_vote(*, bill, reference: dict):
-    chamber = str(reference.get("chamber") or reference.get("chamberCode") or "").casefold()
+    chamber = str(
+        reference.get("chamber") or reference.get("chamberCode") or ""
+    ).casefold()
     if chamber not in {"house", "senate"}:
         raise CongressAPIError("recorded vote has an unsupported chamber")
     try:
@@ -1431,15 +1552,18 @@ def _queue_roll_call_vote(*, bill, reference: dict):
         )
         roll_number = int(reference.get("rollNumber") or reference.get("roll_number"))
     except (TypeError, ValueError) as exc:
-        raise CongressAPIError("recorded vote is missing session or roll number") from exc
-    source_updated_at = _parse_congress_update_datetime(
-        reference.get("updateDate") or reference.get("actionDate")
-    ) or timezone.now()
-    return enqueue_ingestion_work(
+        raise CongressAPIError(
+            "recorded vote is missing session or roll number"
+        ) from exc
+    source_updated_at = (
+        _parse_congress_update_datetime(
+            reference.get("updateDate") or reference.get("actionDate")
+        )
+        or UNKNOWN_SOURCE_UPDATED_AT
+    )
+    work_item = enqueue_ingestion_work(
         kind=WORK_KIND_ROLL_CALL_VOTE,
-        dedupe_key=(
-            f"vote:{bill.session}:{chamber}:{session_number}:{roll_number}"
-        ),
+        dedupe_key=(f"vote:{bill.session}:{chamber}:{session_number}:{roll_number}"),
         source_updated_at=source_updated_at,
         congress=bill.session,
         payload_json={
@@ -1451,6 +1575,49 @@ def _queue_roll_call_vote(*, bill, reference: dict):
             "source_url": str(reference.get("url") or "")[:1024],
         },
     )
+    requeued = False
+    with transaction.atomic():
+        work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item.pk)
+        payload = dict(work_item.payload_json)
+        existing_bill_id = payload.get("bill_id")
+        if existing_bill_id not in (None, bill.id):
+            raise CongressAPIError(
+                "recorded vote identity is already associated with another bill"
+            )
+        if existing_bill_id is None:
+            payload["bill_id"] = bill.id
+            work_item.payload_json = payload
+            update_fields = ["payload_json", "updated_at"]
+            if work_item.status == IngestionWorkStatus.SUCCEEDED:
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.attempt_count = 0
+                work_item.available_at = timezone.now()
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.last_error = ""
+                work_item.completed_at = None
+                update_fields.extend(
+                    [
+                        "status",
+                        "attempt_count",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "completed_at",
+                    ]
+                )
+                requeued = True
+            work_item.save(update_fields=update_fields)
+    if requeued:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception(
+                "_queue_roll_call_vote: could not re-dispatch roll-call work_item=%s",
+                work_item.id,
+            )
+    return work_item
 
 
 def _normalize_vote_position(value: object) -> str:
@@ -1483,7 +1650,12 @@ def _normalized_vote_members(raw_members, *, chamber: str) -> list[dict]:
         ):
             for member in raw_members.get(key, []):
                 if isinstance(member, dict):
-                    members.append({**member, "position": member.get("position") or default_position})
+                    members.append(
+                        {
+                            **member,
+                            "position": member.get("position") or default_position,
+                        }
+                    )
     elif isinstance(raw_members, list):
         members = raw_members
     else:
@@ -1498,9 +1670,13 @@ def _normalized_vote_members(raw_members, *, chamber: str) -> list[dict]:
             member.get("bioguideId") or member.get("bioguide_id") or ""
         ).strip()
         if not bioguide_id:
-            raise CongressAPIError("roll-call detail contains a voter without Bioguide ID")
+            raise CongressAPIError(
+                "roll-call detail contains a voter without Bioguide ID"
+            )
         if bioguide_id in seen:
-            raise CongressAPIError("roll-call detail contains duplicate voter identities")
+            raise CongressAPIError(
+                "roll-call detail contains duplicate voter identities"
+            )
         seen.add(bioguide_id)
         raw_position = str(member.get("position") or member.get("vote") or "").strip()
         normalized.append(
@@ -1521,7 +1697,9 @@ def _parse_vote_datetime(value):
         return _ensure_utc_aware(value)
     if isinstance(value, str):
         try:
-            return _ensure_utc_aware(datetime.fromisoformat(value.replace("Z", "+00:00")))
+            return _ensure_utc_aware(
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            )
         except ValueError:
             pass
     raise CongressAPIError("roll-call detail has no valid vote date")
@@ -1583,10 +1761,22 @@ def _process_roll_call_vote_impl(work_item):
                 "result": result,
                 "question": question,
                 "source_url": str(payload.get("source_url") or "")[:1024],
+                "source_updated_at": work_item.source_updated_at,
                 "yeas": int(vote_data.get("yeas") or 0),
                 "nays": int(vote_data.get("nays") or 0),
             },
         )
+        if (
+            not created
+            and vote.source_updated_at is not None
+            and work_item.source_updated_at < vote.source_updated_at
+        ):
+            return {
+                "vote_id": vote.id,
+                "created_or_updated": False,
+                "member_count": 0,
+                "stale": True,
+            }
         changed = created
         for field, value in {
             "bill": bill or vote.bill,
@@ -1594,6 +1784,7 @@ def _process_roll_call_vote_impl(work_item):
             "result": result,
             "question": question,
             "source_url": str(payload.get("source_url") or "")[:1024],
+            "source_updated_at": work_item.source_updated_at,
             "yeas": int(vote_data.get("yeas") or 0),
             "nays": int(vote_data.get("nays") or 0),
         }.items():
@@ -1629,9 +1820,11 @@ def _process_roll_call_vote_impl(work_item):
                 record.save(update_fields=["position", "raw_position"])
                 changed = True
             changed = changed or record_created
-        deleted, _ = VoteRecord.objects.filter(vote=vote).exclude(
-            representative_id__in=member_ids
-        ).delete()
+        deleted, _ = (
+            VoteRecord.objects.filter(vote=vote)
+            .exclude(representative_id__in=member_ids)
+            .delete()
+        )
         changed = changed or bool(deleted)
         if changed and bill is not None:
             record_bill_change(
@@ -1652,11 +1845,15 @@ def _process_roll_call_vote_impl(work_item):
                     f"{work_item.source_updated_at.isoformat()}"
                 ),
             )
-    return {"vote_id": vote.id, "created_or_updated": changed, "member_count": len(members)}
+    return {
+        "vote_id": vote.id,
+        "created_or_updated": changed,
+        "member_count": len(members),
+    }
 
 
 def _process_bill_votes_impl(bill_id):
-    """Fetch vote refs from bill detail, create Vote/VoteRecord/Representative, insert ChangeLog(vote)."""
+    """Discover bill action references and queue canonical roll-call work only."""
     logger.info("process_bill_votes: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
     if not bill:
@@ -1688,168 +1885,6 @@ def _process_bill_votes_impl(bill_id):
         queued,
     )
     return {"bill_id": bill_id, "queued": queued}
-
-    # Kept below temporarily only for migration archaeology. All production
-    # calls return through the canonical durable work path above.
-    votes_created = 0
-    for ref in votes_refs:
-        if not isinstance(ref, dict):
-            continue
-        chamber = (ref.get("chamber") or ref.get("chamberCode") or "house").lower()
-        roll = ref.get("rollNumber") or ref.get("roll_number")
-        if roll is None:
-            continue
-        raw_session_number = ref.get("sessionNumber") or ref.get("session_number")
-        try:
-            session_number = int(raw_session_number)
-        except (TypeError, ValueError) as exc:
-            raise CongressAPIError(
-                "recorded vote is missing a valid session number"
-            ) from exc
-        vote_data = vote_detail(
-            congress,
-            chamber,
-            roll,
-            session_number=session_number,
-            source_url=ref.get("url"),
-        )
-        vote_date = vote_data.get("date") or vote_data.get("voteDate")
-        if isinstance(vote_date, str):
-            try:
-                vote_date = datetime.fromisoformat(vote_date.replace("Z", "+00:00"))
-            except Exception:
-                vote_date = timezone.now()
-        if vote_date and timezone.is_naive(vote_date):
-            vote_date = timezone.make_aware(vote_date)
-        result = (vote_data.get("result") or vote_data.get("question") or "unknown")[
-            :50
-        ]
-        yeas = int(vote_data.get("yeas") or vote_data.get("total", {}).get("yeas") or 0)
-        nays = int(vote_data.get("nays") or vote_data.get("total", {}).get("nays") or 0)
-        effective_vote_date = vote_date or timezone.now()
-        with transaction.atomic():
-            vote_lookup = {
-                "bill": bill,
-                "chamber": chamber,
-                "session_number": session_number,
-                "roll_number": int(roll),
-            }
-            vote = Vote.objects.select_for_update().filter(**vote_lookup).first()
-            vote_created = False
-            if vote is None:
-                # Pre-session-number rows remain explicitly unknown after migration.
-                # Adopt one only when the authoritative vote timestamp identifies it.
-                vote = (
-                    Vote.objects.select_for_update()
-                    .filter(
-                        bill=bill,
-                        chamber=chamber,
-                        session_number__isnull=True,
-                        roll_number=int(roll),
-                        vote_date=effective_vote_date,
-                    )
-                    .first()
-                )
-                if vote is not None:
-                    vote.session_number = session_number
-                    vote.save(update_fields=["session_number"])
-                else:
-                    vote, vote_created = Vote.objects.get_or_create(
-                        **vote_lookup,
-                        defaults={
-                            "vote_date": effective_vote_date,
-                            "result": result,
-                            "yeas": yeas,
-                            "nays": nays,
-                        },
-                    )
-            vote_updated = False
-            for field, value in {
-                "vote_date": effective_vote_date,
-                "result": result,
-                "yeas": yeas,
-                "nays": nays,
-            }.items():
-                if getattr(vote, field) != value:
-                    setattr(vote, field, value)
-                    vote_updated = True
-            if vote_updated:
-                vote.save(update_fields=["vote_date", "result", "yeas", "nays"])
-            members = vote_data.get("members") or vote_data.get("votes") or {}
-            if isinstance(members, dict):
-                grouped_members = []
-                for group_name, position in (
-                    ("yeas", "yes"),
-                    ("ayes", "yes"),
-                    ("nays", "no"),
-                    ("noes", "no"),
-                    ("present", "present"),
-                    ("abstain", "abstain"),
-                    ("notVoting", "not_voting"),
-                ):
-                    for member in members.get(group_name, []):
-                        if isinstance(member, dict):
-                            grouped_members.append(
-                                {
-                                    **member,
-                                    "position": member.get("position")
-                                    or member.get("vote")
-                                    or position,
-                                }
-                            )
-                members = grouped_members
-            records_updated = False
-            for m in members if isinstance(members, list) else []:
-                if not isinstance(m, dict):
-                    continue
-                bio = m.get("bioguideId") or m.get("bioguide_id")
-                if not bio:
-                    continue
-                name = m.get("name") or m.get("fullName") or bio
-                state = (m.get("state") or "")[:2]
-                party = (m.get("party") or "")[:50]
-                chamber_m = (m.get("chamber") or chamber).lower()
-                rep = get_or_create_representative_from_sponsor(
-                    {
-                        "bioguideId": bio,
-                        "fullName": name,
-                        "chamber": chamber_m,
-                        "party": party,
-                        "state": state,
-                    }
-                )
-                pos = (m.get("position") or m.get("vote") or "yes").lower()[:20]
-                record, record_created = VoteRecord.objects.get_or_create(
-                    vote=vote,
-                    representative=rep,
-                    defaults={"position": pos or "yes"},
-                )
-                if not record_created and record.position != pos:
-                    record.position = pos
-                    record.save(update_fields=["position"])
-                    records_updated = True
-                records_updated = records_updated or record_created
-            if vote_created or vote_updated or records_updated:
-                record_bill_change(
-                    bill=bill,
-                    change_type="vote",
-                    new_value={
-                        "vote_id": vote.id,
-                        "session_number": vote.session_number,
-                        "roll_number": vote.roll_number,
-                        "result": vote.result,
-                        "chamber": vote.chamber,
-                    },
-                    event_key=(
-                        f"vote:{bill.session}:{vote.chamber}:"
-                        f"{vote.session_number}:{vote.roll_number}:{vote.result}"
-                    ),
-                )
-                votes_created += 1
-    logger.info(
-        "process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created
-    )
-    return {"bill_id": bill_id, "votes_created": votes_created}
 
 
 @shared_task(

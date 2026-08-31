@@ -2,8 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 
+from apps.congress import insights
 from apps.congress.insights import compare_representatives, representative_summary
 from apps.congress.models import Representative, Vote, VoteRecord
+from apps.ingestion.models import RollCallIngestionState
 
 
 @pytest.mark.django_db
@@ -40,6 +42,33 @@ def test_representative_insight_uses_raw_counts_and_never_labels_partial_coverag
     assert summary.participation_numerator == 1
     assert summary.participation_denominator == 2
     assert summary.coverage_complete is False
+
+
+@pytest.mark.django_db
+def test_representative_coverage_requires_every_current_session(monkeypatch):
+    representative = Representative.objects.create(
+        bioguide_id="I000005",
+        name="Incomplete sessions",
+        chamber="house",
+        party="Independent",
+        state="NY",
+    )
+    RollCallIngestionState.objects.create(
+        congress=119,
+        chamber="house",
+        session_number=1,
+        discovered_roll_count=0,
+        source_exhausted_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    monkeypatch.setattr(insights, "current_congress", lambda: 119)
+    monkeypatch.setattr(insights, "current_congress_session", lambda: 2)
+
+    summary = representative_summary(representative=representative, congress=119)
+
+    assert summary.coverage_complete is False
+    assert summary.coverage_reason == (
+        "Roll-call discovery has not started for every applicable session."
+    )
 
 
 @pytest.mark.django_db
