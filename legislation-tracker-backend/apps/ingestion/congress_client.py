@@ -3,9 +3,13 @@ Congress.gov API v3 client for ingestion.
 Uses CONGRESS_API_KEY from Django settings. Base URL: https://api.congress.gov/v3.
 """
 
+import json
 import logging
+import signal
+import threading
 import time
 import unicodedata
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo
@@ -16,6 +20,10 @@ from defusedxml.common import DefusedXmlException
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+CONGRESS_API_TIMEOUT_SECONDS = 30
+CONGRESS_API_TOTAL_TIMEOUT_SECONDS = 45
+CONGRESS_API_MAX_BYTES = 4 * 1024 * 1024
 
 SENATE_VOTE_URL_TEMPLATE = (
     "https://www.senate.gov/legislative/LIS/roll_call_votes/"
@@ -88,6 +96,50 @@ class CongressAPIError(Exception):
         self.response_text = response_text
 
 
+@contextmanager
+def _total_request_deadline(seconds):
+    """Interrupt a stalled HTTP read instead of waiting for another chunk.
+
+    ``requests`` applies its read timeout to individual socket reads.  A peer
+    that slowly drips bytes can therefore keep an ``iter_content`` call open
+    forever without triggering that timeout.  Celery executes this client in
+    its worker main thread on POSIX, where an interval timer can interrupt the
+    blocked system call at the request-wide deadline.
+
+    Do not replace an active timer owned by the host process. The previous
+    alarm handler is restored after every request, so Celery's idle handler can
+    coexist with this deadline. The ordinary requests timeout and
+    between-chunk check remain the portable fallback for non-POSIX platforms.
+    """
+    can_interrupt = (
+        threading.current_thread() is threading.main_thread()
+        and hasattr(signal, "SIGALRM")
+        and hasattr(signal, "ITIMER_REAL")
+        and hasattr(signal, "getitimer")
+        and hasattr(signal, "setitimer")
+    )
+    if not can_interrupt:
+        yield
+        return
+
+    remaining, interval = signal.getitimer(signal.ITIMER_REAL)
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    if remaining or interval:
+        yield
+        return
+
+    def _raise_total_timeout(_signum, _frame):
+        raise CongressAPIError("Congress API request exceeded total timeout")
+
+    signal.signal(signal.SIGALRM, _raise_total_timeout)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
 def _get_api_key():
     return getattr(settings, "CONGRESS_API_KEY", "") or ""
 
@@ -110,25 +162,73 @@ def _request(method, path, params=None):
         path,
         list(params.keys()) if params else [],
     )
+    started_at = time.monotonic()
+    resp = None
     try:
-        resp = requests.request(method, url, params=params, timeout=30)
-    except requests.RequestException as exc:
-        logger.warning("Congress API request failed: %s %s: %s", method, path, exc)
-        raise CongressAPIError(f"Congress API request failed: {exc}") from exc
-    if not resp.ok:
-        logger.error(
-            "Congress API error: %s %s -> %s %s",
-            method,
-            path,
-            resp.status_code,
-            (resp.text[:200] if resp.text else ""),
-        )
-        raise CongressAPIError(
-            f"Congress API error: {resp.status_code}",
-            status_code=resp.status_code,
-            response_text=resp.text[:500] if resp.text else None,
-        )
-    return resp.json()
+        with _total_request_deadline(CONGRESS_API_TOTAL_TIMEOUT_SECONDS):
+            try:
+                try:
+                    resp = requests.request(
+                        method,
+                        url,
+                        params=params,
+                        timeout=CONGRESS_API_TIMEOUT_SECONDS,
+                        stream=True,
+                    )
+                except TypeError:
+                    # Older lightweight request doubles do not accept ``stream``.
+                    resp = requests.request(
+                        method,
+                        url,
+                        params=params,
+                        timeout=CONGRESS_API_TIMEOUT_SECONDS,
+                    )
+            except requests.RequestException as exc:
+                logger.warning(
+                    "Congress API request failed: %s %s: %s", method, path, exc
+                )
+                raise CongressAPIError(f"Congress API request failed: {exc}") from exc
+
+            if not resp.ok:
+                response_text = getattr(resp, "text", "") or ""
+                logger.error(
+                    "Congress API error: %s %s -> %s %s",
+                    method,
+                    path,
+                    resp.status_code,
+                    response_text[:200],
+                )
+                raise CongressAPIError(
+                    f"Congress API error: {resp.status_code}",
+                    status_code=resp.status_code,
+                    response_text=response_text[:500],
+                )
+            if not hasattr(resp, "iter_content"):
+                return resp.json()
+
+            chunks = []
+            size = 0
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                if time.monotonic() - started_at > CONGRESS_API_TOTAL_TIMEOUT_SECONDS:
+                    raise CongressAPIError(
+                        "Congress API request exceeded total timeout"
+                    )
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > CONGRESS_API_MAX_BYTES:
+                    raise CongressAPIError(
+                        "Congress API response exceeds the byte limit"
+                    )
+                chunks.append(chunk)
+            try:
+                return json.loads(b"".join(chunks).decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise CongressAPIError("Congress API returned invalid JSON") from exc
+    finally:
+        close = getattr(resp, "close", None)
+        if callable(close):
+            close()
 
 
 def _throttle():
@@ -248,8 +348,7 @@ def _paginated_bill_collection(congress, bill_type, bill_number, collection, key
                 f"Congress bill {collection} returned an invalid {key} entry"
             )
         fingerprint = tuple(
-            str(entry.get("url") or entry.get("bioguideId") or entry)
-            for entry in page
+            str(entry.get("url") or entry.get("bioguideId") or entry) for entry in page
         )
         if fingerprint in seen_pages and page:
             raise CongressAPIError(
@@ -309,7 +408,9 @@ def bill_text_list(congress, bill_type, bill_number):
     if isinstance(versions, dict):
         versions = versions.get("count", []) or []
     result = []
-    for source_order, v in enumerate(versions if isinstance(versions, list) else [], start=1):
+    for source_order, v in enumerate(
+        versions if isinstance(versions, list) else [], start=1
+    ):
         label = v.get("type") or v.get("version") or v.get("label") or "unknown"
         # Congress's top-level version URL is a metadata/referrer endpoint. The
         # downloadable document is exposed in the nested formats collection.

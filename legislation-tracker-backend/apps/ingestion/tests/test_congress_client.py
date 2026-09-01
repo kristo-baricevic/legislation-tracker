@@ -1,3 +1,6 @@
+import signal
+import time
+
 import pytest
 
 from apps.ingestion import congress_client
@@ -33,6 +36,68 @@ def test_request_wraps_transport_errors_as_retryable_congress_api_errors(monkeyp
 
     with pytest.raises(congress_client.CongressAPIError, match="request failed"):
         congress_client._request("GET", "member/congress/119")
+
+
+def test_request_stops_a_slow_stream_at_the_total_deadline(monkeypatch):
+    class Response:
+        ok = True
+        status_code = 200
+        text = "{}"
+
+        def json(self):
+            return {}
+
+        def iter_content(self, chunk_size):
+            yield b"{"
+            yield b"}"
+
+    monkeypatch.setattr(
+        congress_client.requests,
+        "request",
+        lambda *args, **kwargs: Response(),
+    )
+    monkeypatch.setattr(
+        congress_client,
+        "CONGRESS_API_TOTAL_TIMEOUT_SECONDS",
+        10,
+        raising=False,
+    )
+    monotonic_values = iter((0, 0, 11))
+    monkeypatch.setattr(
+        congress_client.time, "monotonic", lambda: next(monotonic_values)
+    )
+
+    with pytest.raises(congress_client.CongressAPIError, match="total timeout"):
+        congress_client._request("GET", "member/congress/119")
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "setitimer"),
+    reason="hard request deadlines require POSIX interval timers",
+)
+def test_total_request_deadline_interrupts_a_blocked_read():
+    with pytest.raises(congress_client.CongressAPIError, match="total timeout"):
+        with congress_client._total_request_deadline(0.01):
+            time.sleep(0.1)
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "setitimer"),
+    reason="hard request deadlines require POSIX interval timers",
+)
+def test_total_request_deadline_restores_an_existing_alarm_handler():
+    def existing_handler(_signum, _frame):
+        pass
+
+    original_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, existing_handler)
+    try:
+        with pytest.raises(congress_client.CongressAPIError, match="total timeout"):
+            with congress_client._total_request_deadline(0.01):
+                time.sleep(0.1)
+        assert signal.getsignal(signal.SIGALRM) is existing_handler
+    finally:
+        signal.signal(signal.SIGALRM, original_handler)
 
 
 def test_senate_xml_transport_errors_are_retryable_congress_api_errors(monkeypatch):
@@ -112,7 +177,9 @@ def test_bill_collection_rejects_malformed_relationship_entries(monkeypatch):
     )
     monkeypatch.setattr(congress_client, "_throttle", lambda: None)
 
-    with pytest.raises(congress_client.CongressAPIError, match="invalid cosponsors entry"):
+    with pytest.raises(
+        congress_client.CongressAPIError, match="invalid cosponsors entry"
+    ):
         congress_client.bill_cosponsors(119, "hr", "1")
 
 

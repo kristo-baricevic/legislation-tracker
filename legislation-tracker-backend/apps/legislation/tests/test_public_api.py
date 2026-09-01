@@ -241,7 +241,9 @@ def test_public_corpus_endpoints_ignore_stale_bearer_token():
         status="introduced",
         sponsor=representative,
     )
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic = Topic.objects.get_or_create(
+        name="Health", slug="health", defaults={"description": ""}
+    )[0]
     BillTopic.objects.create(bill=bill, topic=topic, confidence_score=0.9)
 
     client = APIClient()

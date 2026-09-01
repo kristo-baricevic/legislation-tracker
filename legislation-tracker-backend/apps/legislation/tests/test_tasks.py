@@ -16,6 +16,7 @@ from apps.legislation.models import (
     ProcessingStatus,
     Topic,
 )
+from apps.legislation.topic_taxonomy import TOPICS
 
 
 @pytest.fixture(autouse=True)
@@ -490,9 +491,7 @@ def test_update_topics_infers_bill_topics_and_is_idempotent(monkeypatch):
     assert first["bill_id"] == bill.id
     assert set(first["topics"]) == {"energy", "environment-climate", "health"}
     assert set(Topic.objects.values_list("slug", flat=True)) == {
-        "energy",
-        "environment-climate",
-        "health",
+        entry["slug"] for entry in TOPICS
     }
     assert set(
         BillTopic.objects.filter(bill=bill).values_list("topic__slug", flat=True)
@@ -643,6 +642,32 @@ def test_update_topics_handles_a_bill_without_a_contract_and_then_updates_simila
 
 
 @pytest.mark.django_db
+def test_update_topics_assigns_general_legislation_when_no_specific_topic_matches():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 54",
+        title="A bill to amend a provision",
+        summary="",
+        status="Introduced",
+    )
+
+    result = tasks.update_topics(bill_id=bill.id)
+
+    assert result["topics"] == ["general-legislation"]
+    assert list(
+        BillTopic.objects.filter(bill=bill).values_list("topic__slug", flat=True)
+    ) == ["general-legislation"]
+
+
+@pytest.mark.django_db
+def test_canonical_topic_taxonomy_is_seeded_by_migration():
+    assert set(Topic.objects.values_list("slug", flat=True)) == {
+        entry["slug"] for entry in TOPICS
+    }
+
+
+@pytest.mark.django_db
 def test_backfill_update_topics_enqueues_latest_contracts(monkeypatch):
     first_bill = Bill.objects.create(
         jurisdiction="federal",
@@ -769,7 +794,10 @@ def test_contract_and_topic_rows_have_database_uniqueness_guarantees():
         status="Introduced",
     )
     document = BillDocument.objects.create(bill=bill, version_label="Introduced")
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic, _ = Topic.objects.get_or_create(
+        slug="health",
+        defaults={"name": "Health"},
+    )
     BillContract.objects.create(
         bill=bill,
         document=document,
@@ -794,7 +822,10 @@ def test_contract_and_topic_rows_have_database_uniqueness_guarantees():
 
 @pytest.mark.django_db
 def test_schedule_similarity_for_bill_recomputes_related_pairs():
-    health = Topic.objects.create(name="Health", slug="health")
+    health, _ = Topic.objects.get_or_create(
+        slug="health",
+        defaults={"name": "Health"},
+    )
     climate = Topic.objects.create(name="Climate", slug="climate")
     source = Bill.objects.create(
         jurisdiction="federal",

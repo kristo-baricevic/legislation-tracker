@@ -51,7 +51,10 @@ from apps.legislation.models import (
     ProcessingStatus,
     Topic,
 )
-from apps.legislation.topic_taxonomy import TOPICS
+from apps.legislation.topic_taxonomy import (
+    FALLBACK_TOPIC_SLUG,
+    TOPICS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +300,9 @@ def infer_topic_matches(*, bill, contract=None, max_topics=5):
             confidence = min(hit_count / len(keywords), 1.0)
             matches.append((slug, round(confidence, 4)))
     matches.sort(key=lambda item: (-item[1], item[0]))
-    return matches[:max_topics]
+    if matches:
+        return matches[:max_topics]
+    return [(FALLBACK_TOPIC_SLUG, 0.0)] if max_topics else []
 
 
 def infer_topic_slugs(contract):

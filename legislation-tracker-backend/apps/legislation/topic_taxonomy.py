@@ -6,7 +6,16 @@ fields. Keywords are lowercased at match time. Order matters only for display;
 a bill can match multiple topics.
 """
 
+FALLBACK_TOPIC_SLUG = "general-legislation"
+
+
 TOPICS = [
+    {
+        "name": "General Legislation",
+        "slug": FALLBACK_TOPIC_SLUG,
+        "description": "Bills that do not yet match a more specific policy area.",
+        "keywords": [],
+    },
     {
         "name": "Agriculture & Food",
         "slug": "agriculture-food",
@@ -912,3 +921,15 @@ TOPICS = [
         ],
     },
 ]
+
+
+def seed_topic_taxonomy(topic_model):
+    """Create or refresh every canonical topic using a supplied Django model."""
+    for entry in TOPICS:
+        topic_model.objects.update_or_create(
+            slug=entry["slug"],
+            defaults={
+                "name": entry["name"],
+                "description": entry["description"],
+            },
+        )

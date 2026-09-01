@@ -109,7 +109,9 @@ def test_tracking_create_validates_target_id_type(path, payload, field):
 def test_tracking_summary_includes_topics_and_legislators_for_current_user_only():
     user = make_user("owner@example.com")
     other_user = make_user("other@example.com")
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic = Topic.objects.get_or_create(
+        name="Health", slug="health", defaults={"description": ""}
+    )[0]
     other_topic = Topic.objects.create(name="Tax", slug="tax")
     representative = make_representative()
     other_representative = make_representative(
@@ -166,7 +168,9 @@ def test_tracking_summary_includes_topics_and_legislators_for_current_user_only(
 def test_tracking_topics_collection_lists_the_current_users_followed_topics():
     user = make_user("follower@example.com")
     client = authenticated_client(user)
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic = Topic.objects.get_or_create(
+        name="Health", slug="health", defaults={"description": ""}
+    )[0]
 
     created = client.post("/api/tracking/topics/", {"topic": topic.id}, format="json")
     listed = client.get("/api/tracking/topics/")
@@ -181,7 +185,9 @@ def test_tracking_topics_collection_lists_the_current_users_followed_topics():
 def test_legacy_preference_topic_endpoints_cannot_change_topic_tracking():
     user = make_user("legacy-topic@example.com")
     client = authenticated_client(user)
-    topic = Topic.objects.create(name="Education", slug="education")
+    topic = Topic.objects.get_or_create(
+        name="Education", slug="education", defaults={"description": ""}
+    )[0]
 
     assert client.get("/api/preferences/followed-topics/").status_code in (404, 405)
     assert client.post(
@@ -197,7 +203,9 @@ def test_legacy_preference_topic_endpoints_cannot_change_topic_tracking():
 def test_generic_preferences_endpoint_rejects_topic_rows():
     user = make_user("preferences@example.com")
     client = authenticated_client(user)
-    topic = Topic.objects.create(name="Education", slug="education")
+    topic = Topic.objects.get_or_create(
+        name="Education", slug="education", defaults={"description": ""}
+    )[0]
 
     response = client.post("/api/preferences/", {"topic": topic.id}, format="json")
 
@@ -230,7 +238,9 @@ def test_preferences_collection_returns_non_tracking_preferences():
 def test_tracking_feed_includes_direct_topic_and_legislator_matches_for_current_user_only():
     user = make_user("owner@example.com")
     other_user = make_user("other@example.com")
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic = Topic.objects.get_or_create(
+        name="Health", slug="health", defaults={"description": ""}
+    )[0]
     other_topic = Topic.objects.create(name="Tax", slug="tax")
     representative = make_representative()
     other_representative = make_representative(
