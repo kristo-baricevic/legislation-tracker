@@ -1382,11 +1382,15 @@ def _process_durable_work(work_item):
     from apps.legislation import tasks as legislation_tasks
 
     if work_item.kind == legislation_tasks.WORK_KIND_DOCUMENT_CONTRACT:
+        contract_kwargs = {
+            "reextract_source": bool(payload.get("reextract_source")),
+            "generation_reason": payload.get("generation_reason"),
+            "extractor_version": payload.get("extractor_version"),
+        }
+        if "generation_occurrence" in payload:
+            contract_kwargs["generation_occurrence"] = payload["generation_occurrence"]
         return legislation_tasks._generate_contract_impl(
-            payload["document_id"],
-            reextract_source=bool(payload.get("reextract_source")),
-            generation_reason=payload.get("generation_reason", "ingestion"),
-            extractor_version=payload.get("extractor_version"),
+            payload["document_id"], **contract_kwargs
         )
     if work_item.kind == legislation_tasks.WORK_KIND_METADATA_CONTRACT:
         return legislation_tasks._generate_contract_for_bill_impl(payload["bill_id"])
@@ -1926,9 +1930,15 @@ def _process_bill_versions_impl(bill_id):
         if update_fields:
             doc.save(update_fields=update_fields)
         if i == len(versions) - 1:
-            BillDocument.objects.filter(bill=bill).update(is_active_version=False)
-            doc.is_active_version = True
-            doc.save(update_fields=["is_active_version"])
+            # Contract promotion takes the same bill lock. Serializing the active
+            # document switch with promotion prevents an old extraction from
+            # becoming latest after a newer version has been activated.
+            with transaction.atomic():
+                Bill.objects.select_for_update().get(pk=bill.pk)
+                BillDocument.objects.filter(bill=bill).update(is_active_version=False)
+                doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
+                doc.is_active_version = True
+                doc.save(update_fields=["is_active_version"])
         needs_download = (
             created
             or source_url_changed

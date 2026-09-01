@@ -13,7 +13,7 @@ from typing import Literal
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 from jsonschema import ValidationError
 
@@ -27,7 +27,7 @@ from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress
 from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
-from apps.legislation.comparison import semantic_contract_items
+from apps.legislation.comparison import semantic_contracts_equal
 from apps.legislation.contract_json import contract_hash_from_dict
 from apps.legislation.enhancements.provider_registry import get_provider
 from apps.legislation.enhancements.providers.base import ProviderError, ProviderUsage
@@ -41,7 +41,11 @@ from apps.legislation.extraction.legacy import (
     build_legacy_metadata_contract,
 )
 from apps.legislation.extraction.service import extract_contract
-from apps.legislation.extraction.types import active_extractor_version
+from apps.legislation.extraction.types import (
+    V21_EXTRACTOR_VERSION,
+    V21_SCHEMA_VERSION,
+    active_extractor_version,
+)
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -109,18 +113,29 @@ def enqueue_document_contract(
             ).encode("utf-8")
         ).hexdigest()
     )
+    source_updated_at = max(
+        value
+        for value in (
+            document.downloaded_at,
+            document.parsed_at,
+            document.created_at,
+        )
+        if value is not None
+    )
+    generation_occurrence = source_updated_at.isoformat()
     return enqueue_ingestion_work(
         kind=WORK_KIND_DOCUMENT_CONTRACT,
         dedupe_key=(
             f"{document.id}:{source_fingerprint}:{extractor_version}:"
             f"{reextraction_version}:{generation_reason}"
         ),
-        source_updated_at=document.created_at or timezone.now(),
+        source_updated_at=source_updated_at,
         payload_json={
             "document_id": document.id,
             **({"reextract_source": True} if reextract_source else {}),
             "generation_reason": generation_reason,
             "extractor_version": extractor_version,
+            "generation_occurrence": generation_occurrence,
         },
         jurisdiction=document.bill.jurisdiction,
         congress=document.bill.session,
@@ -435,12 +450,14 @@ def generate_contract(
     reextract_source=False,
     generation_reason: GenerationReason = "ingestion",
     extractor_version=None,
+    generation_occurrence=None,
 ):
     return _generate_contract_impl(
         document_id,
         reextract_source=reextract_source,
         generation_reason=generation_reason,
         extractor_version=extractor_version,
+        generation_occurrence=generation_occurrence,
     )
 
 
@@ -464,31 +481,26 @@ def _replace_evidence_spans(*, bill, document, contract, evidence_spans):
     )
 
 
-def _semantic_signature(contract_json):
-    return {
-        category: sorted(
-            (
-                item.structural_path,
-                item.anchor,
-                repr(sorted(item.mutable_fields.items())),
-            )
-            for item in items
-        )
-        for category, items in semantic_contract_items(contract_json).items()
-    }
-
-
 def _contract_activity_required(*, previous_contract, document, contract_json) -> bool:
     return (
         previous_contract is None
         or previous_contract.document_id != document.id
-        or _semantic_signature(previous_contract.contract_json or {})
-        != _semantic_signature(contract_json)
+        or not semantic_contracts_equal(
+            previous_contract.contract_json or {},
+            contract_json,
+        )
     )
 
 
 def _record_contract_transition(
-    *, bill, document, contract, previous_contract, contract_hash, schema_version
+    *,
+    bill,
+    document,
+    contract,
+    previous_contract,
+    contract_hash,
+    schema_version,
+    generation_occurrence,
 ):
     return record_bill_change(
         bill=bill,
@@ -508,8 +520,30 @@ def _record_contract_transition(
         event_key=(
             "contract-transition:"
             f"{previous_contract.id if previous_contract else 'none'}:"
-            f"{contract.id}:{contract_hash}"
+            f"{contract.id}:{contract_hash}:{generation_occurrence}"
         ),
+    )
+
+
+def _document_generation_occurrence(document) -> str:
+    value = max(
+        candidate
+        for candidate in (
+            document.downloaded_at,
+            document.parsed_at,
+            document.created_at,
+        )
+        if candidate is not None
+    )
+    return value.isoformat()
+
+
+def _current_active_document_id(*, bill_id):
+    return (
+        BillDocument.objects.filter(bill_id=bill_id, is_active_version=True)
+        .order_by(F("source_order").desc(nulls_last=True), "-created_at", "-id")
+        .values_list("id", flat=True)
+        .first()
     )
 
 
@@ -517,26 +551,15 @@ def _generate_contract_impl(
     document_id,
     *,
     reextract_source=False,
-    generation_reason: GenerationReason = "ingestion",
+    generation_reason: GenerationReason | None = "ingestion",
     extractor_version=None,
+    generation_occurrence=None,
 ):
     """
     Build or skip BillContract from BillDocument.extracted_text.
     Sets Bill.latest_contract, ChangeLog(contract_update), EvidenceSpan rows;
     enqueues topic and similarity recomputation.
     """
-    generation_reason = _validated_generation_reason(generation_reason)
-    current_extractor_version = active_extractor_version()
-    if extractor_version is not None and extractor_version != current_extractor_version:
-        raise RuntimeError(
-            "Queued contract extractor version no longer matches the active writer: "
-            f"queued={extractor_version} active={current_extractor_version}"
-        )
-    logger.info(
-        "generate_contract: starting document_id=%s generation_reason=%s",
-        document_id,
-        generation_reason,
-    )
     document = (
         BillDocument.objects.select_related("bill").filter(pk=document_id).first()
     )
@@ -545,19 +568,54 @@ def _generate_contract_impl(
         return {"document_id": document_id, "skipped": True, "reason": "no_document"}
 
     bill = document.bill
-    previous_bill_contract = bill.latest_contract
+    has_existing_document_contract = BillContract.objects.filter(
+        document=document
+    ).exists()
+    legacy_payload = generation_reason is None
+    if generation_reason is None:
+        generation_reason = (
+            "schema_backfill" if has_existing_document_contract else "ingestion"
+        )
+    generation_reason = _validated_generation_reason(generation_reason)
+    current_extractor_version = active_extractor_version()
+    if extractor_version is None:
+        extractor_version = (
+            V21_EXTRACTOR_VERSION
+            if legacy_payload and generation_reason == "schema_backfill"
+            else current_extractor_version
+        )
+    generation_occurrence = generation_occurrence or _document_generation_occurrence(
+        document
+    )
+    if extractor_version != current_extractor_version:
+        if generation_reason == "ingestion":
+            replacement = enqueue_document_contract(
+                document,
+                reextract_source=reextract_source,
+                generation_reason="ingestion",
+            )
+            return {
+                "document_id": document.id,
+                "skipped": True,
+                "reason": "extractor_superseded",
+                "replacement_work_id": replacement.id,
+            }
+        return {
+            "document_id": document.id,
+            "skipped": True,
+            "reason": "writer_disabled",
+            "queued_extractor": extractor_version,
+            "active_extractor": current_extractor_version,
+        }
+    logger.info(
+        "generate_contract: starting document_id=%s generation_reason=%s",
+        document_id,
+        generation_reason,
+    )
     if generation_reason == "schema_backfill":
-        if not BillContract.objects.filter(document=document).exists():
+        if not has_existing_document_contract:
             raise ValueError(
                 "schema backfill requires an existing contract for the same document"
-            )
-        if (
-            document.is_active_version
-            and previous_bill_contract is not None
-            and previous_bill_contract.document_id != document.id
-        ):
-            raise ValueError(
-                "schema backfill cannot replace a contract from another document"
             )
 
     if reextract_source:
@@ -601,109 +659,108 @@ def _generate_contract_impl(
             "extraction_duration_ms": duration_ms,
         },
     )
+    if (
+        generation_reason == "schema_backfill"
+        and extraction_result.schema_version != V21_SCHEMA_VERSION
+    ):
+        return {
+            "document_id": document.id,
+            "skipped": True,
+            "reason": "v21_extraction_unavailable",
+            "fallback_reason": extraction_result.fallback_reason,
+        }
     new_hash = contract_hash_from_dict(contract_json)
-
-    latest = BillContract.objects.filter(document=document).order_by("-id").first()
-    if latest and latest.contract_hash == new_hash:
-        with transaction.atomic():
-            _replace_evidence_spans(
-                bill=bill,
-                document=document,
-                contract=latest,
-                evidence_spans=evidence_spans,
-            )
-            document.contract_generated_at = timezone.now()
-            document.save(update_fields=["contract_generated_at"])
-            if document.is_active_version:
-                bill.latest_contract = latest
-                if bill.processing_status != ProcessingStatus.COMPLETE:
-                    bill.processing_status = ProcessingStatus.COMPLETE
-                    bill.save(update_fields=["latest_contract", "processing_status"])
-                else:
-                    bill.save(update_fields=["latest_contract"])
-                if generation_reason == "ingestion" and _contract_activity_required(
-                    previous_contract=previous_bill_contract,
-                    document=document,
-                    contract_json=contract_json,
-                ):
-                    _record_contract_transition(
-                        bill=bill,
-                        document=document,
-                        contract=latest,
-                        previous_contract=previous_bill_contract,
-                        contract_hash=new_hash,
-                        schema_version=extraction_result.schema_version,
-                    )
-        if document.is_active_version:
-            enqueue_topic_update(
-                contract=latest,
-                generation_reason=generation_reason,
-            )
-        logger.info(
-            "generate_contract: unchanged hash for document_id=%s, skipping",
-            document_id,
-        )
-        return {"document_id": document_id, "contract_id": latest.id, "unchanged": True}
-
     with transaction.atomic():
-        contract, _ = BillContract.objects.get_or_create(
-            bill=bill,
-            document=document,
+        locked_bill = (
+            Bill.objects.select_for_update(of=("self",))
+            .select_related("latest_contract")
+            .get(pk=bill.pk)
+        )
+        locked_document = BillDocument.objects.select_for_update().get(pk=document.pk)
+        previous_bill_contract = locked_bill.latest_contract
+        contract, created = BillContract.objects.get_or_create(
+            bill=locked_bill,
+            document=locked_document,
             contract_hash=new_hash,
             defaults={
                 "schema_version": extraction_result.schema_version,
                 "contract_json": contract_json,
             },
         )
-        if document.is_active_version:
-            bill.latest_contract = contract
-            bill.processing_status = ProcessingStatus.COMPLETE
-            bill.save(update_fields=["latest_contract", "processing_status"])
+        unchanged = not created
+        promoted = (
+            locked_document.is_active_version
+            and _current_active_document_id(bill_id=locked_bill.id)
+            == locked_document.id
+        )
+        if (
+            promoted
+            and generation_reason == "schema_backfill"
+            and previous_bill_contract is not None
+            and previous_bill_contract.document_id != locked_document.id
+        ):
+            promoted = False
+        if promoted:
+            locked_bill.latest_contract = contract
+            locked_bill.processing_status = ProcessingStatus.COMPLETE
+            locked_bill.save(update_fields=["latest_contract", "processing_status"])
         now = timezone.now()
-        document.contract_generated_at = now
-        document.save(update_fields=["contract_generated_at"])
+        locked_document.contract_generated_at = now
+        locked_document.save(update_fields=["contract_generated_at"])
 
         if (
-            document.is_active_version
+            promoted
             and generation_reason == "ingestion"
             and _contract_activity_required(
                 previous_contract=previous_bill_contract,
-                document=document,
+                document=locked_document,
                 contract_json=contract_json,
             )
         ):
             _record_contract_transition(
-                bill=bill,
-                document=document,
+                bill=locked_bill,
+                document=locked_document,
                 contract=contract,
                 previous_contract=previous_bill_contract,
                 contract_hash=new_hash,
                 schema_version=extraction_result.schema_version,
+                generation_occurrence=generation_occurrence,
             )
         _replace_evidence_spans(
-            bill=bill,
-            document=document,
+            bill=locked_bill,
+            document=locked_document,
             contract=contract,
             evidence_spans=evidence_spans,
         )
 
-    if document.is_active_version:
+    if promoted:
         enqueue_topic_update(
             contract=contract,
             generation_reason=generation_reason,
         )
-        enqueue_search_index(bill, source_updated_at=contract.computed_at)
+        enqueue_search_index(locked_bill, source_updated_at=contract.computed_at)
 
     logger.info(
-        "generate_contract: created contract_id=%s document_id=%s",
+        "generate_contract: persisted contract_id=%s document_id=%s promoted=%s",
         contract.id,
         document_id,
+        promoted,
     )
-    return {
-        "document_id": document_id,
-        "contract_id": contract.id,
-        "contract_hash": new_hash,
-    }
+    if unchanged:
+        result = {
+            "document_id": document_id,
+            "contract_id": contract.id,
+            "unchanged": True,
+        }
+    else:
+        result = {
+            "document_id": document_id,
+            "contract_id": contract.id,
+            "contract_hash": new_hash,
+        }
+    if not promoted:
+        result["promoted"] = False
+    return result
 
 
 @shared_task
@@ -735,6 +792,7 @@ def _update_topics_impl(
     )
     contract = None
     bill = None
+    requested_contract_id = contract_id
     if contract_id:
         contract = (
             BillContract.objects.select_related("bill").filter(pk=contract_id).first()
@@ -745,6 +803,13 @@ def _update_topics_impl(
                 bill.latest_contract_id is not None
                 and bill.latest_contract_id != contract.id
             ):
+                if generation_reason == "schema_backfill":
+                    return {
+                        "contract_id": requested_contract_id,
+                        "bill_id": bill.id,
+                        "skipped": True,
+                        "reason": "superseded",
+                    }
                 contract = bill.latest_contract
     if bill is None and bill_id:
         bill = Bill.objects.filter(pk=bill_id).first()
@@ -776,6 +841,17 @@ def _update_topics_impl(
                 "bill_id": bill_id,
                 "skipped": True,
                 "reason": "not_found",
+            }
+        if (
+            generation_reason == "schema_backfill"
+            and requested_contract_id is not None
+            and bill.latest_contract_id != requested_contract_id
+        ):
+            return {
+                "contract_id": requested_contract_id,
+                "bill_id": bill.id,
+                "skipped": True,
+                "reason": "superseded",
             }
         if bill.latest_contract_id:
             contract = bill.latest_contract

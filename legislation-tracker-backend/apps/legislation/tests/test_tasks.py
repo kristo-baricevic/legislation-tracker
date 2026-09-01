@@ -1,9 +1,11 @@
 from copy import deepcopy
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from django.db import IntegrityError, transaction
 from django.test import override_settings
+from django.utils import timezone
 
 from apps.accounts.bill_views import unread_change_count
 from apps.accounts.models import BillViewState, User
@@ -14,6 +16,7 @@ from apps.legislation import tasks
 from apps.legislation.extraction.types import (
     EXTRACTOR_VERSION,
     V21_EXTRACTOR_VERSION,
+    ExtractionResult,
 )
 from apps.legislation.models import (
     Bill,
@@ -336,6 +339,7 @@ def test_document_contract_work_is_versioned_by_extractor():
         "document_id": document.id,
         "generation_reason": "ingestion",
         "extractor_version": EXTRACTOR_VERSION,
+        "generation_occurrence": document.created_at.isoformat(),
     }
 
 
@@ -421,6 +425,7 @@ def test_schema_backfill_updates_reader_contract_without_activity_churn():
         "reextract_source": True,
         "generation_reason": "schema_backfill",
         "extractor_version": V21_EXTRACTOR_VERSION,
+        "generation_occurrence": document.created_at.isoformat(),
     }
     assert V21_EXTRACTOR_VERSION in work.dedupe_key
     assert "schema_backfill" in work.dedupe_key
@@ -459,16 +464,315 @@ def test_durable_contract_refuses_a_stale_queued_extractor_before_persistence():
         extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
     )
 
-    with pytest.raises(RuntimeError, match="no longer matches the active writer"):
-        tasks._generate_contract_impl(
-            document.id,
-            generation_reason="schema_backfill",
-            extractor_version=V21_EXTRACTOR_VERSION,
-        )
+    result = tasks._generate_contract_impl(
+        document.id,
+        generation_reason="schema_backfill",
+        extractor_version=V21_EXTRACTOR_VERSION,
+    )
 
+    assert result == {
+        "document_id": document.id,
+        "skipped": True,
+        "reason": "writer_disabled",
+        "queued_extractor": V21_EXTRACTOR_VERSION,
+        "active_extractor": EXTRACTOR_VERSION,
+    }
     assert not BillContract.objects.filter(document=document).exists()
     assert document.contract_generated_at is None
     assert not ChangeLog.objects.filter(bill=bill).exists()
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_schema_backfill_does_not_overwrite_a_newer_active_document(monkeypatch):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202F",
+        title="Concurrent Version Act",
+        status="Introduced",
+    )
+    old_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        source_order=1,
+        is_active_version=True,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+    old_contract = BillContract.objects.create(
+        bill=bill,
+        document=old_document,
+        schema_version="2.0-legal-nlp",
+        contract_json={
+            "schema_version": "2.0-legal-nlp",
+            "requirements": [
+                {
+                    "section_label": "Sec. 2",
+                    "modality": "required",
+                    "actor": "The Secretary",
+                    "action": "report",
+                    "object": None,
+                    "conditions": [],
+                }
+            ],
+        },
+        contract_hash="old-v2-contract",
+    )
+    newer_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        source_order=2,
+        is_active_version=False,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall publish a report.",
+    )
+    newer_contract = BillContract.objects.create(
+        bill=bill,
+        document=newer_document,
+        schema_version="2.1-legal-nlp",
+        contract_json={"schema_version": "2.1-legal-nlp"},
+        contract_hash="newer-contract",
+    )
+    bill.latest_contract = old_contract
+    bill.save(update_fields=["latest_contract"])
+    real_extract = tasks.extract_contract
+
+    def activate_newer_document(**kwargs):
+        result = real_extract(**kwargs)
+        with transaction.atomic():
+            Bill.objects.select_for_update().get(pk=bill.pk)
+            BillDocument.objects.filter(bill=bill).update(is_active_version=False)
+            BillDocument.objects.filter(pk=newer_document.pk).update(
+                is_active_version=True
+            )
+            Bill.objects.filter(pk=bill.pk).update(latest_contract=newer_contract)
+        return result
+
+    monkeypatch.setattr(tasks, "extract_contract", activate_newer_document)
+
+    result = tasks._generate_contract_impl(
+        old_document.id,
+        generation_reason="schema_backfill",
+    )
+
+    bill.refresh_from_db()
+    assert result["promoted"] is False
+    assert bill.latest_contract_id == newer_contract.id
+    assert not IngestionWorkItem.objects.filter(kind="topic_update").exists()
+    assert not ChangeLog.objects.filter(bill=bill).exists()
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_schema_backfill_retains_prior_contract_when_v21_extraction_falls_back(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202G",
+        title="Fallback Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="Unsupported source text",
+    )
+    prior = BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version="2.0-legal-nlp",
+        contract_json={"schema_version": "2.0-legal-nlp"},
+        contract_hash="prior-valid-contract",
+    )
+    bill.latest_contract = prior
+    bill.save(update_fields=["latest_contract"])
+    monkeypatch.setattr(
+        tasks,
+        "extract_contract",
+        lambda **kwargs: ExtractionResult(
+            schema_version="1.1-deterministic",
+            contract_json={
+                "schema_version": "1.1-deterministic",
+                "plain_summary": "Fallback",
+            },
+            evidence=(),
+            method="legacy-deterministic",
+            fallback_reason="unrecognized_federal_structure",
+        ),
+    )
+
+    result = tasks._generate_contract_impl(
+        document.id,
+        generation_reason="schema_backfill",
+    )
+
+    bill.refresh_from_db()
+    document.refresh_from_db()
+    assert result == {
+        "document_id": document.id,
+        "skipped": True,
+        "reason": "v21_extraction_unavailable",
+        "fallback_reason": "unrecognized_federal_structure",
+    }
+    assert bill.latest_contract_id == prior.id
+    assert BillContract.objects.filter(document=document).count() == 1
+    assert document.contract_generated_at is None
+
+
+@pytest.mark.django_db
+def test_ingestion_work_supersedes_queued_extractor_after_writer_flip():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202H",
+        title="Writer Flip Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+    queued = tasks.enqueue_document_contract(document)
+
+    with override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True):
+        result = ingestion_tasks._process_durable_work(queued)
+
+    replacement = (
+        IngestionWorkItem.objects.filter(kind="document_contract")
+        .exclude(pk=queued.pk)
+        .get()
+    )
+    assert result == {
+        "document_id": document.id,
+        "skipped": True,
+        "reason": "extractor_superseded",
+        "replacement_work_id": replacement.id,
+    }
+    assert replacement.payload_json["extractor_version"] == V21_EXTRACTOR_VERSION
+    assert replacement.payload_json["generation_reason"] == "ingestion"
+    assert not BillContract.objects.filter(document=document).exists()
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_legacy_durable_payload_upgrades_existing_contract_without_activity():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202I",
+        title="Legacy Queue Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+    with override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False):
+        original = tasks._generate_contract_impl(document.id)
+    prior = BillContract.objects.get(pk=original["contract_id"])
+    original_activity = Bill.objects.values_list(
+        "last_activity_at", "last_activity_sequence"
+    ).get(pk=bill.pk)
+    original_changes = ChangeLog.objects.filter(bill=bill).count()
+    work = IngestionWorkItem.objects.create(
+        kind="document_contract",
+        dedupe_key="legacy-payload",
+        source_updated_at=timezone.now(),
+        payload_json={"document_id": document.id},
+    )
+
+    result = ingestion_tasks._process_durable_work(work)
+
+    bill.refresh_from_db()
+    assert result["contract_id"] == bill.latest_contract_id
+    assert bill.latest_contract.schema_version == "2.1-legal-nlp"
+    assert BillContract.objects.filter(pk=prior.pk).exists()
+    assert ChangeLog.objects.filter(bill=bill).count() == original_changes
+    assert (bill.last_activity_at, bill.last_activity_sequence) == original_activity
+
+
+@pytest.mark.django_db
+def test_repeated_semantic_transitions_each_advance_activity_once():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202J",
+        title="Repeated Transition Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+        parsed_at=timezone.now(),
+    )
+    versions = (
+        "SEC. 2. DUTY\nThe Secretary shall report.",
+        "SEC. 2. DUTY\nThe Secretary shall publish a report.",
+        "SEC. 2. DUTY\nThe Secretary shall report.",
+        "SEC. 2. DUTY\nThe Secretary shall publish a report.",
+    )
+
+    for index, source in enumerate(versions):
+        document.extracted_text = source
+        document.parsed_at = timezone.now() + timedelta(seconds=index)
+        document.save(update_fields=["extracted_text", "parsed_at"])
+        tasks._generate_contract_impl(document.id)
+
+    bill.refresh_from_db()
+    events = ChangeLog.objects.filter(
+        bill=bill,
+        change_type="contract_update",
+    )
+    assert events.count() == 4
+    assert events.values("event_key").distinct().count() == 4
+    assert bill.last_activity_sequence == 4
+
+
+@pytest.mark.django_db
+def test_legacy_detail_addition_requires_contract_activity():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202K",
+        title="Legacy Detail Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+    )
+    previous = BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version="1.1-deterministic",
+        contract_json={
+            "schema_version": "1.1-deterministic",
+            "plain_summary": "The bill creates a program.",
+            "requirements": [],
+            "funding_mentions": [],
+            "effective_dates": [],
+        },
+        contract_hash="legacy-detail-before",
+    )
+    updated = deepcopy(previous.contract_json)
+    updated["funding_mentions"] = [
+        {"text": "$5,000,000 is authorized.", "category": "funding"}
+    ]
+
+    assert tasks._contract_activity_required(
+        previous_contract=previous,
+        document=document,
+        contract_json=updated,
+    )
 
 
 @pytest.mark.django_db
@@ -822,6 +1126,64 @@ def test_update_topics_uses_latest_contract_when_queued_contract_is_stale():
     assert set(
         BillTopic.objects.filter(bill=bill).values_list("topic__slug", flat=True)
     ) == {"health"}
+
+
+@pytest.mark.django_db
+def test_schema_backfill_topic_work_skips_when_its_contract_is_superseded():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 204A",
+        title="Superseded Topic Act",
+        status="Introduced",
+    )
+    backfill_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=False,
+    )
+    backfill_contract = BillContract.objects.create(
+        bill=bill,
+        document=backfill_document,
+        schema_version="2.1-legal-nlp",
+        contract_json={"plain_summary": "Improves Medicare and hospitals."},
+        contract_hash="backfill-health",
+    )
+    current_document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        is_active_version=True,
+    )
+    current_contract = BillContract.objects.create(
+        bill=bill,
+        document=current_document,
+        schema_version="2.1-legal-nlp",
+        contract_json={"plain_summary": "Funds renewable energy."},
+        contract_hash="current-energy",
+    )
+    bill.latest_contract = current_contract
+    bill.save(update_fields=["latest_contract"])
+    health = Topic.objects.get(slug="health")
+    BillTopic.objects.create(bill=bill, topic=health, confidence_score=0.9)
+
+    result = tasks._update_topics_impl(
+        contract_id=backfill_contract.id,
+        generation_reason="schema_backfill",
+    )
+
+    assert result == {
+        "contract_id": backfill_contract.id,
+        "bill_id": bill.id,
+        "skipped": True,
+        "reason": "superseded",
+    }
+    assert list(
+        BillTopic.objects.filter(bill=bill).values_list("topic__slug", flat=True)
+    ) == ["health"]
+    assert not ChangeLog.objects.filter(bill=bill).exists()
+    assert not IngestionWorkItem.objects.filter(
+        kind__in=("similarity", "search_index")
+    ).exists()
 
 
 @pytest.mark.django_db

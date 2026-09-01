@@ -664,6 +664,7 @@ def test_durable_worker_carries_generation_reason_through_contract_and_topic_wor
             "reextract_source": True,
             "generation_reason": "schema_backfill",
             "extractor_version": "federal-rules-2.1.0",
+            "generation_occurrence": "2026-09-01T12:00:00+00:00",
         },
     )
     topic_work = IngestionWorkItem.objects.create(
@@ -686,6 +687,7 @@ def test_durable_worker_carries_generation_reason_through_contract_and_topic_wor
                 "reextract_source": True,
                 "generation_reason": "schema_backfill",
                 "extractor_version": "federal-rules-2.1.0",
+                "generation_occurrence": "2026-09-01T12:00:00+00:00",
             },
         )
     ]

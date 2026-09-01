@@ -26,6 +26,20 @@ def make_document(*, number, session=119, active=True):
     )
 
 
+def make_existing_contract(document, *, suffix="existing"):
+    contract = BillContract.objects.create(
+        bill=document.bill,
+        document=document,
+        schema_version="2.0-legal-nlp",
+        contract_json={"schema_version": "2.0-legal-nlp"},
+        contract_hash=f"{suffix}-{document.id}",
+    )
+    if document.is_active_version:
+        document.bill.latest_contract = contract
+        document.bill.save(update_fields=["latest_contract"])
+    return contract
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "arguments",
@@ -101,6 +115,7 @@ def test_backfill_contracts_all_versions_includes_inactive_documents():
 @override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
 def test_backfill_contracts_execute_is_durable_and_idempotent(monkeypatch):
     document = make_document(number=307)
+    make_existing_contract(document)
     broker_observations = []
     monkeypatch.setattr(
         ingestion_tasks.dispatch_ingestion_work,
@@ -188,6 +203,7 @@ def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
         "reextract_source": True,
         "generation_reason": "schema_backfill",
         "extractor_version": "federal-rules-2.1.0",
+        "generation_occurrence": document.created_at.isoformat(),
     }
 
     result = ingestion_tasks._process_durable_work(work)
@@ -217,3 +233,62 @@ def test_backfill_contracts_refuses_execute_before_creating_durable_work():
         )
 
     assert not IngestionWorkItem.objects.exists()
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_backfill_contracts_requires_a_bounded_execute_batch():
+    document = make_document(number=310)
+    make_existing_contract(document)
+
+    with pytest.raises(CommandError, match="bounded"):
+        call_command("backfill_contracts", "--session", "119", "--execute")
+
+    assert not IngestionWorkItem.objects.exists()
+
+
+@pytest.mark.django_db
+def test_backfill_contracts_preview_reports_eligible_and_ineligible_documents():
+    eligible = make_document(number=311)
+    make_existing_contract(eligible)
+    ineligible = make_document(number=312)
+    output = StringIO()
+
+    call_command(
+        "backfill_contracts",
+        "--start-id",
+        str(eligible.id),
+        "--end-id",
+        str(ineligible.id),
+        stdout=output,
+    )
+
+    assert "selected=2" in output.getvalue()
+    assert "eligible=1 ineligible=1" in output.getvalue()
+    assert not IngestionWorkItem.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_backfill_contracts_execute_excludes_documents_without_prior_contract(
+    monkeypatch,
+):
+    eligible = make_document(number=313)
+    make_existing_contract(eligible)
+    ineligible = make_document(number=314)
+    monkeypatch.setattr(ingestion_tasks.dispatch_ingestion_work, "delay", lambda: None)
+    output = StringIO()
+
+    call_command(
+        "backfill_contracts",
+        "--start-id",
+        str(eligible.id),
+        "--end-id",
+        str(ineligible.id),
+        "--execute",
+        stdout=output,
+    )
+
+    work = IngestionWorkItem.objects.get(kind="document_contract")
+    assert work.payload_json["document_id"] == eligible.id
+    assert "enqueued=1 skipped_ineligible=1" in output.getvalue()

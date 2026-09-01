@@ -116,6 +116,12 @@ _SEMANTIC_CATEGORIES = {
     "amendment_operations": "amendment_operations",
 }
 
+_LEGACY_CATEGORIES = {
+    "requirements": "legacy_requirements",
+    "funding_mentions": "legacy_funding_mentions",
+    "effective_dates": "legacy_effective_dates",
+}
+
 _SEMANTIC_FIELDS = {
     "requirements": (
         "modality",
@@ -175,6 +181,31 @@ def semantic_contract_items(
     """
     projected: dict[str, list[SemanticItem]] = defaultdict(list)
     source_order = 0
+    if contract_json.get("schema_version") == "1.1-deterministic":
+        for raw_category, category in _LEGACY_CATEGORIES.items():
+            raw_items = contract_json.get(raw_category, [])
+            if not isinstance(raw_items, list):
+                continue
+            for raw_item in raw_items:
+                if not isinstance(raw_item, dict) or not raw_item.get("text"):
+                    continue
+                projected[category].append(
+                    SemanticItem(
+                        category=category,
+                        structural_path=(),
+                        anchor=(_normalize_identity(raw_item.get("category")),),
+                        mutable_fields={
+                            "text": _normalized_value(raw_item["text"]),
+                            "legacy_category": _normalized_value(
+                                raw_item.get("category")
+                            ),
+                        },
+                        source_order=source_order,
+                    )
+                )
+                source_order += 1
+        return {category: tuple(items) for category, items in sorted(projected.items())}
+
     for raw_category, category in _SEMANTIC_CATEGORIES.items():
         raw_items = contract_json.get(raw_category, [])
         if not isinstance(raw_items, list):
@@ -204,14 +235,17 @@ def semantic_contract_items(
 
 def _common_fields_equal(before: SemanticItem, after: SemanticItem) -> bool:
     common = set(before.mutable_fields) & set(after.mutable_fields)
-    return all(
+    return bool(common) and all(
         before.mutable_fields[key] == after.mutable_fields[key] for key in common
     )
 
 
-def _correspondence_text(item: SemanticItem, *, common_fields: set[str]) -> str:
-    payload = {key: item.mutable_fields[key] for key in sorted(common_fields)}
-    return json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+def _semantic_value_text(value: object) -> str:
+    if isinstance(value, tuple):
+        return " ".join(_semantic_value_text(item) for item in value)
+    if value is None:
+        return ""
+    return str(value)
 
 
 def _changed_field_text(
@@ -223,8 +257,12 @@ def _changed_field_text(
         if before.mutable_fields[key] != after.mutable_fields[key]
     }
     return (
-        _correspondence_text(before, common_fields=changed),
-        _correspondence_text(after, common_fields=changed),
+        "\n".join(
+            _semantic_value_text(before.mutable_fields[key]) for key in sorted(changed)
+        ),
+        "\n".join(
+            _semantic_value_text(after.mutable_fields[key]) for key in sorted(changed)
+        ),
     )
 
 
@@ -244,17 +282,15 @@ def _semantic_changes(
     changes: list[ContractChange] = []
     for category in sorted(set(before_items) | set(after_items)):
         buckets: dict[
-            tuple[tuple[str, ...], tuple[str, ...]],
+            tuple[str, tuple[str, ...]],
             tuple[list[SemanticItem], list[SemanticItem]],
         ] = {}
         for item in before_items.get(category, ()):
-            buckets.setdefault((item.structural_path, item.anchor), ([], []))[0].append(
-                item
-            )
+            structural_leaf = item.structural_path[-1] if item.structural_path else ""
+            buckets.setdefault((structural_leaf, item.anchor), ([], []))[0].append(item)
         for item in after_items.get(category, ()):
-            buckets.setdefault((item.structural_path, item.anchor), ([], []))[1].append(
-                item
-            )
+            structural_leaf = item.structural_path[-1] if item.structural_path else ""
+            buckets.setdefault((structural_leaf, item.anchor), ([], []))[1].append(item)
         ordinal = 0
         for bucket in sorted(buckets):
             old_group, new_group = buckets[bucket]
@@ -265,7 +301,10 @@ def _semantic_changes(
                     (
                         index
                         for index, new_item in enumerate(unmatched_new)
-                        if _common_fields_equal(old_item, new_item)
+                        if _paths_compatible(
+                            old_item.structural_path, new_item.structural_path
+                        )
+                        and _common_fields_equal(old_item, new_item)
                     ),
                     None,
                 )
@@ -276,7 +315,13 @@ def _semantic_changes(
             candidates = []
             for old_index, old_item in enumerate(unmatched_old):
                 for new_index, new_item in enumerate(unmatched_new):
+                    if not _paths_compatible(
+                        old_item.structural_path, new_item.structural_path
+                    ):
+                        continue
                     common = set(old_item.mutable_fields) & set(new_item.mutable_fields)
+                    if not common:
+                        continue
                     old_text, new_text = _changed_field_text(
                         old_item, new_item, common_fields=common
                     )
@@ -347,6 +392,17 @@ def _semantic_changes(
     return changes
 
 
+def _paths_compatible(before: tuple[str, ...], after: tuple[str, ...]) -> bool:
+    if before == after:
+        return True
+    return bool(
+        before
+        and after
+        and before[-1] == after[-1]
+        and (len(before) == 1 or len(after) == 1)
+    )
+
+
 def _legacy_plain_summary_changes(
     before_json: dict[str, object], after_json: dict[str, object]
 ) -> list[ContractChange]:
@@ -388,6 +444,14 @@ def compare_contracts(*, before, after, limit: int = 200) -> ContractDiff:
         returned_change_count=min(len(changes), limit),
         truncated=len(changes) > limit,
     )
+
+
+def semantic_contracts_equal(
+    before_json: dict[str, object], after_json: dict[str, object]
+) -> bool:
+    if semantic_contract_items(before_json) or semantic_contract_items(after_json):
+        return not _semantic_changes(before_json, after_json)
+    return not _legacy_plain_summary_changes(before_json, after_json)
 
 
 def _section_map(document):

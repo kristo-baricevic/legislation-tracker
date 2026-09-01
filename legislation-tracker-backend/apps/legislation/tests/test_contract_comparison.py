@@ -349,3 +349,165 @@ def test_new_and_removed_provisions_remain_explicit():
     }
 
     assert operations == {"added", "removed"}
+
+
+@pytest.mark.django_db
+def test_legacy_requirement_funding_and_effective_date_changes_are_substantive():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 916",
+        title="Legacy comparison",
+        status="Introduced",
+    )
+    before = make_contract(
+        bill,
+        "legacy-before",
+        {
+            "schema_version": "1.1-deterministic",
+            "plain_summary": "The bill creates a program.",
+            "requirements": [],
+            "funding_mentions": [],
+            "effective_dates": [],
+        },
+    )
+    after = make_contract(
+        bill,
+        "legacy-after",
+        {
+            "schema_version": "1.1-deterministic",
+            "plain_summary": "The bill creates a program.",
+            "requirements": [
+                {"text": "The Secretary shall report.", "category": "requirement"}
+            ],
+            "funding_mentions": [
+                {"text": "$5,000,000 is authorized.", "category": "funding"}
+            ],
+            "effective_dates": [
+                {
+                    "text": "The Act takes effect after enactment.",
+                    "category": "effective_date",
+                }
+            ],
+        },
+    )
+
+    diff = compare_contracts(before=before, after=after)
+
+    assert diff.total_change_count == 3
+    assert {change.path.split("[", 1)[0] for change in diff.changes} == {
+        "legacy_requirements",
+        "legacy_funding_mentions",
+        "legacy_effective_dates",
+    }
+    assert {change.operation for change in diff.changes} == {"added"}
+
+
+@pytest.mark.django_db
+def test_equivalent_v2_leaf_and_v21_full_hierarchy_do_not_churn():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 917",
+        title="Hierarchy migration",
+        status="Introduced",
+    )
+    before = make_contract(
+        bill,
+        "hierarchy-v2",
+        {
+            "schema_version": "2.0-legal-nlp",
+            "requirements": [
+                {
+                    "section_label": "Sec. 2",
+                    "modality": "required",
+                    "actor": "The Secretary",
+                    "action": "publish a report",
+                    "object": None,
+                    "conditions": [],
+                }
+            ],
+        },
+    )
+    v21_item = requirement(source_id="section-500")
+    v21_item["section_path"] = [
+        {"level": "division", "label": "DIVISION A", "heading": "Health"},
+        {"level": "title", "label": "TITLE I", "heading": "Programs"},
+        {"level": "section", "label": "Sec. 2", "heading": "Reports"},
+    ]
+    after = make_contract(
+        bill,
+        "hierarchy-v21",
+        {"schema_version": "2.1-legal-nlp", "requirements": [v21_item]},
+    )
+
+    assert compare_contracts(before=before, after=after).total_change_count == 0
+
+
+@pytest.mark.django_db
+def test_same_leaf_in_distinct_v21_hierarchies_is_not_collapsed():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 918",
+        title="Repeated section labels",
+        status="Introduced",
+    )
+    first = requirement(source_id="section-10")
+    first["section_path"] = [
+        {"level": "division", "label": "DIVISION A", "heading": None},
+        {"level": "section", "label": "Sec. 2", "heading": None},
+    ]
+    second = requirement(source_id="section-20")
+    second["section_path"] = [
+        {"level": "division", "label": "DIVISION B", "heading": None},
+        {"level": "section", "label": "Sec. 2", "heading": None},
+    ]
+    before = make_contract(
+        bill,
+        "repeated-hierarchy-before",
+        {"schema_version": "2.1-legal-nlp", "requirements": [first, second]},
+    )
+    after = make_contract(
+        bill,
+        "repeated-hierarchy-after",
+        {"schema_version": "2.1-legal-nlp", "requirements": [first]},
+    )
+
+    diff = compare_contracts(before=before, after=after)
+
+    assert diff.total_change_count == 1
+    assert diff.changes[0].operation == "removed"
+    assert diff.changes[0].before["structural_path"][0] == "division b"
+
+
+@pytest.mark.django_db
+def test_short_unrelated_actions_do_not_match_on_json_scaffolding():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 919",
+        title="Short actions",
+        status="Introduced",
+    )
+    before = make_contract(
+        bill,
+        "short-before",
+        {
+            "schema_version": "2.1-legal-nlp",
+            "requirements": [requirement(source_id="section-10", action="tax")],
+        },
+    )
+    after = make_contract(
+        bill,
+        "short-after",
+        {
+            "schema_version": "2.1-legal-nlp",
+            "requirements": [requirement(source_id="section-20", action="run")],
+        },
+    )
+
+    assert [
+        change.operation
+        for change in compare_contracts(before=before, after=after).changes
+    ] == ["removed", "added"]
