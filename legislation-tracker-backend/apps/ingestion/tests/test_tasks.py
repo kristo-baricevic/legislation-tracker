@@ -1476,6 +1476,7 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
             "url": "https://api.congress.gov/v3/bill/119/hr/1",
         },
     )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
     monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks._process_bill_impl("119-hr-1")
@@ -1606,6 +1607,35 @@ def test_process_bill_does_not_replace_newer_crs_with_a_stale_partial_response(
     assert bill.summary_source == "crs"
     assert bill.summary_action_date == date(2025, 3, 2)
     assert bill.summary_last_updated_at == datetime(2025, 3, 4, 10, tzinfo=UTC)
+
+
+@pytest.mark.django_db
+def test_process_bill_does_not_replace_complete_crs_with_equal_provenance_partial_text(
+    monkeypatch,
+):
+    detail = {
+        "title": "Test bill",
+        "latestAction": {"text": "Introduced"},
+        "url": "119-hr-1",
+    }
+    summaries = [
+        {
+            "actionDate": "2025-03-02",
+            "versionCode": "RS",
+            "lastSummaryUpdateDate": "2025-03-04T10:00:00Z",
+            "text": "<p>Complete CRS revision with all details.</p>",
+        }
+    ]
+    monkeypatch.setattr(tasks, "bill_detail", lambda *args: detail)
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: summaries)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks._process_bill_impl("119-hr-1")
+    summaries[0]["text"] = "<p>Incomplete revision</p>"
+    tasks._process_bill_impl("119-hr-1")
+
+    bill = Bill.objects.get(pk=result["bill_id"])
+    assert bill.summary == "Complete CRS revision with all details."
 
 
 @pytest.mark.django_db
@@ -1782,6 +1812,7 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
     monkeypatch.setattr(
         tasks.process_bill_votes, "apply_async", lambda args=None, kwargs=None: None
     )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
 
     result = tasks._process_bill_impl("119-hr-1")
 

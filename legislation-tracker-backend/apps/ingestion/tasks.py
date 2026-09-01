@@ -1696,7 +1696,7 @@ def _process_bill_impl(bill_key_str):
                     or datetime.min.replace(tzinfo=UTC),
                     crs_revision.version_code,
                 )
-                if bill.summary_source != "crs" or candidate_revision >= stored_summary_revision(
+                if bill.summary_source != "crs" or candidate_revision > stored_summary_revision(
                     bill
                 ):
                     target_summary = crs_revision.text
