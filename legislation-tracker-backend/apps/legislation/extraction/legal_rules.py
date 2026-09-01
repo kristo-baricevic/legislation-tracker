@@ -1,8 +1,10 @@
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 
+from .display_text import normalize_reader_fragment
+from .federal_clauses import iter_operative_clauses
 from .federal_structure import sentence_spans
 from .types import ExtractedClaim, SourceSpan, StructuralSection
 
@@ -156,16 +158,48 @@ def _strip_list_connector(value: str) -> str:
     )
 
 
+def _normalized_fields(fields: dict[str, object]) -> dict[str, object]:
+    def normalize(value: object) -> object:
+        if isinstance(value, str):
+            return normalize_reader_fragment(value)
+        if isinstance(value, list):
+            return [normalize(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(normalize(item) for item in value)
+        if isinstance(value, dict):
+            return {key: normalize(item) for key, item in value.items()}
+        return value
+
+    return {key: normalize(value) for key, value in fields.items()}
+
+
+def _claim(
+    *,
+    category: str,
+    fields: dict[str, object],
+    section: StructuralSection,
+    evidence: tuple[SourceSpan, ...],
+    rule_id: str,
+) -> ExtractedClaim:
+    return ExtractedClaim(
+        category=category,
+        fields=_normalized_fields(fields),
+        section_label=section.label,
+        evidence=evidence,
+        rule_id=rule_id,
+        source_id=section.source_id,
+        section_id=section.source_id,
+        section_path=section.path,
+    )
+
+
 def _parent_section(
     section: StructuralSection, sections: Sequence[StructuralSection]
 ) -> StructuralSection | None:
-    if section.parent_label is None:
-        return None
     candidates = [
         candidate
         for candidate in sections
-        if candidate.label == section.parent_label
-        and candidate.span.start_char < section.span.start_char
+        if candidate.span.start_char < section.span.start_char
         and section.span.end_char <= candidate.span.end_char
     ]
     return max(
@@ -197,22 +231,6 @@ def _inherited_modal_context(
 
 def _definition_term(match: re.Match[str]) -> str:
     return (match.group("term_double") or match.group("term_single")).strip()
-
-
-def _iter_operative_sentences(
-    source_text: str, sections: Sequence[StructuralSection]
-) -> Iterator[tuple[StructuralSection, SourceSpan]]:
-    quoted_block_ranges = _quoted_block_ranges(source_text)
-    for section in sections:
-        if section.level not in {"section", "subdivision"}:
-            continue
-        for sentence in sentence_spans(section, source_text):
-            if any(
-                sentence.start_char < end and start < sentence.end_char
-                for start, end in quoted_block_ranges
-            ):
-                continue
-            yield section, sentence
 
 
 def _heading_contains(
@@ -281,26 +299,26 @@ def extract_modality_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence in _iter_operative_sentences(source_text, sections):
+    for section, sentence, context in iter_operative_clauses(source_text, sections):
         modal_matches = list(MODAL_RE.finditer(sentence.text))
         if not modal_matches:
-            inherited = _inherited_modal_context(source_text, section, sections)
-            if inherited is not None:
-                modal, actor, parent_evidence = inherited
+            if context is not None:
+                modal = context.modal
+                actor = context.actor
                 action = _strip_list_connector(sentence.text)
                 if action and re.search(r"\w", action):
                     claims.append(
-                        ExtractedClaim(
+                        _claim(
                             category="requirements",
                             fields={
                                 "modality": _MODALITY_BY_PHRASE[modal],
                                 "actor": actor,
                                 "action": action,
                                 "object": None,
-                                "conditions": [],
+                                "conditions": list(context.conditions),
                             },
-                            section_label=section.label,
-                            evidence=(parent_evidence, sentence),
+                            section=section,
+                            evidence=(context.evidence, sentence),
                             rule_id=f"modality.{modal.replace(' ', '_')}.inherited.v1",
                         )
                     )
@@ -312,7 +330,7 @@ def extract_modality_claims(
 
             actor = _strip_terminal_punctuation(sentence.text[: modal_match.start()])
             action = _strip_terminal_punctuation(sentence.text[modal_match.end() :])
-            conditions = []
+            conditions = list(context.conditions) if context is not None else []
             leading_condition = _LEADING_CONDITION_RE.match(actor)
             if leading_condition is not None:
                 conditions.append(
@@ -325,6 +343,9 @@ def extract_modality_claims(
                     _strip_terminal_punctuation(condition_match.group("condition"))
                 )
                 action = _strip_terminal_punctuation(action[: condition_match.start()])
+
+            if not actor and context is not None:
+                actor = context.actor
 
             modal = modal_match.group("modal").casefold()
             if modal == "may" and action.casefold().startswith("discuss whether"):
@@ -339,7 +360,7 @@ def extract_modality_claims(
                 continue
 
             claims.append(
-                ExtractedClaim(
+                _claim(
                     category="requirements",
                     fields={
                         "modality": _MODALITY_BY_PHRASE[modal],
@@ -348,7 +369,7 @@ def extract_modality_claims(
                         "object": None,
                         "conditions": conditions,
                     },
-                    section_label=section.label,
+                    section=section,
                     evidence=(sentence,),
                     rule_id=f"modality.{modal.replace(' ', '_')}.v1",
                 )
@@ -361,7 +382,7 @@ def extract_definition_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence in _iter_operative_sentences(source_text, sections):
+    for section, sentence, _ in iter_operative_clauses(source_text, sections):
         match = _EXPLICIT_DEFINITION_RE.search(sentence.text)
         explicit = match is not None
         if match is None and _heading_contains(section, "definition", sections):
@@ -376,14 +397,14 @@ def extract_definition_claims(
             continue
         context = "term" if explicit else "section"
         claims.append(
-            ExtractedClaim(
+            _claim(
                 category="definitions",
                 fields={
                     "term": term,
                     "definition": definition,
                     "definition_type": definition_type,
                 },
-                section_label=section.label,
+                section=section,
                 evidence=(sentence,),
                 rule_id=f"definition.{context}_{definition_type}.v1",
             )
@@ -401,7 +422,7 @@ def extract_applicability_claims(
         (_EXCLUDES_RE, "excluded", "excludes"),
     )
     claims = []
-    for section, sentence in _iter_operative_sentences(source_text, sections):
+    for section, sentence, _ in iter_operative_clauses(source_text, sections):
         text = sentence.text.strip()
         for pattern, applicability_type, rule_name in patterns:
             match = pattern.match(text)
@@ -414,14 +435,14 @@ def extract_applicability_claims(
             if not subject or not scope:
                 break
             claims.append(
-                ExtractedClaim(
+                _claim(
                     category="applicability",
                     fields={
                         "subject": subject,
                         "scope": scope,
                         "applicability_type": applicability_type,
                     },
-                    section_label=section.label,
+                    section=section,
                     evidence=(sentence,),
                     rule_id=f"applicability.{rule_name}.v1",
                 )
@@ -512,7 +533,7 @@ def extract_funding_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence in _iter_operative_sentences(source_text, sections):
+    for section, sentence, _ in iter_operative_clauses(source_text, sections):
         text = sentence.text
         lowered = text.casefold()
         such_sums = _SUCH_SUMS_RE.search(text) is not None
@@ -553,7 +574,7 @@ def extract_funding_claims(
             suffix = ""
         authority = "authorization" if authorization else "appropriation"
         claims.append(
-            ExtractedClaim(
+            _claim(
                 category="funding_items",
                 fields={
                     "amount": amount,
@@ -565,7 +586,7 @@ def extract_funding_claims(
                         normalize_whitespace=context_sentence is not None,
                     ),
                 },
-                section_label=section.label,
+                section=section,
                 evidence=(
                     (context_sentence, sentence)
                     if context_sentence is not None
@@ -597,7 +618,7 @@ def extract_timeline_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence in _iter_operative_sentences(source_text, sections):
+    for section, sentence, _ in iter_operative_clauses(source_text, sections):
         relative = _RELATIVE_TIMELINE_RE.search(sentence.text)
         date_match = _DATE_RE.search(sentence.text)
         normalized_date = _normalized_date(date_match) if date_match else None
@@ -640,10 +661,10 @@ def extract_timeline_claims(
             continue
 
         claims.append(
-            ExtractedClaim(
+            _claim(
                 category="timeline_items",
                 fields=fields,
-                section_label=section.label,
+                section=section,
                 evidence=(sentence,),
                 rule_id=rule_id,
             )
@@ -677,7 +698,7 @@ def extract_amendment_claims(
     source_text: str, sections: Sequence[StructuralSection]
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence in _iter_operative_sentences(source_text, sections):
+    for section, sentence, _ in iter_operative_clauses(source_text, sections):
         details = _amendment_details(sentence.text)
         if details is None:
             continue
@@ -700,7 +721,7 @@ def extract_amendment_claims(
             else (sentence,)
         )
         claims.append(
-            ExtractedClaim(
+            _claim(
                 category="amendment_operations",
                 fields={
                     "target": target_match.group("target") if target_match else None,
@@ -708,7 +729,7 @@ def extract_amendment_claims(
                     "removed_text": removed_text,
                     "inserted_text": inserted_text,
                 },
-                section_label=section.label,
+                section=section,
                 evidence=evidence,
                 rule_id=f"amendment.{operation}.v1",
             )

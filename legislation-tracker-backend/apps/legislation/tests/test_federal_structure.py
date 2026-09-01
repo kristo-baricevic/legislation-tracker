@@ -6,6 +6,17 @@ from apps.legislation.extraction.federal_structure import (
 )
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
+FULL_HIERARCHY_SOURCE = """DIVISION A—PUBLIC HEALTH
+TITLE I—GENERAL PROVISIONS
+SUBCHAPTER A—PROGRAM ADMINISTRATION
+ACCOUNT 001—RURAL HEALTH
+SEC. 101. REPORTING
+(a) IN GENERAL.—
+(1) REQUIREMENTS.—
+(A) REPORT.—
+(i) DEADLINE.—The Secretary shall publish a report.
+"""
+
 
 def test_parse_federal_structure_preserves_offsets_and_hierarchy():
     source = """  TITLE I—GENERAL PROVISIONS
@@ -30,10 +41,10 @@ The Secretary shall publish a report.
         ("subtitle", "Subtitle A", "Administration"),
         ("part", "Part I", "PROGRAMS"),
         ("section", "Sec. 101A-1", "Establishment"),
-        ("subdivision", "(a)", "In General"),
-        ("subdivision", "(1)", "Requirements"),
-        ("subdivision", "(A)", "Priority"),
-        ("subdivision", "(i)", "Timing"),
+        ("subsection", "(a)", "In General"),
+        ("paragraph", "(1)", "Requirements"),
+        ("subparagraph", "(A)", "Priority"),
+        ("clause", "(i)", "Timing"),
         ("section", "Section 102", "REPORTS AND OVERSIGHT"),
     ]
     assert sections[3].parent_label == "Part I"
@@ -87,6 +98,36 @@ The Secretary shall administer the program.
         assert (
             source[section.span.start_char : section.span.end_char] == section.span.text
         )
+
+
+def test_structure_preserves_division_account_and_nested_provisions():
+    sections = parse_federal_structure(FULL_HIERARCHY_SOURCE)
+    clause = next(section for section in sections if section.label == "(i)")
+
+    assert [item.level for item in clause.path] == [
+        "division",
+        "title",
+        "subchapter",
+        "account",
+        "section",
+        "subsection",
+        "paragraph",
+        "subparagraph",
+        "clause",
+    ]
+    assert clause.source_id == f"section-{clause.span.start_char}"
+    assert len({section.source_id for section in sections}) == len(sections)
+    assert [item.label for item in clause.path] == [
+        "Division A",
+        "Title I",
+        "Subchapter A",
+        "Account 001",
+        "Sec. 101",
+        "(a)",
+        "(1)",
+        "(A)",
+        "(i)",
+    ]
 
 
 def test_container_heading_does_not_jump_across_a_blank_line():

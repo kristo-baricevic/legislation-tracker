@@ -31,12 +31,23 @@ class SourceSpan:
 
 
 @dataclass(frozen=True)
+class SectionPathItem:
+    """A source-local structural marker used to identify a federal provision."""
+
+    label: str
+    heading: str | None
+    level: str
+
+
+@dataclass(frozen=True)
 class StructuralSection:
     label: str
     heading: str | None
     level: str
     span: SourceSpan
     parent_label: str | None
+    source_id: str = ""
+    path: tuple[SectionPathItem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -46,6 +57,9 @@ class ExtractedClaim:
     section_label: str | None
     evidence: tuple[SourceSpan, ...]
     rule_id: str
+    source_id: str | None = None
+    section_id: str | None = None
+    section_path: tuple[SectionPathItem, ...] = ()
 
 
 @dataclass(frozen=True)

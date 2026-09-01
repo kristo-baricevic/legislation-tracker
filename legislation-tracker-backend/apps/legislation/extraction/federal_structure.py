@@ -1,28 +1,46 @@
 import re
 from dataclasses import dataclass
 
-from .types import ExpectedExtractionRejection, SourceSpan, StructuralSection
+from .types import (
+    ExpectedExtractionRejection,
+    SectionPathItem,
+    SourceSpan,
+    StructuralSection,
+)
 
 SECTION_RE = re.compile(
     r"(?im)^(?P<indent>[ \t]*)(?P<kind>SEC\.|SECTION)[ \t]+"
     r"(?P<label>[0-9]+[A-Z]?(?:-[0-9A-Z]+)*)\.[ \t]*(?P<heading>[^\n]*)$"
 )
 CONTAINER_RE = re.compile(
-    r"(?im)^[ \t]*(?P<kind>TITLE|SUBTITLE|PART|SUBPART|CHAPTER)[ \t]+"
+    r"(?im)^[ \t]*(?P<kind>DIVISION|TITLE|SUBTITLE|CHAPTER|SUBCHAPTER|PART|"
+    r"SUBPART|ACCOUNT|SUBACCOUNT|SUBSUBACCOUNT|SUBSUBSUBACCOUNT|ARTICLE|"
+    r"SUBDIVISION)[ \t]+"
     r"(?P<label>[IVXLCDM0-9A-Z-]+)"
     r"(?:(?:[.—-][ \t]*|[ \t]+)(?P<heading>[^\n]*))?[ \t]*$"
 )
 SUBDIVISION_RE = re.compile(r"(?m)^[ \t]*(?P<label>\([a-z0-9A-Zivxlcdm]+\))\s*")
 
-_CONTAINER_RANKS = {
-    "title": 0,
-    "subtitle": 1,
-    "part": 2,
-    "subpart": 3,
-    "chapter": 4,
+CONTAINER_RANKS = {
+    "division": 0,
+    "title": 10,
+    "subtitle": 20,
+    "chapter": 30,
+    "subchapter": 40,
+    "part": 50,
+    "subpart": 60,
+    "account": 70,
+    "subaccount": 80,
+    "subsubaccount": 81,
+    "subsubsubaccount": 82,
+    "article": 90,
+    "subdivision": 100,
 }
-_SECTION_RANK = 5
-_SUBDIVISION_RANK = 6
+_SECTION_RANK = 110
+_SUBSECTION_RANK = 120
+_PARAGRAPH_RANK = 130
+_SUBPARAGRAPH_RANK = 140
+_CLAUSE_RANK = 150
 _HEADING_SEPARATOR_RE = re.compile(r"^(?P<heading>[^\n]{1,160}?)(?:\.—|\.—|—|\. -|\.―)")
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?=\s|$)")
 _STATUTORY_ABBREVIATION_RE = re.compile(
@@ -74,14 +92,23 @@ def _next_line_heading(source_text: str, line_end: int) -> tuple[str | None, int
 def _subdivision_rank(label: str, prior_markers: list[_Marker]) -> int:
     token = label[1:-1]
     if token.isdigit():
-        return _SUBDIVISION_RANK + 1
+        return _PARAGRAPH_RANK
     if token.isupper():
-        return _SUBDIVISION_RANK + 2
+        return _SUBPARAGRAPH_RANK
     if re.fullmatch(r"[ivxlcdm]+", token) and any(
-        marker.rank == _SUBDIVISION_RANK + 2 for marker in prior_markers[-2:]
+        marker.rank >= _SUBPARAGRAPH_RANK for marker in prior_markers[-3:]
     ):
-        return _SUBDIVISION_RANK + 3
-    return _SUBDIVISION_RANK
+        return _CLAUSE_RANK
+    return _SUBSECTION_RANK
+
+
+def _provision_level(rank: int) -> str:
+    return {
+        _SUBSECTION_RANK: "subsection",
+        _PARAGRAPH_RANK: "paragraph",
+        _SUBPARAGRAPH_RANK: "subparagraph",
+        _CLAUSE_RANK: "clause",
+    }[rank]
 
 
 def _container_markers(source_text: str) -> list[_Marker]:
@@ -95,7 +122,7 @@ def _container_markers(source_text: str) -> list[_Marker]:
         markers.append(
             _Marker(
                 start=match.start(),
-                rank=_CONTAINER_RANKS[kind],
+                rank=CONTAINER_RANKS[kind],
                 level=kind,
                 label=f"{kind.title()} {match.group('label').upper()}",
                 heading=heading,
@@ -132,11 +159,12 @@ def _subdivision_markers(source_text: str, prior: list[_Marker]) -> list[_Marker
         remainder = source_text[remainder_start:line_end].rstrip("\r\n")
         separator = _HEADING_SEPARATOR_RE.match(remainder)
         heading = separator.group("heading").strip() if separator else None
+        rank = _subdivision_rank(match.group("label"), prior + markers)
         markers.append(
             _Marker(
                 start=match.start(),
-                rank=_subdivision_rank(match.group("label"), prior + markers),
-                level="subdivision",
+                rank=rank,
+                level=_provision_level(rank),
                 label=match.group("label"),
                 heading=heading,
             )
@@ -169,12 +197,28 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
                 end = later_marker.start
                 break
         span = SourceSpan(source_text[marker.start : end], marker.start, end)
+        path = tuple(
+            SectionPathItem(
+                label=ancestor.label,
+                heading=ancestor.heading,
+                level=ancestor.level,
+            )
+            for ancestor, _ in stack
+        ) + (
+            SectionPathItem(
+                label=marker.label,
+                heading=marker.heading,
+                level=marker.level,
+            ),
+        )
         section = StructuralSection(
             label=marker.label,
             heading=marker.heading,
             level=marker.level,
             span=span,
             parent_label=parent_label,
+            source_id=f"section-{marker.start}",
+            path=path,
         )
         sections.append(section)
         stack.append((marker, marker.label))
@@ -184,7 +228,7 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
 
 def _content_start(section: StructuralSection, source_text: str) -> int:
     local_text = source_text[section.span.start_char : section.span.end_char]
-    if section.level == "subdivision":
+    if section.level in {"subsection", "paragraph", "subparagraph", "clause"}:
         match = SUBDIVISION_RE.match(local_text)
         if match is None:
             return section.span.start_char
