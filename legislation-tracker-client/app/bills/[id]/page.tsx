@@ -22,6 +22,7 @@ import { getContractSummary } from "@/lib/contracts";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import BillChangeExperience from "./bill-change-experience";
+import { VotingRecord } from "./voting-record";
 
 function HistoryPagination({
   page,
@@ -111,86 +112,6 @@ function ContractHistorySection({
         onNext={onNext}
         historyName="contract history"
       />
-    </section>
-  );
-}
-
-function VoteHistorySection({
-  votes,
-  selectedVote,
-  loadingVoteId,
-  voteError,
-  onViewPositions,
-  page,
-  hasNext,
-  onPrevious,
-  onNext,
-}: {
-  votes: VoteListItem[];
-  selectedVote: VoteDetailItem | null;
-  loadingVoteId: number | null;
-  voteError: string | null;
-  onViewPositions: (voteId: number) => void;
-  page: number;
-  hasNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  if (votes.length === 0) return null;
-  return (
-    <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
-      <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
-        Roll-call votes
-      </h2>
-      <ul className="divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
-        {votes.map((vote) => (
-          <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
-            <div>
-              <p className="font-semibold text-slate-900 dark:text-green-300">
-                {vote.chamber} session {vote.session_number ?? "unknown"} roll call {vote.roll_number}: {vote.result}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-green-600">
-                Yes {vote.yeas} · No {vote.nays} · {new Date(vote.vote_date).toLocaleDateString()}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onViewPositions(vote.id)}
-              disabled={loadingVoteId === vote.id}
-              className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-            >
-              {loadingVoteId === vote.id ? "Loading positions..." : "View member positions"}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <HistoryPagination
-        page={page}
-        hasNext={hasNext}
-        onPrevious={onPrevious}
-        onNext={onNext}
-        historyName="vote history"
-      />
-      {voteError && (
-        <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">
-          {voteError}
-        </p>
-      )}
-      {selectedVote && (
-        <div className="mt-4">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-green-400">
-            Member positions
-          </h3>
-          <ul className="mt-2 divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
-            {selectedVote.records.map((record) => (
-              <li key={record.representative.id} className="flex justify-between gap-3 p-3 text-sm">
-                <span>{record.representative.name}</span>
-                <span className="font-semibold capitalize">{record.position}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </section>
   );
 }
@@ -527,6 +448,48 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </section>
         )}
 
+        {voteHistoryLoading && (
+          <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
+            {votes ? "Refreshing vote history…" : "Loading vote history…"}
+          </p>
+        )}
+        {voteHistoryError && (
+          <div
+            role="alert"
+            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <span>{voteHistoryError}</span>
+            <button
+              type="button"
+              onClick={() => setVoteHistoryRetry((attempt) => attempt + 1)}
+              className="cursor-pointer border border-current px-2 py-1 font-semibold"
+            >
+              Retry vote history
+            </button>
+          </div>
+        )}
+        {votes && votes.length > 0 && (
+          <VotingRecord
+            votes={votes}
+            selectedVote={selectedVote}
+            loadingVoteId={loadingVoteId}
+            error={voteError}
+            onSelect={viewVotePositions}
+            page={voteLoadedPage}
+            hasNext={voteHasNext}
+            onPrevious={() => changeVoteHistoryPage((current) => Math.max(1, current - 1))}
+            onNext={() => changeVoteHistoryPage((current) => current + 1)}
+          />
+        )}
+        {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
+          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
+            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
+              Voting record
+            </h2>
+            <p>No roll-call votes are available.</p>
+          </section>
+        )}
+
         <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
 
         <BillChangeExperience
@@ -575,50 +538,6 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               <p>No contract history is available.</p>
             </section>
           )}
-        {voteHistoryLoading && (
-          <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
-            {votes ? "Refreshing vote history…" : "Loading vote history…"}
-          </p>
-        )}
-        {voteHistoryError && (
-          <div
-            role="alert"
-            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
-          >
-            <span>{voteHistoryError}</span>
-            <button
-              type="button"
-              onClick={() => setVoteHistoryRetry((attempt) => attempt + 1)}
-              className="cursor-pointer border border-current px-2 py-1 font-semibold"
-            >
-              Retry vote history
-            </button>
-          </div>
-        )}
-        {votes && votes.length > 0 && (
-          <VoteHistorySection
-            votes={votes}
-            selectedVote={selectedVote}
-            loadingVoteId={loadingVoteId}
-            voteError={voteError}
-            onViewPositions={viewVotePositions}
-            page={voteLoadedPage}
-            hasNext={voteHasNext}
-            onPrevious={() =>
-              changeVoteHistoryPage((current) => Math.max(1, current - 1))
-            }
-            onNext={() => changeVoteHistoryPage((current) => current + 1)}
-          />
-        )}
-        {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
-          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
-              Roll-call votes
-            </h2>
-            <p>No roll-call votes are available.</p>
-          </section>
-        )}
-
         <div className="mb-6">
           <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Source & documents</h2>
           <ul className="space-y-2">

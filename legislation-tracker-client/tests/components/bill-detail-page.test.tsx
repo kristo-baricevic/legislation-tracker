@@ -190,9 +190,9 @@ describe("BillDetailPage", () => {
     );
     expect(await screen.findByRole("heading", { name: "Contract history" })).toBeVisible();
     expect(screen.getByText("Contract history summary")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Roll-call votes" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Voting record" })).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "View member positions" }));
+    await user.click(screen.getByRole("button", { name: "View voting record" }));
     await waitFor(() => expect(getVote).toHaveBeenCalledWith(33));
     expect(await screen.findByText("Voting Representative")).toBeVisible();
   });
@@ -302,7 +302,7 @@ describe("BillDetailPage", () => {
     render(<BillDetailPage />);
 
     const viewPositions = await screen.findByRole("button", {
-      name: "View member positions",
+      name: "View voting record",
     });
     await user.click(viewPositions);
     expect(await screen.findByText("Voting Representative")).toBeVisible();
@@ -387,7 +387,7 @@ describe("BillDetailPage", () => {
     render(<BillDetailPage />);
 
     const buttons = await screen.findAllByRole("button", {
-      name: "View member positions",
+      name: "View voting record",
     });
     await user.click(buttons[0]);
     await user.click(buttons[1]);
@@ -444,7 +444,7 @@ describe("BillDetailPage", () => {
     render(<BillDetailPage />);
 
     await user.click(
-      await screen.findByRole("button", { name: "View member positions" }),
+      await screen.findByRole("button", { name: "View voting record" }),
     );
     expect(await screen.findByText("Voting Representative")).toBeVisible();
 
@@ -594,7 +594,7 @@ describe("BillDetailPage", () => {
 
     expect(await screen.findByText("Could not load contract history. Try again.")).toBeVisible();
     expect(screen.getByText("Last loaded contract")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Roll-call votes" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Voting record" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Retry contract history" }));
 
