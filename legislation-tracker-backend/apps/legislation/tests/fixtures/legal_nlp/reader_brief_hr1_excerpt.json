@@ -1,0 +1,24 @@
+{
+  "evaluation_kind": "reader_v21_golden",
+  "title": "H.R. 1 (119th Congress), enrolled",
+  "version_label": "Enrolled",
+  "source_reference": "https://www.govinfo.gov/content/pkg/BILLS-119hr1enr/html/BILLS-119hr1enr.htm",
+  "source_locator": "Secs. 20006 and 50101(b)(1)",
+  "source_text": "SEC. 20006. ENHANCEMENT OF DEPARTMENT OF DEFENSE RESOURCES FOR IMPROVING EFFICIENCY.\n<<NOTE: Source annotation retained only in raw evidence.>>\n[[Page 139 STAT. 72]]\nIn addition to amounts otherwise available, there are appropriated to the Secretary of Defense for fiscal year 2025, to remain available until September 30, 2029—\n(1) $150,000,000 for business systems replacement to accelerate the audits of the financial statements of the Department of Defense;\nSEC. 50101. ONSHORE OIL AND GAS LEASING.\n``The Secretary of the Interior shall immediately resume quarterly onshore oil and gas lease sales in compliance with the Mineral Leasing Act.``",
+  "expected_reader_text": "Requires The Secretary of the Interior to immediately resume quarterly onshore oil and gas lease sales in compliance with the Mineral Leasing Act.",
+  "expected_financial": [
+    {
+      "financial_action": "appropriation",
+      "direction": "increase",
+      "amount": "150000000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    }
+  ],
+  "forbidden_display_fragments": [
+    "<<NOTE:",
+    "[[Page",
+    "``",
+    " is required to be "
+  ]
+}

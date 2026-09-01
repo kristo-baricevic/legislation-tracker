@@ -1,4 +1,8 @@
+import json
+
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from apps.legislation.models import Bill, BillContract, BillDocument, EvidenceSpan
@@ -182,6 +186,24 @@ def reader_contract(db):
                 document=document,
                 contract=contract,
                 field_path="line_items[0].display_text",
+                start_char=19,
+                end_char=39,
+                quoted_text="Second source chunk.",
+            ),
+            EvidenceSpan(
+                bill=bill,
+                document=document,
+                contract=contract,
+                field_path="financial_items[0].display_text",
+                start_char=0,
+                end_char=19,
+                quoted_text="First source chunk.",
+            ),
+            EvidenceSpan(
+                bill=bill,
+                document=document,
+                contract=contract,
+                field_path="definitions[0].display_text",
                 start_char=19,
                 end_char=39,
                 quoted_text="Second source chunk.",
@@ -372,6 +394,48 @@ def test_evidence_requires_one_item_id_and_returns_deduplicated_chunks(reader_co
 
 
 @pytest.mark.django_db
+def test_every_reader_endpoint_honors_page_size_and_evidence_item_paths(
+    reader_contract,
+):
+    _, contract = reader_contract
+    client = APIClient()
+    base = f"/api/contracts/{contract.id}"
+
+    for endpoint in (
+        "reader-items",
+        "financial-items",
+        "timeline-items",
+        "definition-items",
+    ):
+        response = client.get(f"{base}/{endpoint}/", {"page_size": 2})
+        assert response.status_code == 200, response.json()
+        assert len(response.json()["results"]) <= 2
+
+    financial = client.get(
+        f"{base}/evidence/", {"financial_item_id": "financial-0", "page_size": 1}
+    )
+    definition = client.get(
+        f"{base}/evidence/", {"definition_item_id": "definition-0", "page_size": 1}
+    )
+    assert financial.json()["results"] == [
+        {
+            "start_char": 0,
+            "end_char": 19,
+            "quoted_text": "First source chunk.",
+            "page_number": None,
+        }
+    ]
+    assert definition.json()["results"] == [
+        {
+            "start_char": 19,
+            "end_char": 39,
+            "quoted_text": "Second source chunk.",
+            "page_number": None,
+        }
+    ]
+
+
+@pytest.mark.django_db
 def test_compact_bill_and_history_omit_full_summary_contract_and_evidence(
     reader_contract,
 ):
@@ -427,6 +491,26 @@ def test_compact_bill_and_history_omit_full_summary_contract_and_evidence(
         ).status_code
         == 400
     )
+
+
+@pytest.mark.django_db
+def test_compact_bill_query_is_bounded_and_never_prefetches_evidence(reader_contract):
+    bill, _ = reader_contract
+    client = APIClient()
+
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get(f"/api/bills/{bill.id}/", {"contract_view": "summary"})
+
+    assert response.status_code == 200
+    assert len(queries) <= 8, [query["sql"] for query in queries]
+    assert not any(
+        "legislation_evidencespan" in query["sql"].casefold() for query in queries
+    )
+    serialized = json.dumps(response.json())
+    assert "A complete official explanation" in serialized
+    assert "line_items" not in serialized
+    assert "financial_items" not in serialized
+    assert "quoted_text" not in serialized
 
 
 @pytest.mark.django_db

@@ -1,0 +1,262 @@
+{
+  "evaluation_kind": "reader_v21_financial",
+  "title": "Complete Financial Actions Act",
+  "version_label": "Introduced",
+  "source_text": "SEC. 10. COMPLETE FINANCIAL ACTIONS.\nThere is appropriated $1,000,000 for clinic grants 1.\nThere is authorized to be appropriated $1,100,000 for clinic loans 1.\nThe Secretary shall allocate $1,200,000 for county programs 1.\nThe Secretary shall transfer $1,300,000 from Account A1 to Account B1.\n$1,400,000 of unobligated balances is hereby rescinded.\nThe amount available for program 1 is reduced by $1,500,000.\n$1,600,000 in budget authority is hereby canceled.\nThe Secretary shall set aside $1,700,000 for tribal health 1.\nNot more than $1,800,000 may be obligated for administration 1.\n$1,900,000 is made available for technical assistance 1.\nThere is appropriated $2,000,000 for clinic grants 2.\nThere is authorized to be appropriated $2,100,000 for clinic loans 2.\nThe Secretary shall allocate $2,200,000 for county programs 2.\nThe Secretary shall transfer $2,300,000 from Account A2 to Account B2.\n$2,400,000 of unobligated balances is hereby rescinded.\nThe amount available for program 2 is reduced by $2,500,000.\n$2,600,000 in budget authority is hereby canceled.\nThe Secretary shall set aside $2,700,000 for tribal health 2.\nNot more than $2,800,000 may be obligated for administration 2.\n$2,900,000 is made available for technical assistance 2.\nThere is appropriated $3,000,000 for clinic grants 3.\nThere is authorized to be appropriated $3,100,000 for clinic loans 3.\nThe Secretary shall allocate $3,200,000 for county programs 3.\nThe Secretary shall transfer $3,300,000 from Account A3 to Account B3.\n$3,400,000 of unobligated balances is hereby rescinded.\nThe amount available for program 3 is reduced by $3,500,000.\n$3,600,000 in budget authority is hereby canceled.\nThe Secretary shall set aside $3,700,000 for tribal health 3.\nNot more than $3,800,000 may be obligated for administration 3.\n$3,900,000 is made available for technical assistance 3.\nThere are authorized to be appropriated such sums as may be necessary for fiscal year 2030 for administration.\nOf the amounts appropriated by this Act, the Secretary shall set aside 10 percent for rural programs.\nThere is appropriated $9,100,000 for emergency grants, and $9,200,000 of unobligated balances is rescinded.\nThe report shall mention $7,777,777 as a historical estimate without making funds available.\nSection 9 of prior law is amended by inserting [[QUOTED_BLOCK_START]]There is appropriated $8,888,888 for the former program.[[QUOTED_BLOCK_END]].",
+  "supported_actions": [
+    "appropriation",
+    "authorization",
+    "allocation",
+    "transfer",
+    "rescission",
+    "reduction",
+    "cancellation",
+    "set_aside",
+    "limitation",
+    "other_explicit"
+  ],
+  "expected_financial": [
+    {
+      "financial_action": "appropriation",
+      "direction": "increase",
+      "amount": "1000000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "authorization",
+      "direction": "increase",
+      "amount": "1100000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "allocation",
+      "direction": "increase",
+      "amount": "1200000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "transfer",
+      "direction": "neutral_transfer",
+      "amount": "1300000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "rescission",
+      "direction": "decrease",
+      "amount": "1400000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "reduction",
+      "direction": "decrease",
+      "amount": "1500000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "cancellation",
+      "direction": "decrease",
+      "amount": "1600000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "set_aside",
+      "direction": "increase",
+      "amount": "1700000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "limitation",
+      "direction": "limit",
+      "amount": "1800000.00",
+      "amount_type": "ceiling",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "other_explicit",
+      "direction": "increase",
+      "amount": "1900000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "appropriation",
+      "direction": "increase",
+      "amount": "2000000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "authorization",
+      "direction": "increase",
+      "amount": "2100000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "allocation",
+      "direction": "increase",
+      "amount": "2200000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "transfer",
+      "direction": "neutral_transfer",
+      "amount": "2300000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "rescission",
+      "direction": "decrease",
+      "amount": "2400000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "reduction",
+      "direction": "decrease",
+      "amount": "2500000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "cancellation",
+      "direction": "decrease",
+      "amount": "2600000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "set_aside",
+      "direction": "increase",
+      "amount": "2700000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "limitation",
+      "direction": "limit",
+      "amount": "2800000.00",
+      "amount_type": "ceiling",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "other_explicit",
+      "direction": "increase",
+      "amount": "2900000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "appropriation",
+      "direction": "increase",
+      "amount": "3000000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "authorization",
+      "direction": "increase",
+      "amount": "3100000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "allocation",
+      "direction": "increase",
+      "amount": "3200000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "transfer",
+      "direction": "neutral_transfer",
+      "amount": "3300000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "rescission",
+      "direction": "decrease",
+      "amount": "3400000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "reduction",
+      "direction": "decrease",
+      "amount": "3500000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "cancellation",
+      "direction": "decrease",
+      "amount": "3600000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "set_aside",
+      "direction": "increase",
+      "amount": "3700000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "limitation",
+      "direction": "limit",
+      "amount": "3800000.00",
+      "amount_type": "ceiling",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "other_explicit",
+      "direction": "increase",
+      "amount": "3900000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "authorization",
+      "direction": "increase",
+      "amount": null,
+      "amount_type": "such_sums",
+      "currency": null
+    },
+    {
+      "financial_action": "set_aside",
+      "direction": "increase",
+      "amount": "10.00",
+      "amount_type": "percentage",
+      "currency": null
+    },
+    {
+      "financial_action": "appropriation",
+      "direction": "increase",
+      "amount": "9100000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    },
+    {
+      "financial_action": "rescission",
+      "direction": "decrease",
+      "amount": "9200000.00",
+      "amount_type": "specified",
+      "currency": "USD"
+    }
+  ],
+  "forbidden_amounts": [
+    "7777777.00",
+    "8888888.00"
+  ]
+}

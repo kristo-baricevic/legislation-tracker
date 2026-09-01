@@ -1,0 +1,715 @@
+{
+  "evaluation_kind": "reader_v21_capacity",
+  "title": "Complete Ledger Act",
+  "version_label": "Introduced",
+  "source_text": "SEC. 16. COMPLETE LEDGER.\nThere is appropriated $1,000 for program 1.\nThere is appropriated $2,000 for program 2.\nThere is appropriated $3,000 for program 3.\nThere is appropriated $4,000 for program 4.\nThere is appropriated $5,000 for program 5.\nThere is appropriated $6,000 for program 6.\nThere is appropriated $7,000 for program 7.\nThere is appropriated $8,000 for program 8.\nThere is appropriated $9,000 for program 9.\nThere is appropriated $10,000 for program 10.\nThere is appropriated $11,000 for program 11.\nThere is appropriated $12,000 for program 12.\nThere is appropriated $13,000 for program 13.\nThere is appropriated $14,000 for program 14.\nThere is appropriated $15,000 for program 15.\nThere is appropriated $16,000 for program 16.\nThere is appropriated $17,000 for program 17.\nThere is appropriated $18,000 for program 18.\nThere is appropriated $19,000 for program 19.\nThere is appropriated $20,000 for program 20.\nThere is appropriated $21,000 for program 21.\nThere is appropriated $22,000 for program 22.\nThere is appropriated $23,000 for program 23.\nThere is appropriated $24,000 for program 24.\nThere is appropriated $25,000 for program 25.\nThere is appropriated $26,000 for program 26.\nThere is appropriated $27,000 for program 27.\nThere is appropriated $28,000 for program 28.\nThere is appropriated $29,000 for program 29.\nThere is appropriated $30,000 for program 30.\nThere is appropriated $31,000 for program 31.\nThere is appropriated $32,000 for program 32.\nThere is appropriated $33,000 for program 33.\nThere is appropriated $34,000 for program 34.\nThere is appropriated $35,000 for program 35.\nThere is appropriated $36,000 for program 36.\nThere is appropriated $37,000 for program 37.\nThere is appropriated $38,000 for program 38.\nThere is appropriated $39,000 for program 39.\nThere is appropriated $40,000 for program 40.\nThere is appropriated $41,000 for program 41.\nThere is appropriated $42,000 for program 42.\nThere is appropriated $43,000 for program 43.\nThere is appropriated $44,000 for program 44.\nThere is appropriated $45,000 for program 45.\nThere is appropriated $46,000 for program 46.\nThere is appropriated $47,000 for program 47.\nThere is appropriated $48,000 for program 48.\nThere is appropriated $49,000 for program 49.\nThere is appropriated $50,000 for program 50.\nThere is appropriated $51,000 for program 51.\nThere is appropriated $52,000 for program 52.\nThere is appropriated $53,000 for program 53.\nThere is appropriated $54,000 for program 54.\nThere is appropriated $55,000 for program 55.\nThere is appropriated $56,000 for program 56.\nThere is appropriated $57,000 for program 57.\nThere is appropriated $58,000 for program 58.\nThere is appropriated $59,000 for program 59.\nThere is appropriated $60,000 for program 60.\nThere is appropriated $61,000 for program 61.\nThere is appropriated $62,000 for program 62.\nThere is appropriated $63,000 for program 63.\nThere is appropriated $64,000 for program 64.\nThere is appropriated $65,000 for program 65.\nThere is appropriated $66,000 for program 66.\nThere is appropriated $67,000 for program 67.\nThere is appropriated $68,000 for program 68.\nThere is appropriated $69,000 for program 69.\nThere is appropriated $70,000 for program 70.\nThere is appropriated $71,000 for program 71.\nThere is appropriated $72,000 for program 72.\nThere is appropriated $73,000 for program 73.\nThere is appropriated $74,000 for program 74.\nThere is appropriated $75,000 for program 75.\nThere is appropriated $76,000 for program 76.\nThere is appropriated $77,000 for program 77.\nThere is appropriated $78,000 for program 78.\nThere is appropriated $79,000 for program 79.\nThere is appropriated $80,000 for program 80.\nThere is appropriated $81,000 for program 81.\nThere is appropriated $82,000 for program 82.\nThere is appropriated $83,000 for program 83.\nThere is appropriated $84,000 for program 84.\nThere is appropriated $85,000 for program 85.\nThere is appropriated $86,000 for program 86.\nThere is appropriated $87,000 for program 87.\nThere is appropriated $88,000 for program 88.\nThere is appropriated $89,000 for program 89.\nThere is appropriated $90,000 for program 90.\nThere is appropriated $91,000 for program 91.\nThere is appropriated $92,000 for program 92.\nThere is appropriated $93,000 for program 93.\nThere is appropriated $94,000 for program 94.\nThere is appropriated $95,000 for program 95.\nThere is appropriated $96,000 for program 96.\nThere is appropriated $97,000 for program 97.\nThere is appropriated $98,000 for program 98.\nThere is appropriated $99,000 for program 99.\nThere is appropriated $100,000 for program 100.\nThere is appropriated $101,000 for program 101.",
+  "expected_items": [
+    {
+      "id": "financial-26-1",
+      "financial_action": "appropriation",
+      "amount": "1000.00",
+      "start_char": 26,
+      "end_char": 69
+    },
+    {
+      "id": "financial-70-1",
+      "financial_action": "appropriation",
+      "amount": "2000.00",
+      "start_char": 70,
+      "end_char": 113
+    },
+    {
+      "id": "financial-114-1",
+      "financial_action": "appropriation",
+      "amount": "3000.00",
+      "start_char": 114,
+      "end_char": 157
+    },
+    {
+      "id": "financial-158-1",
+      "financial_action": "appropriation",
+      "amount": "4000.00",
+      "start_char": 158,
+      "end_char": 201
+    },
+    {
+      "id": "financial-202-1",
+      "financial_action": "appropriation",
+      "amount": "5000.00",
+      "start_char": 202,
+      "end_char": 245
+    },
+    {
+      "id": "financial-246-1",
+      "financial_action": "appropriation",
+      "amount": "6000.00",
+      "start_char": 246,
+      "end_char": 289
+    },
+    {
+      "id": "financial-290-1",
+      "financial_action": "appropriation",
+      "amount": "7000.00",
+      "start_char": 290,
+      "end_char": 333
+    },
+    {
+      "id": "financial-334-1",
+      "financial_action": "appropriation",
+      "amount": "8000.00",
+      "start_char": 334,
+      "end_char": 377
+    },
+    {
+      "id": "financial-378-1",
+      "financial_action": "appropriation",
+      "amount": "9000.00",
+      "start_char": 378,
+      "end_char": 421
+    },
+    {
+      "id": "financial-422-1",
+      "financial_action": "appropriation",
+      "amount": "10000.00",
+      "start_char": 422,
+      "end_char": 467
+    },
+    {
+      "id": "financial-468-1",
+      "financial_action": "appropriation",
+      "amount": "11000.00",
+      "start_char": 468,
+      "end_char": 513
+    },
+    {
+      "id": "financial-514-1",
+      "financial_action": "appropriation",
+      "amount": "12000.00",
+      "start_char": 514,
+      "end_char": 559
+    },
+    {
+      "id": "financial-560-1",
+      "financial_action": "appropriation",
+      "amount": "13000.00",
+      "start_char": 560,
+      "end_char": 605
+    },
+    {
+      "id": "financial-606-1",
+      "financial_action": "appropriation",
+      "amount": "14000.00",
+      "start_char": 606,
+      "end_char": 651
+    },
+    {
+      "id": "financial-652-1",
+      "financial_action": "appropriation",
+      "amount": "15000.00",
+      "start_char": 652,
+      "end_char": 697
+    },
+    {
+      "id": "financial-698-1",
+      "financial_action": "appropriation",
+      "amount": "16000.00",
+      "start_char": 698,
+      "end_char": 743
+    },
+    {
+      "id": "financial-744-1",
+      "financial_action": "appropriation",
+      "amount": "17000.00",
+      "start_char": 744,
+      "end_char": 789
+    },
+    {
+      "id": "financial-790-1",
+      "financial_action": "appropriation",
+      "amount": "18000.00",
+      "start_char": 790,
+      "end_char": 835
+    },
+    {
+      "id": "financial-836-1",
+      "financial_action": "appropriation",
+      "amount": "19000.00",
+      "start_char": 836,
+      "end_char": 881
+    },
+    {
+      "id": "financial-882-1",
+      "financial_action": "appropriation",
+      "amount": "20000.00",
+      "start_char": 882,
+      "end_char": 927
+    },
+    {
+      "id": "financial-928-1",
+      "financial_action": "appropriation",
+      "amount": "21000.00",
+      "start_char": 928,
+      "end_char": 973
+    },
+    {
+      "id": "financial-974-1",
+      "financial_action": "appropriation",
+      "amount": "22000.00",
+      "start_char": 974,
+      "end_char": 1019
+    },
+    {
+      "id": "financial-1020-1",
+      "financial_action": "appropriation",
+      "amount": "23000.00",
+      "start_char": 1020,
+      "end_char": 1065
+    },
+    {
+      "id": "financial-1066-1",
+      "financial_action": "appropriation",
+      "amount": "24000.00",
+      "start_char": 1066,
+      "end_char": 1111
+    },
+    {
+      "id": "financial-1112-1",
+      "financial_action": "appropriation",
+      "amount": "25000.00",
+      "start_char": 1112,
+      "end_char": 1157
+    },
+    {
+      "id": "financial-1158-1",
+      "financial_action": "appropriation",
+      "amount": "26000.00",
+      "start_char": 1158,
+      "end_char": 1203
+    },
+    {
+      "id": "financial-1204-1",
+      "financial_action": "appropriation",
+      "amount": "27000.00",
+      "start_char": 1204,
+      "end_char": 1249
+    },
+    {
+      "id": "financial-1250-1",
+      "financial_action": "appropriation",
+      "amount": "28000.00",
+      "start_char": 1250,
+      "end_char": 1295
+    },
+    {
+      "id": "financial-1296-1",
+      "financial_action": "appropriation",
+      "amount": "29000.00",
+      "start_char": 1296,
+      "end_char": 1341
+    },
+    {
+      "id": "financial-1342-1",
+      "financial_action": "appropriation",
+      "amount": "30000.00",
+      "start_char": 1342,
+      "end_char": 1387
+    },
+    {
+      "id": "financial-1388-1",
+      "financial_action": "appropriation",
+      "amount": "31000.00",
+      "start_char": 1388,
+      "end_char": 1433
+    },
+    {
+      "id": "financial-1434-1",
+      "financial_action": "appropriation",
+      "amount": "32000.00",
+      "start_char": 1434,
+      "end_char": 1479
+    },
+    {
+      "id": "financial-1480-1",
+      "financial_action": "appropriation",
+      "amount": "33000.00",
+      "start_char": 1480,
+      "end_char": 1525
+    },
+    {
+      "id": "financial-1526-1",
+      "financial_action": "appropriation",
+      "amount": "34000.00",
+      "start_char": 1526,
+      "end_char": 1571
+    },
+    {
+      "id": "financial-1572-1",
+      "financial_action": "appropriation",
+      "amount": "35000.00",
+      "start_char": 1572,
+      "end_char": 1617
+    },
+    {
+      "id": "financial-1618-1",
+      "financial_action": "appropriation",
+      "amount": "36000.00",
+      "start_char": 1618,
+      "end_char": 1663
+    },
+    {
+      "id": "financial-1664-1",
+      "financial_action": "appropriation",
+      "amount": "37000.00",
+      "start_char": 1664,
+      "end_char": 1709
+    },
+    {
+      "id": "financial-1710-1",
+      "financial_action": "appropriation",
+      "amount": "38000.00",
+      "start_char": 1710,
+      "end_char": 1755
+    },
+    {
+      "id": "financial-1756-1",
+      "financial_action": "appropriation",
+      "amount": "39000.00",
+      "start_char": 1756,
+      "end_char": 1801
+    },
+    {
+      "id": "financial-1802-1",
+      "financial_action": "appropriation",
+      "amount": "40000.00",
+      "start_char": 1802,
+      "end_char": 1847
+    },
+    {
+      "id": "financial-1848-1",
+      "financial_action": "appropriation",
+      "amount": "41000.00",
+      "start_char": 1848,
+      "end_char": 1893
+    },
+    {
+      "id": "financial-1894-1",
+      "financial_action": "appropriation",
+      "amount": "42000.00",
+      "start_char": 1894,
+      "end_char": 1939
+    },
+    {
+      "id": "financial-1940-1",
+      "financial_action": "appropriation",
+      "amount": "43000.00",
+      "start_char": 1940,
+      "end_char": 1985
+    },
+    {
+      "id": "financial-1986-1",
+      "financial_action": "appropriation",
+      "amount": "44000.00",
+      "start_char": 1986,
+      "end_char": 2031
+    },
+    {
+      "id": "financial-2032-1",
+      "financial_action": "appropriation",
+      "amount": "45000.00",
+      "start_char": 2032,
+      "end_char": 2077
+    },
+    {
+      "id": "financial-2078-1",
+      "financial_action": "appropriation",
+      "amount": "46000.00",
+      "start_char": 2078,
+      "end_char": 2123
+    },
+    {
+      "id": "financial-2124-1",
+      "financial_action": "appropriation",
+      "amount": "47000.00",
+      "start_char": 2124,
+      "end_char": 2169
+    },
+    {
+      "id": "financial-2170-1",
+      "financial_action": "appropriation",
+      "amount": "48000.00",
+      "start_char": 2170,
+      "end_char": 2215
+    },
+    {
+      "id": "financial-2216-1",
+      "financial_action": "appropriation",
+      "amount": "49000.00",
+      "start_char": 2216,
+      "end_char": 2261
+    },
+    {
+      "id": "financial-2262-1",
+      "financial_action": "appropriation",
+      "amount": "50000.00",
+      "start_char": 2262,
+      "end_char": 2307
+    },
+    {
+      "id": "financial-2308-1",
+      "financial_action": "appropriation",
+      "amount": "51000.00",
+      "start_char": 2308,
+      "end_char": 2353
+    },
+    {
+      "id": "financial-2354-1",
+      "financial_action": "appropriation",
+      "amount": "52000.00",
+      "start_char": 2354,
+      "end_char": 2399
+    },
+    {
+      "id": "financial-2400-1",
+      "financial_action": "appropriation",
+      "amount": "53000.00",
+      "start_char": 2400,
+      "end_char": 2445
+    },
+    {
+      "id": "financial-2446-1",
+      "financial_action": "appropriation",
+      "amount": "54000.00",
+      "start_char": 2446,
+      "end_char": 2491
+    },
+    {
+      "id": "financial-2492-1",
+      "financial_action": "appropriation",
+      "amount": "55000.00",
+      "start_char": 2492,
+      "end_char": 2537
+    },
+    {
+      "id": "financial-2538-1",
+      "financial_action": "appropriation",
+      "amount": "56000.00",
+      "start_char": 2538,
+      "end_char": 2583
+    },
+    {
+      "id": "financial-2584-1",
+      "financial_action": "appropriation",
+      "amount": "57000.00",
+      "start_char": 2584,
+      "end_char": 2629
+    },
+    {
+      "id": "financial-2630-1",
+      "financial_action": "appropriation",
+      "amount": "58000.00",
+      "start_char": 2630,
+      "end_char": 2675
+    },
+    {
+      "id": "financial-2676-1",
+      "financial_action": "appropriation",
+      "amount": "59000.00",
+      "start_char": 2676,
+      "end_char": 2721
+    },
+    {
+      "id": "financial-2722-1",
+      "financial_action": "appropriation",
+      "amount": "60000.00",
+      "start_char": 2722,
+      "end_char": 2767
+    },
+    {
+      "id": "financial-2768-1",
+      "financial_action": "appropriation",
+      "amount": "61000.00",
+      "start_char": 2768,
+      "end_char": 2813
+    },
+    {
+      "id": "financial-2814-1",
+      "financial_action": "appropriation",
+      "amount": "62000.00",
+      "start_char": 2814,
+      "end_char": 2859
+    },
+    {
+      "id": "financial-2860-1",
+      "financial_action": "appropriation",
+      "amount": "63000.00",
+      "start_char": 2860,
+      "end_char": 2905
+    },
+    {
+      "id": "financial-2906-1",
+      "financial_action": "appropriation",
+      "amount": "64000.00",
+      "start_char": 2906,
+      "end_char": 2951
+    },
+    {
+      "id": "financial-2952-1",
+      "financial_action": "appropriation",
+      "amount": "65000.00",
+      "start_char": 2952,
+      "end_char": 2997
+    },
+    {
+      "id": "financial-2998-1",
+      "financial_action": "appropriation",
+      "amount": "66000.00",
+      "start_char": 2998,
+      "end_char": 3043
+    },
+    {
+      "id": "financial-3044-1",
+      "financial_action": "appropriation",
+      "amount": "67000.00",
+      "start_char": 3044,
+      "end_char": 3089
+    },
+    {
+      "id": "financial-3090-1",
+      "financial_action": "appropriation",
+      "amount": "68000.00",
+      "start_char": 3090,
+      "end_char": 3135
+    },
+    {
+      "id": "financial-3136-1",
+      "financial_action": "appropriation",
+      "amount": "69000.00",
+      "start_char": 3136,
+      "end_char": 3181
+    },
+    {
+      "id": "financial-3182-1",
+      "financial_action": "appropriation",
+      "amount": "70000.00",
+      "start_char": 3182,
+      "end_char": 3227
+    },
+    {
+      "id": "financial-3228-1",
+      "financial_action": "appropriation",
+      "amount": "71000.00",
+      "start_char": 3228,
+      "end_char": 3273
+    },
+    {
+      "id": "financial-3274-1",
+      "financial_action": "appropriation",
+      "amount": "72000.00",
+      "start_char": 3274,
+      "end_char": 3319
+    },
+    {
+      "id": "financial-3320-1",
+      "financial_action": "appropriation",
+      "amount": "73000.00",
+      "start_char": 3320,
+      "end_char": 3365
+    },
+    {
+      "id": "financial-3366-1",
+      "financial_action": "appropriation",
+      "amount": "74000.00",
+      "start_char": 3366,
+      "end_char": 3411
+    },
+    {
+      "id": "financial-3412-1",
+      "financial_action": "appropriation",
+      "amount": "75000.00",
+      "start_char": 3412,
+      "end_char": 3457
+    },
+    {
+      "id": "financial-3458-1",
+      "financial_action": "appropriation",
+      "amount": "76000.00",
+      "start_char": 3458,
+      "end_char": 3503
+    },
+    {
+      "id": "financial-3504-1",
+      "financial_action": "appropriation",
+      "amount": "77000.00",
+      "start_char": 3504,
+      "end_char": 3549
+    },
+    {
+      "id": "financial-3550-1",
+      "financial_action": "appropriation",
+      "amount": "78000.00",
+      "start_char": 3550,
+      "end_char": 3595
+    },
+    {
+      "id": "financial-3596-1",
+      "financial_action": "appropriation",
+      "amount": "79000.00",
+      "start_char": 3596,
+      "end_char": 3641
+    },
+    {
+      "id": "financial-3642-1",
+      "financial_action": "appropriation",
+      "amount": "80000.00",
+      "start_char": 3642,
+      "end_char": 3687
+    },
+    {
+      "id": "financial-3688-1",
+      "financial_action": "appropriation",
+      "amount": "81000.00",
+      "start_char": 3688,
+      "end_char": 3733
+    },
+    {
+      "id": "financial-3734-1",
+      "financial_action": "appropriation",
+      "amount": "82000.00",
+      "start_char": 3734,
+      "end_char": 3779
+    },
+    {
+      "id": "financial-3780-1",
+      "financial_action": "appropriation",
+      "amount": "83000.00",
+      "start_char": 3780,
+      "end_char": 3825
+    },
+    {
+      "id": "financial-3826-1",
+      "financial_action": "appropriation",
+      "amount": "84000.00",
+      "start_char": 3826,
+      "end_char": 3871
+    },
+    {
+      "id": "financial-3872-1",
+      "financial_action": "appropriation",
+      "amount": "85000.00",
+      "start_char": 3872,
+      "end_char": 3917
+    },
+    {
+      "id": "financial-3918-1",
+      "financial_action": "appropriation",
+      "amount": "86000.00",
+      "start_char": 3918,
+      "end_char": 3963
+    },
+    {
+      "id": "financial-3964-1",
+      "financial_action": "appropriation",
+      "amount": "87000.00",
+      "start_char": 3964,
+      "end_char": 4009
+    },
+    {
+      "id": "financial-4010-1",
+      "financial_action": "appropriation",
+      "amount": "88000.00",
+      "start_char": 4010,
+      "end_char": 4055
+    },
+    {
+      "id": "financial-4056-1",
+      "financial_action": "appropriation",
+      "amount": "89000.00",
+      "start_char": 4056,
+      "end_char": 4101
+    },
+    {
+      "id": "financial-4102-1",
+      "financial_action": "appropriation",
+      "amount": "90000.00",
+      "start_char": 4102,
+      "end_char": 4147
+    },
+    {
+      "id": "financial-4148-1",
+      "financial_action": "appropriation",
+      "amount": "91000.00",
+      "start_char": 4148,
+      "end_char": 4193
+    },
+    {
+      "id": "financial-4194-1",
+      "financial_action": "appropriation",
+      "amount": "92000.00",
+      "start_char": 4194,
+      "end_char": 4239
+    },
+    {
+      "id": "financial-4240-1",
+      "financial_action": "appropriation",
+      "amount": "93000.00",
+      "start_char": 4240,
+      "end_char": 4285
+    },
+    {
+      "id": "financial-4286-1",
+      "financial_action": "appropriation",
+      "amount": "94000.00",
+      "start_char": 4286,
+      "end_char": 4331
+    },
+    {
+      "id": "financial-4332-1",
+      "financial_action": "appropriation",
+      "amount": "95000.00",
+      "start_char": 4332,
+      "end_char": 4377
+    },
+    {
+      "id": "financial-4378-1",
+      "financial_action": "appropriation",
+      "amount": "96000.00",
+      "start_char": 4378,
+      "end_char": 4423
+    },
+    {
+      "id": "financial-4424-1",
+      "financial_action": "appropriation",
+      "amount": "97000.00",
+      "start_char": 4424,
+      "end_char": 4469
+    },
+    {
+      "id": "financial-4470-1",
+      "financial_action": "appropriation",
+      "amount": "98000.00",
+      "start_char": 4470,
+      "end_char": 4515
+    },
+    {
+      "id": "financial-4516-1",
+      "financial_action": "appropriation",
+      "amount": "99000.00",
+      "start_char": 4516,
+      "end_char": 4561
+    },
+    {
+      "id": "financial-4562-1",
+      "financial_action": "appropriation",
+      "amount": "100000.00",
+      "start_char": 4562,
+      "end_char": 4609
+    },
+    {
+      "id": "financial-4610-1",
+      "financial_action": "appropriation",
+      "amount": "101000.00",
+      "start_char": 4610,
+      "end_char": 4657
+    }
+  ]
+}
