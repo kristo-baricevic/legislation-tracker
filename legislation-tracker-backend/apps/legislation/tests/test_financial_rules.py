@@ -220,6 +220,14 @@ The Secretary shall report the percentage of applications approved and shall pub
     assert extract(source) == ()
 
 
+def test_financial_rules_reject_population_percentage_limitation():
+    source = """SEC. 15A. ELIGIBILITY
+Not more than 75 percent of the State population may receive services.
+"""
+
+    assert extract(source) == ()
+
+
 @pytest.mark.parametrize(
     "provision",
     [
