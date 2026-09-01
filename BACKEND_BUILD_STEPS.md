@@ -2,6 +2,10 @@
 
 A sequential checklist to build out `legislation-tracker-backend`. Each section can be a single PR or a logical chunk of work.
 
+**Status as of 2026-08-31:** phases 1–7 and 10 are implemented. RSS feeds,
+newsletters, and GitHub Actions remain intentionally deferred by product decision;
+their unchecked boxes are not regressions in the implemented platform.
+
 ---
 
 ## Phase 1: Scaffold
@@ -41,12 +45,12 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Phase 3: Celery and ingestion tasks
 
-- [ ] **3.1** In `ingestion/tasks.py`, define `poll_congress`: call Congress API with `fromDateTime=IngestionState.last_bill_update_seen_at`, get list of bill identifiers, update IngestionState, enqueue `process_bill` for each. Register with Beat (e.g. every 5–10 min).
-- [ ] **3.2** Define `process_bill(bill_key)`: fetch bill metadata from Congress API, compute metadata_hash, get or create Bill; if hash unchanged set processing_status=complete and return; else update Bill, set processing_status=processing, insert ChangeLog(status_update), enqueue `process_bill_versions` and `process_bill_votes`. On exception set processing_status=failed. Configure retries + backoff.
-- [ ] **3.3** Define `process_bill_versions(bill_id)`: fetch bill text versions from Congress API; for each version, get or create BillDocument; if new “current” version, set previous is_active_version=False, new one True; enqueue `download_document` for new/changed docs.
-- [ ] **3.4** Define `process_bill_votes(bill_id)`: fetch vote refs from Congress API; for each vote not yet stored, create Vote and VoteRecords (and Representatives if needed), insert ChangeLog(vote).
-- [ ] **3.5** Configure Celery Beat schedule in `config/celery.py` (or dedicated config): poll_congress, optional fetch_congress_members daily.
-- [ ] **3.6** Add retry + dead-letter behavior: max_retries, retry_backoff, on_failure log to table or structured log (task_id, bill_id, exception). **Operational:** On repeated failures, check the `IngestionTaskFailure` table (or structured logs) for task_id, bill_id, task_name, error_message.
+- [x] **3.1** `poll_congress` resolves the current Congress at execution time, uses the persisted cursor, discovers bill identifiers, and records durable ingestion work before dispatching it. It is registered with Beat.
+- [x] **3.2** `process_bill` fetches and hashes metadata, updates the bill and `ChangeLog`, fulfills matching tracking requests, and schedules version and vote processing. Failures are retried through durable work rather than being lost with a broker message.
+- [x] **3.3** `process_bill_versions` creates or updates document versions, maintains the active version, and creates bounded `download_document` work for new or changed documents.
+- [x] **3.4** `process_bill_votes` imports votes and vote records, creates associated representatives as needed, and writes vote change-log events. A separate member sync keeps the representative roster complete.
+- [x] **3.5** Celery Beat schedules Congress polling, tracked-bill polling, representative synchronization, similarity recomputation, and durable-work recovery without a hard-coded Congress number.
+- [x] **3.6** Retries, lease recovery, dead-letter persistence, status inspection, and replay controls are implemented through `IngestionWorkItem` and `IngestionTaskFailure`. Operators can inspect work and failure state through the operational APIs and durable database records.
 
 ---
 
@@ -76,18 +80,20 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Phase 7: API (DRF)
 
-- [ ] **7.1** Install and configure DRF + Simple JWT. Add URL routes for `/api/auth/` (login, refresh, register if desired).
-- [ ] **7.2** Bills: list (filter by session, topic, status; pagination), retrieve by id or (session, bill_number). Include latest_contract summary if present.
-- [ ] **7.3** Bill documents: list for a bill, retrieve one; endpoint to get **pre-signed S3 URL** for document download (object_storage_key).
-- [ ] **7.4** Bill contracts: list for a bill, retrieve one; optional nested EvidenceSpans.
-- [ ] **7.5** Representatives: list (filter by chamber, state), retrieve by id or bioguide_id.
-- [ ] **7.6** Votes: list for a bill, retrieve one with VoteRecords.
-- [ ] **7.7** User preferences: CRUD for current user’s UserPreference (topics, state, chamber).
-- [ ] **7.8** CORS: allow legislation-tracker-client origin. Auth: JWT in header or cookie as chosen.
+- [x] **7.1** DRF and Simple JWT are configured. The web app uses secure cookie-backed session routes with CSRF protection; bearer-token routes remain available for the extension.
+- [x] **7.2** Bills support paginated list/detail APIs, validated filters, current-Congress metadata, related bills, tracking status, and latest-contract summaries.
+- [x] **7.3** Bill documents have list/detail and download/text endpoints. Local stored objects stream from the API; object storage redirects to its generated download URL.
+- [x] **7.4** Bill contract history and detail APIs expose versioned contracts and exact evidence spans.
+- [x] **7.5** Representatives have list/detail APIs with validated chamber, state, district, and current-member filters.
+- [x] **7.6** Votes have list/detail APIs with vote-record pagination and validated filters.
+- [x] **7.7** Current-user tracking APIs manage followed bills, topics, and representatives; the consolidated tracking models preserve user intent through ingestion.
+- [x] **7.8** CORS and exact trusted-origin settings support the web app; authentication accepts either the protected web session or extension bearer tokens.
 
 ---
 
 ## Phase 8: RSS and feeds
+
+**Status: intentionally deferred.**
 
 - [ ] **8.1** RSS endpoint: e.g. `GET /rss?topic=climate&state=NY&days=7`. Resolve topic to topic_id; get bill_ids from BillTopic; query ChangeLog where bill_id IN (...) and created_at > cutoff, order by created_at DESC, limit 50; render as RSS XML (title, link, description, pubDate from ChangeLog + Bill).
 - [ ] **8.2** Optional: feed for single bill, or for “all changes” (no topic filter).
@@ -95,6 +101,8 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 ---
 
 ## Phase 9: Newsletters
+
+**Status: intentionally deferred.**
 
 - [ ] **9.1** Query logic: given user, load UserPreference (topics, state, chamber); get bill_ids matching preferences (via BillTopic, Representative state/chamber); query ChangeLog for those bills since user’s last_sent_at (or preference.last_sent_at); group by bill; format as “New bills,” “Status changes,” “Contract updates,” “Votes.”
 - [ ] **9.2** Newsletter send: job (Beat or on-demand) that for each user with digest preference runs the query, builds email body, sends (e.g. SendGrid/Mailgun), updates last_sent_at.
@@ -104,27 +112,28 @@ A sequential checklist to build out `legislation-tracker-backend`. Each section 
 
 ## Phase 10: Polish and ops
 
-- [ ] **10.1** Add remaining indexes (composite, etc.) from BACKEND_PLAN §7 if not already in migrations.
-- [ ] **10.2** Health checks: `/health` (DB + Redis + optional S3 head). Use for load balancer or orchestration.
-- [ ] **10.3** Admin: register Bill, BillDocument, BillContract, ChangeLog, Representative, Vote, User, UserPreference, IngestionState in Django admin for debugging.
-- [ ] **10.4** Logging: structured logs for task start/fail (task_id, bill_id, document_id). Optional dead-letter table for final failures.
-- [ ] **10.5** README: how to run locally (docker-compose, venv, env vars), how to run Celery worker and Beat, how to run tests, link to BACKEND_PLAN and ARCHITECTURE_ELI5.
+- [x] **10.1** Required model and queue indexes are present in migrations, including `ChangeLog` indexes on the PostgreSQL partitioned parent and its child partitions.
+- [x] **10.2** `/health/live/` supplies liveness; `/health/` verifies database, Redis, and configured storage readiness for orchestration.
+- [x] **10.3** Django admin registers bills, documents, contracts, change logs, representatives, votes, users, preferences, and ingestion state for debugging.
+- [x] **10.4** Task start/failure logging and durable final-failure records are implemented. `IngestionTaskFailure` and durable work/replay endpoints provide the operational context for failed work.
+- [x] **10.5** The repository and backend READMEs document local setup, Docker services, environment variables, Celery worker/Beat, tests, production operations, and architecture.
 
 ---
 
 ## Summary checklist (high level)
 
-| Phase | Focus                                                                                         |
-| ----- | --------------------------------------------------------------------------------------------- |
-| 1     | Scaffold: project, deps, config, docker-compose, celery app                                   |
-| 2     | All Django apps and models, migrations, ChangeLog partitioning, indexes                       |
-| 3     | Celery: poll_congress, process_bill, process_bill_versions, process_bill_votes, Beat, retries |
-| 4     | S3 + download_document task                                                                   |
-| 5     | BillContract + EvidenceSpan + deterministic legal-NLP v2                                   |
-| 6     | update_topics, recompute_similarity_batch                                                     |
-| 7     | DRF API: auth, bills, documents, contracts, reps, votes, preferences, pre-signed URLs         |
-| 8     | RSS endpoint from ChangeLog                                                                   |
-| 9     | Newsletter query + send job                                                                   |
-| 10    | Indexes, health, admin, logging, README                                                       |
+| Phase | Status | Focus                                                                                         |
+| ----- | ------ | --------------------------------------------------------------------------------------------- |
+| 1     | Complete | Scaffold: project, deps, config, docker-compose, Celery app                                 |
+| 2     | Complete | All Django apps and models, migrations, ChangeLog partitioning, indexes                     |
+| 3     | Complete | Durable Congress ingestion, document/vote processing, Beat, retries, and replay controls   |
+| 4     | Complete | S3/local storage, bounded downloads, extraction, and document access                        |
+| 5     | Complete | BillContract + EvidenceSpan + deterministic legal-NLP v2                                    |
+| 6     | Complete | Topic inference and similarity recomputation                                                  |
+| 7     | Complete | DRF auth, bills, documents, contracts, representatives, votes, and tracking APIs            |
+| 8     | Deferred | RSS endpoint from ChangeLog                                                                   |
+| 9     | Deferred | Newsletter query and delivery                                                                 |
+| 10    | Complete | Indexes, health, admin, logging, and documentation                                            |
 
-You can implement in order; phases 4–6 can overlap with 7 once models and tasks exist.
+If the deferred product work resumes, implement RSS before newsletters so the
+same `ChangeLog` query behavior can be exercised in a public, inspectable feed.
