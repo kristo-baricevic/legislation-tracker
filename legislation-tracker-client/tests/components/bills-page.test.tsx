@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BillsPage from "@/app/bills/page";
 import {
+  createSavedBillSearch,
   getBills,
   getSavedBillSearchResults,
   getSavedBillSearches,
@@ -184,6 +185,38 @@ describe("BillsPage", () => {
       expect(screen.getByRole("searchbox", { name: "Full-text search" })).toHaveValue("grants");
       expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ session: 120, id: 9, page: 4, q: "grants" }));
     });
+  });
+
+  it("names and saves the current search without a browser prompt", async () => {
+    const api = await import("@/lib/api");
+    const user = userEvent.setup();
+    searchState.query = "page=2&session=119&jurisdiction=federal&topic_id=7";
+    vi.mocked(api.getSession).mockResolvedValue({ id: 1 } as never);
+    vi.mocked(createSavedBillSearch).mockResolvedValue({
+      id: 12,
+      name: "Health policy",
+      query_json: { session: 119, jurisdiction: "federal", topic_id: 7 },
+      last_opened_at: null,
+      last_opened_activity_sequence: null,
+      new_result_count: 0,
+    });
+
+    render(<BillsPage />);
+    await user.click(await screen.findByRole("button", { name: "Save this search" }));
+
+    const nameInput = screen.getByRole("textbox", { name: "Saved search name" });
+    await user.type(nameInput, "Health policy");
+    await user.click(screen.getByRole("button", { name: "Save search" }));
+
+    await waitFor(() => {
+      expect(createSavedBillSearch).toHaveBeenCalledWith("Health policy", {
+        session: 119,
+        jurisdiction: "federal",
+        topic_id: 7,
+      });
+    });
+    expect(await screen.findByRole("button", { name: "Health policy" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Saved search name" })).not.toBeInTheDocument();
   });
 
   it("acknowledges a saved search only after its result page is rendered and refreshes server counts", async () => {
