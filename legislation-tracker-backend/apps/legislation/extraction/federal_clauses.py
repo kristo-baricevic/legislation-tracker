@@ -91,6 +91,8 @@ def _split_modal_clauses(
         return ((sentence, None),)
 
     actor, conditions = _actor_and_conditions(sentence.text[: matches[0].start()])
+    active_actor = actor
+    active_conditions = conditions
     boundaries = [
         _explicit_actor_boundary(sentence, matches[index - 1], match)
         if index > 0
@@ -100,6 +102,14 @@ def _split_modal_clauses(
     clauses = []
     for index, match in enumerate(matches):
         prior_boundary = boundaries[index]
+        if prior_boundary is not None:
+            explicit_actor, explicit_conditions = _actor_and_conditions(
+                sentence.text[prior_boundary[1] : match.start()]
+            )
+            if explicit_actor:
+                active_actor = explicit_actor
+            if explicit_conditions:
+                active_conditions = explicit_conditions
         start = (
             0
             if index == 0
@@ -126,12 +136,12 @@ def _split_modal_clauses(
         )
         context = (
             None
-            if index == 0 or prior_boundary is not None or not actor
+            if index == 0 or prior_boundary is not None or not active_actor
             else ModalContext(
                 modal=matches[index - 1].group("modal").casefold(),
-                actor=actor,
+                actor=active_actor,
                 evidence=sentence,
-                conditions=conditions,
+                conditions=active_conditions,
             )
         )
         clauses.append((span, context))
