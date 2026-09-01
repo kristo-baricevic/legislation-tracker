@@ -248,6 +248,62 @@ def test_validate_contract_rejects_cross_section_financial_associations():
         validate_contract(contract, result.evidence, V21_SOURCE)
 
 
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_validate_contract_requires_one_section_group_per_reader_line(duplicate):
+    result = valid_v21_result()
+    contract = deepcopy(result.contract_json)
+    group = contract["section_groups"][0]
+    if duplicate:
+        contract["section_groups"].append(deepcopy(group))
+        contract["reader_stats"]["section_group_count"] += 1
+    else:
+        group["line_item_ids"] = []
+
+    with pytest.raises(ContractValidationError, match="exactly one section group"):
+        validate_contract(contract, result.evidence, V21_SOURCE)
+
+
+def test_v21_renderer_keeps_valid_financial_items_when_one_is_unrenderable():
+    from apps.legislation.extraction.federal_structure import parse_federal_structure
+    from apps.legislation.extraction.financial_rules import extract_financial_claims
+
+    source = """SEC. 2. SAVINGS
+$5,000,000 in unobligated balances is hereby rescinded.
+"""
+    sections = parse_federal_structure(source)
+    valid = extract_financial_claims(source, sections)[0]
+    malformed = ExtractedClaim(
+        category="financial_items",
+        fields={
+            **valid.fields,
+            "financial_action": "transfer",
+            "direction": "neutral_transfer",
+            "destination_account": None,
+        },
+        section_label=valid.section_label,
+        evidence=valid.evidence,
+        rule_id="test.malformed_financial.v1",
+        source_id=valid.source_id,
+        section_id=valid.section_id,
+        section_path=valid.section_path,
+    )
+
+    result = render_contract(
+        title="Savings Act",
+        version_label="Introduced",
+        sections=sections,
+        claims=(malformed, valid),
+        source_text=source,
+    )
+
+    assert result.schema_version == "2.1-legal-nlp"
+    assert len(result.contract_json["financial_items"]) == 1
+    assert result.contract_json["reader_stats"]["financial_item_count"] == 1
+    assert result.contract_json["extraction"]["warnings"] == [
+        "reader_required_slot_missing"
+    ]
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

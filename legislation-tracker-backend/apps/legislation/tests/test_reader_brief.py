@@ -153,6 +153,71 @@ $3,000,000 in unobligated balances is hereby rescinded.
     assert brief.section_groups[0].section_financial_refs == ()
 
 
+def test_each_unassociated_money_and_timeline_item_gets_a_standalone_line():
+    source = """SEC. 244A. STANDALONE ITEMS
+$3,000,000 in unobligated balances is hereby rescinded.
+$2,000,000 in budget authority is hereby canceled.
+This section takes effect on January 1, 2028.
+This program takes effect on February 1, 2028.
+"""
+    sections = parse_federal_structure(source)
+
+    brief = build_reader_brief(reader_claims(source), sections)
+
+    assert [item.kind for item in brief.line_items] == [
+        "financial",
+        "financial",
+        "timeline",
+        "timeline",
+    ]
+    assert all(
+        len(item.exact_financial_refs) == 1
+        for item in brief.line_items
+        if item.kind == "financial"
+    )
+    assert all(
+        len(item.timeline_refs) == 1
+        for item in brief.line_items
+        if item.kind == "timeline"
+    )
+    assert brief.section_groups[0].section_financial_refs == ()
+    assert brief.section_groups[0].section_timeline_refs == ()
+
+
+def test_unrenderable_financial_claim_warns_without_counting_or_linking():
+    source = """SEC. 244B. VALID MONEY
+$3,000,000 in unobligated balances is hereby rescinded.
+"""
+    sections = parse_federal_structure(source)
+    valid = extract_financial_claims(source, sections)[0]
+    malformed = ExtractedClaim(
+        category="financial_items",
+        fields={
+            **valid.fields,
+            "financial_action": "transfer",
+            "direction": "neutral_transfer",
+            "destination_account": None,
+        },
+        section_label=valid.section_label,
+        evidence=valid.evidence,
+        rule_id="test.malformed_financial.v1",
+        source_id=valid.source_id,
+        section_id=valid.section_id,
+        section_path=valid.section_path,
+    )
+
+    brief = build_reader_brief((malformed, valid), sections)
+
+    assert [item.id for item in brief.financial_items] == [
+        f"financial-{valid.evidence[0].start_char}-1"
+    ]
+    assert brief.reader_stats.financial_item_count == 1
+    assert brief.line_items[0].exact_financial_refs == (brief.financial_items[0].id,)
+    assert [warning.code for warning in brief.warnings] == [
+        "reader_required_slot_missing"
+    ]
+
+
 def test_definitions_link_only_by_exact_normalized_term_occurrence():
     source = """SEC. 245. REQUIREMENTS
 The Secretary shall provide assistance to each covered entity.

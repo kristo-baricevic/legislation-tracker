@@ -89,6 +89,24 @@ The Secretary shall transfer $10,000,000 from the Hospital Insurance Trust Fund 
     }
 
 
+def test_financial_rules_bind_years_and_accounts_to_each_amount_subclause():
+    source = """SEC. 9A. TRANSFERS
+The Secretary shall transfer $10,000,000 from Account A to Account B for fiscal year 2026, and $20,000,000 from Account C to Account D for fiscal year 2027.
+"""
+
+    claims = extract(source)
+
+    assert [item.fields["fiscal_years"] for item in claims] == [[2026], [2027]]
+    assert [item.fields["source_account"] for item in claims] == [
+        "Account A",
+        "Account C",
+    ]
+    assert [item.fields["destination_account"] for item in claims] == [
+        "Account B",
+        "Account D",
+    ]
+
+
 @pytest.mark.parametrize(
     ("provision", "action"),
     [
@@ -200,6 +218,23 @@ The Secretary shall report the percentage of applications approved and shall pub
 """
 
     assert extract(source) == ()
+
+
+@pytest.mark.parametrize(
+    "provision",
+    [
+        "There is authorized to be appropriated $5,000,000 for a program serving 75 percent of the State population.",
+        "The Secretary shall transfer $5,000,000 from Account A to Account B for communities representing 75 percent of the State population.",
+    ],
+)
+def test_financial_rules_reject_population_percentage_in_financial_clause(provision):
+    source = f"SEC. 15A. FINANCIAL ACTION\n{provision}\n"
+
+    claims = extract(source)
+
+    assert len(claims) == 1
+    assert claims[0].fields["amount"] == "5000000.00"
+    assert claims[0].fields["amount_type"] == "specified"
 
 
 def test_financial_rules_do_not_cap_recognized_provisions():

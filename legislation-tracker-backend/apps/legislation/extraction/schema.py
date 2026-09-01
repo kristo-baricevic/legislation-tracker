@@ -1,5 +1,6 @@
 import json
 import re
+from collections import Counter
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -349,6 +350,17 @@ def _validate_v21_references(contract: dict[str, object]) -> None:
         **_item_map(contract, "amendment_operations"),
     }
     _validate_financial_axes(financial)
+    line_memberships = Counter(
+        line_id
+        for group in section_groups
+        if isinstance(group, dict)
+        for line_id in group.get("line_item_ids", [])
+    )
+    if any(line_memberships[line_id] != 1 for line_id in lines):
+        raise ContractValidationError(
+            "schema_validation_failed",
+            "Every reader line must belong to exactly one section group",
+        )
     groups = {
         str(item["source_id"]): item
         for item in section_groups

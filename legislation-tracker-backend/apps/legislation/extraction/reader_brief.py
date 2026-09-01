@@ -194,7 +194,20 @@ def _coverage_note(stats: ReaderStats) -> str:
 def build_reader_brief(
     claims: Sequence[ExtractedClaim], sections: Sequence[StructuralSection]
 ) -> ReaderBrief:
-    identified = _identified_claims(claims)
+    warnings = []
+    rendered_by_claim: dict[int, RenderedReaderClaim] = {}
+    renderable_claims = []
+    for claim in claims:
+        if claim.category not in _PREFIX_BY_CATEGORY:
+            continue
+        rendered = render_reader_claim(claim)
+        if isinstance(rendered, ExtractionWarning):
+            warnings.append(rendered)
+            continue
+        renderable_claims.append(claim)
+        rendered_by_claim[id(claim)] = rendered
+
+    identified = _identified_claims(renderable_claims)
     financial_items = tuple(
         item for item in identified if item.claim.category == "financial_items"
     )
@@ -204,16 +217,12 @@ def build_reader_brief(
     definition_items = tuple(
         item for item in identified if item.claim.category == "definitions"
     )
-    warnings = []
     lines = []
 
     for item in identified:
         if item.claim.category not in _OPERATIVE_CATEGORIES:
             continue
-        rendered = render_reader_claim(item.claim)
-        if isinstance(rendered, ExtractionWarning):
-            warnings.append(rendered)
-            continue
+        rendered = rendered_by_claim[id(item.claim)]
         lines.append(
             _LineDraft(
                 id=f"line-{item.id}",
@@ -226,10 +235,14 @@ def build_reader_brief(
             )
         )
 
+    operative_lines = tuple(lines)
+
     section_financial_refs: dict[str, list[str]] = defaultdict(list)
     for item in financial_items:
         same_section = [
-            line for line in lines if line.section_id == _section_id(item.claim)
+            line
+            for line in operative_lines
+            if line.section_id == _section_id(item.claim)
         ]
         exact = [
             line
@@ -255,7 +268,9 @@ def build_reader_brief(
     section_timeline_refs: dict[str, list[str]] = defaultdict(list)
     for item in timeline_items:
         same_section = [
-            line for line in lines if line.section_id == _section_id(item.claim)
+            line
+            for line in operative_lines
+            if line.section_id == _section_id(item.claim)
         ]
         exact = [
             line

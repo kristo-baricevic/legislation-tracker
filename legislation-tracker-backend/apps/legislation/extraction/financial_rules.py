@@ -256,6 +256,42 @@ def _action_for_amount(
     return min(actions, key=distance)
 
 
+def _amount_subclause(text: str, amounts: Sequence[_AmountMatch], index: int) -> str:
+    start = 0
+    if index > 0:
+        between = text[amounts[index - 1].end : amounts[index].start]
+        connectors = list(
+            re.finditer(r"(?:[,;]\s*(?:and|or)?\s*|\b(?:and|or)\s+)", between, re.I)
+        )
+        start = (
+            amounts[index - 1].end + connectors[-1].end()
+            if connectors
+            else amounts[index].start
+        )
+    end = amounts[index + 1].start if index + 1 < len(amounts) else len(text)
+    return text[start:end]
+
+
+def _percentage_is_financial(text: str) -> bool:
+    return (
+        re.search(
+            r"(?:"
+            r"\bpercent\s+of\s+(?:the\s+)?(?:amounts?|funds?|appropriations?|"
+            r"budget\s+authority|unobligated\s+balances)\b|"
+            r"(?:\b(?:set\s+aside|allocate|transfer|reduce|rescind|cancel)\b|"
+            r"\bnot\s+more\s+than\b|\bnot\s+to\s+exceed\b|"
+            r"\b(?:shall|must|may)\s+not\s+exceed\b|\bup\s+to\b)"
+            r"[^$%;.]{0,80}\b\d+(?:\.\d+)?\s+percent\b|"
+            r"\b\d+(?:\.\d+)?\s+percent\b[^.;]{0,40}"
+            r"\b(?:set\s+aside|allocated|transferred|reduced|rescinded|canceled)\b"
+            r")",
+            text,
+            re.IGNORECASE,
+        )
+        is not None
+    )
+
+
 def _claim(
     *,
     section: StructuralSection,
@@ -299,8 +335,8 @@ def extract_financial_claims(
 
     claims = []
     for section, span, _ in iter_operative_clauses(source_text, sections):
-        amounts = _amounts(span.text)
-        if not amounts:
+        candidate_amounts = _amounts(span.text)
+        if not candidate_amounts:
             continue
         actions = _actions(span.text)
         inherited = (
@@ -309,19 +345,23 @@ def extract_financial_claims(
         if not actions and inherited is None:
             continue
 
+        amounts = tuple(
+            amount
+            for index, amount in enumerate(candidate_amounts)
+            if amount.amount_type != "percentage"
+            or _percentage_is_financial(
+                _amount_subclause(span.text, candidate_amounts, index)
+            )
+        )
+        if not amounts:
+            continue
+
         for index, amount in enumerate(amounts):
             action_match = _action_for_amount(amount, actions) if actions else None
             action = action_match.action if action_match else inherited.action
-            local_start = min(
-                amount.start,
-                action_match.start if action_match is not None else amount.start,
-            )
-            local_end = (
-                amounts[index + 1].start if index + 1 < len(amounts) else len(span.text)
-            )
-            local_text = span.text[local_start:local_end]
-            source_account, destination_account = _accounts(span.text, action)
-            fiscal_years = _fiscal_years(span.text)
+            local_text = _amount_subclause(span.text, amounts, index)
+            source_account, destination_account = _accounts(local_text, action)
+            fiscal_years = _fiscal_years(local_text)
             evidence = (span,)
             if inherited is not None:
                 fiscal_years = fiscal_years or inherited.fiscal_years
