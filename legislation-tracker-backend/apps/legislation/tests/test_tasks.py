@@ -1,11 +1,20 @@
+from copy import deepcopy
+from dataclasses import replace
+
 import pytest
 from django.db import IntegrityError, transaction
+from django.test import override_settings
 
+from apps.accounts.bill_views import unread_change_count
+from apps.accounts.models import BillViewState, User
 from apps.changelog.models import ChangeLog
 from apps.ingestion import tasks as ingestion_tasks
 from apps.ingestion.models import IngestionWorkItem
 from apps.legislation import tasks
-from apps.legislation.extraction.types import EXTRACTOR_VERSION
+from apps.legislation.extraction.types import (
+    EXTRACTOR_VERSION,
+    V21_EXTRACTOR_VERSION,
+)
 from apps.legislation.models import (
     Bill,
     BillContract,
@@ -62,7 +71,12 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
         IngestionWorkItem.objects.filter(kind="topic_update").values_list(
             "payload_json", flat=True
         )
-    ) == [{"contract_id": first["contract_id"]}]
+    ) == [
+        {
+            "contract_id": first["contract_id"],
+            "generation_reason": "ingestion",
+        }
+    ]
 
     second = tasks.generate_contract(document.id)
 
@@ -100,6 +114,50 @@ def test_contract_change_advances_the_bill_activity_sequence():
     bill.refresh_from_db()
     assert bill.last_activity_sequence == 1
     assert bill.last_activity_at is not None
+
+
+@pytest.mark.django_db
+def test_ingestion_persists_schema_hash_drift_without_legislative_activity(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 9011",
+        title="Schema drift bill",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 1. REPORTS\nThe Secretary shall publish a report.",
+    )
+    first = tasks._generate_contract_impl(document.id)
+    original_result = tasks.extract_contract(document=document, bill=bill)
+    refreshed_json = deepcopy(original_result.contract_json)
+    refreshed_json["extraction"]["warnings"] = ["schema-only-refresh"]
+    monkeypatch.setattr(
+        tasks,
+        "extract_contract",
+        lambda **kwargs: replace(original_result, contract_json=refreshed_json),
+    )
+    bill.refresh_from_db()
+    original_activity = (bill.last_activity_at, bill.last_activity_sequence)
+
+    refreshed = tasks._generate_contract_impl(document.id)
+
+    bill.refresh_from_db()
+    assert refreshed["contract_id"] != first["contract_id"]
+    assert bill.latest_contract_id == refreshed["contract_id"]
+    assert (
+        ChangeLog.objects.filter(
+            bill=bill,
+            change_type="contract_update",
+        ).count()
+        == 1
+    )
+    assert (bill.last_activity_at, bill.last_activity_sequence) == original_activity
 
 
 @pytest.mark.django_db
@@ -221,6 +279,13 @@ def test_generate_contract_refreshes_evidence_when_reusing_an_older_hash():
     )
     assert intervening["contract_id"] != original["contract_id"]
     assert reused["contract_id"] == original["contract_id"]
+    assert (
+        ChangeLog.objects.filter(
+            bill=bill,
+            change_type="contract_update",
+        ).count()
+        == 3
+    )
     assert refreshed_evidence.start_char == original_evidence.start_char + 1
     assert (
         reflowed_source[refreshed_evidence.start_char : refreshed_evidence.end_char]
@@ -264,7 +329,206 @@ def test_document_contract_work_is_versioned_by_extractor():
 
     work = tasks.enqueue_document_contract(document)
 
-    assert work.dedupe_key == f"{document.id}:content-hash:{EXTRACTOR_VERSION}"
+    assert work.dedupe_key == (
+        f"{document.id}:content-hash:{EXTRACTOR_VERSION}:none:ingestion"
+    )
+    assert work.payload_json == {
+        "document_id": document.id,
+        "generation_reason": "ingestion",
+        "extractor_version": EXTRACTOR_VERSION,
+    }
+
+
+@pytest.mark.django_db
+def test_document_contract_work_fingerprints_text_when_content_hash_is_pending():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202E",
+        title="Pending Hash Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+
+    first = tasks.enqueue_document_contract(document)
+    document.extracted_text = "SEC. 2. DUTY\nThe Secretary shall publish a report."
+    document.save(update_fields=["extracted_text"])
+    second = tasks.enqueue_document_contract(document)
+
+    assert first.pk != second.pk
+    assert first.dedupe_key != second.dedupe_key
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_schema_backfill_updates_reader_contract_without_activity_churn():
+    source_text = (
+        "SEC. 2. RURAL HOSPITAL GRANTS\n"
+        "The Secretary shall award grants to rural hospitals.\n"
+        "There is authorized to be appropriated $25,000,000 for fiscal year 2027 "
+        "for rural hospital grants."
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202A",
+        title="Rural Hospital Grants Act",
+        summary="Supports rural hospitals.",
+        status="Introduced",
+        processing_status=ProcessingStatus.COMPLETE,
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text=source_text,
+        content_hash="reader-backfill-source",
+    )
+    with override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False):
+        original = tasks._generate_contract_impl(document.id)
+    original_contract = BillContract.objects.get(pk=original["contract_id"])
+    bill.refresh_from_db()
+    original_activity = (bill.last_activity_at, bill.last_activity_sequence)
+    original_change_count = ChangeLog.objects.filter(bill=bill).count()
+    acknowledged_change = ChangeLog.objects.filter(bill=bill).latest("created_at", "id")
+    user = User.objects.create_user(
+        username="reader-backfill",
+        email="reader-backfill@example.test",
+        password="test-password",
+    )
+    BillViewState.objects.create(
+        user=user,
+        bill=bill,
+        last_viewed_at=acknowledged_change.created_at,
+        last_seen_change_created_at=acknowledged_change.created_at,
+        last_seen_change_id=acknowledged_change.id,
+    )
+    assert unread_change_count(user=user, bill=bill) == 0
+    IngestionWorkItem.objects.all().delete()
+
+    work = tasks.enqueue_document_contract(
+        document,
+        reextract_source=True,
+        generation_reason="schema_backfill",
+    )
+
+    assert work.payload_json == {
+        "document_id": document.id,
+        "reextract_source": True,
+        "generation_reason": "schema_backfill",
+        "extractor_version": V21_EXTRACTOR_VERSION,
+    }
+    assert V21_EXTRACTOR_VERSION in work.dedupe_key
+    assert "schema_backfill" in work.dedupe_key
+    result = ingestion_tasks._process_durable_work(work)
+    topic_work = IngestionWorkItem.objects.get(kind="topic_update")
+    assert topic_work.payload_json["generation_reason"] == "schema_backfill"
+    ingestion_tasks._process_durable_work(topic_work)
+
+    bill.refresh_from_db()
+    document.refresh_from_db()
+    assert result["contract_id"] == bill.latest_contract_id
+    assert bill.latest_contract.schema_version == "2.1-legal-nlp"
+    assert BillContract.objects.filter(pk=original_contract.pk).exists()
+    assert BillContract.objects.filter(document=document).count() == 2
+    assert BillTopic.objects.filter(bill=bill).exists()
+    assert IngestionWorkItem.objects.filter(kind="similarity").exists()
+    assert IngestionWorkItem.objects.filter(kind="search_index").exists()
+    assert ChangeLog.objects.filter(bill=bill).count() == original_change_count
+    assert (bill.last_activity_at, bill.last_activity_sequence) == original_activity
+    assert unread_change_count(user=user, bill=bill) == 0
+
+
+@pytest.mark.django_db
+def test_durable_contract_refuses_a_stale_queued_extractor_before_persistence():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202D",
+        title="Writer Toggle Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+
+    with pytest.raises(RuntimeError, match="no longer matches the active writer"):
+        tasks._generate_contract_impl(
+            document.id,
+            generation_reason="schema_backfill",
+            extractor_version=V21_EXTRACTOR_VERSION,
+        )
+
+    assert not BillContract.objects.filter(document=document).exists()
+    assert document.contract_generated_at is None
+    assert not ChangeLog.objects.filter(bill=bill).exists()
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_schema_backfill_refuses_a_new_document_version():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202B",
+        title="Versioned Act",
+        status="Introduced",
+    )
+    active = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 1. DUTY\nThe Secretary shall report.",
+    )
+    tasks._generate_contract_impl(active.id)
+    replacement = BillDocument.objects.create(
+        bill=bill,
+        version_label="Engrossed",
+        is_active_version=True,
+        extracted_text="SEC. 1. DUTY\nThe Secretary shall publish a report.",
+    )
+    active.is_active_version = False
+    active.save(update_fields=["is_active_version"])
+
+    with pytest.raises(ValueError, match="schema backfill"):
+        tasks._generate_contract_impl(
+            replacement.id,
+            generation_reason="schema_backfill",
+        )
+
+
+@pytest.mark.django_db
+def test_generation_reason_keeps_ingestion_and_backfill_work_distinct():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202C",
+        title="Queued Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+        content_hash="reasoned-content",
+    )
+
+    ingestion = tasks.enqueue_document_contract(document)
+    backfill = tasks.enqueue_document_contract(
+        document,
+        generation_reason="schema_backfill",
+    )
+
+    assert ingestion.pk != backfill.pk
+    assert ingestion.payload_json["generation_reason"] == "ingestion"
+    assert backfill.payload_json["generation_reason"] == "schema_backfill"
 
 
 @pytest.mark.django_db
@@ -723,7 +987,12 @@ def test_backfill_update_topics_enqueues_latest_contracts(monkeypatch):
         IngestionWorkItem.objects.filter(kind="topic_update").values_list(
             "payload_json", flat=True
         )
-    ) == [{"contract_id": latest_contract.id}]
+    ) == [
+        {
+            "contract_id": latest_contract.id,
+            "generation_reason": "ingestion",
+        }
+    ]
     assert old_contract.id not in [
         item["contract_id"]
         for item in IngestionWorkItem.objects.filter(kind="topic_update").values_list(
@@ -781,7 +1050,12 @@ def test_backfill_update_topics_uses_the_selected_latest_contract_not_highest_id
         IngestionWorkItem.objects.filter(kind="topic_update").values_list(
             "payload_json", flat=True
         )
-    ) == [{"contract_id": active_contract.id}]
+    ) == [
+        {
+            "contract_id": active_contract.id,
+            "generation_reason": "ingestion",
+        }
+    ]
 
 
 @pytest.mark.django_db

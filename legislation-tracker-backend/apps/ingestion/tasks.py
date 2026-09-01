@@ -1385,6 +1385,8 @@ def _process_durable_work(work_item):
         return legislation_tasks._generate_contract_impl(
             payload["document_id"],
             reextract_source=bool(payload.get("reextract_source")),
+            generation_reason=payload.get("generation_reason", "ingestion"),
+            extractor_version=payload.get("extractor_version"),
         )
     if work_item.kind == legislation_tasks.WORK_KIND_METADATA_CONTRACT:
         return legislation_tasks._generate_contract_for_bill_impl(payload["bill_id"])
@@ -1392,6 +1394,7 @@ def _process_durable_work(work_item):
         return legislation_tasks._update_topics_impl(
             contract_id=payload.get("contract_id"),
             bill_id=payload.get("bill_id"),
+            generation_reason=payload.get("generation_reason", "ingestion"),
         )
     if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
         return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
@@ -1626,8 +1629,10 @@ def _process_bill_impl(bill_key_str):
         bill_summaries(congress, bill_type, bill_number)
     )
     summary = crs_revision.text if crs_revision else source_metadata_summary
-    summary_source = "crs" if crs_revision else (
-        "source_metadata" if source_metadata_summary else ""
+    summary_source = (
+        "crs"
+        if crs_revision
+        else ("source_metadata" if source_metadata_summary else "")
     )
     summary_action_date = crs_revision.action_date if crs_revision else None
     summary_version_code = crs_revision.version_code if crs_revision else ""
@@ -1692,12 +1697,12 @@ def _process_bill_impl(bill_key_str):
             if crs_revision:
                 candidate_revision = (
                     crs_revision.action_date or date.min,
-                    crs_revision.last_updated_at
-                    or datetime.min.replace(tzinfo=UTC),
+                    crs_revision.last_updated_at or datetime.min.replace(tzinfo=UTC),
                     crs_revision.version_code,
                 )
-                if bill.summary_source != "crs" or candidate_revision > stored_summary_revision(
-                    bill
+                if (
+                    bill.summary_source != "crs"
+                    or candidate_revision > stored_summary_revision(bill)
                 ):
                     target_summary = crs_revision.text
                     target_summary_source = "crs"

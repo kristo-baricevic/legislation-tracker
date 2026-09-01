@@ -2,10 +2,11 @@ from io import StringIO
 
 import pytest
 from django.core.management import CommandError, call_command
+from django.test import override_settings
 
 from apps.ingestion import tasks as ingestion_tasks
 from apps.ingestion.models import IngestionWorkItem
-from apps.legislation.models import Bill, BillDocument
+from apps.legislation.models import Bill, BillContract, BillDocument
 
 
 def make_document(*, number, session=119, active=True):
@@ -67,6 +68,10 @@ def test_backfill_contracts_previews_active_documents_in_stable_bounded_order():
     assert f"max_id={third.id}" in rendered
     assert "sessions=119:1" in rendered
     assert "active=1 inactive=0" in rendered
+    assert "target_schema=2.1-legal-nlp" in rendered
+    assert "target_extractor=federal-rules-2.1.0" in rendered
+    assert "generation_reason=schema_backfill" in rendered
+    assert "writer_enabled=false" in rendered
     assert "Preview only; pass --execute to enqueue." in rendered
     assert not IngestionWorkItem.objects.exists()
 
@@ -93,6 +98,7 @@ def test_backfill_contracts_all_versions_includes_inactive_documents():
 
 
 @pytest.mark.django_db(transaction=True)
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
 def test_backfill_contracts_execute_is_durable_and_idempotent(monkeypatch):
     document = make_document(number=307)
     broker_observations = []
@@ -132,6 +138,7 @@ def test_backfill_contracts_execute_is_durable_and_idempotent(monkeypatch):
 
 
 @pytest.mark.django_db(transaction=True)
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
 def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
     monkeypatch,
 ):
@@ -155,6 +162,15 @@ def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
             "</section></legis-body></bill>"
         ),
     )
+    existing_contract = BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version="2.0-legal-nlp",
+        contract_json={"schema_version": "2.0-legal-nlp"},
+        contract_hash="legacy-xml-contract",
+    )
+    bill.latest_contract = existing_contract
+    bill.save(update_fields=["latest_contract"])
     monkeypatch.setattr(ingestion_tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     call_command(
@@ -170,6 +186,8 @@ def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
     assert work.payload_json == {
         "document_id": document.id,
         "reextract_source": True,
+        "generation_reason": "schema_backfill",
+        "extractor_version": "federal-rules-2.1.0",
     }
 
     result = ingestion_tasks._process_durable_work(work)
@@ -177,7 +195,25 @@ def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
     document.refresh_from_db()
     bill.refresh_from_db()
     assert result["contract_id"] == bill.latest_contract_id
-    assert bill.latest_contract.schema_version == "2.0-legal-nlp"
+    assert bill.latest_contract.schema_version == "2.1-legal-nlp"
     assert document.extracted_text == (
         "SEC. 2. Reports\nThe Secretary shall publish a report."
     )
+
+
+@pytest.mark.django_db(transaction=True)
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False)
+def test_backfill_contracts_refuses_execute_before_creating_durable_work():
+    document = make_document(number=309)
+
+    with pytest.raises(CommandError, match="LEGAL_NLP_V21_WRITE_ENABLED"):
+        call_command(
+            "backfill_contracts",
+            "--start-id",
+            str(document.id),
+            "--end-id",
+            str(document.id),
+            "--execute",
+        )
+
+    assert not IngestionWorkItem.objects.exists()

@@ -1,7 +1,12 @@
 from collections import Counter
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.legislation.extraction.types import (
+    V21_EXTRACTOR_VERSION,
+    V21_SCHEMA_VERSION,
+)
 from apps.legislation.models import BillDocument
 from apps.legislation.tasks import enqueue_document_contract
 
@@ -61,13 +66,27 @@ class Command(BaseCommand):
         self.stdout.write(
             f"selected={len(selected)} min_id={minimum_id} max_id={maximum_id} "
             f"sessions={sessions or 'none'} active={active_count} "
-            f"inactive={len(selected) - active_count}"
+            f"inactive={len(selected) - active_count} "
+            f"target_schema={V21_SCHEMA_VERSION} "
+            f"target_extractor={V21_EXTRACTOR_VERSION} "
+            "generation_reason=schema_backfill "
+            f"writer_enabled={str(settings.LEGAL_NLP_V21_WRITE_ENABLED).lower()}"
         )
 
         if not options["execute"]:
             self.stdout.write("Preview only; pass --execute to enqueue.")
             return
 
+        if not settings.LEGAL_NLP_V21_WRITE_ENABLED:
+            raise CommandError(
+                "--execute requires LEGAL_NLP_V21_WRITE_ENABLED=True; "
+                "preview remains available while the writer is disabled."
+            )
+
         for document in selected:
-            enqueue_document_contract(document, reextract_source=True)
+            enqueue_document_contract(
+                document,
+                reextract_source=True,
+                generation_reason="schema_backfill",
+            )
         self.stdout.write(f"enqueued={len(selected)}")

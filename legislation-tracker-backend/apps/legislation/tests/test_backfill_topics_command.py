@@ -31,4 +31,4 @@ def test_backfill_topics_persists_work_before_waking_celery(monkeypatch):
         IngestionWorkItem.objects.filter(kind="topic_update").values_list(
             "payload_json", flat=True
         )
-    ) == [{"bill_id": bill.id}]
+    ) == [{"bill_id": bill.id, "generation_reason": "ingestion"}]

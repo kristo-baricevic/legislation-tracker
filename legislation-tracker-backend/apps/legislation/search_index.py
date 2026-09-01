@@ -44,24 +44,87 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _flatten_contract(value: object, *, label: str = "") -> list[str]:
-    """Return labeled leaf values without relying on dict iteration accidents."""
-    if isinstance(value, dict):
-        result: list[str] = []
-        for key in sorted(value):
-            next_label = f"{label} {key}".strip()
-            result.extend(_flatten_contract(value[key], label=next_label))
-        return result
-    if isinstance(value, list):
-        result = []
-        for item in value:
-            result.extend(_flatten_contract(item, label=label))
-        return result
-    normalized = _normalize_text(value)
-    return [f"{label}: {normalized}" if label else normalized] if normalized else []
+def project_reader_contract_text(contract_json: dict[str, object]) -> str:
+    """Return only reader-facing statutory text from a persisted contract."""
+    lines: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: object) -> None:
+        normalized = _normalize_text(value)
+        identity = normalized.casefold()
+        if normalized and identity not in seen:
+            seen.add(identity)
+            lines.append(normalized)
+
+    orientation = contract_json.get("orientation")
+    if isinstance(orientation, dict):
+        add(orientation.get("purpose_clause"))
+
+    for category in (
+        "line_items",
+        "requirements",
+        "applicability",
+        "amendment_operations",
+    ):
+        items = contract_json.get(category, [])
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    add(item.get("display_text") or item.get("text"))
+
+    financial_items = contract_json.get("financial_items")
+    if not isinstance(financial_items, list):
+        financial_items = contract_json.get("funding_items", [])
+    if isinstance(financial_items, list):
+        for item in financial_items:
+            if not isinstance(item, dict):
+                continue
+            display_text = item.get("display_text") or item.get("text")
+            if display_text:
+                add(display_text)
+                continue
+            fiscal_years = item.get("fiscal_years")
+            fiscal_phrase = ""
+            if isinstance(fiscal_years, list) and fiscal_years:
+                fiscal_phrase = " fiscal years " + ", ".join(map(str, fiscal_years))
+            add(
+                " ".join(
+                    str(value)
+                    for value in (
+                        item.get("financial_action"),
+                        item.get("amount"),
+                        item.get("purpose"),
+                        fiscal_phrase,
+                    )
+                    if value
+                )
+            )
+
+    for category in ("timeline_items", "definitions"):
+        items = contract_json.get(category, [])
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    add(item.get("display_text") or item.get("text"))
+
+    # The legacy deterministic contract uses reader text under these names.
+    summary = contract_json.get("summary")
+    if isinstance(summary, dict):
+        add(summary.get("text"))
+    for category in ("key_points", "funding_mentions", "effective_dates"):
+        items = contract_json.get(category, [])
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    add(item.get("text"))
+    if not lines:
+        add(contract_json.get("plain_summary"))
+    return "\n".join(lines)
 
 
-def chunk_search_text(text: str, *, max_chars: int = MAX_SEARCH_CHUNK_CHARS) -> list[str]:
+def chunk_search_text(
+    text: str, *, max_chars: int = MAX_SEARCH_CHUNK_CHARS
+) -> list[str]:
     """Split text by paragraphs first, then safely split oversized paragraphs."""
     if max_chars < 1:
         raise ValueError("max_chars must be positive")
@@ -76,7 +139,10 @@ def chunk_search_text(text: str, *, max_chars: int = MAX_SEARCH_CHUNK_CHARS) -> 
         if not paragraph:
             continue
         pieces = (
-            [paragraph[index : index + max_chars] for index in range(0, len(paragraph), max_chars)]
+            [
+                paragraph[index : index + max_chars]
+                for index in range(0, len(paragraph), max_chars)
+            ]
             if len(paragraph) > max_chars
             else [paragraph]
         )
@@ -129,7 +195,7 @@ def project_bill_search_sources(bill: Bill) -> list[SearchSource]:
 
     contract = bill.latest_contract
     if contract is not None:
-        contract_text = "\n".join(_flatten_contract(contract.contract_json or {}))
+        contract_text = project_reader_contract_text(contract.contract_json or {})
         if contract_text:
             sources.append(
                 SearchSource(
@@ -186,13 +252,29 @@ def _desired_rows(bill: Bill) -> list[BillSearchChunk]:
     return sorted(rows, key=lambda row: (row.kind, row.source_key, row.ordinal))
 
 
-def _same_projection(current: list[BillSearchChunk], desired: list[BillSearchChunk]) -> bool:
+def _same_projection(
+    current: list[BillSearchChunk], desired: list[BillSearchChunk]
+) -> bool:
     current_signature = [
-        (row.kind, row.source_key, row.ordinal, row.source_hash, row.document_id, row.contract_id)
+        (
+            row.kind,
+            row.source_key,
+            row.ordinal,
+            row.source_hash,
+            row.document_id,
+            row.contract_id,
+        )
         for row in current
     ]
     desired_signature = [
-        (row.kind, row.source_key, row.ordinal, row.source_hash, row.document_id, row.contract_id)
+        (
+            row.kind,
+            row.source_key,
+            row.ordinal,
+            row.source_hash,
+            row.document_id,
+            row.contract_id,
+        )
         for row in desired
     ]
     return current_signature == desired_signature
@@ -230,9 +312,15 @@ def rebuild_bill_search_index(*, bill_id: int) -> SearchIndexResult:
         if connection.vendor == "postgresql" and desired:
             from django.contrib.postgres.search import SearchVector
 
-            for kind, weight in (("metadata", "A"), ("contract", "B"), ("document", "C")):
+            for kind, weight in (
+                ("metadata", "A"),
+                ("contract", "B"),
+                ("document", "C"),
+            ):
                 BillSearchChunk.objects.filter(bill=bill, kind=kind).update(
-                    search_vector=SearchVector(F("text"), config="english", weight=weight)
+                    search_vector=SearchVector(
+                        F("text"), config="english", weight=weight
+                    )
                 )
         return SearchIndexResult(
             bill_id=bill.id,

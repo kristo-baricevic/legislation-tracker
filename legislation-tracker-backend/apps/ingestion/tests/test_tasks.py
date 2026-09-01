@@ -638,6 +638,70 @@ def test_durable_worker_routes_each_pipeline_stage(
 
 
 @pytest.mark.django_db
+def test_durable_worker_carries_generation_reason_through_contract_and_topic_work(
+    monkeypatch,
+):
+    from apps.legislation import tasks as legislation_tasks
+
+    contract_calls = []
+    topic_calls = []
+    monkeypatch.setattr(
+        legislation_tasks,
+        "_generate_contract_impl",
+        lambda *args, **kwargs: contract_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        legislation_tasks,
+        "_update_topics_impl",
+        lambda *args, **kwargs: topic_calls.append((args, kwargs)),
+    )
+    contract_work = IngestionWorkItem.objects.create(
+        kind="document_contract",
+        dedupe_key="document-backfill",
+        source_updated_at=timezone.now(),
+        payload_json={
+            "document_id": 42,
+            "reextract_source": True,
+            "generation_reason": "schema_backfill",
+            "extractor_version": "federal-rules-2.1.0",
+        },
+    )
+    topic_work = IngestionWorkItem.objects.create(
+        kind="topic_update",
+        dedupe_key="topic-backfill",
+        source_updated_at=timezone.now(),
+        payload_json={
+            "contract_id": 51,
+            "generation_reason": "schema_backfill",
+        },
+    )
+
+    tasks._process_durable_work(contract_work)
+    tasks._process_durable_work(topic_work)
+
+    assert contract_calls == [
+        (
+            (42,),
+            {
+                "reextract_source": True,
+                "generation_reason": "schema_backfill",
+                "extractor_version": "federal-rules-2.1.0",
+            },
+        )
+    ]
+    assert topic_calls == [
+        (
+            (),
+            {
+                "contract_id": 51,
+                "bill_id": None,
+                "generation_reason": "schema_backfill",
+            },
+        )
+    ]
+
+
+@pytest.mark.django_db
 def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatch):
     work = IngestionWorkItem.objects.create(
         kind="bill",
