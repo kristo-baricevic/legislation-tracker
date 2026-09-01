@@ -63,15 +63,17 @@ describe("BillsPage", () => {
     vi.mocked(api.getSavedBillSearches).mockResolvedValue({ count: 0, results: [] });
   });
 
-  it("passes a topic id from the URL into the bill query", async () => {
+  it("shows topic-linked bills across every Congress", async () => {
     render(<BillsPage />);
 
     await waitFor(() => {
-      expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ topic_id: 7 }));
+      expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ topic_id: 7, session: undefined }));
     });
+    expect(getBills).not.toHaveBeenCalledWith(expect.objectContaining({ topic_id: 7, session: 120 }));
   });
 
   it("initializes the Congress filter from API metadata", async () => {
+    searchState.query = "";
     render(<BillsPage />);
 
     await waitFor(() => {
@@ -86,6 +88,7 @@ describe("BillsPage", () => {
 
   it("keeps the current-Congress default when topic choices fail", async () => {
     const api = await import("@/lib/api");
+    searchState.query = "";
     vi.mocked(api.getTopics).mockRejectedValueOnce(new Error("topics unavailable"));
 
     render(<BillsPage />);
@@ -101,6 +104,7 @@ describe("BillsPage", () => {
   it("blocks bill loading and retries when current-Congress metadata fails", async () => {
     const api = await import("@/lib/api");
     const user = userEvent.setup();
+    searchState.query = "";
     vi.mocked(api.getBillFilterOptions)
       .mockRejectedValueOnce(new Error("metadata unavailable"))
       .mockResolvedValueOnce({ jurisdictions: ["federal"], current_congress: 120 });

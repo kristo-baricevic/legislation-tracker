@@ -10,6 +10,7 @@ import type {
   FinancialAction,
   LegalNlpFinancialItem,
 } from "@/lib/contracts";
+import { financialPurpose, readablePath } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
 
 const actionLabels: Record<FinancialAction, string> = {
@@ -25,13 +26,6 @@ const actionLabels: Record<FinancialAction, string> = {
   other_explicit: "Other explicit financial provision",
 };
 
-const directionLabels = {
-  increase: "Adds or makes funds available",
-  decrease: "Removes or reduces funds",
-  neutral_transfer: "Moves existing funds",
-  limit: "Sets a limit or reserved share",
-} as const;
-
 interface FinancialLedgerProps {
   contractId: number;
   totalCount: number;
@@ -42,9 +36,7 @@ interface FinancialLedgerProps {
 }
 
 function pathLabel(item: LegalNlpFinancialItem): string {
-  return item.section_path
-    .map((part) => part.heading ? `${part.label}: ${part.heading}` : part.label)
-    .join(" · ");
+  return readablePath(item.section_path);
 }
 
 function formatAmount(item: LegalNlpFinancialItem): string | null {
@@ -131,7 +123,7 @@ export function FinancialLedger({
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Financial provisions</p>
         <h2 id={`money-${contractId}`} className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">Money in this bill</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">
-          This ledger covers recognized appropriations, authorizations, allocations, transfers, rescissions, reductions, cancellations, set-asides, and limitations. It is not a CBO cost estimate and does not combine provisions into a spending total.
+          Every recognized financial provision is listed here with its amount, purpose, timing, and source text. This is not a CBO cost estimate and does not combine provisions into a spending total.
         </p>
       </header>
 
@@ -167,13 +159,17 @@ export function FinancialLedger({
               <li key={item.id} className="grid gap-3 py-5 md:grid-cols-[11rem_minmax(0,1fr)]">
                 <div>
                   <p className="font-semibold text-slate-950 dark:text-green-300">{actionLabels[item.financial_action]}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-green-600">{directionLabels[item.direction]}</p>
                   {formatAmount(item) && <p className="mt-2 font-mono text-sm font-semibold text-slate-800 dark:text-green-200">{formatAmount(item)}</p>}
                 </div>
                 <div>
-                  <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
-                  <p className="mt-2 leading-7 text-slate-800 dark:text-green-100">{item.display_text}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">What the money is for</p>
+                  <p className="mt-1 text-lg font-semibold leading-7 text-slate-950 dark:text-green-200">{financialPurpose(item)}</p>
+                  <p className="mt-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
                   {item.fiscal_years.length > 0 && <p className="mt-2 text-sm text-slate-600 dark:text-green-600">Fiscal {item.fiscal_years.join(", ")}</p>}
+                  {(item.source_account || item.destination_account) && <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                    {item.source_account && <div><dt className="font-semibold text-slate-600 dark:text-green-600">From</dt><dd>{item.source_account}</dd></div>}
+                    {item.destination_account && <div><dt className="font-semibold text-slate-600 dark:text-green-600">To</dt><dd>{item.destination_account}</dd></div>}
+                  </dl>}
                   <SourceEvidence contractId={contractId} financialItemId={item.id} textUrl={textUrl} downloadUrl={downloadUrl} />
                 </div>
               </li>

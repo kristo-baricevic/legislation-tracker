@@ -47,16 +47,24 @@ _FISCAL_YEAR_RE = re.compile(r"\bfiscal\s+year\s+(?P<year>\d{4})\b", re.I)
 _PURPOSE_RE = re.compile(
     r"\bfor\s+(?!each\s+of\s+fiscal\s+years?\b|fiscal\s+years?\b)"
     r"(?P<purpose>.+?)(?=,\s+(?:and|or)\b|;|\.$|$)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
-_CARRY_OUT_RE = re.compile(r"\bto\s+(?P<purpose>carry\s+out\b.+?)(?=;|\.$|$)", re.I)
+_CARRY_OUT_RE = re.compile(
+    r"\bto\s+(?P<purpose>carry\s+out\b.+?)(?=;|\.$|$)", re.I | re.DOTALL
+)
+_INFINITIVE_PURPOSE_RE = re.compile(
+    r"\bto\s+(?P<purpose>(?:acquire|build|construct|develop|establish|expand|"
+    r"fund|implement|improve|increase|maintain|modernize|provide|purchase|"
+    r"reduce|replace|restore|support)\b.+?)(?=;|\.$|$)",
+    re.I | re.DOTALL,
+)
 _FROM_ACCOUNT_RE = re.compile(
     r"\bfrom\s+(?P<account>.+?)(?=\s+to\s+|\s+for\s+fiscal\s+year|[,;.]|$)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 _TO_ACCOUNT_RE = re.compile(
     r"\bto\s+(?P<account>.+?)(?=\s+for\s+fiscal\s+year|[,;.]|$)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 
 _DIRECTION_BY_ACTION = {
@@ -187,12 +195,18 @@ def _accounts(text: str, action: str) -> tuple[str | None, str | None]:
     return source, destination
 
 
-def _purpose(text: str) -> str | None:
+def _purpose(text: str, action: str) -> str | None:
     carry_out = _CARRY_OUT_RE.search(text)
     if carry_out is not None:
         return _strip(carry_out.group("purpose")) or None
     matches = list(_PURPOSE_RE.finditer(text))
-    return _strip(matches[-1].group("purpose")) if matches else None
+    if matches:
+        return _strip(matches[-1].group("purpose")) or None
+    if action != "transfer":
+        infinitive = _INFINITIVE_PURPOSE_RE.search(text)
+        if infinitive is not None:
+            return _strip(infinitive.group("purpose")) or None
+    return None
 
 
 def _parent_section(
@@ -374,7 +388,7 @@ def extract_financial_claims(
                     action=action,
                     amount=amount,
                     fiscal_years=fiscal_years,
-                    purpose=_purpose(local_text),
+                    purpose=_purpose(local_text, action),
                     source_account=source_account,
                     destination_account=destination_account,
                     inherited=inherited is not None,

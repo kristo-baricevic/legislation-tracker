@@ -97,18 +97,48 @@ describe("BillBrief", () => {
     await user.click(screen.getByRole("button", { name: "Read full official summary" }));
     expect(await screen.findByText("Requires annual reports.", { exact: false })).toBeVisible();
     expect(getOfficialSummary).toHaveBeenCalledWith(7);
-    expect(screen.getByText((_, element) => element?.tagName === "LI" && element.textContent === "61 recognized line items")).toBeVisible();
-    expect(screen.getByText("Creates a rural hospital grant program.")).toBeVisible();
+    expect(screen.queryByText(/recognized line items/i)).not.toBeInTheDocument();
   });
 
-  it("labels missing CRS and metadata descriptions honestly", () => {
+  it("provides a useful reader overview and links each topic to all matching bills", () => {
     const noSummary = { ...bill, summary_preview: null, summary_has_more: false, summary_source: null };
     const { rerender } = render(<BillBrief bill={noSummary} contractSummary={contract} />);
-    expect(screen.getByText("No official CRS summary is available yet.")).toBeVisible();
+    expect(screen.getByText(/This federal bill changes health policy/i)).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Topics" })).toBeVisible();
+    expect(screen.getByRole("link", { name: /Health/ })).toHaveAttribute("href", "/bills?topic_id=1");
+    expect(screen.getByText(/health-care programs, coverage, funding, or administration/i)).toBeVisible();
+    expect(screen.queryByText("No official CRS summary is available yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/recognized line items/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Extraction coverage/i)).not.toBeInTheDocument();
 
     rerender(<BillBrief bill={{ ...noSummary, summary_preview: "Source description", summary_source: "source_metadata" }} contractSummary={contract} />);
     expect(screen.getByText(/Congress\.gov source description/)).toBeVisible();
     expect(screen.queryByText(/Official CRS summary/)).not.toBeInTheDocument();
+  });
+
+  it("keeps detailed extraction collapsed and excludes malformed reader fragments", async () => {
+    const user = userEvent.setup();
+    const malformed = {
+      ...line(1),
+      display_text: "Requires Allowable cost adjustments.--The Secretary to -(A) <<NOTE: Hawaii.",
+      actor: "Allowable cost adjustments.--The Secretary",
+      action: "-(A) <<NOTE: Hawaii",
+    };
+    vi.mocked(getReaderItems).mockResolvedValue({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [malformed, line(2)],
+      section_supplements: [],
+    });
+
+    render(<BillBrief bill={bill} contractSummary={contract} />);
+
+    expect(getReaderItems).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Requires action 2/)).not.toBeInTheDocument();
+    await user.click(screen.getByText("Browse detailed provisions"));
+    expect(await screen.findByText("Requires action 2.")).toBeVisible();
+    expect(screen.queryByText(/Hawaii/)).not.toBeInTheDocument();
   });
 
   it("paginates source-ordered reader items and keeps earlier pages when a later page fails", async () => {
@@ -120,6 +150,7 @@ describe("BillBrief", () => {
       .mockResolvedValueOnce({ count: 61, next: null, previous: "page-2", results: Array.from({ length: 11 }, (_, index) => line(index + 51)), section_supplements: [] });
 
     render(<BillBrief bill={bill} contractSummary={contract} />);
+    await user.click(screen.getByText("Browse detailed provisions"));
     expect(await screen.findByText("Requires action 25.")).toBeVisible();
     expect(screen.queryByText("Requires action 26.")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show 25 more" }));

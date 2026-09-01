@@ -79,6 +79,7 @@ function BillsTable() {
   const [topicFuzzyFilter, setTopicFuzzyFilter] = useState(
     () => searchParams.get("topic") ?? "",
   );
+  const initialTopicIdRef = useRef(topicIdFromUrl);
   const [hasAccount, setHasAccount] = useState(false);
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
@@ -102,7 +103,7 @@ function BillsTable() {
       const opts = await getBillFilterOptions();
       setJurisdictions(opts.jurisdictions ?? []);
       currentCongressRef.current = opts.current_congress;
-      setSessionFilter((current) => current ?? String(opts.current_congress));
+      setSessionFilter((current) => current ?? (initialTopicIdRef.current ? "" : String(opts.current_congress)));
       setFilterMetaReady(true);
     } catch {
       setFilterMetaError("Could not load bill filter metadata.");
@@ -127,17 +128,17 @@ function BillsTable() {
   useEffect(() => {
     const params = new URLSearchParams(searchParamsKey);
     const nextQuery = params.get("q") ?? "";
+    const nextTopicId = parseTopicIdFromSearchParam(params.get("topic_id"));
     setPageNum(parsePositiveIntegerFilter(params.get("page") ?? "") ?? 1);
     setIdFilter(params.get("id") ?? "");
     setBillNumberFilter(params.get("bill_number") ?? "");
     setSessionFilter(
       params.get("session") ??
-        (currentCongressRef.current ? String(currentCongressRef.current) : null),
+        (nextTopicId ? "" : currentCongressRef.current ? String(currentCongressRef.current) : null),
     );
     setJurisdictionFilter(params.get("jurisdiction") ?? "");
     setStatusFilter(params.get("status") ?? "");
     setSponsorFilter(params.get("sponsor") ?? "");
-    const nextTopicId = parseTopicIdFromSearchParam(params.get("topic_id"));
     setTopicIdFilter(nextTopicId ? String(nextTopicId) : "");
     setTopicFuzzyFilter(params.get("topic") ?? "");
     if (nextQuery !== queryInputRef.current) {

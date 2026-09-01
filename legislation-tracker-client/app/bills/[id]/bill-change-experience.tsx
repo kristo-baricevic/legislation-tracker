@@ -72,6 +72,26 @@ function RenderValue({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function objectValue(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return (value as Record<string, unknown>)[key];
+}
+
+function readableChangeDetail(change: BillChangesPage["results"][number]): string | null {
+  const beforeStatus = objectValue(change.before, "status");
+  const afterStatus = objectValue(change.after, "status");
+  if (typeof afterStatus === "string") {
+    return typeof beforeStatus === "string" ? `${beforeStatus} → ${afterStatus}` : `Status: ${afterStatus}`;
+  }
+  const version = objectValue(change.after, "version_label");
+  if (typeof version === "string") return `Version: ${version}`;
+  const topics = objectValue(change.after, "topics");
+  if (Array.isArray(topics) && topics.every((topic) => typeof topic === "string")) {
+    return `Policy areas: ${topics.join(", ")}`;
+  }
+  return null;
+}
+
 export default function BillChangeExperience({
   billId,
   contracts,
@@ -303,15 +323,10 @@ export default function BillChangeExperience({
             {changes.results.map((change) => (
               <li key={change.id} className="py-3">
                 <p className="font-semibold">{change.summary}</p>
+                {readableChangeDetail(change) && <p className="mt-1 text-sm text-slate-800 dark:text-green-200">{readableChangeDetail(change)}</p>}
                 <p className="text-sm text-slate-600 dark:text-green-600">
                   {new Date(change.occurred_at).toLocaleString()}
                 </p>
-                {(change.before || change.after) && (
-                  <div className="mt-2 grid gap-2 md:grid-cols-2">
-                    <RenderValue label="Before" value={change.before} />
-                    <RenderValue label="After" value={change.after} />
-                  </div>
-                )}
               </li>
             ))}
           </ol>

@@ -188,8 +188,8 @@ describe("BillDetailPage", () => {
       "href",
       "http://localhost:8000/api/documents/9/text/",
     );
-    expect(await screen.findByRole("heading", { name: "Contract history" })).toBeVisible();
-    expect(screen.getByText("Contract history summary")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Contract history" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Voting record" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "View voting record" }));
@@ -197,27 +197,17 @@ describe("BillDetailPage", () => {
     expect(await screen.findByText("Voting Representative")).toBeVisible();
   });
 
-  it("keeps the newest contract comparison pair while browsing older history", async () => {
+  it("uses the newest contracts for reader-facing comparison without showing technical history", async () => {
     const user = userEvent.setup();
-    vi.mocked(getContracts)
-      .mockResolvedValueOnce({
-        count: 4,
-        next: "http://example.test/api/contracts/?page=2",
-        previous: null,
-        results: [
-          { id: 4, schema_version: "1", contract_json: { plain_summary: "Newest" }, contract_hash: "four", computed_at: "2026-08-22T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
-          { id: 3, schema_version: "1", contract_json: { plain_summary: "Previous" }, contract_hash: "three", computed_at: "2026-08-21T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
-        ],
-      })
-      .mockResolvedValueOnce({
-        count: 4,
-        next: null,
-        previous: "http://example.test/api/contracts/?page=1",
-        results: [
-          { id: 2, schema_version: "1", contract_json: { plain_summary: "Older" }, contract_hash: "two", computed_at: "2026-08-20T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
-          { id: 1, schema_version: "1", contract_json: { plain_summary: "Oldest" }, contract_hash: "one", computed_at: "2026-08-19T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
-        ],
-      });
+    vi.mocked(getContracts).mockResolvedValueOnce({
+      count: 4,
+      next: "http://example.test/api/contracts/?page=2",
+      previous: null,
+      results: [
+        { id: 4, schema_version: "1", contract_json: { plain_summary: "Newest" }, contract_hash: "four", computed_at: "2026-08-22T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
+        { id: 3, schema_version: "1", contract_json: { plain_summary: "Previous" }, contract_hash: "three", computed_at: "2026-08-21T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
+      ],
+    });
     vi.mocked(compareBillContracts).mockResolvedValue({
       before: 3,
       after: 4,
@@ -229,11 +219,8 @@ describe("BillDetailPage", () => {
 
     render(<BillDetailPage />);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Next contract history page" }),
-    );
-    expect(await screen.findByText("Oldest")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Compare analysis" }));
+    expect(screen.queryByText("Newest")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Compare analysis" }));
 
     expect(compareBillContracts).toHaveBeenCalledWith(10, 3, 4);
   });
@@ -254,7 +241,7 @@ describe("BillDetailPage", () => {
     });
     const { rerender } = render(<BillDetailPage />);
 
-    expect(await screen.findByText("Contract history summary")).toBeVisible();
+    await screen.findByRole("heading", { name: "HR 10 (119)" });
     expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
 
     vi.mocked(getBill).mockResolvedValueOnce(nextBill);
@@ -266,7 +253,7 @@ describe("BillDetailPage", () => {
     expect(await screen.findByRole("heading", { name: "HR 11 (119)" })).toBeVisible();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
-    expect(screen.getByText("Loading contract history…")).toBeVisible();
+    expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
     expect(screen.getByText("Loading vote history…")).toBeVisible();
     expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1 });
     expect(getVotes).toHaveBeenLastCalledWith(11, { page: 1 });
@@ -455,7 +442,7 @@ describe("BillDetailPage", () => {
     expect(screen.queryByText("Voting Representative")).not.toBeInTheDocument();
   });
 
-  it("pages through contract and vote histories beyond the first result page", async () => {
+  it("keeps technical contract history hidden while paging through votes", async () => {
     const user = userEvent.setup();
     vi.mocked(getContracts)
       .mockResolvedValueOnce({
@@ -532,74 +519,16 @@ describe("BillDetailPage", () => {
 
     render(<BillDetailPage />);
 
-    expect(await screen.findByText("Newest contract revision")).toBeVisible();
-    await user.click(
-      screen.getByRole("button", { name: "Next contract history page" }),
-    );
-    expect(await screen.findByText("Older contract revision")).toBeVisible();
-    expect(getContracts).toHaveBeenLastCalledWith(10, { page: 2 });
+    expect(screen.queryByText("Newest contract revision")).not.toBeInTheDocument();
+    expect(screen.queryByText("Older contract revision")).not.toBeInTheDocument();
+    expect(getContracts).toHaveBeenLastCalledWith(10, { page: 1 });
 
+    expect(await screen.findByText(/roll call 17: Passed/)).toBeVisible();
     await user.click(
       screen.getByRole("button", { name: "Next vote history page" }),
     );
     expect(await screen.findByText(/roll call 16: Failed/)).toBeVisible();
     expect(getVotes).toHaveBeenLastCalledWith(10, { page: 2 });
-  });
-
-  it("keeps contract history visible when a later page fails and retries that section", async () => {
-    const user = userEvent.setup();
-    vi.mocked(getContracts)
-      .mockResolvedValueOnce({
-        count: 21,
-        next: "http://localhost:8000/api/contracts/?bill=10&page=2",
-        previous: null,
-        results: [
-          {
-            id: 4,
-            schema_version: "1.1",
-            contract_json: { plain_summary: "Last loaded contract" },
-            contract_hash: "hash",
-            computed_at: "2026-08-19T00:00:00Z",
-            document: null,
-            document_version_label: null,
-            evidence_spans: [],
-          },
-        ],
-      })
-      .mockRejectedValueOnce(new Error("Contract service unavailable"))
-      .mockResolvedValueOnce({
-        count: 21,
-        next: null,
-        previous: "http://localhost:8000/api/contracts/?bill=10&page=1",
-        results: [
-          {
-            id: 3,
-            schema_version: "1.0",
-            contract_json: { plain_summary: "Recovered contract page" },
-            contract_hash: "older-hash",
-            computed_at: "2026-08-18T00:00:00Z",
-            document: null,
-            document_version_label: null,
-            evidence_spans: [],
-          },
-        ],
-      });
-
-    render(<BillDetailPage />);
-
-    expect(await screen.findByText("Last loaded contract")).toBeVisible();
-    await user.click(
-      screen.getByRole("button", { name: "Next contract history page" }),
-    );
-
-    expect(await screen.findByText("Could not load contract history. Try again.")).toBeVisible();
-    expect(screen.getByText("Last loaded contract")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Voting record" })).toBeVisible();
-
-    await user.click(screen.getByRole("button", { name: "Retry contract history" }));
-
-    expect(await screen.findByText("Recovered contract page")).toBeVisible();
-    expect(screen.queryByText("Could not load contract history. Try again.")).not.toBeInTheDocument();
   });
 
   it("keeps vote history visible when a later page fails and retries that section", async () => {
@@ -652,7 +581,7 @@ describe("BillDetailPage", () => {
 
     expect(await screen.findByText("Could not load vote history. Try again.")).toBeVisible();
     expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
-    expect(screen.getByText("Contract history summary")).toBeVisible();
+    expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Retry vote history" }));
 

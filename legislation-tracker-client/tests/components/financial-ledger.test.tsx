@@ -61,6 +61,24 @@ describe("FinancialLedger", () => {
     }
     expect(screen.getByText(/not a CBO cost estimate/i)).toBeVisible();
     expect(screen.queryByText(/grand total|total spending/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText("The program").length).toBe(7);
+  });
+
+  it("uses the clean section heading when an extracted money purpose is missing", async () => {
+    const withoutPurpose = {
+      ...item("financial-8", "appropriation", "increase"),
+      purpose: null,
+      section_path: [
+        { level: "title" as const, label: "Title II", heading: "Defense" },
+        { level: "section" as const, label: "Sec. 20001", heading: "ENHANCEMENT OF DEPARTMENT OF DEFENSE RESOURCES" },
+      ],
+    };
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 1, next: null, previous: null, results: [withoutPurpose] });
+
+    render(<FinancialLedger contractId={12} totalCount={1} />);
+
+    expect(await screen.findByText("Enhancement of Department of Defense Resources")).toBeVisible();
+    expect(screen.getByText("What the money is for")).toBeVisible();
   });
 
   it("sends action, year, line, and section filters to the server", async () => {

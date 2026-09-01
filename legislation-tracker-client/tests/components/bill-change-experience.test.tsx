@@ -41,8 +41,8 @@ describe("BillChangeExperience", () => {
     const user = userEvent.setup();
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
     expect(await screen.findByText("Bill status changed")).toBeVisible();
-    expect(screen.getByText(/Introduced/)).toBeVisible();
-    expect(screen.getByText(/Reported/)).toBeVisible();
+    expect(screen.getByText("Introduced → Reported")).toBeVisible();
+    expect(screen.queryByText(/\"status\"/)).not.toBeInTheDocument();
     expect(acknowledgeBillChanges).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Mark 1 as seen" }));
     expect(acknowledgeBillChanges).toHaveBeenCalledWith(10, "ack-cursor");

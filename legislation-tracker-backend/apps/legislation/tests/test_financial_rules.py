@@ -212,6 +212,36 @@ There is authorized to be appropriated from the Rural Health Account for fiscal 
     assert_exact_evidence(source, (claim,))
 
 
+def test_financial_rules_preserve_a_purpose_split_across_source_lines():
+    source = """SEC. 14A. DEFENSE FUNDING
+There are appropriated for fiscal year 2025—
+(1) $230,480,000 for restoration and modernization costs
+under the Marine Corps Barracks 2030 initiative;
+"""
+
+    claim = extract(source)[0]
+
+    assert claim.fields["purpose"] == (
+        "restoration and modernization costs under the Marine Corps Barracks "
+        "2030 initiative"
+    )
+
+
+def test_financial_rules_preserve_an_infinitive_appropriation_purpose():
+    source = """SEC. 14B. DEFENSE SUPPORT
+There are appropriated for fiscal year 2025—
+(1) $590,000,000 to increase the Temporary Lodging Expense
+Allowance under chapter 8 of title 37, United States Code, to 21 days;
+"""
+
+    claim = extract(source)[0]
+
+    assert claim.fields["purpose"] == (
+        "increase the Temporary Lodging Expense Allowance under chapter 8 of "
+        "title 37, United States Code, to 21 days"
+    )
+
+
 def test_financial_rules_reject_nonfinancial_percentages():
     source = """SEC. 15. REPORTING
 The Secretary shall report the percentage of applications approved and shall publish 75 percent of survey responses.

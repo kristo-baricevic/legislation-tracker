@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -16,6 +17,13 @@ import type {
   LegalNlpSectionSupplement,
   LegalNlpV21ContractSummary,
 } from "@/lib/contracts";
+import {
+  cleanLegislativeText,
+  isReaderReady,
+  readablePath,
+  readerOverview,
+  topicExplanation,
+} from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
 
 interface BillBriefProps {
@@ -40,7 +48,7 @@ function pathKey(path: LegalNlpSectionPathItem[]): string {
 }
 
 function pathLabel(path: LegalNlpSectionPathItem[]): string {
-  return path.map((item) => item.heading ? `${item.label}: ${item.heading}` : item.label).join(" · ");
+  return readablePath(path);
 }
 
 function activeDocument(bill: BillDetailSummary) {
@@ -51,12 +59,12 @@ function ReaderItem({ bill, contractId, item }: { bill: BillDetailSummary; contr
   const document = activeDocument(bill);
   return (
     <li className="border-t border-slate-200 py-4 first:border-t-0 dark:border-green-900/70">
-      <p className="leading-7 text-slate-900 dark:text-green-100">{item.display_text}</p>
+      <p className="leading-7 text-slate-900 dark:text-green-100">{cleanLegislativeText(item.display_text)}</p>
       {(item.actor || item.action || item.effect) && (
         <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-          {item.actor && <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">Who</dt><dd className="mt-1 text-slate-700 dark:text-green-300">{item.actor}</dd></div>}
-          {item.action && <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">Action</dt><dd className="mt-1 text-slate-700 dark:text-green-300">{item.action}</dd></div>}
-          {item.effect && <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">Effect</dt><dd className="mt-1 text-slate-700 dark:text-green-300">{item.effect}</dd></div>}
+          {item.actor && <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">Who</dt><dd className="mt-1 text-slate-700 dark:text-green-300">{cleanLegislativeText(item.actor)}</dd></div>}
+          {item.action && <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">Action</dt><dd className="mt-1 text-slate-700 dark:text-green-300">{cleanLegislativeText(item.action)}</dd></div>}
+          {item.effect && <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">Effect</dt><dd className="mt-1 text-slate-700 dark:text-green-300">{cleanLegislativeText(item.effect)}</dd></div>}
         </dl>
       )}
       {item.exact_financial_preview.length > 0 && (
@@ -135,12 +143,11 @@ function V21Brief({ bill, contract }: { bill: BillDetailSummary; contract: Legal
   const [supplements, setSupplements] = useState<Map<string, LegalNlpSectionSupplement>>(new Map());
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [readerLoading, setReaderLoading] = useState(true);
+  const [readerOpen, setReaderOpen] = useState(false);
+  const [readerLoading, setReaderLoading] = useState(false);
   const [readerError, setReaderError] = useState<string | null>(null);
   const summaryRequest = useRef(0);
   const readerRequest = useRef(0);
-  const document = activeDocument(bill);
-
   async function loadReader(targetPage: number, append: boolean) {
     const activeRequest = ++readerRequest.current;
     setReaderLoading(true);
@@ -148,7 +155,8 @@ function V21Brief({ bill, contract }: { bill: BillDetailSummary; contract: Legal
     try {
       const response = await getReaderItems(contract.id, { page: targetPage, pageSize: 25 });
       if (readerRequest.current !== activeRequest) return;
-      setItems((current) => append ? [...current, ...response.results] : response.results);
+      const readableItems = response.results.filter(isReaderReady);
+      setItems((current) => append ? [...current, ...readableItems] : readableItems);
       setSupplements((current) => {
         const next = append ? new Map(current) : new Map<string, LegalNlpSectionSupplement>();
         for (const supplement of response.section_supplements) next.set(supplement.section_id, supplement);
@@ -167,9 +175,8 @@ function V21Brief({ bill, contract }: { bill: BillDetailSummary; contract: Legal
     setItems([]);
     setPage(1);
     setHasMore(false);
-    void loadReader(1, false);
+    setReaderOpen(false);
     return () => { readerRequest.current += 1; summaryRequest.current += 1; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract.id]);
 
   async function loadSummary() {
@@ -188,6 +195,7 @@ function V21Brief({ bill, contract }: { bill: BillDetailSummary; contract: Legal
 
   const preview = bill.summary_preview ? withoutDuplicateTitle(bill.summary_preview, bill.title) : null;
   const sourceLabel = bill.summary_source === "crs" ? "Official CRS summary" : bill.summary_source === "source_metadata" ? "Congress.gov source description" : null;
+  const fallbackOverview = readerOverview(bill.jurisdiction, bill.status, bill.topics.map((topic) => topic.name));
   const grouped = items.reduce<Array<{ key: string; path: LegalNlpSectionPathItem[]; items: LegalNlpLineItem[] }>>((groups, item) => {
     const key = pathKey(item.section_path);
     const previous = groups.at(-1);
@@ -209,29 +217,41 @@ function V21Brief({ bill, contract }: { bill: BillDetailSummary; contract: Legal
             {bill.summary_has_more && !summary && <button type="button" disabled={summaryLoading} onClick={() => void loadSummary()} className="mt-3 cursor-pointer text-sm font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 dark:text-green-400">{summaryLoading ? "Loading complete summary…" : bill.summary_source === "crs" ? "Read full official summary" : "Read full source description"}</button>}
             {summaryError && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300"><p>{summaryError}</p><button type="button" onClick={() => void loadSummary()} className="mt-1 border border-current px-2 py-1 font-semibold">Retry complete summary</button></div>}
           </div>
-        ) : <p className="mt-4 text-slate-700 dark:text-green-200">No official CRS summary is available yet.</p>}
+        ) : <p className="mt-4 max-w-4xl text-base leading-7 text-slate-900 dark:text-green-100">{fallbackOverview}</p>}
         {bill.congress_gov_url && <a href={bill.congress_gov_url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-semibold text-blue-900 underline dark:text-green-400">View on Congress.gov</a>}
       </div>
 
       <div className="border-y border-slate-300 bg-slate-50/70 p-4 dark:border-green-900 dark:bg-black/20 sm:p-5">
-        <h3 className="text-lg font-semibold text-slate-950 dark:text-green-400">Bill at a glance</h3>
-        <p className="mt-2 text-sm text-slate-600 dark:text-green-600">Official title</p><p className="text-slate-900 dark:text-green-100">{bill.title}</p>
-        {contract.orientation.purpose_clause && <div className="mt-3"><p className="text-sm text-slate-600 dark:text-green-600">Purpose stated in the bill</p><p className="text-slate-900 dark:text-green-100">{contract.orientation.purpose_clause}</p>{contract.orientation.purpose_line_item_id && <SourceEvidence contractId={contract.id} lineItemId={contract.orientation.purpose_line_item_id} textUrl={document?.text_url} downloadUrl={document?.download_url} label="Read purpose text" />}</div>}
-        {bill.topics.length > 0 && <details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-slate-800 dark:text-green-300">Policy areas covered ({bill.topics.length})</summary><ul className="mt-2 flex flex-wrap gap-2">{bill.topics.map((topic) => <li key={topic.topic_id} className="border border-slate-300 px-2 py-1 text-sm dark:border-green-800">{topic.name}</li>)}</ul></details>}
-        <ul className="mt-4 grid gap-2 text-sm sm:grid-cols-4"><li><strong>{contract.reader_stats.line_item_count}</strong> recognized line items</li><li><strong>{contract.reader_stats.financial_item_count}</strong> financial provisions</li><li><strong>{contract.reader_stats.timeline_item_count}</strong> deadlines or effective dates</li><li><strong>{contract.reader_stats.definition_item_count}</strong> defined terms</li></ul>
-        <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-green-700">Extraction coverage: {contract.coverage_note}</p>
+        <h3 className="text-xl font-semibold text-slate-950 dark:text-green-400">Topics</h3>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-green-600">Policy areas covered by this bill. Select a topic to see every matching bill.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {bill.topics.map((topic) => (
+            <Link key={topic.topic_id} href={`/bills?topic_id=${topic.topic_id}`} className="border-l-4 border-blue-700 bg-white px-4 py-3 transition-colors hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:border-green-600 dark:bg-green-950/20 dark:hover:bg-green-950/40 dark:focus-visible:outline-green-500">
+              <h4 className="font-semibold text-slate-950 dark:text-green-300">{topic.name}</h4>
+              <p className="mt-1 text-sm leading-6 text-slate-700 dark:text-green-200">{topicExplanation(topic.name)}</p>
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div className="p-4 sm:p-5">
-        <h3 className="text-xl font-semibold text-slate-950 dark:text-green-400">Plain-English breakdown</h3>
-        <p className="mt-1 text-sm text-slate-600 dark:text-green-600">Shown in the same order as the bill text.</p>
-        {readerLoading && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading bill provisions…</p>}
-        {readerError && <div role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300"><p>{readerError}</p><button type="button" onClick={() => void loadReader(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill provisions</button></div>}
-        {grouped.map((group) => {
-          const section = supplements.get(group.items[0].section_id);
-          return <section key={group.key} className="mt-6 border-l-4 border-slate-300 pl-4 dark:border-green-800"><h4 className="font-mono text-sm font-semibold text-slate-700 dark:text-green-500">{pathLabel(group.path)}</h4>{section && (section.section_financial_count > 0 || section.section_timeline_count > 0) && <p className="mt-1 text-xs text-slate-500 dark:text-green-700">{section.section_financial_count > 0 ? `Money in this section: ${section.section_financial_count}` : ""}{section.section_financial_count > 0 && section.section_timeline_count > 0 ? " · " : ""}{section.section_timeline_count > 0 ? `Deadlines in this section: ${section.section_timeline_count}` : ""}</p>}<ol>{group.items.map((item) => <ReaderItem key={item.id} bill={bill} contractId={contract.id} item={item} />)}</ol></section>;
-        })}
-        {hasMore && !readerError && <button type="button" disabled={readerLoading} onClick={() => void loadReader(page + 1, true)} className="mt-5 border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50 dark:border-green-700 dark:text-green-300">{readerLoading ? "Loading provisions…" : "Show 25 more"}</button>}
+        <details onToggle={(event) => {
+          const open = event.currentTarget.open;
+          setReaderOpen(open);
+          if (open && items.length === 0 && !readerLoading && !readerError) void loadReader(1, false);
+        }}>
+          <summary className="cursor-pointer text-lg font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 dark:text-green-400">Browse detailed provisions</summary>
+          {readerOpen && <div className="mt-4">
+            <p className="text-sm leading-6 text-slate-600 dark:text-green-600">These provisions are shown in bill order. Open the source under any item to verify the exact legal text.</p>
+            {readerLoading && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading bill provisions…</p>}
+            {readerError && <div role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300"><p>{readerError}</p><button type="button" onClick={() => void loadReader(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill provisions</button></div>}
+            {grouped.map((group) => {
+              const section = supplements.get(group.items[0].section_id);
+              return <section key={group.key} className="mt-6 border-l-4 border-slate-300 pl-4 dark:border-green-800"><h4 className="font-mono text-sm font-semibold text-slate-700 dark:text-green-500">{pathLabel(group.path)}</h4>{section && (section.section_financial_count > 0 || section.section_timeline_count > 0) && <p className="mt-1 text-xs text-slate-500 dark:text-green-700">{section.section_financial_count > 0 ? `Money in this section: ${section.section_financial_count}` : ""}{section.section_financial_count > 0 && section.section_timeline_count > 0 ? " · " : ""}{section.section_timeline_count > 0 ? `Deadlines in this section: ${section.section_timeline_count}` : ""}</p>}<ol>{group.items.map((item) => <ReaderItem key={item.id} bill={bill} contractId={contract.id} item={item} />)}</ol></section>;
+            })}
+            {hasMore && !readerError && <button type="button" disabled={readerLoading} onClick={() => void loadReader(page + 1, true)} className="mt-5 border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50 dark:border-green-700 dark:text-green-300">{readerLoading ? "Loading provisions…" : "Show 25 more"}</button>}
+          </div>}
+        </details>
       </div>
       <KeyTerms bill={bill} contractId={contract.id} totalCount={contract.reader_stats.definition_item_count} />
     </section>
