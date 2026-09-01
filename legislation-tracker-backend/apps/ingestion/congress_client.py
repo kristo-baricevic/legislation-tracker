@@ -338,11 +338,12 @@ def _paginated_bill_collection(congress, bill_type, bill_number, collection, key
             f"bill/{congress}/{bill_type}/{bill_number}/{collection}",
             params={"limit": limit, "offset": offset},
         )
-        page = data.get(key) or []
-        if not isinstance(page, list):
+        raw_page = data.get(key, [])
+        if not isinstance(raw_page, list):
             raise CongressAPIError(
                 f"Congress bill {collection} returned an invalid {key} payload"
             )
+        page = raw_page
         if any(not isinstance(entry, dict) for entry in page):
             raise CongressAPIError(
                 f"Congress bill {collection} returned an invalid {key} entry"
@@ -384,6 +385,18 @@ def bill_committees(congress, bill_type, bill_number):
         bill_number,
         "committees",
         "committees",
+    )
+
+
+def bill_summaries(congress, bill_type, bill_number) -> list[dict[str, object]]:
+    """Return every published Congressional Research Service bill summary."""
+
+    return _paginated_bill_collection(
+        congress,
+        bill_type,
+        bill_number,
+        "summaries",
+        "summaries",
     )
 
 

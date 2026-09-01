@@ -2,9 +2,15 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.test import override_settings
 
 from apps.legislation.extraction.schema import ContractValidationError
 from apps.legislation.extraction.service import extract_contract
+from apps.legislation.extraction.types import (
+    V2_EXTRACTOR_VERSION,
+    V21_EXTRACTOR_VERSION,
+    active_extractor_version,
+)
 
 
 def bill(jurisdiction="federal"):
@@ -19,6 +25,18 @@ def document(text):
     return SimpleNamespace(extracted_text=text, version_label="Introduced")
 
 
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [
+        (False, V2_EXTRACTOR_VERSION),
+        (True, V21_EXTRACTOR_VERSION),
+    ],
+)
+def test_active_extractor_version_follows_the_writer_gate(enabled, expected):
+    with override_settings(LEGAL_NLP_V21_WRITE_ENABLED=enabled):
+        assert active_extractor_version() == expected
+
+
 def test_extract_contract_selects_v2_for_supported_federal_text():
     result = extract_contract(
         document=document("SEC. 2. REPORTS\nThe Secretary shall publish a report."),
@@ -27,6 +45,24 @@ def test_extract_contract_selects_v2_for_supported_federal_text():
 
     assert result.schema_version == "2.0-legal-nlp"
     assert result.method == "federal-rules"
+    assert result.fallback_reason is None
+
+
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
+def test_extract_contract_selects_v21_only_when_writer_is_enabled():
+    source = """SEC. 2. SAVINGS
+$5,000,000 in unobligated balances is hereby rescinded.
+"""
+
+    result = extract_contract(document=document(source), bill=bill())
+
+    assert result.schema_version == "2.1-legal-nlp"
+    assert result.contract_json["extraction"]["extractor_version"] == (
+        "federal-rules-2.1.0"
+    )
+    assert result.contract_json["financial_items"][0]["financial_action"] == (
+        "rescission"
+    )
     assert result.fallback_reason is None
 
 

@@ -35,6 +35,10 @@ class Bill(models.Model):
     bill_number = models.CharField(max_length=50, db_index=True)  # e.g. HR 1234
     title = models.TextField()
     summary = models.TextField(null=True, blank=True)
+    summary_source = models.CharField(max_length=32, blank=True, default="")
+    summary_action_date = models.DateField(blank=True, null=True)
+    summary_version_code = models.CharField(max_length=16, blank=True, default="")
+    summary_last_updated_at = models.DateTimeField(blank=True, null=True)
     status = models.CharField(max_length=100)
     processing_status = models.CharField(
         max_length=20,
@@ -221,7 +225,9 @@ class BillSearchChunk(models.Model):
         ]
         indexes = [
             models.Index(fields=["bill", "kind"], name="leg_search_bill_kind_idx"),
-            models.Index(fields=["bill", "source_hash"], name="leg_search_bill_hash_idx"),
+            models.Index(
+                fields=["bill", "source_hash"], name="leg_search_bill_hash_idx"
+            ),
             GinIndex(fields=["search_vector"], name="legislation_search_vector_gin"),
         ]
 

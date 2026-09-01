@@ -638,6 +638,72 @@ def test_durable_worker_routes_each_pipeline_stage(
 
 
 @pytest.mark.django_db
+def test_durable_worker_carries_generation_reason_through_contract_and_topic_work(
+    monkeypatch,
+):
+    from apps.legislation import tasks as legislation_tasks
+
+    contract_calls = []
+    topic_calls = []
+    monkeypatch.setattr(
+        legislation_tasks,
+        "_generate_contract_impl",
+        lambda *args, **kwargs: contract_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        legislation_tasks,
+        "_update_topics_impl",
+        lambda *args, **kwargs: topic_calls.append((args, kwargs)),
+    )
+    contract_work = IngestionWorkItem.objects.create(
+        kind="document_contract",
+        dedupe_key="document-backfill",
+        source_updated_at=timezone.now(),
+        payload_json={
+            "document_id": 42,
+            "reextract_source": True,
+            "generation_reason": "schema_backfill",
+            "extractor_version": "federal-rules-2.1.0",
+            "generation_occurrence": "2026-09-01T12:00:00+00:00",
+        },
+    )
+    topic_work = IngestionWorkItem.objects.create(
+        kind="topic_update",
+        dedupe_key="topic-backfill",
+        source_updated_at=timezone.now(),
+        payload_json={
+            "contract_id": 51,
+            "generation_reason": "schema_backfill",
+        },
+    )
+
+    tasks._process_durable_work(contract_work)
+    tasks._process_durable_work(topic_work)
+
+    assert contract_calls == [
+        (
+            (42,),
+            {
+                "reextract_source": True,
+                "generation_reason": "schema_backfill",
+                "extractor_version": "federal-rules-2.1.0",
+                "generation_occurrence": "2026-09-01T12:00:00+00:00",
+            },
+        )
+    ]
+    assert topic_calls == [
+        (
+            (),
+            {
+                "contract_id": 51,
+                "bill_id": None,
+                "generation_reason": "schema_backfill",
+            },
+        )
+    ]
+
+
+@pytest.mark.django_db
 def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatch):
     work = IngestionWorkItem.objects.create(
         kind="bill",
@@ -1476,6 +1542,7 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
             "url": "https://api.congress.gov/v3/bill/119/hr/1",
         },
     )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
     monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks._process_bill_impl("119-hr-1")
@@ -1491,6 +1558,224 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
         ("search_index", {"bill_id": bill.id}),
         ("similarity", {"bill_id": bill.id}),
     ]
+
+
+def test_latest_crs_summary_prefers_newer_legislative_action():
+    selected = tasks.select_latest_crs_summary(
+        [
+            {
+                "actionDate": "2025-03-01",
+                "versionCode": "99",
+                "lastSummaryUpdateDate": "2025-03-04T10:00:00Z",
+                "text": "<p>Earlier action</p>",
+            },
+            {
+                "actionDate": "2025-03-02",
+                "versionCode": "01",
+                "lastSummaryUpdateDate": "2025-03-02T10:00:00Z",
+                "text": "<p>Later action</p>",
+            },
+        ]
+    )
+
+    assert selected.text == "Later action"
+    assert selected.action_date == date(2025, 3, 2)
+
+
+def test_latest_summary_uses_revision_time_not_version_code_order():
+    selected = tasks.select_latest_crs_summary(
+        [
+            {
+                "actionDate": "2025-03-01",
+                "versionCode": "87",
+                "lastSummaryUpdateDate": "2025-03-02T10:00:00Z",
+                "text": "<p>Older publication</p>",
+            },
+            {
+                "actionDate": "2025-03-01",
+                "versionCode": "01",
+                "lastSummaryUpdateDate": "2025-03-03T10:00:00Z",
+                "text": "<p>Corrected publication</p>",
+            },
+        ]
+    )
+
+    assert selected.text == "Corrected publication"
+    assert selected.version_code == "01"
+
+
+def test_latest_crs_summary_keeps_republished_correction():
+    selected = tasks.select_latest_crs_summary(
+        [
+            {
+                "actionDate": "2025-03-01",
+                "versionCode": "RS",
+                "lastSummaryUpdateDate": "2025-03-02T10:00:00Z",
+                "text": "<p>Original text</p>",
+            },
+            {
+                "actionDate": "2025-03-01",
+                "versionCode": "RS",
+                "lastSummaryUpdateDate": "2025-03-04T10:00:00Z",
+                "text": "<p>Corrected text</p>",
+            },
+        ]
+    )
+
+    assert selected.text == "Corrected text"
+    assert selected.last_updated_at == datetime(2025, 3, 4, 10, tzinfo=UTC)
+
+
+def test_clean_crs_summary_preserves_title_and_malformed_list_boundaries():
+    cleaned = tasks.clean_crs_summary(
+        "<p>Bill title</p><div>Supports <b>rural</b> clinics"
+        "<ul><li>First &amp; foremost<li>Second</ul><script>ignore()</script>"
+    )
+
+    assert cleaned == "Bill title\nSupports rural clinics\n- First & foremost\n- Second"
+
+
+@pytest.mark.django_db
+def test_process_bill_does_not_replace_newer_crs_with_a_stale_partial_response(
+    monkeypatch,
+):
+    detail = {
+        "title": "Test bill",
+        "summary": "Source metadata fallback",
+        "latestAction": {"text": "Introduced"},
+        "url": "119-hr-1",
+    }
+    summaries = [
+        {
+            "actionDate": "2025-03-02",
+            "versionCode": "RS",
+            "lastSummaryUpdateDate": "2025-03-04T10:00:00Z",
+            "text": "<p>Complete CRS revision</p>",
+        }
+    ]
+    monkeypatch.setattr(tasks, "bill_detail", lambda *args: detail)
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: summaries)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks._process_bill_impl("119-hr-1")
+    summaries[:] = [
+        {
+            "actionDate": "2025-03-01",
+            "versionCode": "RS",
+            "lastSummaryUpdateDate": "2025-03-01T10:00:00Z",
+            "text": "<p>Stale partial revision</p>",
+        }
+    ]
+    tasks._process_bill_impl("119-hr-1")
+
+    bill = Bill.objects.get(pk=result["bill_id"])
+    assert bill.summary == "Complete CRS revision"
+    assert bill.summary_source == "crs"
+    assert bill.summary_action_date == date(2025, 3, 2)
+    assert bill.summary_last_updated_at == datetime(2025, 3, 4, 10, tzinfo=UTC)
+
+
+@pytest.mark.django_db
+def test_process_bill_does_not_replace_complete_crs_with_equal_provenance_partial_text(
+    monkeypatch,
+):
+    detail = {
+        "title": "Test bill",
+        "latestAction": {"text": "Introduced"},
+        "url": "119-hr-1",
+    }
+    summaries = [
+        {
+            "actionDate": "2025-03-02",
+            "versionCode": "RS",
+            "lastSummaryUpdateDate": "2025-03-04T10:00:00Z",
+            "text": "<p>Complete CRS revision with all details.</p>",
+        }
+    ]
+    monkeypatch.setattr(tasks, "bill_detail", lambda *args: detail)
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: summaries)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks._process_bill_impl("119-hr-1")
+    summaries[0]["text"] = "<p>Incomplete revision</p>"
+    tasks._process_bill_impl("119-hr-1")
+
+    bill = Bill.objects.get(pk=result["bill_id"])
+    assert bill.summary == "Complete CRS revision with all details."
+
+
+@pytest.mark.django_db
+def test_process_bill_crs_supersedes_and_is_not_replaced_by_source_metadata(
+    monkeypatch,
+):
+    detail = {
+        "title": "Test bill",
+        "summary": "Fallback summary",
+        "latestAction": {"text": "Introduced"},
+        "url": "119-hr-1",
+    }
+    summaries = []
+    monkeypatch.setattr(tasks, "bill_detail", lambda *args: detail)
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: summaries)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks._process_bill_impl("119-hr-1")
+    bill = Bill.objects.get(pk=result["bill_id"])
+    assert bill.summary == "Fallback summary"
+    assert bill.summary_source == "source_metadata"
+
+    detail["summary"] = "Newer source metadata"
+    summaries.append(
+        {
+            "actionDate": "2025-03-02",
+            "versionCode": "RS",
+            "lastSummaryUpdateDate": "2025-03-04T10:00:00Z",
+            "text": "<p>Authoritative CRS summary</p>",
+        }
+    )
+    tasks._process_bill_impl("119-hr-1")
+    summaries.clear()
+    tasks._process_bill_impl("119-hr-1")
+
+    bill.refresh_from_db()
+    assert bill.summary == "Authoritative CRS summary"
+    assert bill.summary_source == "crs"
+
+
+@pytest.mark.django_db
+def test_process_bill_refreshes_historical_hash_once_for_summary_provenance(
+    monkeypatch,
+):
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Test bill",
+        summary="Fallback summary",
+        status="Introduced",
+        metadata_hash="historical-hash-without-provenance",
+    )
+    monkeypatch.setattr(
+        tasks,
+        "bill_detail",
+        lambda *args: {
+            "title": "Test bill",
+            "summary": "Fallback summary",
+            "latestAction": {"text": "Introduced"},
+            "url": "119-hr-1",
+        },
+    )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    tasks._process_bill_impl("119-hr-1")
+    bill.refresh_from_db()
+    refreshed_hash = bill.metadata_hash
+    tasks._process_bill_impl("119-hr-1")
+
+    bill.refresh_from_db()
+    assert bill.summary_source == "source_metadata"
+    assert refreshed_hash == bill.metadata_hash
 
 
 @pytest.mark.django_db
@@ -1509,6 +1794,7 @@ def test_process_bill_assigns_topics_before_downstream_work(monkeypatch):
             "url": "https://api.congress.gov/v3/bill/119/hr/1",
         },
     )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
     monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks._process_bill_impl("119-hr-1")
@@ -1547,6 +1833,7 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
             "url": "119-hr-1",
         },
     )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
     monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     result = tasks._process_bill_impl("119-hr-1")
@@ -1591,6 +1878,7 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
     monkeypatch.setattr(
         tasks.process_bill_votes, "apply_async", lambda args=None, kwargs=None: None
     )
+    monkeypatch.setattr(tasks, "bill_summaries", lambda *args: [])
 
     result = tasks._process_bill_impl("119-hr-1")
 

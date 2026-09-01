@@ -40,5 +40,6 @@ test("a visitor can audit current representative evidence and a pairwise compari
       "1 agreements and 1 disagreements across 2 shared yes/no votes (50% agreement).",
     ),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "View bill" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "View bill" })).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "View bill" }).first()).toBeVisible();
 });

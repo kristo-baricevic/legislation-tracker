@@ -79,12 +79,15 @@ function BillsTable() {
   const [topicFuzzyFilter, setTopicFuzzyFilter] = useState(
     () => searchParams.get("topic") ?? "",
   );
+  const initialTopicIdRef = useRef(topicIdFromUrl);
   const [hasAccount, setHasAccount] = useState(false);
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedBillSearch[]>([]);
   const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
+  const [isSaveSearchFormOpen, setIsSaveSearchFormOpen] = useState(false);
+  const [savedSearchName, setSavedSearchName] = useState("");
   const [pendingSavedAck, setPendingSavedAck] = useState<{
     searchId: number;
     watermark: string;
@@ -102,7 +105,7 @@ function BillsTable() {
       const opts = await getBillFilterOptions();
       setJurisdictions(opts.jurisdictions ?? []);
       currentCongressRef.current = opts.current_congress;
-      setSessionFilter((current) => current ?? String(opts.current_congress));
+      setSessionFilter((current) => current ?? (initialTopicIdRef.current ? "" : String(opts.current_congress)));
       setFilterMetaReady(true);
     } catch {
       setFilterMetaError("Could not load bill filter metadata.");
@@ -127,17 +130,17 @@ function BillsTable() {
   useEffect(() => {
     const params = new URLSearchParams(searchParamsKey);
     const nextQuery = params.get("q") ?? "";
+    const nextTopicId = parseTopicIdFromSearchParam(params.get("topic_id"));
     setPageNum(parsePositiveIntegerFilter(params.get("page") ?? "") ?? 1);
     setIdFilter(params.get("id") ?? "");
     setBillNumberFilter(params.get("bill_number") ?? "");
     setSessionFilter(
       params.get("session") ??
-        (currentCongressRef.current ? String(currentCongressRef.current) : null),
+        (nextTopicId ? "" : currentCongressRef.current ? String(currentCongressRef.current) : null),
     );
     setJurisdictionFilter(params.get("jurisdiction") ?? "");
     setStatusFilter(params.get("status") ?? "");
     setSponsorFilter(params.get("sponsor") ?? "");
-    const nextTopicId = parseTopicIdFromSearchParam(params.get("topic_id"));
     setTopicIdFilter(nextTopicId ? String(nextTopicId) : "");
     setTopicFuzzyFilter(params.get("topic") ?? "");
     if (nextQuery !== queryInputRef.current) {
@@ -404,13 +407,16 @@ function BillsTable() {
     return query;
   }
 
-  async function saveCurrentSearch() {
-    const name = window.prompt("Name this saved search");
-    if (!name?.trim()) return;
+  async function saveCurrentSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = savedSearchName.trim();
+    if (!name) return;
     setSavedSearchError(null);
     try {
       const saved = await createSavedBillSearch(name, currentSearchQuery());
       setSavedSearches((items) => [saved, ...items]);
+      setSavedSearchName("");
+      setIsSaveSearchFormOpen(false);
     } catch (cause) {
       setSavedSearchError(cause instanceof Error ? cause.message : "Could not save this search.");
     }
@@ -604,7 +610,52 @@ function BillsTable() {
           {hasAccount && (
             <div className="mt-4 border-t border-slate-300 pt-3 text-sm dark:border-green-900/70">
               <div className="flex flex-wrap items-center gap-3">
-                <button type="button" onClick={() => void saveCurrentSearch()} className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40">Save this search</button>
+                {isSaveSearchFormOpen ? (
+                  <form
+                    onSubmit={(event) => void saveCurrentSearch(event)}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <label className="flex items-center gap-2">
+                      <span className="text-slate-600 dark:text-green-500">Name</span>
+                      <input
+                        type="text"
+                        aria-label="Saved search name"
+                        value={savedSearchName}
+                        onChange={(event) => setSavedSearchName(event.target.value)}
+                        autoFocus
+                        className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={!savedSearchName.trim()}
+                      className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                    >
+                      Save search
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSavedSearchName("");
+                        setIsSaveSearchFormOpen(false);
+                      }}
+                      className="cursor-pointer text-blue-900 underline dark:text-green-400"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSavedSearchError(null);
+                      setIsSaveSearchFormOpen(true);
+                    }}
+                    className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                  >
+                    Save this search
+                  </button>
+                )}
                 {savedSearches.length > 0 && <span className="text-slate-600 dark:text-green-500">Saved searches:</span>}
                 {savedSearches.map((search) => <button key={search.id} type="button" onClick={() => void openSavedSearch(search)} className="cursor-pointer text-blue-900 underline dark:text-green-400">{search.name}{search.new_result_count ? ` (${search.new_result_count} new)` : ""}</button>)}
               </div>

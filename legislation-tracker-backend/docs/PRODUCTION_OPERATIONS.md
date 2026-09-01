@@ -24,7 +24,13 @@ CONGRESS_API_KEY=<congress-api-key>
 CORS_ALLOWED_ORIGINS=https://app.example.com
 CSRF_TRUSTED_ORIGINS=https://app.example.com
 AUTH_COOKIE_SAMESITE=Lax
+LEGAL_NLP_V21_WRITE_ENABLED=False
 ```
+
+`LEGAL_NLP_V21_WRITE_ENABLED` must be identical on the API, worker, and Beat.
+It controls new deterministic contract writes only. Compatible readers always
+serve persisted 1.1, 2.0, and 2.1 contracts, including persisted 2.1 contracts
+after the flag is turned off.
 
 Leave `CURRENT_CONGRESS_OVERRIDE` unset during normal operation. Polling,
 representative synchronization, similarity recomputation, and UI defaults
@@ -260,6 +266,57 @@ current roster and replaces the associated term rows atomically. Until a
 member's intervals have been populated, current members use their current
 chamber as a conservative current-Congress fallback and historical insight
 requests report incomplete coverage.
+
+## Reader-contract rollout
+
+The `2.1-legal-nlp` reader contract is immutable and deterministic. Its public
+APIs are compact and bounded: bill detail includes only orientation/counts,
+while reader lines, financial provisions, timeline items, definitions, and
+evidence are requested separately. Evidence and full official summaries are
+not embedded in the initial bill response. Every recognized financial action
+remains accessible in source order; the service intentionally provides no
+ranked top list and no computed grand total.
+
+Use a read-before-write deployment:
+
+1. Deploy API, workers, Beat, and client with
+   `LEGAL_NLP_V21_WRITE_ENABLED=False`.
+2. Verify legacy, 2.0, and seeded 2.1 bill pages and APIs. Include CRS and
+   no-CRS bills, exact and section-level financial associations, long evidence,
+   contract history, and complete grouped voting records.
+3. Set `LEGAL_NLP_V21_WRITE_ENABLED=True` identically for new work.
+4. Preview 25 active documents:
+
+   ```bash
+   rtk run "cd legislation-tracker-backend && .venv/bin/python manage.py backfill_contracts --session 119 --limit 25"
+   ```
+
+   Confirm the output reports `generation_reason=schema_backfill`,
+   `target_schema=2.1-legal-nlp`, `target_extractor=federal-rules-2.1.0`, the
+   selected/eligible counts, ID range, session counts, and active/inactive
+   counts.
+5. Execute that bounded batch:
+
+   ```bash
+   rtk run "cd legislation-tracker-backend && .venv/bin/python manage.py backfill_contracts --session 119 --limit 25 --execute"
+   ```
+
+   The command enqueues durable work and never extracts synchronously. Inspect
+   pending/processing/blocked/dead work plus payload and evidence counts. Verify
+   that work queued before a writer rollback remains retryable rather than being
+   marked successful without a contract, and that the schema backfill created no
+   `contract_update` or `topic_update` ChangeLog, bill activity timestamp/sequence
+   change, or unread update.
+6. Continue in 25-document batches. If results require investigation, disable
+   new writes; persisted 2.1 readers remain operational.
+
+Preview is always permitted. `--execute` refuses before enqueueing anything
+when the writer flag is false and also refuses an unbounded execution. Normal
+ingestion uses `generation_reason=ingestion`; schema migration uses
+`generation_reason=schema_backfill`. Their durable work keys remain distinct.
+Semantic comparison prevents presentation-only schema changes, including
+equivalent 2.0/2.1 contracts, from becoming false reader activity. Search and
+topic projections refresh during a schema backfill without publishing activity.
 
 ## ChangeLog partition migration
 

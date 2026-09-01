@@ -420,13 +420,28 @@
           "fields": {
             "modality": "required",
             "actor": "Closing of Account.--For the purposes of section 1555 of title\n31, United States Code, the Securities and Exchange Commission Reserve\nFund",
-            "action": "be considered closed, and thereafter shall not be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d)",
+            "action": "be considered closed,",
             "object": null,
             "conditions": []
           },
           "evidence": [
             {
-              "quote": "Closing of Account.--For the purposes of section 1555 of title\n31, United States Code, the Securities and Exchange Commission Reserve\nFund shall be considered closed, and thereafter shall not be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d)."
+              "quote": "Closing of Account.--For the purposes of section 1555 of title\n31, United States Code, the Securities and Exchange Commission Reserve\nFund shall be considered closed,"
+            }
+          ]
+        },
+        {
+          "category": "requirements",
+          "fields": {
+            "modality": "prohibited",
+            "actor": "thereafter",
+            "action": "be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d)",
+            "object": null,
+            "conditions": []
+          },
+          "evidence": [
+            {
+              "quote": "thereafter shall not be available\nfor obligation or expenditure for any purpose, upon execution of the\ntransfer required under subsection (d)."
             }
           ]
         }

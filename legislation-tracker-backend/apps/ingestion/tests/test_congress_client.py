@@ -183,6 +183,74 @@ def test_bill_collection_rejects_malformed_relationship_entries(monkeypatch):
         congress_client.bill_cosponsors(119, "hr", "1")
 
 
+def test_bill_summaries_fetches_every_page(monkeypatch):
+    calls = []
+    first_page = [{"text": f"Summary {index}"} for index in range(250)]
+
+    def fake_request(method, path, params=None):
+        calls.append((method, path, params))
+        return {
+            "summaries": (
+                first_page if params["offset"] == 0 else [{"text": "Summary 250"}]
+            )
+        }
+
+    monkeypatch.setattr(congress_client, "_request", fake_request)
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    summaries = congress_client.bill_summaries(119, "hr", "1")
+
+    assert len(summaries) == 251
+    assert [call[2] for call in calls] == [
+        {"limit": 250, "offset": 0},
+        {"limit": 250, "offset": 250},
+    ]
+
+
+def test_bill_summaries_rejects_repeated_page(monkeypatch):
+    page = [{"url": f"https://example.test/{index}"} for index in range(250)]
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *args, **kwargs: {"summaries": page},
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    with pytest.raises(
+        congress_client.CongressAPIError, match="pagination repeated a page"
+    ):
+        congress_client.bill_summaries(119, "hr", "1")
+
+
+@pytest.mark.parametrize("payload", ({}, None, "invalid"))
+def test_bill_summaries_rejects_non_list_payload(monkeypatch, payload):
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *args, **kwargs: {"summaries": payload},
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    with pytest.raises(
+        congress_client.CongressAPIError, match="invalid summaries payload"
+    ):
+        congress_client.bill_summaries(119, "hr", "1")
+
+
+def test_bill_summaries_rejects_non_dictionary_entry(monkeypatch):
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *args, **kwargs: {"summaries": [{"text": "Valid"}, "invalid"]},
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    with pytest.raises(
+        congress_client.CongressAPIError, match="invalid summaries entry"
+    ):
+        congress_client.bill_summaries(119, "hr", "1")
+
+
 def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(
     monkeypatch,
 ):

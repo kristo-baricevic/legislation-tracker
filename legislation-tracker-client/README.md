@@ -23,6 +23,27 @@ The app has **Log in** and **Sign up** pages that use the Django web-session API
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+### Reader-first bill brief
+
+Federal bills with a `2.1-legal-nlp` contract open with a compact orientation:
+the latest attributed CRS summary when available, or an honest notice when no
+CRS summary has been published, plus any explicit purpose found in the bill,
+policy areas, and extraction counts. The substantive brief then loads bounded
+pages in official source order rather than ranking provisions.
+
+The financial breakdown includes every recognized appropriation,
+authorization, allocation, transfer, rescission, reduction, cancellation,
+set-aside, limitation, and other explicit financial action. It is never capped
+to a "top" list and the UI does not add unlike amounts into a misleading grand
+total. Exact-clause financial links appear beneath the matching plain-English
+line; broader account or program provisions appear once at section level.
+Readers can load evidence text, deadlines/effective dates, definitions, full
+official summaries, and the complete grouped voting record on demand.
+
+Older `1.1-deterministic` and `2.0-legal-nlp` contracts retain their compatible
+renderers. A malformed or unavailable 2.1 projection fails back to that safe
+legacy display rather than exposing internal contract data.
+
 ### Optional AI enhancement UI
 
 When the backend enables user-owned AI enhancement, authenticated users can

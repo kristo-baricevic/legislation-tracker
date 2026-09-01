@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Literal
@@ -14,15 +15,7 @@ from .extraction.types import ExpectedExtractionRejection
 
 Operation = Literal["added", "removed", "changed"]
 
-CONTRACT_ITEM_IDENTITIES = {
-    "key_provisions": ("section_label", "kind", "heading"),
-    "requirements": ("section_label", "modality", "actor", "action", "object"),
-    "funding_items": ("section_label", "amount_type", "currency", "purpose"),
-    "timeline_items": ("section_label", "timeline_type", "trigger"),
-    "definitions": ("section_label", "term"),
-    "applicability": ("section_label", "subject", "applicability_type"),
-    "amendment_operations": ("section_label", "target", "operation"),
-}
+MIN_DIFF_CORRESPONDENCE_RATIO = 0.72
 
 
 @dataclass(frozen=True)
@@ -39,6 +32,15 @@ class ContractDiff:
     total_change_count: int
     returned_change_count: int
     truncated: bool
+
+
+@dataclass(frozen=True)
+class SemanticItem:
+    category: str
+    structural_path: tuple[str, ...]
+    anchor: tuple[str, ...]
+    mutable_fields: dict[str, object]
+    source_order: int
 
 
 @dataclass(frozen=True)
@@ -71,10 +73,6 @@ def _normalize_identity(value: object) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
 
 
-def _identity(item: dict, fields: tuple[str, ...]) -> str:
-    return "|".join(_normalize_identity(item.get(field)) for field in fields)
-
-
 def _bounded(value: object, *, max_chars: int = 10_000):
     rendered = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
     if len(rendered) <= max_chars:
@@ -82,84 +80,351 @@ def _bounded(value: object, *, max_chars: int = 10_000):
     return {"truncated": True, "preview": rendered[:max_chars]}
 
 
-def _compare_values(before: object, after: object, path: str, changes: list[ContractChange]):
-    if before == after:
-        return
-    if isinstance(before, dict) and isinstance(after, dict):
-        for key in sorted(set(before) | set(after)):
-            child_path = f"{path}.{key}" if path else key
-            if key not in before:
-                changes.append(ContractChange(child_path, "added", None, _bounded(after[key])))
-            elif key not in after:
-                changes.append(ContractChange(child_path, "removed", _bounded(before[key]), None))
-            else:
-                _compare_values(before[key], after[key], child_path, changes)
-        return
-    if isinstance(before, list) and isinstance(after, list):
-        root = path.split(".", 1)[0]
-        identity_fields = CONTRACT_ITEM_IDENTITIES.get(root)
-        if identity_fields and all(isinstance(item, dict) for item in before + after):
-            before_items: dict[str, list[dict]] = {}
-            after_items: dict[str, list[dict]] = {}
-            for item in before:
-                before_items.setdefault(_identity(item, identity_fields), []).append(item)
-            for item in after:
-                after_items.setdefault(_identity(item, identity_fields), []).append(item)
-            for identity in sorted(set(before_items) | set(after_items)):
-                old_group = list(before_items.get(identity, ()))
-                new_group = list(after_items.get(identity, ()))
-                duplicate_identity = max(len(old_group), len(new_group)) > 1
+def _normalized_value(value: object) -> object:
+    if isinstance(value, str):
+        return _normalize_identity(value)
+    if isinstance(value, list):
+        return tuple(_normalized_value(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(
+            (str(key), _normalized_value(item)) for key, item in sorted(value.items())
+        )
+    return value
 
-                def item_path(
-                    index: int,
-                    *,
-                    is_duplicate: bool = duplicate_identity,
-                    item_identity: str = identity,
-                ) -> str:
-                    suffix = f"#{index}" if is_duplicate else ""
-                    return f"{path}[{item_identity}{suffix}]"
 
-                # Consume exact matches first so a duplicate removal cannot be
-                # misreported as a mutation of the surviving row.
-                unmatched_new = list(new_group)
-                unmatched_old = []
-                for old_item in old_group:
-                    try:
-                        match_index = unmatched_new.index(old_item)
-                    except ValueError:
-                        unmatched_old.append(old_item)
-                    else:
-                        unmatched_new.pop(match_index)
-                paired = min(len(unmatched_old), len(unmatched_new))
-                for index in range(paired):
-                    _compare_values(
-                        unmatched_old[index],
-                        unmatched_new[index],
-                        item_path(index + 1),
-                        changes,
+def _structural_path(item: dict[str, object]) -> tuple[str, ...]:
+    raw_path = item.get("section_path")
+    if isinstance(raw_path, list):
+        path = tuple(
+            _normalize_identity(part.get("label"))
+            for part in raw_path
+            if isinstance(part, dict) and part.get("label")
+        )
+        if path:
+            return path
+    label = _normalize_identity(item.get("section_label"))
+    return (label,) if label else ()
+
+
+_SEMANTIC_CATEGORIES = {
+    "requirements": "requirements",
+    "funding_items": "financial_items",
+    "financial_items": "financial_items",
+    "timeline_items": "timeline_items",
+    "definitions": "definitions",
+    "applicability": "applicability",
+    "amendment_operations": "amendment_operations",
+}
+
+_LEGACY_CATEGORIES = {
+    "requirements": "legacy_requirements",
+    "funding_mentions": "legacy_funding_mentions",
+    "effective_dates": "legacy_effective_dates",
+}
+
+_SEMANTIC_FIELDS = {
+    "requirements": (
+        "modality",
+        "actor",
+        "action",
+        "object",
+        "conditions",
+    ),
+    "financial_items": (
+        "financial_action",
+        "direction",
+        "amount",
+        "amount_type",
+        "currency",
+        "fiscal_years",
+        "purpose",
+        "source_account",
+        "destination_account",
+    ),
+    "timeline_items": (
+        "timeline_type",
+        "date",
+        "relative_value",
+        "relative_unit",
+        "trigger",
+    ),
+    "definitions": ("term", "definition", "definition_type"),
+    "applicability": ("subject", "scope", "applicability_type"),
+    "amendment_operations": (
+        "target",
+        "operation",
+        "removed_text",
+        "inserted_text",
+    ),
+}
+
+
+def _anchor(category: str, fields: dict[str, object]) -> tuple[str, ...]:
+    anchor_fields = {
+        "requirements": ("modality", "actor"),
+        "financial_items": ("purpose", "source_account", "destination_account"),
+        "timeline_items": ("timeline_type", "trigger"),
+        "definitions": ("term",),
+        "applicability": ("subject", "applicability_type"),
+        "amendment_operations": ("target", "operation"),
+    }[category]
+    return tuple(_normalize_identity(fields.get(field)) for field in anchor_fields)
+
+
+def semantic_contract_items(
+    contract_json: dict[str, object],
+) -> dict[str, tuple[SemanticItem, ...]]:
+    """Project a contract into statutory claims with no source-local identity.
+
+    Offset-derived IDs, evidence paths, extraction metadata, line-item reader
+    projections, and generated display text are deliberately absent.
+    """
+    projected: dict[str, list[SemanticItem]] = defaultdict(list)
+    source_order = 0
+    if contract_json.get("schema_version") == "1.1-deterministic":
+        for raw_category, category in _LEGACY_CATEGORIES.items():
+            raw_items = contract_json.get(raw_category, [])
+            if not isinstance(raw_items, list):
+                continue
+            for raw_item in raw_items:
+                if not isinstance(raw_item, dict) or not raw_item.get("text"):
+                    continue
+                projected[category].append(
+                    SemanticItem(
+                        category=category,
+                        structural_path=(),
+                        anchor=(_normalize_identity(raw_item.get("category")),),
+                        mutable_fields={
+                            "text": _normalized_value(raw_item["text"]),
+                            "legacy_category": _normalized_value(
+                                raw_item.get("category")
+                            ),
+                        },
+                        source_order=source_order,
                     )
-                for index, item in enumerate(unmatched_old[paired:], start=paired + 1):
+                )
+                source_order += 1
+        return {category: tuple(items) for category, items in sorted(projected.items())}
+
+    for raw_category, category in _SEMANTIC_CATEGORIES.items():
+        raw_items = contract_json.get(raw_category, [])
+        if not isinstance(raw_items, list):
+            continue
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            fields = {
+                field: _normalized_value(raw_item[field])
+                for field in _SEMANTIC_FIELDS[category]
+                if field in raw_item
+            }
+            if not fields:
+                continue
+            projected[category].append(
+                SemanticItem(
+                    category=category,
+                    structural_path=_structural_path(raw_item),
+                    anchor=_anchor(category, raw_item),
+                    mutable_fields=fields,
+                    source_order=source_order,
+                )
+            )
+            source_order += 1
+    return {category: tuple(items) for category, items in sorted(projected.items())}
+
+
+def _common_fields_equal(before: SemanticItem, after: SemanticItem) -> bool:
+    common = set(before.mutable_fields) & set(after.mutable_fields)
+    return bool(common) and all(
+        before.mutable_fields[key] == after.mutable_fields[key] for key in common
+    )
+
+
+def _semantic_value_text(value: object) -> str:
+    if isinstance(value, tuple):
+        return " ".join(_semantic_value_text(item) for item in value)
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _changed_field_text(
+    before: SemanticItem, after: SemanticItem, *, common_fields: set[str]
+) -> tuple[str, str]:
+    changed = {
+        key
+        for key in common_fields
+        if before.mutable_fields[key] != after.mutable_fields[key]
+    }
+    return (
+        "\n".join(
+            _semantic_value_text(before.mutable_fields[key]) for key in sorted(changed)
+        ),
+        "\n".join(
+            _semantic_value_text(after.mutable_fields[key]) for key in sorted(changed)
+        ),
+    )
+
+
+def _item_payload(item: SemanticItem) -> dict[str, object]:
+    return {
+        "category": item.category,
+        "structural_path": item.structural_path,
+        **item.mutable_fields,
+    }
+
+
+def _semantic_changes(
+    before_json: dict[str, object], after_json: dict[str, object]
+) -> list[ContractChange]:
+    before_items = semantic_contract_items(before_json)
+    after_items = semantic_contract_items(after_json)
+    changes: list[ContractChange] = []
+    for category in sorted(set(before_items) | set(after_items)):
+        buckets: dict[
+            tuple[str, tuple[str, ...]],
+            tuple[list[SemanticItem], list[SemanticItem]],
+        ] = {}
+        for item in before_items.get(category, ()):
+            structural_leaf = item.structural_path[-1] if item.structural_path else ""
+            buckets.setdefault((structural_leaf, item.anchor), ([], []))[0].append(item)
+        for item in after_items.get(category, ()):
+            structural_leaf = item.structural_path[-1] if item.structural_path else ""
+            buckets.setdefault((structural_leaf, item.anchor), ([], []))[1].append(item)
+        ordinal = 0
+        for bucket in sorted(buckets):
+            old_group, new_group = buckets[bucket]
+            unmatched_old = list(old_group)
+            unmatched_new = list(new_group)
+            for old_item in list(unmatched_old):
+                exact_index = next(
+                    (
+                        index
+                        for index, new_item in enumerate(unmatched_new)
+                        if _paths_compatible(
+                            old_item.structural_path, new_item.structural_path
+                        )
+                        and _common_fields_equal(old_item, new_item)
+                    ),
+                    None,
+                )
+                if exact_index is not None:
+                    unmatched_old.remove(old_item)
+                    unmatched_new.pop(exact_index)
+
+            candidates = []
+            for old_index, old_item in enumerate(unmatched_old):
+                for new_index, new_item in enumerate(unmatched_new):
+                    if not _paths_compatible(
+                        old_item.structural_path, new_item.structural_path
+                    ):
+                        continue
+                    common = set(old_item.mutable_fields) & set(new_item.mutable_fields)
+                    if not common:
+                        continue
+                    old_text, new_text = _changed_field_text(
+                        old_item, new_item, common_fields=common
+                    )
+                    ratio = SequenceMatcher(
+                        None,
+                        old_text,
+                        new_text,
+                        autojunk=False,
+                    ).ratio()
+                    if ratio >= MIN_DIFF_CORRESPONDENCE_RATIO:
+                        candidates.append(
+                            (
+                                -ratio,
+                                old_item.source_order,
+                                new_item.source_order,
+                                old_index,
+                                new_index,
+                            )
+                        )
+            paired_old = set()
+            paired_new = set()
+            for _score, _old_order, _new_order, old_index, new_index in sorted(
+                candidates
+            ):
+                if old_index in paired_old or new_index in paired_new:
+                    continue
+                paired_old.add(old_index)
+                paired_new.add(new_index)
+                old_item = unmatched_old[old_index]
+                new_item = unmatched_new[new_index]
+                ordinal += 1
+                common = sorted(
+                    set(old_item.mutable_fields) & set(new_item.mutable_fields)
+                )
+                old_payload = {key: old_item.mutable_fields[key] for key in common}
+                new_payload = {key: new_item.mutable_fields[key] for key in common}
+                if old_payload != new_payload:
                     changes.append(
                         ContractChange(
-                            item_path(index),
+                            f"{category}[{ordinal}]",
+                            "changed",
+                            _bounded(old_payload),
+                            _bounded(new_payload),
+                        )
+                    )
+            for index, item in enumerate(unmatched_old):
+                if index not in paired_old:
+                    ordinal += 1
+                    changes.append(
+                        ContractChange(
+                            f"{category}[{ordinal}]",
                             "removed",
-                            _bounded(item),
+                            _bounded(_item_payload(item)),
                             None,
                         )
                     )
-                for index, item in enumerate(unmatched_new[paired:], start=paired + 1):
+            for index, item in enumerate(unmatched_new):
+                if index not in paired_new:
+                    ordinal += 1
                     changes.append(
                         ContractChange(
-                            item_path(index),
+                            f"{category}[{ordinal}]",
                             "added",
                             None,
-                            _bounded(item),
+                            _bounded(_item_payload(item)),
                         )
                     )
-            return
-        if sorted(map(repr, before)) == sorted(map(repr, after)):
-            return
-    changes.append(ContractChange(path, "changed", _bounded(before), _bounded(after)))
+    return changes
+
+
+def _paths_compatible(before: tuple[str, ...], after: tuple[str, ...]) -> bool:
+    if before == after:
+        return True
+    return bool(
+        before
+        and after
+        and before[-1] == after[-1]
+        and (len(before) == 1 or len(after) == 1)
+    )
+
+
+def _legacy_plain_summary_changes(
+    before_json: dict[str, object], after_json: dict[str, object]
+) -> list[ContractChange]:
+    """Preserve the existing pre-semantic plain-summary comparison only."""
+    if "plain_summary" not in before_json and "plain_summary" not in after_json:
+        return []
+    before = before_json.get("plain_summary")
+    after = after_json.get("plain_summary")
+    if before == after:
+        return []
+    if "plain_summary" not in before_json:
+        return [ContractChange("plain_summary", "added", None, _bounded(after))]
+    if "plain_summary" not in after_json:
+        return [ContractChange("plain_summary", "removed", _bounded(before), None)]
+    return [
+        ContractChange(
+            "plain_summary",
+            "changed",
+            _bounded(before),
+            _bounded(after),
+        )
+    ]
 
 
 def compare_contracts(*, before, after, limit: int = 200) -> ContractDiff:
@@ -167,15 +432,26 @@ def compare_contracts(*, before, after, limit: int = 200) -> ContractDiff:
         raise ValueError("Contracts must belong to the same bill.")
     if limit < 1:
         raise ValueError("limit must be positive")
-    changes: list[ContractChange] = []
-    _compare_values(before.contract_json or {}, after.contract_json or {}, "", changes)
-    changes.sort(key=lambda item: (item.path, item.operation))
+    before_json = before.contract_json or {}
+    after_json = after.contract_json or {}
+    if semantic_contract_items(before_json) or semantic_contract_items(after_json):
+        changes = _semantic_changes(before_json, after_json)
+    else:
+        changes = _legacy_plain_summary_changes(before_json, after_json)
     return ContractDiff(
         changes=tuple(changes[:limit]),
         total_change_count=len(changes),
         returned_change_count=min(len(changes), limit),
         truncated=len(changes) > limit,
     )
+
+
+def semantic_contracts_equal(
+    before_json: dict[str, object], after_json: dict[str, object]
+) -> bool:
+    if semantic_contract_items(before_json) or semantic_contract_items(after_json):
+        return not _semantic_changes(before_json, after_json)
+    return not _legacy_plain_summary_changes(before_json, after_json)
 
 
 def _section_map(document):
@@ -215,7 +491,9 @@ def _content_hash(value: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def compare_document_sections(*, before, after, limit: int = 500) -> DocumentSectionDiff:
+def compare_document_sections(
+    *, before, after, limit: int = 500
+) -> DocumentSectionDiff:
     if before.bill_id != after.bill_id:
         raise ValueError("Documents must belong to the same bill.")
     before_sections, before_fallback, before_source_truncated = _section_map(before)
@@ -225,11 +503,19 @@ def compare_document_sections(*, before, after, limit: int = 500) -> DocumentSec
         old = before_sections.get(key)
         new = after_sections.get(key)
         if old is None:
-            changes.append(DocumentSectionChange(key, "added", None, _content_hash(new)))
+            changes.append(
+                DocumentSectionChange(key, "added", None, _content_hash(new))
+            )
         elif new is None:
-            changes.append(DocumentSectionChange(key, "removed", _content_hash(old), None))
+            changes.append(
+                DocumentSectionChange(key, "removed", _content_hash(old), None)
+            )
         elif _content_hash(old) != _content_hash(new):
-            changes.append(DocumentSectionChange(key, "modified", _content_hash(old), _content_hash(new)))
+            changes.append(
+                DocumentSectionChange(
+                    key, "modified", _content_hash(old), _content_hash(new)
+                )
+            )
     return DocumentSectionDiff(
         sections=tuple(changes[:limit]),
         total_change_count=len(changes),
@@ -241,7 +527,10 @@ def compare_document_sections(*, before, after, limit: int = 500) -> DocumentSec
         truncation_reasons=tuple(
             reason
             for reason, applies in (
-                ("source_text_limit", before_source_truncated or after_source_truncated),
+                (
+                    "source_text_limit",
+                    before_source_truncated or after_source_truncated,
+                ),
                 ("section_change_limit", len(changes) > limit),
             )
             if applies
@@ -280,7 +569,10 @@ def compare_document_section(*, before, after, section_key: str) -> DocumentLine
         truncation_reasons=tuple(
             reason
             for reason, applies in (
-                ("source_text_limit", before_source_truncated or after_source_truncated),
+                (
+                    "source_text_limit",
+                    before_source_truncated or after_source_truncated,
+                ),
                 ("line_limit", line_limit_reached),
                 ("operation_limit", operation_limit_reached),
             )

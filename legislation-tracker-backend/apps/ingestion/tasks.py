@@ -5,8 +5,11 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 import hashlib
 import logging
 import uuid
+from collections.abc import Sequence
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from html.parser import HTMLParser
 
 import requests
 from celery import shared_task
@@ -28,6 +31,7 @@ from apps.ingestion.congress_client import (
     bill_actions,
     bill_detail,
     bill_list,
+    bill_summaries,
     bill_text_list,
     member_detail,
     member_list,
@@ -247,6 +251,115 @@ def _parse_congress_update_datetime(value):
     return _ensure_utc_aware(dt)
 
 
+class CRSPlainTextParser(HTMLParser):
+    """Tolerantly turn a CRS HTML summary into readable plain text."""
+
+    BLOCK_TAGS = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li"}
+    IGNORED_TAGS = {"script", "style"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self._ignored_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.casefold()
+        if tag in self.IGNORED_TAGS:
+            self._ignored_depth += 1
+            return
+        if self._ignored_depth:
+            return
+        if tag == "li":
+            self.parts.extend(("\n", "- "))
+        elif tag in self.BLOCK_TAGS or tag == "br":
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag.casefold() in self.IGNORED_TAGS and self._ignored_depth:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data):
+        if not self._ignored_depth:
+            self.parts.append(data)
+
+
+def clean_crs_summary(value: object) -> str:
+    """Return the complete CRS summary as normalized, safe plain text."""
+
+    if not isinstance(value, str):
+        return ""
+    parser = CRSPlainTextParser()
+    parser.feed(value)
+    parser.close()
+    return "\n".join(
+        " ".join(line.split())
+        for line in "".join(parser.parts).splitlines()
+        if line.split()
+    )
+
+
+def _parse_congress_date(value: object) -> date | None:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True)
+class CRSSummaryRevision:
+    text: str
+    action_date: date | None
+    version_code: str
+    last_updated_at: datetime | None
+
+
+def select_latest_crs_summary(
+    items: Sequence[dict[str, object]],
+) -> CRSSummaryRevision | None:
+    """Select the newest usable CRS revision independent of version-code order."""
+
+    revisions = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = clean_crs_summary(item.get("text"))
+        if not text:
+            continue
+        revisions.append(
+            CRSSummaryRevision(
+                text=text,
+                action_date=_parse_congress_date(item.get("actionDate")),
+                version_code=str(item.get("versionCode") or ""),
+                last_updated_at=_parse_congress_update_datetime(
+                    item.get("lastSummaryUpdateDate") or item.get("updateDate")
+                ),
+            )
+        )
+    if not revisions:
+        return None
+    return max(
+        revisions,
+        key=lambda revision: (
+            revision.action_date or date.min,
+            revision.last_updated_at or datetime.min.replace(tzinfo=UTC),
+            revision.version_code,
+            revision.text,
+        ),
+    )
+
+
+def stored_summary_revision(bill):
+    return (
+        bill.summary_action_date or date.min,
+        bill.summary_last_updated_at or datetime.min.replace(tzinfo=UTC),
+        bill.summary_version_code or "",
+    )
+
+
 def format_bill_number(bill_type, bill_number):
     """Store as e.g. HR 1234 for display/API consistency."""
     t = (bill_type or "hr").upper()
@@ -265,6 +378,10 @@ def compute_metadata_hash(
     introduced_at=None,
     sponsor_id=None,
     source_api_id=None,
+    summary_source="",
+    summary_action_date=None,
+    summary_version_code="",
+    summary_last_updated_at=None,
 ):
     raw = "|".join(
         [
@@ -275,6 +392,10 @@ def compute_metadata_hash(
             str(introduced_at or ""),
             str(sponsor_id or ""),
             (source_api_id or "").strip(),
+            (summary_source or "").strip(),
+            str(summary_action_date or ""),
+            (summary_version_code or "").strip(),
+            str(summary_last_updated_at or ""),
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -1261,9 +1382,15 @@ def _process_durable_work(work_item):
     from apps.legislation import tasks as legislation_tasks
 
     if work_item.kind == legislation_tasks.WORK_KIND_DOCUMENT_CONTRACT:
+        contract_kwargs = {
+            "reextract_source": bool(payload.get("reextract_source")),
+            "generation_reason": payload.get("generation_reason"),
+            "extractor_version": payload.get("extractor_version"),
+        }
+        if "generation_occurrence" in payload:
+            contract_kwargs["generation_occurrence"] = payload["generation_occurrence"]
         return legislation_tasks._generate_contract_impl(
-            payload["document_id"],
-            reextract_source=bool(payload.get("reextract_source")),
+            payload["document_id"], **contract_kwargs
         )
     if work_item.kind == legislation_tasks.WORK_KIND_METADATA_CONTRACT:
         return legislation_tasks._generate_contract_for_bill_impl(payload["bill_id"])
@@ -1271,6 +1398,7 @@ def _process_durable_work(work_item):
         return legislation_tasks._update_topics_impl(
             contract_id=payload.get("contract_id"),
             bill_id=payload.get("bill_id"),
+            generation_reason=payload.get("generation_reason", "ingestion"),
         )
     if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
         return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
@@ -1500,7 +1628,19 @@ def _process_bill_impl(bill_key_str):
         action_text = str(detail.get("latestAction", ""))
     status = (action_text or detail.get("status") or "")[:100]
     title = (detail.get("title") or "")[:10000]
-    summary = (detail.get("summary") or "")[:10000] or None
+    source_metadata_summary = (detail.get("summary") or "")[:10000] or None
+    crs_revision = select_latest_crs_summary(
+        bill_summaries(congress, bill_type, bill_number)
+    )
+    summary = crs_revision.text if crs_revision else source_metadata_summary
+    summary_source = (
+        "crs"
+        if crs_revision
+        else ("source_metadata" if source_metadata_summary else "")
+    )
+    summary_action_date = crs_revision.action_date if crs_revision else None
+    summary_version_code = crs_revision.version_code if crs_revision else ""
+    summary_last_updated_at = crs_revision.last_updated_at if crs_revision else None
     introduced_at = None
     if detail.get("introducedDate"):
         try:
@@ -1526,6 +1666,10 @@ def _process_bill_impl(bill_key_str):
         introduced_at,
         sponsor.id if sponsor else None,
         source_api_id,
+        summary_source,
+        summary_action_date,
+        summary_version_code,
+        summary_last_updated_at,
     )
     with transaction.atomic():
         bill, created = Bill.objects.get_or_create(
@@ -1535,6 +1679,10 @@ def _process_bill_impl(bill_key_str):
                 "jurisdiction": "federal",
                 "title": title or bill_number_display,
                 "summary": summary,
+                "summary_source": summary_source,
+                "summary_action_date": summary_action_date,
+                "summary_version_code": summary_version_code,
+                "summary_last_updated_at": summary_last_updated_at,
                 "status": status or "Unknown",
                 "processing_status": ProcessingStatus.PROCESSING,
                 "introduced_at": introduced_at,
@@ -1545,6 +1693,46 @@ def _process_bill_impl(bill_key_str):
             },
         )
         if not created:
+            target_summary = bill.summary
+            target_summary_source = bill.summary_source
+            target_summary_action_date = bill.summary_action_date
+            target_summary_version_code = bill.summary_version_code
+            target_summary_last_updated_at = bill.summary_last_updated_at
+            if crs_revision:
+                candidate_revision = (
+                    crs_revision.action_date or date.min,
+                    crs_revision.last_updated_at or datetime.min.replace(tzinfo=UTC),
+                    crs_revision.version_code,
+                )
+                if (
+                    bill.summary_source != "crs"
+                    or candidate_revision > stored_summary_revision(bill)
+                ):
+                    target_summary = crs_revision.text
+                    target_summary_source = "crs"
+                    target_summary_action_date = crs_revision.action_date
+                    target_summary_version_code = crs_revision.version_code
+                    target_summary_last_updated_at = crs_revision.last_updated_at
+            elif source_metadata_summary and bill.summary_source != "crs":
+                target_summary = source_metadata_summary
+                target_summary_source = "source_metadata"
+                target_summary_action_date = None
+                target_summary_version_code = ""
+                target_summary_last_updated_at = None
+
+            metadata_hash = compute_metadata_hash(
+                status,
+                title,
+                target_summary,
+                last_action_at,
+                introduced_at,
+                sponsor.id if sponsor else None,
+                source_api_id,
+                target_summary_source,
+                target_summary_action_date,
+                target_summary_version_code,
+                target_summary_last_updated_at,
+            )
             if bill.metadata_hash == metadata_hash:
                 logger.info(
                     "process_bill: unchanged (hash match) bill_id=%s bill_key=%s",
@@ -1594,7 +1782,11 @@ def _process_bill_impl(bill_key_str):
             before_metadata = snapshot_bill_metadata(bill)
             bill.processing_status = ProcessingStatus.PROCESSING
             bill.title = title or bill.title
-            bill.summary = summary if summary is not None else bill.summary
+            bill.summary = target_summary
+            bill.summary_source = target_summary_source
+            bill.summary_action_date = target_summary_action_date
+            bill.summary_version_code = target_summary_version_code
+            bill.summary_last_updated_at = target_summary_last_updated_at
             bill.status = status or bill.status
             bill.introduced_at = (
                 introduced_at if introduced_at is not None else bill.introduced_at
@@ -1738,9 +1930,15 @@ def _process_bill_versions_impl(bill_id):
         if update_fields:
             doc.save(update_fields=update_fields)
         if i == len(versions) - 1:
-            BillDocument.objects.filter(bill=bill).update(is_active_version=False)
-            doc.is_active_version = True
-            doc.save(update_fields=["is_active_version"])
+            # Contract promotion takes the same bill lock. Serializing the active
+            # document switch with promotion prevents an old extraction from
+            # becoming latest after a newer version has been activated.
+            with transaction.atomic():
+                Bill.objects.select_for_update().get(pk=bill.pk)
+                BillDocument.objects.filter(bill=bill).update(is_active_version=False)
+                doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
+                doc.is_active_version = True
+                doc.save(update_fields=["is_active_version"])
         needs_download = (
             created
             or source_url_changed

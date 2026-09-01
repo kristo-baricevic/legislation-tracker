@@ -12,206 +12,28 @@ import {
   getVote,
   getVotes,
   trackBill,
-  type BillContractItem,
-  type BillDetail,
+  type BillDetailSummary,
   type VoteDetailItem,
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
-import { getContractSummary } from "@/lib/contracts";
+import type { BillContractSummary } from "@/lib/contracts";
+import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import BillChangeExperience from "./bill-change-experience";
-
-function HistoryPagination({
-  page,
-  hasNext,
-  onPrevious,
-  onNext,
-  historyName,
-}: {
-  page: number;
-  hasNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-  historyName: string;
-}) {
-  if (page === 1 && !hasNext) return null;
-  return (
-    <nav className="mt-4 flex items-center justify-between gap-3" aria-label={`${historyName} pagination`}>
-      <button
-        type="button"
-        onClick={onPrevious}
-        disabled={page === 1}
-        aria-label={`Previous ${historyName} page`}
-        className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-      >
-        Previous
-      </button>
-      <span className="text-sm text-slate-600 dark:text-green-600">Page {page}</span>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={!hasNext}
-        aria-label={`Next ${historyName} page`}
-        className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-      >
-        Next
-      </button>
-    </nav>
-  );
-}
-
-function ContractHistorySection({
-  contracts,
-  page,
-  hasNext,
-  onPrevious,
-  onNext,
-}: {
-  contracts: BillContractItem[];
-  page: number;
-  hasNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  if (contracts.length === 0) return null;
-  return (
-    <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
-      <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
-        Contract history
-      </h2>
-      <ul className="space-y-3">
-        {contracts.map((contract) => {
-          const summary = getContractSummary(contract.contract_json);
-          return (
-            <li key={contract.id} className="rounded border border-slate-300 p-3 dark:border-green-900/70">
-              <div className="text-sm font-semibold text-slate-900 dark:text-green-300">
-                Schema {contract.schema_version}
-                {contract.document_version_label
-                  ? ` · ${contract.document_version_label}`
-                  : " · Metadata"}
-              </div>
-              <p className="mt-1 text-xs text-slate-600 dark:text-green-600">
-                {new Date(contract.computed_at).toLocaleString()}
-              </p>
-              {summary && (
-                <p className="mt-2 break-words text-sm text-slate-800 [overflow-wrap:anywhere] dark:text-green-200">
-                  {summary}
-                </p>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      <HistoryPagination
-        page={page}
-        hasNext={hasNext}
-        onPrevious={onPrevious}
-        onNext={onNext}
-        historyName="contract history"
-      />
-    </section>
-  );
-}
-
-function VoteHistorySection({
-  votes,
-  selectedVote,
-  loadingVoteId,
-  voteError,
-  onViewPositions,
-  page,
-  hasNext,
-  onPrevious,
-  onNext,
-}: {
-  votes: VoteListItem[];
-  selectedVote: VoteDetailItem | null;
-  loadingVoteId: number | null;
-  voteError: string | null;
-  onViewPositions: (voteId: number) => void;
-  page: number;
-  hasNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  if (votes.length === 0) return null;
-  return (
-    <section className="mb-6 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
-      <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-green-400">
-        Roll-call votes
-      </h2>
-      <ul className="divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
-        {votes.map((vote) => (
-          <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
-            <div>
-              <p className="font-semibold text-slate-900 dark:text-green-300">
-                {vote.chamber} session {vote.session_number ?? "unknown"} roll call {vote.roll_number}: {vote.result}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-green-600">
-                Yes {vote.yeas} · No {vote.nays} · {new Date(vote.vote_date).toLocaleDateString()}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onViewPositions(vote.id)}
-              disabled={loadingVoteId === vote.id}
-              className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-            >
-              {loadingVoteId === vote.id ? "Loading positions..." : "View member positions"}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <HistoryPagination
-        page={page}
-        hasNext={hasNext}
-        onPrevious={onPrevious}
-        onNext={onNext}
-        historyName="vote history"
-      />
-      {voteError && (
-        <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">
-          {voteError}
-        </p>
-      )}
-      {selectedVote && (
-        <div className="mt-4">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-green-400">
-            Member positions
-          </h3>
-          <ul className="mt-2 divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
-            {selectedVote.records.map((record) => (
-              <li key={record.representative.id} className="flex justify-between gap-3 p-3 text-sm">
-                <span>{record.representative.name}</span>
-                <span className="font-semibold capitalize">{record.position}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </section>
-  );
-}
+import { VotingRecord } from "./voting-record";
 
 function BillDetailInner({ routeId }: { routeId: string }) {
   const id = parseInt(routeId, 10);
-  const [bill, setBill] = useState<BillDetail | null>(null);
+  const [bill, setBill] = useState<BillDetailSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasAccount, setHasAccount] = useState(false);
   const [isTracked, setIsTracked] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [contractHistory, setContractHistory] = useState<BillContractItem[] | null>(null);
-  const [comparisonContracts, setComparisonContracts] = useState<BillContractItem[] | null>(null);
-  const [contractPage, setContractPage] = useState(1);
-  const [contractLoadedPage, setContractLoadedPage] = useState(1);
-  const [contractHasNext, setContractHasNext] = useState(false);
-  const [contractLoading, setContractLoading] = useState(true);
-  const [contractError, setContractError] = useState<string | null>(null);
-  const [contractRetry, setContractRetry] = useState(0);
+  const [comparisonContracts, setComparisonContracts] = useState<BillContractSummary[] | null>(null);
   const [votes, setVotes] = useState<VoteListItem[] | null>(null);
   const [votePage, setVotePage] = useState(1);
   const [voteLoadedPage, setVoteLoadedPage] = useState(1);
@@ -236,7 +58,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     setError(null);
     setLoading(true);
     setComparisonContracts(null);
-    getBill(id)
+    getBill(id, { contractView: "summary" })
       .then((data) => {
         if (!cancelled) setBill(data);
       })
@@ -254,31 +76,17 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   useEffect(() => {
     if (Number.isNaN(id)) return;
     let cancelled = false;
-    setContractLoading(true);
-    setContractError(null);
-    getContracts(id, { page: contractPage })
+    getContracts(id, { page: 1, view: "summary" })
       .then((contracts) => {
-        if (!cancelled) {
-          setContractHistory(contracts.results);
-          if (contractPage === 1) {
-            setComparisonContracts(contracts.results);
-          }
-          setContractLoadedPage(contractPage);
-          setContractHasNext(Boolean(contracts.next));
-        }
+        if (!cancelled) setComparisonContracts(contracts.results);
       })
       .catch(() => {
-        if (!cancelled) {
-          setContractError("Could not load contract history. Try again.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setContractLoading(false);
+        if (!cancelled) setComparisonContracts([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [contractPage, contractRetry, id]);
+  }, [id]);
 
   useEffect(() => {
     if (Number.isNaN(id)) return;
@@ -428,7 +236,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
               {bill.bill_number} ({bill.session})
             </h1>
-            <p className="text-slate-800 dark:text-green-200">{bill.title}</p>
+            {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-slate-800 dark:text-green-200">{bill.title}</p>}
           </div>
           <div className="shrink-0">
             {hasAccount ? (
@@ -483,44 +291,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               <dd>{bill.introduced_at}</dd>
             </div>
           )}
-          {bill.summary && (
-            <div>
-              <dt className="text-sm text-slate-600 dark:text-green-500">Summary</dt>
-              <dd className="w-full break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {bill.summary}
-              </dd>
-            </div>
-          )}
         </dl>
 
-        {bill.topics && bill.topics.length > 0 && (
-          <div className="mb-6">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Topics</h2>
-            <div className="flex flex-wrap gap-2">
-              {bill.topics.map((topic) => (
-                <span
-                  key={topic.topic_id}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-400 bg-slate-100 px-3 py-1 text-sm text-slate-800 dark:border-green-700 dark:bg-green-950/30 dark:text-green-300"
-                  title={
-                    topic.confidence_score != null
-                      ? `Confidence: ${(topic.confidence_score * 100).toFixed(0)}%`
-                      : undefined
-                  }
-                >
-                  {topic.name}
-                  {topic.confidence_score != null && (
-                    <span className="text-xs text-slate-500 dark:text-green-600">
-                      {(topic.confidence_score * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
         {bill.latest_contract ? (
-          <ContractSection contract={bill.latest_contract} />
+          <ContractSection contract={bill.latest_contract} bill={bill} />
         ) : (
           <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
             <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
@@ -535,54 +309,6 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </section>
         )}
 
-        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
-
-        <BillChangeExperience
-          billId={bill.id}
-          contracts={comparisonContracts ?? (bill.latest_contract ? [bill.latest_contract] : [])}
-          documents={bill.documents}
-        />
-
-        {contractLoading && (
-          <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
-            {contractHistory ? "Refreshing contract history…" : "Loading contract history…"}
-          </p>
-        )}
-        {contractError && (
-          <div
-            role="alert"
-            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
-          >
-            <span>{contractError}</span>
-            <button
-              type="button"
-              onClick={() => setContractRetry((attempt) => attempt + 1)}
-              className="cursor-pointer border border-current px-2 py-1 font-semibold"
-            >
-              Retry contract history
-            </button>
-          </div>
-        )}
-        {contractHistory && contractHistory.length > 0 && (
-          <ContractHistorySection
-            contracts={contractHistory}
-            page={contractLoadedPage}
-            hasNext={contractHasNext}
-            onPrevious={() => setContractPage(Math.max(1, contractLoadedPage - 1))}
-            onNext={() => setContractPage(contractLoadedPage + 1)}
-          />
-        )}
-        {contractHistory &&
-          contractHistory.length === 0 &&
-          !contractLoading &&
-          !contractError && (
-            <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
-              <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
-                Contract history
-              </h2>
-              <p>No contract history is available.</p>
-            </section>
-          )}
         {voteHistoryLoading && (
           <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
             {votes ? "Refreshing vote history…" : "Loading vote history…"}
@@ -604,28 +330,34 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
         )}
         {votes && votes.length > 0 && (
-          <VoteHistorySection
+          <VotingRecord
             votes={votes}
             selectedVote={selectedVote}
             loadingVoteId={loadingVoteId}
-            voteError={voteError}
-            onViewPositions={viewVotePositions}
+            error={voteError}
+            onSelect={viewVotePositions}
             page={voteLoadedPage}
             hasNext={voteHasNext}
-            onPrevious={() =>
-              changeVoteHistoryPage((current) => Math.max(1, current - 1))
-            }
+            onPrevious={() => changeVoteHistoryPage((current) => Math.max(1, current - 1))}
             onNext={() => changeVoteHistoryPage((current) => current + 1)}
           />
         )}
         {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
           <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
             <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
-              Roll-call votes
+              Voting record
             </h2>
             <p>No roll-call votes are available.</p>
           </section>
         )}
+
+        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
+
+        <BillChangeExperience
+          billId={bill.id}
+          contracts={comparisonContracts ?? []}
+          documents={bill.documents}
+        />
 
         <div className="mb-6">
           <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Source & documents</h2>

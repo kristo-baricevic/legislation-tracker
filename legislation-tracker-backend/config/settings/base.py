@@ -105,6 +105,9 @@ CELERY_TIMEZONE = "UTC"
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
+# The immutable 2.1 legal-NLP writer stays off until compatible readers ship.
+LEGAL_NLP_V21_WRITE_ENABLED = env.bool("LEGAL_NLP_V21_WRITE_ENABLED", default=False)
+
 # Optional user-owned LLM bill enhancements. The feature is off by default and
 # configuration is validated before any credential or provider operation.
 LLM_ENHANCEMENTS_ENABLED = env.bool("LLM_ENHANCEMENTS_ENABLED", default=False)

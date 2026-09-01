@@ -1,9 +1,11 @@
 import logging
 from dataclasses import replace
 
+from django.conf import settings
+
 from apps.legislation.models import Bill, BillDocument
 
-from . import legal_rules, renderer
+from . import financial_rules, legal_rules, reader_renderer, renderer
 from .federal_structure import parse_federal_structure
 from .legacy import build_legacy_document_contract
 from .schema import ContractValidationError
@@ -31,8 +33,18 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
 
         sections = parse_federal_structure(source_text)
         claims = legal_rules.extract_claims(source_text, sections)
+        if settings.LEGAL_NLP_V21_WRITE_ENABLED:
+            claims += financial_rules.extract_financial_claims(source_text, sections)
         if not claims:
             raise ExpectedExtractionRejection("no_supported_claims")
+        if settings.LEGAL_NLP_V21_WRITE_ENABLED:
+            return reader_renderer.render_contract(
+                title=bill.title,
+                version_label=document.version_label,
+                sections=sections,
+                claims=claims,
+                source_text=source_text,
+            )
         return renderer.render_contract(
             title=bill.title,
             version_label=document.version_label,

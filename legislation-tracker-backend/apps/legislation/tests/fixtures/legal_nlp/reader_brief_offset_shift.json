@@ -1,0 +1,8 @@
+{
+  "evaluation_kind": "reader_v21_offset_shift",
+  "title": "Offset Stability Act",
+  "version_label": "Introduced",
+  "before_source_text": "SEC. 20. COMMUNITY PROGRAMS.\nThere is appropriated $5,000,000 for community programs.\nSEC. 21. SAVINGS.\n$2,000,000 of unobligated balances is hereby rescinded.",
+  "after_source_text": "SEC. 1. FINDINGS.\nCongress finds that transparent public information is valuable.\nSEC. 20. COMMUNITY PROGRAMS.\nThere is appropriated $5,000,000 for community programs.\nSEC. 21. SAVINGS.\n$2,000,000 of unobligated balances is hereby rescinded.",
+  "expected_offset_shift": 82
+}

@@ -3,9 +3,29 @@
  * Set NEXT_PUBLIC_API_URL in .env.local (e.g. http://localhost:8000).
  */
 
-import type { ContractJson, EvidenceSpanItem } from "./contracts";
+import {
+  isBillContractSummariesPage,
+  isBillContractSummary,
+  isLegalNlpDefinitionItemsPage,
+  isLegalNlpEvidencePage,
+  isLegalNlpFinancialItemsPage,
+  isLegalNlpReaderItemsPage,
+  isLegalNlpTimelineItemsPage,
+  isOfficialSummaryResponse,
+  type BillContractSummary,
+  type ContractJson,
+  type EvidenceSpanItem,
+  type FinancialAction,
+  type LegalNlpDefinitionItemsPage,
+  type LegalNlpEvidencePage,
+  type LegalNlpFinancialItemsPage,
+  type LegalNlpReaderItemsPage,
+  type LegalNlpTimelineItemsPage,
+  type OfficialSummaryResponse,
+  type PageResponse,
+} from "./contracts.ts";
 
-export type { EvidenceSpanItem } from "./contracts";
+export type { EvidenceSpanItem } from "./contracts.ts";
 
 const getApiUrl = () =>
   typeof window !== "undefined"
@@ -163,9 +183,15 @@ export async function logout(): Promise<void> {
   if (!res.ok) throw await responseError(res, "Logout failed");
 }
 
-export async function publicGet<T = unknown>(path: string): Promise<T> {
+export async function publicGet<T = unknown>(
+  path: string,
+  options?: { signal?: AbortSignal },
+): Promise<T> {
   const base = getApiBase();
-  const res = await fetch(`${base}${path}`);
+  const res = await fetch(
+    `${base}${path}`,
+    options?.signal ? { signal: options.signal } : undefined,
+  );
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
   }
@@ -309,6 +335,10 @@ export interface BillContractsPage {
 
 export interface BillDetail extends BillListItem {
   summary: string | null;
+  summary_source?: string | null;
+  summary_action_date?: string | null;
+  summary_version_code?: string | null;
+  summary_last_updated_at?: string | null;
   processing_status: string;
   sponsor: number | null;
   source_api_id: string | null;
@@ -317,6 +347,17 @@ export interface BillDetail extends BillListItem {
   latest_contract: BillContractItem | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BillDetailSummary
+  extends Omit<BillDetail, "summary" | "latest_contract"> {
+  summary_preview: string | null;
+  summary_has_more: boolean;
+  summary_source: string | null;
+  summary_action_date: string | null;
+  summary_version_code: string | null;
+  summary_last_updated_at: string | null;
+  latest_contract: BillContractSummary | null;
 }
 
 export interface BillsPage {
@@ -384,17 +425,246 @@ export async function getBillFilterOptions(): Promise<BillFilterOptions> {
   return publicGet<BillFilterOptions>("/api/bills/filter-options/");
 }
 
-export async function getBill(id: number): Promise<BillDetail> {
-  return publicGet<BillDetail>(`/api/bills/${id}/`);
+export function getBill(
+  id: number,
+  params: { contractView: "summary"; signal?: AbortSignal },
+): Promise<BillDetailSummary>;
+export function getBill(
+  id: number,
+  params?: { contractView?: undefined; signal?: AbortSignal },
+): Promise<BillDetail>;
+export async function getBill(
+  id: number,
+  params?: { contractView?: "summary"; signal?: AbortSignal },
+): Promise<BillDetail | BillDetailSummary> {
+  const search = new URLSearchParams();
+  if (params?.contractView) search.set("contract_view", params.contractView);
+  const query = search.toString();
+  const path = `/api/bills/${id}/${query ? `?${query}` : ""}`;
+  if (params?.contractView === "summary") {
+    return guardedPublicGet(
+      path,
+      isBillDetailSummary,
+      "Invalid compact bill response",
+      params.signal,
+    );
+  }
+  return publicGet<BillDetail>(path, { signal: params?.signal });
 }
 
+export type BillContractSummariesPage = PageResponse<BillContractSummary>;
+
+export function getContract(contractId: number): Promise<BillContractItem> {
+  return publicGet<BillContractItem>(`/api/contracts/${contractId}/`);
+}
+
+export function getContracts(
+  billId: number,
+  params: { view: "summary"; page?: number; signal?: AbortSignal },
+): Promise<BillContractSummariesPage>;
+export function getContracts(
+  billId: number,
+  params?: { view?: "full"; page?: number; signal?: AbortSignal },
+): Promise<BillContractsPage>;
 export async function getContracts(
   billId: number,
-  params?: { page?: number },
-): Promise<BillContractsPage> {
+  params?: { view?: "summary" | "full"; page?: number; signal?: AbortSignal },
+): Promise<BillContractsPage | BillContractSummariesPage> {
   const search = new URLSearchParams({ bill: String(billId) });
+  if (params?.view) search.set("view", params.view);
   if (params?.page != null) search.set("page", String(params.page));
-  return publicGet<BillContractsPage>(`/api/contracts/?${search}`);
+  const path = `/api/contracts/?${search}`;
+  if (params?.view === "summary") {
+    return guardedPublicGet(
+      path,
+      isBillContractSummariesPage,
+      "Invalid contract summary response",
+      params.signal,
+    );
+  }
+  return publicGet<BillContractsPage>(path, { signal: params?.signal });
+}
+
+interface ReaderRequestOptions {
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}
+
+function setReaderPagination(search: URLSearchParams, params?: ReaderRequestOptions): void {
+  if (params?.page != null) search.set("page", String(params.page));
+  if (params?.pageSize != null) search.set("page_size", String(params.pageSize));
+}
+
+function readerPath(contractId: number, action: string, search: URLSearchParams): string {
+  const query = search.toString();
+  return `/api/contracts/${contractId}/${action}/${query ? `?${query}` : ""}`;
+}
+
+async function guardedPublicGet<T>(
+  path: string,
+  guard: (value: unknown) => value is T,
+  invalidMessage: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const value: unknown = await publicGet(path, { signal });
+  if (!guard(value)) throw new ApiError(invalidMessage, 502);
+  return value;
+}
+
+export function getReaderItems(
+  contractId: number,
+  params?: ReaderRequestOptions,
+): Promise<LegalNlpReaderItemsPage> {
+  const search = new URLSearchParams();
+  setReaderPagination(search, params);
+  return guardedPublicGet(
+    readerPath(contractId, "reader-items", search),
+    isLegalNlpReaderItemsPage,
+    "Invalid reader items response",
+    params?.signal,
+  );
+}
+
+export interface FinancialItemsParams extends ReaderRequestOptions {
+  financialAction?: FinancialAction;
+  fiscalYear?: number;
+  lineItemId?: string;
+  sectionId?: string;
+}
+
+export function getFinancialItems(
+  contractId: number,
+  params?: FinancialItemsParams,
+): Promise<LegalNlpFinancialItemsPage> {
+  const search = new URLSearchParams();
+  setReaderPagination(search, params);
+  if (params?.financialAction) search.set("financial_action", params.financialAction);
+  if (params?.fiscalYear != null) search.set("fiscal_year", String(params.fiscalYear));
+  if (params?.lineItemId) search.set("line_item_id", params.lineItemId);
+  if (params?.sectionId) search.set("section_id", params.sectionId);
+  return guardedPublicGet(
+    readerPath(contractId, "financial-items", search),
+    isLegalNlpFinancialItemsPage,
+    "Invalid financial items response",
+    params?.signal,
+  );
+}
+
+export interface TimelineItemsParams extends ReaderRequestOptions {
+  lineItemId?: string;
+  sectionId?: string;
+}
+
+export function getTimelineItems(
+  contractId: number,
+  params?: TimelineItemsParams,
+): Promise<LegalNlpTimelineItemsPage> {
+  const search = new URLSearchParams();
+  setReaderPagination(search, params);
+  if (params?.lineItemId) search.set("line_item_id", params.lineItemId);
+  if (params?.sectionId) search.set("section_id", params.sectionId);
+  return guardedPublicGet(
+    readerPath(contractId, "timeline-items", search),
+    isLegalNlpTimelineItemsPage,
+    "Invalid timeline items response",
+    params?.signal,
+  );
+}
+
+export interface DefinitionItemsParams extends ReaderRequestOptions {
+  lineItemId?: string;
+  unlinked?: boolean;
+}
+
+export function getDefinitionItems(
+  contractId: number,
+  params?: DefinitionItemsParams,
+): Promise<LegalNlpDefinitionItemsPage> {
+  const search = new URLSearchParams();
+  setReaderPagination(search, params);
+  if (params?.lineItemId) search.set("line_item_id", params.lineItemId);
+  if (params?.unlinked != null) search.set("unlinked", String(params.unlinked));
+  return guardedPublicGet(
+    readerPath(contractId, "definition-items", search),
+    isLegalNlpDefinitionItemsPage,
+    "Invalid definition items response",
+    params?.signal,
+  );
+}
+
+export interface ContractEvidenceParams extends ReaderRequestOptions {
+  lineItemId?: string;
+  financialItemId?: string;
+  definitionItemId?: string;
+}
+
+export function getContractEvidence(
+  contractId: number,
+  params: ContractEvidenceParams,
+): Promise<LegalNlpEvidencePage> {
+  const search = new URLSearchParams();
+  setReaderPagination(search, params);
+  if (params.lineItemId) search.set("line_item_id", params.lineItemId);
+  if (params.financialItemId) search.set("financial_item_id", params.financialItemId);
+  if (params.definitionItemId) search.set("definition_item_id", params.definitionItemId);
+  return guardedPublicGet(
+    readerPath(contractId, "evidence", search),
+    isLegalNlpEvidencePage,
+    "Invalid contract evidence response",
+    params.signal,
+  );
+}
+
+export function getOfficialSummary(
+  billId: number,
+  options?: { signal?: AbortSignal },
+): Promise<OfficialSummaryResponse> {
+  return guardedPublicGet(
+    `/api/bills/${billId}/official-summary/`,
+    isOfficialSummaryResponse,
+    "Invalid official summary response",
+    options?.signal,
+  );
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNullableStringValue(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isBillDetailSummary(value: unknown): value is BillDetailSummary {
+  if (!isRecordValue(value)) return false;
+  return (
+    Number.isInteger(value.id) &&
+    typeof value.jurisdiction === "string" &&
+    Number.isInteger(value.session) &&
+    typeof value.bill_number === "string" &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    isNullableStringValue(value.sponsor_name) &&
+    isNullableStringValue(value.introduced_at) &&
+    isNullableStringValue(value.last_action_at) &&
+    Array.isArray(value.topics) &&
+    isNullableStringValue(value.summary_preview) &&
+    typeof value.summary_has_more === "boolean" &&
+    isNullableStringValue(value.summary_source) &&
+    isNullableStringValue(value.summary_action_date) &&
+    isNullableStringValue(value.summary_version_code) &&
+    isNullableStringValue(value.summary_last_updated_at) &&
+    typeof value.processing_status === "string" &&
+    (value.sponsor === null || Number.isInteger(value.sponsor)) &&
+    isNullableStringValue(value.source_api_id) &&
+    Array.isArray(value.documents) &&
+    isNullableStringValue(value.congress_gov_url) &&
+    (value.latest_contract === null || isBillContractSummary(value.latest_contract)) &&
+    typeof value.created_at === "string" &&
+    typeof value.updated_at === "string" &&
+    !("summary" in value)
+  );
 }
 
 export interface VoteListItem {

@@ -38,6 +38,103 @@ class BillListQuerySerializer(PaginatedQuerySerializer):
 
 class BillContractListQuerySerializer(PaginatedQuerySerializer):
     bill = serializers.IntegerField(required=False, min_value=1)
+    view = serializers.ChoiceField(choices=("summary", "full"), required=False)
+
+
+class BillDetailQuerySerializer(StrictQuerySerializer):
+    contract_view = serializers.ChoiceField(choices=("summary", "full"), required=False)
+
+
+class ReaderItemsQuerySerializer(PaginatedQuerySerializer):
+    pass
+
+
+class FinancialItemsQuerySerializer(PaginatedQuerySerializer):
+    financial_action = serializers.ChoiceField(
+        choices=(
+            "appropriation",
+            "authorization",
+            "allocation",
+            "transfer",
+            "rescission",
+            "reduction",
+            "cancellation",
+            "set_aside",
+            "limitation",
+            "other_explicit",
+        ),
+        required=False,
+    )
+    fiscal_year = serializers.IntegerField(
+        required=False, min_value=1000, max_value=9999
+    )
+    line_item_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+    section_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+
+    def validate(self, attrs):
+        if "line_item_id" in attrs and "section_id" in attrs:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Choose one association scope."]}
+            )
+        return attrs
+
+
+class TimelineItemsQuerySerializer(PaginatedQuerySerializer):
+    line_item_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+    section_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+
+    def validate(self, attrs):
+        if "line_item_id" in attrs and "section_id" in attrs:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Choose one association scope."]}
+            )
+        return attrs
+
+
+class DefinitionItemsQuerySerializer(PaginatedQuerySerializer):
+    line_item_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+    unlinked = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        if "line_item_id" in attrs and "unlinked" in self.initial_data:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Choose one association scope."]}
+            )
+        return attrs
+
+
+class EvidenceQuerySerializer(PaginatedQuerySerializer):
+    line_item_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+    financial_item_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+    definition_item_id = serializers.CharField(
+        required=False, allow_blank=False, max_length=255
+    )
+
+    def validate(self, attrs):
+        item_fields = (
+            "line_item_id",
+            "financial_item_id",
+            "definition_item_id",
+        )
+        if sum(field in attrs for field in item_fields) != 1:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Provide exactly one supported item ID."]}
+            )
+        return attrs
 
 
 class BillRelatedQuerySerializer(StrictQuerySerializer):
@@ -110,6 +207,196 @@ class EvidenceSpanSerializer(serializers.ModelSerializer):
         fields = ["field_path", "start_char", "end_char", "quoted_text", "page_number"]
 
 
+class SectionPathItemPublicSerializer(serializers.Serializer):
+    level = serializers.ChoiceField(
+        choices=(
+            "division",
+            "title",
+            "subtitle",
+            "chapter",
+            "subchapter",
+            "part",
+            "subpart",
+            "account",
+            "subaccount",
+            "subsubaccount",
+            "subsubsubaccount",
+            "article",
+            "subdivision",
+            "section",
+            "appropriations_paragraph",
+            "subsection",
+            "paragraph",
+            "subparagraph",
+            "clause",
+            "subclause",
+            "item",
+            "subitem",
+        )
+    )
+    label = serializers.CharField(allow_blank=False, max_length=200)
+    heading = serializers.CharField(allow_null=True, allow_blank=False, max_length=4000)
+
+
+class FinancialPreviewPublicSerializer(serializers.Serializer):
+    id = serializers.CharField(allow_blank=False, max_length=255)
+    display_text = serializers.CharField(allow_blank=False, max_length=4000)
+    financial_action = serializers.ChoiceField(
+        choices=(
+            "appropriation",
+            "authorization",
+            "allocation",
+            "transfer",
+            "rescission",
+            "reduction",
+            "cancellation",
+            "set_aside",
+            "limitation",
+            "other_explicit",
+        )
+    )
+    direction = serializers.ChoiceField(
+        choices=("increase", "decrease", "neutral_transfer", "limit")
+    )
+    amount = serializers.CharField(allow_null=True, allow_blank=False, max_length=100)
+    amount_type = serializers.ChoiceField(
+        choices=("specified", "such_sums", "percentage", "ceiling")
+    )
+    currency = serializers.ChoiceField(choices=("USD",), allow_null=True)
+    fiscal_years = serializers.ListField(
+        child=serializers.IntegerField(min_value=1000, max_value=9999)
+    )
+
+
+class TimelinePreviewPublicSerializer(serializers.Serializer):
+    id = serializers.CharField(allow_blank=False, max_length=255)
+    display_text = serializers.CharField(allow_blank=False, max_length=4000)
+    timeline_type = serializers.ChoiceField(
+        choices=("absolute", "relative", "effective")
+    )
+    date = serializers.DateField(allow_null=True)
+    relative_value = serializers.IntegerField(allow_null=True, min_value=0)
+    relative_unit = serializers.ChoiceField(
+        choices=("days", "months", "years"), allow_null=True
+    )
+    trigger = serializers.CharField(allow_null=True, allow_blank=False, max_length=4000)
+
+
+class ReaderLineItemPublicSerializer(serializers.Serializer):
+    id = serializers.CharField(allow_blank=False, max_length=255)
+    source_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_path = SectionPathItemPublicSerializer(many=True, allow_empty=False)
+    kind = serializers.ChoiceField(
+        choices=(
+            "requirement",
+            "prohibition",
+            "permission",
+            "amendment",
+            "applicability",
+            "financial",
+            "timeline",
+        )
+    )
+    display_text = serializers.CharField(allow_blank=False, max_length=4000)
+    actor = serializers.CharField(allow_null=True, allow_blank=False, max_length=4000)
+    action = serializers.CharField(allow_null=True, allow_blank=False, max_length=4000)
+    effect = serializers.CharField(allow_null=True, allow_blank=False, max_length=4000)
+    exact_financial_count = serializers.IntegerField(min_value=0)
+    exact_financial_preview = FinancialPreviewPublicSerializer(many=True)
+    timeline_count = serializers.IntegerField(min_value=0)
+    timeline_preview = TimelinePreviewPublicSerializer(many=True)
+    definition_count = serializers.IntegerField(min_value=0)
+
+    def validate(self, attrs):
+        if len(attrs["exact_financial_preview"]) > 3:
+            raise serializers.ValidationError(
+                {"exact_financial_preview": ["At most three previews are allowed."]}
+            )
+        if len(attrs["timeline_preview"]) > 3:
+            raise serializers.ValidationError(
+                {"timeline_preview": ["At most three previews are allowed."]}
+            )
+        return attrs
+
+
+class FinancialItemPublicSerializer(FinancialPreviewPublicSerializer):
+    source_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_label = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=200
+    )
+    section_path = SectionPathItemPublicSerializer(many=True, allow_empty=False)
+    purpose = serializers.CharField(allow_null=True, allow_blank=False, max_length=4000)
+    source_account = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=4000
+    )
+    destination_account = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=4000
+    )
+
+
+class TimelineItemPublicSerializer(TimelinePreviewPublicSerializer):
+    source_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_label = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=200
+    )
+    section_path = SectionPathItemPublicSerializer(many=True, allow_empty=False)
+
+
+class DefinitionItemPublicSerializer(serializers.Serializer):
+    id = serializers.CharField(allow_blank=False, max_length=255)
+    source_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_id = serializers.CharField(allow_blank=False, max_length=255)
+    section_label = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=200
+    )
+    section_path = SectionPathItemPublicSerializer(many=True, allow_empty=False)
+    display_text = serializers.CharField(allow_blank=False, max_length=4000)
+    term = serializers.CharField(allow_blank=False, max_length=1000)
+    definition = serializers.CharField(allow_blank=False, max_length=4000)
+    definition_type = serializers.ChoiceField(choices=("means", "includes", "excludes"))
+
+
+class EvidenceSpanPublicSerializer(serializers.Serializer):
+    start_char = serializers.IntegerField(min_value=0)
+    end_char = serializers.IntegerField(min_value=1)
+    quoted_text = serializers.CharField(allow_blank=False)
+    page_number = serializers.IntegerField(allow_null=True, min_value=1)
+
+    def validate(self, attrs):
+        if attrs["end_char"] <= attrs["start_char"]:
+            raise serializers.ValidationError(
+                {"end_char": ["Must be greater than start_char."]}
+            )
+        return attrs
+
+
+class ReaderOrientationPublicSerializer(serializers.Serializer):
+    purpose_clause = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=4000
+    )
+    purpose_line_item_id = serializers.CharField(
+        allow_null=True, allow_blank=False, max_length=255
+    )
+
+    def validate(self, attrs):
+        if (attrs["purpose_clause"] is None) != (attrs["purpose_line_item_id"] is None):
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Purpose fields must both be present or null."]}
+            )
+        return attrs
+
+
+class ReaderStatsPublicSerializer(serializers.Serializer):
+    line_item_count = serializers.IntegerField(min_value=0)
+    financial_item_count = serializers.IntegerField(min_value=0)
+    timeline_item_count = serializers.IntegerField(min_value=0)
+    definition_item_count = serializers.IntegerField(min_value=0)
+    section_group_count = serializers.IntegerField(min_value=0)
+
+
 class BillContractSerializer(serializers.ModelSerializer):
     """Structured interpretation for a bill version (Phase 5)."""
 
@@ -130,6 +417,56 @@ class BillContractSerializer(serializers.ModelSerializer):
             "document_version_label",
             "evidence_spans",
         ]
+
+
+class BillContractSummarySerializer(serializers.ModelSerializer):
+    document_version_label = serializers.CharField(
+        source="document.version_label", read_only=True
+    )
+    coverage_note = serializers.SerializerMethodField()
+    orientation = serializers.SerializerMethodField()
+    reader_stats = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BillContract
+        fields = [
+            "id",
+            "schema_version",
+            "contract_hash",
+            "computed_at",
+            "document",
+            "document_version_label",
+            "coverage_note",
+            "orientation",
+            "reader_stats",
+        ]
+
+    @staticmethod
+    def _reader_value(obj, field, serializer_class):
+        if (
+            obj.schema_version != "2.1-legal-nlp"
+            or obj.contract_json.get("schema_version") != "2.1-legal-nlp"
+        ):
+            return None
+        value = obj.contract_json.get(field)
+        serializer = serializer_class(data=value)
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
+
+    def get_coverage_note(self, obj):
+        if (
+            obj.schema_version != "2.1-legal-nlp"
+            or obj.contract_json.get("schema_version") != "2.1-legal-nlp"
+        ):
+            return None
+        field = serializers.CharField(allow_blank=False, max_length=4000)
+        return field.run_validation(obj.contract_json.get("coverage_note"))
+
+    def get_orientation(self, obj):
+        return self._reader_value(obj, "orientation", ReaderOrientationPublicSerializer)
+
+    def get_reader_stats(self, obj):
+        return self._reader_value(obj, "reader_stats", ReaderStatsPublicSerializer)
 
 
 class BillListSerializer(serializers.ModelSerializer):
@@ -187,6 +524,10 @@ class BillDetailSerializer(serializers.ModelSerializer):
             "bill_number",
             "title",
             "summary",
+            "summary_source",
+            "summary_action_date",
+            "summary_version_code",
+            "summary_last_updated_at",
             "status",
             "processing_status",
             "sponsor",
@@ -221,3 +562,25 @@ class BillDetailSerializer(serializers.ModelSerializer):
         if parts[0] == "S":
             return f"https://www.congress.gov/bill/{congress_ordinal}/senate-bill/{parts[1]}"
         return None
+
+
+class BillDetailSummarySerializer(BillDetailSerializer):
+    latest_contract = BillContractSummarySerializer(read_only=True)
+    summary_preview = serializers.SerializerMethodField()
+    summary_has_more = serializers.SerializerMethodField()
+
+    class Meta(BillDetailSerializer.Meta):
+        fields = [
+            field for field in BillDetailSerializer.Meta.fields if field != "summary"
+        ]
+        fields[5:5] = ["summary_preview", "summary_has_more"]
+
+    def get_summary_preview(self, obj):
+        from .reader_api import official_summary_projection
+
+        return official_summary_projection(obj, full=False)["summary_preview"]
+
+    def get_summary_has_more(self, obj):
+        from .reader_api import official_summary_projection
+
+        return official_summary_projection(obj, full=False)["summary_has_more"]

@@ -228,6 +228,58 @@ The Secretary shall—
     assert_exact_evidence(source, claims)
 
 
+def test_modality_claims_use_clause_context_and_structural_identity():
+    source = """SEC. 2. DUTIES
+The Secretary shall—
+(A) publish the report; and
+(B) send the report to Congress.
+If an application is complete, the Secretary shall approve it and may notify Congress.
+[[QUOTED_BLOCK_START]]
+The Administrator shall not disclose the quoted text.
+[[QUOTED_BLOCK_END]]
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert [claim.fields["action"] for claim in claims] == [
+        "publish the report",
+        "send the report to Congress",
+        "approve it",
+        "notify Congress",
+    ]
+    assert {claim.fields["actor"] for claim in claims} == {
+        "The Secretary",
+        "the Secretary",
+    }
+    assert claims[-2].fields["conditions"] == ["If an application is complete"]
+    assert claims[-1].fields["conditions"] == ["If an application is complete"]
+    for claim in claims:
+        assert claim.source_id.startswith("section-")
+        assert claim.section_id.startswith("section-")
+        assert claim.section_path
+    assert_exact_evidence(source, claims)
+
+
+def test_modality_claims_keep_an_explicit_second_actor_in_a_modal_sentence():
+    source = """SEC. 2. DUTIES
+The Secretary shall publish a report and the Administrator must issue guidance and may issue rules.
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert [(claim.fields["actor"], claim.fields["action"]) for claim in claims] == [
+        ("The Secretary", "publish a report"),
+        ("the Administrator", "issue guidance"),
+        ("the Administrator", "issue rules"),
+    ]
+    assert [claim.evidence[0].text for claim in claims] == [
+        "The Secretary shall publish a report",
+        "the Administrator must issue guidance",
+        "may issue rules.",
+    ]
+    assert_exact_evidence(source, claims)
+
+
 def test_repeated_subdivision_labels_do_not_cross_section_ancestor_context():
     source = """SEC. 2. DUTIES
 (a) IN GENERAL.—
