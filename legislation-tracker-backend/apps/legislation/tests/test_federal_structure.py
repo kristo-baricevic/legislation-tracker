@@ -130,6 +130,22 @@ def test_structure_preserves_division_account_and_nested_provisions():
     ]
 
 
+def test_structure_normalizes_constitution_article_as_an_article_parent():
+    source = """CONSTITUTION-ARTICLE I—LEGISLATURE
+SEC. 1. POWERS
+Congress shall make laws.
+"""
+
+    sections = parse_federal_structure(source)
+
+    assert [(section.level, section.label) for section in sections] == [
+        ("article", "Article I"),
+        ("section", "Sec. 1"),
+    ]
+    assert [item.level for item in sections[-1].path] == ["article", "section"]
+    assert sections[-1].parent_label == "Article I"
+
+
 def test_container_heading_does_not_jump_across_a_blank_line():
     source = """TITLE II
 

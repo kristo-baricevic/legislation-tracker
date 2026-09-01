@@ -66,6 +66,23 @@ def _actor_and_conditions(value: str) -> tuple[str, tuple[str, ...]]:
     return _strip(leading.group("actor")), (_strip(leading.group("condition")),)
 
 
+def _explicit_actor_boundary(
+    sentence: SourceSpan, previous: re.Match[str], current: re.Match[str]
+) -> tuple[int, int] | None:
+    between = sentence.text[previous.end() : current.start()]
+    match = re.search(
+        r"(?P<connector>\s+(?:and|or)\s+)(?P<actor>\S(?:.*\S)?)\s*$",
+        between,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return (
+        previous.end() + match.start("connector"),
+        previous.end() + match.start("actor"),
+    )
+
+
 def _split_modal_clauses(
     sentence: SourceSpan,
 ) -> tuple[tuple[SourceSpan, ModalContext | None], ...]:
@@ -74,13 +91,25 @@ def _split_modal_clauses(
         return ((sentence, None),)
 
     actor, conditions = _actor_and_conditions(sentence.text[: matches[0].start()])
+    boundaries = [
+        _explicit_actor_boundary(sentence, matches[index - 1], match)
+        if index > 0
+        else None
+        for index, match in enumerate(matches)
+    ]
     clauses = []
     for index, match in enumerate(matches):
-        start = 0 if index == 0 else match.start()
+        prior_boundary = boundaries[index]
+        start = (
+            0
+            if index == 0
+            else (prior_boundary[1] if prior_boundary else match.start())
+        )
+        next_boundary = boundaries[index + 1] if index + 1 < len(matches) else None
         end = (
             len(sentence.text)
             if index + 1 == len(matches)
-            else matches[index + 1].start()
+            else (next_boundary[0] if next_boundary else matches[index + 1].start())
         )
         if index + 1 < len(matches):
             connector = re.search(
@@ -97,7 +126,7 @@ def _split_modal_clauses(
         )
         context = (
             None
-            if index == 0 or not actor
+            if index == 0 or prior_boundary is not None or not actor
             else ModalContext(
                 modal=matches[index - 1].group("modal").casefold(),
                 actor=actor,

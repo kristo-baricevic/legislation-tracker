@@ -260,6 +260,20 @@ The Administrator shall not disclose the quoted text.
     assert_exact_evidence(source, claims)
 
 
+def test_modality_claims_keep_an_explicit_second_actor_in_a_modal_sentence():
+    source = """SEC. 2. DUTIES
+The Secretary shall publish a report and the Administrator must issue guidance.
+"""
+
+    claims = extract_modality_claims(source, parse_federal_structure(source))
+
+    assert [(claim.fields["actor"], claim.fields["action"]) for claim in claims] == [
+        ("The Secretary", "publish a report"),
+        ("the Administrator", "issue guidance"),
+    ]
+    assert_exact_evidence(source, claims)
+
+
 def test_repeated_subdivision_labels_do_not_cross_section_ancestor_context():
     source = """SEC. 2. DUTIES
 (a) IN GENERAL.—

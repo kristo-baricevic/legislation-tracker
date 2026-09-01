@@ -15,7 +15,7 @@ SECTION_RE = re.compile(
 CONTAINER_RE = re.compile(
     r"(?im)^[ \t]*(?P<kind>DIVISION|TITLE|SUBTITLE|CHAPTER|SUBCHAPTER|PART|"
     r"SUBPART|ACCOUNT|SUBACCOUNT|SUBSUBACCOUNT|SUBSUBSUBACCOUNT|ARTICLE|"
-    r"SUBDIVISION)[ \t]+"
+    r"CONSTITUTION-ARTICLE|SUBDIVISION)[ \t]+"
     r"(?P<label>[IVXLCDM0-9A-Z-]+)"
     r"(?:(?:[.—-][ \t]*|[ \t]+)(?P<heading>[^\n]*))?[ \t]*$"
 )
@@ -115,6 +115,7 @@ def _container_markers(source_text: str) -> list[_Marker]:
     markers = []
     for match in CONTAINER_RE.finditer(source_text):
         kind = match.group("kind").lower()
+        normalized_kind = "article" if kind == "constitution-article" else kind
         line_end = _line_end(source_text, match.start())
         heading = (match.group("heading") or "").strip() or None
         if heading is None:
@@ -122,9 +123,9 @@ def _container_markers(source_text: str) -> list[_Marker]:
         markers.append(
             _Marker(
                 start=match.start(),
-                rank=CONTAINER_RANKS[kind],
-                level=kind,
-                label=f"{kind.title()} {match.group('label').upper()}",
+                rank=CONTAINER_RANKS[normalized_kind],
+                level=normalized_kind,
+                label=f"{normalized_kind.title()} {match.group('label').upper()}",
                 heading=heading,
             )
         )
