@@ -16,13 +16,20 @@ from apps.accounts.throttles import LoginThrottle, RefreshThrottle
 from apps.accounts.views import (
     CSRFTokenView,
     RegisterView,
+    SavedBillSearchViewSet,
     SessionLoginView,
     SessionLogoutView,
     SessionRefreshView,
     SessionStatusView,
     UserPreferenceViewSet,
 )
-from apps.congress.views import RepresentativeViewSet, VoteViewSet
+from apps.changelog.views import BillChangeAcknowledgeView, BillChangeTimelineView
+from apps.congress.views import CommitteeViewSet, RepresentativeViewSet, VoteViewSet
+from apps.legislation.comparison_views import (
+    BillContractComparisonView,
+    BillDocumentComparisonView,
+    BillDocumentSectionComparisonView,
+)
 from apps.legislation.enhancements.views import (
     BillEnhancementDetailView,
     BillEnhancementEstimateView,
@@ -45,7 +52,9 @@ router.register(r"contracts", BillContractViewSet, basename="contract")
 router.register(r"topics", TopicViewSet, basename="topic")
 router.register(r"representatives", RepresentativeViewSet, basename="representative")
 router.register(r"votes", VoteViewSet, basename="vote")
+router.register(r"committees", CommitteeViewSet, basename="committee")
 router.register(r"preferences", UserPreferenceViewSet, basename="preference")
+router.register(r"saved-searches", SavedBillSearchViewSet, basename="saved-search")
 
 
 class ExtensionTokenObtainPairView(TokenObtainPairView):
@@ -95,6 +104,31 @@ urlpatterns = [
         name="llm-settings-validate",
     ),
     path("api/ingestion/", include("apps.ingestion.urls")),
+    path(
+        "api/bills/<int:bill_id>/changes/",
+        BillChangeTimelineView.as_view(),
+        name="bill-change-timeline",
+    ),
+    path(
+        "api/bills/<int:bill_id>/changes/acknowledge/",
+        BillChangeAcknowledgeView.as_view(),
+        name="bill-change-acknowledge",
+    ),
+    path(
+        "api/bills/<int:bill_id>/comparisons/contracts/",
+        BillContractComparisonView.as_view(),
+        name="bill-contract-comparison",
+    ),
+    path(
+        "api/bills/<int:bill_id>/comparisons/documents/",
+        BillDocumentComparisonView.as_view(),
+        name="bill-document-comparison",
+    ),
+    path(
+        "api/bills/<int:bill_id>/comparisons/documents/section/",
+        BillDocumentSectionComparisonView.as_view(),
+        name="bill-document-section-comparison",
+    ),
     path(
         "api/bills/<int:bill_id>/enhancements/estimate/",
         BillEnhancementEstimateView.as_view(),

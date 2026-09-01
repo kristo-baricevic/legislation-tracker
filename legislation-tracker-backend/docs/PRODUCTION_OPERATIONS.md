@@ -235,6 +235,32 @@ Contract generation enqueues `update_topics`, which deterministically infers pol
 
 Important limitation: `poll_tracked_bills` refreshes bills that already exist in the shared corpus. Discovery of brand-new bills still depends on `poll_congress`, followed by topic assignment/sponsor data.
 
+## Search projection rollout
+
+After deploying the search migration, preview and then enqueue one durable
+projection job per bill for each Congress being exposed in search:
+
+```bash
+python manage.py backfill_bill_search --congress 120
+python manage.py backfill_bill_search --congress 120 --execute
+```
+
+Keep the normal worker and `dispatch-ingestion-work` schedule running until
+`search_index` work has no pending, processing, blocked, or dead rows. Replay a
+dead item only after correcting its recorded failure. During the backfill,
+PostgreSQL search uses full-text vectors for projected bills and a bounded
+metadata fallback only for bills that have no projection yet, so rollout does
+not make existing bills disappear. Search headlines are loaded only for the
+requested result page.
+
+Representative roster detail synchronization persists each member's official
+service intervals. Deploy migration `congress.0011_representative_terms` before
+the next `sync-representatives` run; the daily task then refreshes the complete
+current roster and replaces the associated term rows atomically. Until a
+member's intervals have been populated, current members use their current
+chamber as a conservative current-Congress fallback and historical insight
+requests report incomplete coverage.
+
 ## ChangeLog partition migration
 
 `changelog.0003_partition_by_created_at` converts an existing PostgreSQL

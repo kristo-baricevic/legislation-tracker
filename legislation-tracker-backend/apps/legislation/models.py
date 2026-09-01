@@ -1,3 +1,5 @@
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 
 
@@ -60,6 +62,10 @@ class Bill(models.Model):
     metadata_hash = models.CharField(
         max_length=64, null=True, blank=True, db_index=True
     )
+    last_activity_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_activity_sequence = models.BigIntegerField(
+        null=True, blank=True, db_index=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,6 +97,9 @@ class BillDocument(models.Model):
     version_label = models.CharField(
         max_length=50
     )  # introduced, amended, engrossed, enrolled
+    # Position in the official text-version list. This is source chronology,
+    # intentionally distinct from the asynchronous download completion time.
+    source_order = models.PositiveIntegerField(null=True, blank=True)
     is_active_version = models.BooleanField(default=False, db_index=True)
     object_storage_key = models.CharField(max_length=512, null=True, blank=True)
     content_type = models.CharField(max_length=128, null=True, blank=True)
@@ -164,6 +173,57 @@ class BillContract(models.Model):
 
     def __str__(self):
         return f"Contract for Bill {self.bill_id} doc {self.document_id}"
+
+
+class BillSearchChunk(models.Model):
+    """Bounded, rebuildable public-search projection for one bill source."""
+
+    class Kind(models.TextChoices):
+        METADATA = "metadata", "Metadata"
+        CONTRACT = "contract", "Contract"
+        DOCUMENT = "document", "Document"
+
+    bill = models.ForeignKey(
+        Bill,
+        on_delete=models.CASCADE,
+        related_name="search_chunks",
+    )
+    document = models.ForeignKey(
+        BillDocument,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="search_chunks",
+    )
+    contract = models.ForeignKey(
+        BillContract,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="search_chunks",
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    source_key = models.CharField(max_length=255)
+    ordinal = models.PositiveIntegerField(default=0)
+    text = models.TextField()
+    search_vector = SearchVectorField(null=True, editable=False)
+    source_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "legislation_billsearchchunk"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bill", "kind", "source_key", "ordinal"],
+                name="legislation_search_chunk_source_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["bill", "kind"], name="leg_search_bill_kind_idx"),
+            models.Index(fields=["bill", "source_hash"], name="leg_search_bill_hash_idx"),
+            GinIndex(fields=["search_vector"], name="legislation_search_vector_gin"),
+        ]
 
 
 class EvidenceSpan(models.Model):

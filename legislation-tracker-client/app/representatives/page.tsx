@@ -5,6 +5,7 @@ import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import {
   getMyTracking,
+  getBillFilterOptions,
   getRepresentatives,
   getSession,
   trackLegislator,
@@ -49,6 +50,13 @@ function RepresentativesTable() {
     null,
   );
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [currentCongress, setCurrentCongress] = useState<number | null>(null);
+
+  useEffect(() => {
+    void getBillFilterOptions()
+      .then((options) => setCurrentCongress(options.current_congress))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +156,12 @@ function RepresentativesTable() {
           >
             ← Dashboard
           </Link>
+          <Link
+            href="/representatives/compare"
+            className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+          >
+            Compare two representatives
+          </Link>
         </div>
 
         <div className="mb-4 rounded-lg border border-slate-400/70 bg-white/70 p-4 shadow-sm dark:border-green-900/60 dark:bg-green-950/10 dark:shadow-none">
@@ -224,7 +238,14 @@ function RepresentativesTable() {
                       key={rep.id}
                       className="border-b border-slate-300 hover:bg-white/60 dark:border-green-900/50 dark:hover:bg-green-950/10"
                     >
-                      <td className="truncate p-3 font-medium">{rep.name}</td>
+                      <td className="truncate p-3 font-medium">
+                        <Link
+                          href={currentCongress === null ? `/representatives/${rep.id}` : `/representatives/${rep.id}?congress=${currentCongress}`}
+                          className="text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                        >
+                          {rep.name}
+                        </Link>
+                      </td>
                       <td className="truncate p-3">{rep.state}</td>
                       <td className="truncate p-3 capitalize">{rep.chamber}</td>
                       <td className="truncate p-3">{rep.party}</td>

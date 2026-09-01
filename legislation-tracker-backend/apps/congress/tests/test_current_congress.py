@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 import pytest
 from django.test import override_settings
 
-from apps.congress.current import current_congress
+from apps.congress.current import current_congress, current_congress_session
 
 
 @pytest.mark.parametrize(
@@ -17,6 +17,20 @@ from apps.congress.current import current_congress
 )
 def test_current_congress_changes_on_january_third(on_date, expected):
     assert current_congress(on_date) == expected
+
+
+@pytest.mark.parametrize(
+    ("on_date", "expected"),
+    [
+        (date(2027, 1, 2), 2),
+        (date(2027, 1, 3), 1),
+        (date(2028, 12, 31), 2),
+    ],
+)
+def test_current_congress_session_preserves_the_january_third_boundary(
+    on_date, expected
+):
+    assert current_congress_session(on_date) == expected
 
 
 def test_current_congress_uses_the_washington_civil_date_for_instants():

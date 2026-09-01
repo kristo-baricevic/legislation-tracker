@@ -29,6 +29,7 @@ def enqueue_ingestion_work(
     payload_json: dict,
     jurisdiction: str = "federal",
     congress: int | None = None,
+    dependency_keys: list[str] | None = None,
 ) -> IngestionWorkItem:
     """Persist work before triggering the best-effort Celery dispatcher.
 
@@ -47,6 +48,7 @@ def enqueue_ingestion_work(
                 "jurisdiction": jurisdiction,
                 "congress": congress,
                 "payload_json": payload_json,
+                "dependency_keys": sorted(set(dependency_keys or [])),
                 "available_at": timezone.now(),
             },
         )

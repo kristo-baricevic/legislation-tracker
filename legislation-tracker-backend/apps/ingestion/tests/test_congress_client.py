@@ -104,6 +104,18 @@ def test_bill_actions_pages_through_recorded_vote_references(monkeypatch):
     ]
 
 
+def test_bill_collection_rejects_malformed_relationship_entries(monkeypatch):
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *args, **kwargs: {"cosponsors": [{"bioguideId": "A000001"}, "bad"]},
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+
+    with pytest.raises(congress_client.CongressAPIError, match="invalid cosponsors entry"):
+        congress_client.bill_cosponsors(119, "hr", "1")
+
+
 def test_house_vote_detail_uses_session_scoped_detail_and_members_endpoints(
     monkeypatch,
 ):
@@ -326,6 +338,41 @@ def test_senate_vote_detail_resolves_former_senators_from_congress_history(
     assert vote["members"][0]["bioguideId"] == "S000999"
 
 
+def test_senate_xml_reader_rejects_external_entities_and_oversized_payloads(
+    monkeypatch, settings
+):
+    class Response:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def __init__(self, content):
+            self.content = content
+
+        def iter_content(self, chunk_size):
+            yield self.content
+
+    monkeypatch.setattr(
+        congress_client.requests,
+        "get",
+        lambda *_args, **_kwargs: Response(
+            b"<!DOCTYPE value [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><value>&xxe;</value>"
+        ),
+    )
+
+    with pytest.raises(congress_client.CongressAPIError, match="invalid XML"):
+        congress_client._request_senate_xml("https://source.test/invalid.xml")
+
+    settings.SENATE_ROLL_CALL_MAX_BYTES = 3
+    monkeypatch.setattr(
+        congress_client.requests,
+        "get",
+        lambda *_args, **_kwargs: Response(b"<vote_list />"),
+    )
+    with pytest.raises(congress_client.CongressAPIError, match="byte limit"):
+        congress_client._request_senate_xml("https://source.test/large.xml")
+
+
 def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(
     monkeypatch,
 ):
@@ -362,5 +409,6 @@ def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(
         {
             "version_label": "Introduced in House",
             "url": "https://www.congress.gov/119/bills/hr1/BILLS-119hr1ih.xml",
+            "source_order": 1,
         }
     ]

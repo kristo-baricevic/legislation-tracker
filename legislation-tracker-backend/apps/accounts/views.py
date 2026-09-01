@@ -4,9 +4,11 @@ Auth API, user preferences, and private tracking APIs.
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from django.db.models import Q
 from django.middleware.csrf import get_token
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -19,11 +21,27 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
 from apps.legislation.models import Bill, Topic
+from apps.legislation.serializers import BillListSerializer
+from apps.legislation.throttles import BillSearchThrottle
 
 from .authentication import enforce_csrf
-from .models import TrackedBill, TrackedLegislator, TrackedTopic, UserPreference
+from .models import (
+    SavedBillSearch,
+    TrackedBill,
+    TrackedLegislator,
+    TrackedTopic,
+    UserPreference,
+)
+from .saved_searches import (
+    count_saved_search_new_results,
+    create_saved_search,
+    open_saved_search,
+    saved_search_result_page,
+)
 from .serializers import (
     RegistrationSerializer,
+    SavedBillSearchSerializer,
+    SavedBillSearchWriteSerializer,
     SessionTokenObtainPairSerializer,
     TrackedBillSerializer,
     TrackedLegislatorSerializer,
@@ -244,6 +262,151 @@ class UserPreferenceViewSet(viewsets.ModelViewSet):
         if error_response := self._topic_payload_error(request):
             return error_response
         return super().partial_update(request, *args, **kwargs)
+
+
+class SavedBillSearchViewSet(viewsets.ModelViewSet):
+    """Owner-scoped saved discovery queries and explicit result acknowledgement."""
+
+    permission_classes = [IsAuthenticated]
+    queryset = SavedBillSearch.objects.all()
+
+    def get_throttles(self):
+        if self.action in {"list", "results"}:
+            return [BillSearchThrottle()]
+        return super().get_throttles()
+
+    def get_queryset(self):
+        return SavedBillSearch.objects.filter(user=self.request.user).order_by(
+            "-updated_at", "-id"
+        )
+
+    def get_serializer_class(self):
+        if self.action in {"create", "update", "partial_update"}:
+            return SavedBillSearchWriteSerializer
+        return SavedBillSearchSerializer
+
+    def list(self, request, *args, **kwargs):
+        searches = list(self.get_queryset())
+        counts = count_saved_search_new_results(searches)
+        for search in searches:
+            search.new_result_count = counts[search.id]
+        return Response({"count": len(searches), "results": SavedBillSearchSerializer(searches, many=True).data})
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            search = create_saved_search(
+                user=request.user,
+                name=serializer.validated_data["name"],
+                query_json=serializer.validated_data["query"],
+                normalized_hash=serializer._normalized_hash,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(SavedBillSearchSerializer(search).data, status=status.HTTP_201_CREATED)
+
+    def _update(self, request, partial):
+        search = self.get_object()
+        serializer = self.get_serializer(data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        if "name" in values:
+            search.name = values["name"]
+        if "query" in values:
+            search.query_json = values["query"]
+            search.normalized_hash = serializer._normalized_hash
+            search.last_opened_at = None
+            search.last_opened_activity_sequence = None
+        try:
+            search.save()
+        except IntegrityError:
+            return Response(
+                {"detail": "A saved search already uses that name or query."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(SavedBillSearchSerializer(search).data)
+
+    def update(self, request, *args, **kwargs):
+        return self._update(request, partial=False)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self._update(request, partial=True)
+
+    @action(detail=True, methods=["get"])
+    def results(self, request, pk=None):
+        from config.api import PaginatedQuerySerializer
+
+        query = PaginatedQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        page = query.validated_data.get("page", 1)
+        page_size = query.validated_data.get("page_size", 20)
+        search = self.get_object()
+        result, watermark = saved_search_result_page(
+            user=request.user,
+            search=search,
+            page=page,
+            page_size=page_size,
+        )
+        hits = {hit.bill_id: hit for hit in result.hits}
+        bill_ids = list(hits)
+        bills = list(
+            Bill.objects.select_related("sponsor", "latest_contract")
+            .prefetch_related("bill_topics__topic")
+            .filter(pk__in=bill_ids)
+        )
+        bills.sort(key=lambda bill: bill_ids.index(bill.id))
+        payload = BillListSerializer(
+            bills,
+            many=True,
+            context={
+                "search_ranks": {bill_id: hit.rank for bill_id, hit in hits.items()},
+                "search_highlights": {
+                    bill_id: [
+                        {
+                            "kind": highlight.kind,
+                            "segments": [
+                                {"text": segment.text, "matched": segment.matched}
+                                for segment in highlight.segments
+                            ],
+                        }
+                        for highlight in hit.highlights
+                    ]
+                    for bill_id, hit in hits.items()
+                },
+            },
+        ).data
+        return Response(
+            {
+                "count": result.count,
+                "results": payload,
+                "result_watermark": watermark,
+            }
+        )
+
+    @action(detail=True, methods=["post"])
+    def open(self, request, pk=None):
+        watermark = request.data.get("result_watermark")
+        if not isinstance(watermark, str):
+            return Response(
+                {"result_watermark": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            search, prior_sequence = open_saved_search(
+                user=request.user,
+                search=self.get_object(),
+                watermark_value=watermark,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "previous_activity_sequence": prior_sequence,
+                "last_opened_activity_sequence": search.last_opened_activity_sequence,
+                "last_opened_at": search.last_opened_at,
+            }
+        )
 
 
 class TrackingSummaryView(APIView):

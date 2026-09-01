@@ -21,6 +21,7 @@ import {
 import { getContractSummary } from "@/lib/contracts";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
+import BillChangeExperience from "./bill-change-experience";
 
 function HistoryPagination({
   page,
@@ -204,6 +205,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [contractHistory, setContractHistory] = useState<BillContractItem[] | null>(null);
+  const [comparisonContracts, setComparisonContracts] = useState<BillContractItem[] | null>(null);
   const [contractPage, setContractPage] = useState(1);
   const [contractLoadedPage, setContractLoadedPage] = useState(1);
   const [contractHasNext, setContractHasNext] = useState(false);
@@ -233,6 +235,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     setBill(null);
     setError(null);
     setLoading(true);
+    setComparisonContracts(null);
     getBill(id)
       .then((data) => {
         if (!cancelled) setBill(data);
@@ -257,6 +260,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
       .then((contracts) => {
         if (!cancelled) {
           setContractHistory(contracts.results);
+          if (contractPage === 1) {
+            setComparisonContracts(contracts.results);
+          }
           setContractLoadedPage(contractPage);
           setContractHasNext(Boolean(contracts.next));
         }
@@ -530,6 +536,12 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         )}
 
         <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
+
+        <BillChangeExperience
+          billId={bill.id}
+          contracts={comparisonContracts ?? (bill.latest_contract ? [bill.latest_contract] : [])}
+          documents={bill.documents}
+        />
 
         {contractLoading && (
           <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">

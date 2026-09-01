@@ -1,9 +1,12 @@
 import pytest
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.congress.models import Representative, Vote, VoteRecord
 from apps.legislation import views
@@ -11,11 +14,209 @@ from apps.legislation.models import (
     Bill,
     BillContract,
     BillDocument,
+    BillSearchChunk,
     BillSimilarity,
     BillTopic,
     EvidenceSpan,
     Topic,
 )
+
+POSTGRESQL_ONLY = pytest.mark.skipif(
+    connection.vendor != "postgresql", reason="requires PostgreSQL full-text search"
+)
+
+
+@pytest.mark.django_db
+def test_bill_search_uses_safe_highlight_segments_and_recent_activity_sorting():
+    early = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 89",
+        title="Rural hospitals support",
+        summary="Funding for rural hospitals.",
+        status="Introduced",
+        last_activity_sequence=2,
+    )
+    later = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 90",
+        title="Rural hospital workforce",
+        status="Introduced",
+        last_activity_sequence=3,
+    )
+
+    search = APIClient().get("/api/bills/?q=rural%20hospital&sort=relevance")
+    recent = APIClient().get("/api/bills/?sort=recent_activity")
+
+    assert search.status_code == 200
+    assert [item["id"] for item in search.json()["results"]] == [early.id, later.id]
+    assert search.json()["results"][0]["search_rank"] is None
+    segments = search.json()["results"][0]["highlights"][0]["segments"]
+    assert any(segment["matched"] for segment in segments)
+    assert all("<" not in segment["text"] for segment in segments)
+    assert [item["id"] for item in recent.json()["results"]][:2] == [later.id, early.id]
+
+
+@pytest.mark.django_db
+def test_bill_search_rejects_relevance_without_query_and_excessive_query():
+    client = APIClient()
+
+    relevance_without_query = client.get("/api/bills/?sort=relevance")
+    too_large = client.get("/api/bills/", {"q": "x" * 513})
+
+    assert relevance_without_query.status_code == 400
+    assert "sort" in relevance_without_query.json()
+    assert too_large.status_code == 400
+    assert "q" in too_large.json()
+
+
+@POSTGRESQL_ONLY
+@pytest.mark.django_db
+def test_postgres_search_keeps_unindexed_bills_visible_and_fetches_headlines_for_one_page():
+    from apps.legislation.search import BillSearchQuery, search_bills
+    from apps.legislation.search_index import rebuild_bill_search_index
+
+    indexed = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 890",
+        title="Specialist workforce",
+        status="Introduced",
+    )
+    BillDocument.objects.create(
+        bill=indexed,
+        version_label="Introduced",
+        extracted_text="Nephrology clinic grants for rural hospitals.",
+        is_active_version=True,
+    )
+    rebuild_bill_search_index(bill_id=indexed.id)
+    unindexed = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 891",
+        title="Nephrology clinic access",
+        status="Introduced",
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        search_page = search_bills(
+            queryset=Bill.objects.all(),
+            query=BillSearchQuery(
+                q="nephrology", sort="relevance", page=1, page_size=1
+            ),
+        )
+    headline_queries = [
+        query["sql"] for query in queries if "ts_headline" in query["sql"].lower()
+    ]
+    response = APIClient().get(
+        "/api/bills/",
+        {"q": "nephrology", "sort": "relevance", "page_size": 1},
+    )
+    unindexed_page = APIClient().get(
+        "/api/bills/",
+        {"q": "nephrology", "sort": "relevance", "page_size": 1, "page": 2},
+    )
+
+    assert response.status_code == 200
+    assert [hit.bill_id for hit in search_page.hits] == [indexed.id]
+    assert response.json()["count"] == 2
+    assert [item["id"] for item in response.json()["results"]] == [indexed.id]
+    assert response.json()["results"][0]["search_rank"] > 0
+    assert [item["id"] for item in unindexed_page.json()["results"]] == [unindexed.id]
+    assert any(
+        segment["matched"]
+        for segment in unindexed_page.json()["results"][0]["highlights"][0]["segments"]
+    )
+    assert len(headline_queries) == 1
+    assert f'"legislation_billsearchchunk"."bill_id" IN ({indexed.id})' in headline_queries[0]
+    assert BillSearchChunk.objects.filter(bill=unindexed).exists() is False
+
+
+@pytest.mark.django_db
+def test_bill_comparison_endpoints_require_versions_from_the_requested_bill():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 91",
+        title="Comparison bill",
+        status="Introduced",
+    )
+    before = BillContract.objects.create(
+        bill=bill,
+        contract_hash="comparison-before",
+        contract_json={"plain_summary": "Before"},
+    )
+    after = BillContract.objects.create(
+        bill=bill,
+        contract_hash="comparison-after",
+        contract_json={"plain_summary": "After"},
+    )
+
+    response = APIClient().get(
+        f"/api/bills/{bill.id}/comparisons/contracts/",
+        {"before": before.id, "after": after.id},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["changes"][0]["path"] == "plain_summary"
+
+
+@pytest.mark.django_db
+def test_public_comparison_endpoints_throttle_before_validating_or_diffing(
+    monkeypatch,
+):
+    from apps.legislation.throttles import BillComparisonThrottle
+
+    monkeypatch.setitem(
+        BillComparisonThrottle.THROTTLE_RATES,
+        "bill_comparison_anon",
+        "1/min",
+    )
+    client = APIClient()
+    endpoints = (
+        "/api/bills/1/comparisons/contracts/",
+        "/api/bills/1/comparisons/documents/",
+        "/api/bills/1/comparisons/documents/section/",
+    )
+
+    for endpoint in endpoints:
+        cache.clear()
+        first = client.get(endpoint)
+        second = client.get(endpoint)
+
+        assert first.status_code == 400
+        assert second.status_code == 429
+
+
+@pytest.mark.django_db
+def test_authenticated_comparison_requests_use_the_user_rate_bucket(monkeypatch):
+    from apps.legislation.throttles import BillComparisonThrottle
+
+    monkeypatch.setitem(
+        BillComparisonThrottle.THROTTLE_RATES,
+        "bill_comparison_anon",
+        "2/min",
+    )
+    monkeypatch.setitem(
+        BillComparisonThrottle.THROTTLE_RATES,
+        "bill_comparison_user",
+        "1/min",
+    )
+    user = get_user_model().objects.create_user(
+        username="comparison-user",
+        email="comparison@example.com",
+        password="not-used-in-this-test",
+    )
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+    cache.clear()
+
+    first = client.get("/api/bills/1/comparisons/contracts/")
+    second = client.get("/api/bills/1/comparisons/contracts/")
+
+    assert first.status_code == 400
+    assert second.status_code == 429
 
 
 class FakeRemoteStorage:
@@ -190,6 +391,7 @@ def test_public_document_download_uses_the_stored_object_url(monkeypatch):
         {
             "id": document.id,
             "version_label": "Introduced",
+            "source_order": None,
             "is_active_version": False,
             "content_type": "application/pdf",
             "file_size_bytes": 123,
@@ -395,6 +597,7 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
         {
             "id": vote.id,
             "bill": bill.id,
+            "congress": 119,
             "chamber": "house",
             "session_number": 1,
             "roll_number": 17,
@@ -402,6 +605,8 @@ def test_vote_list_and_detail_include_member_positions_for_a_bill():
             "result": "Passed",
             "yeas": 220,
             "nays": 210,
+            "question": "",
+            "source_url": "",
         }
     ]
     assert detail.status_code == 200

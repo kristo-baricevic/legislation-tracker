@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import BillDetailPage from "@/app/bills/[id]/page";
 import {
   getBill,
+  getBillChanges,
+  compareBillContracts,
   getContracts,
   getVote,
   getVotes,
@@ -26,6 +28,10 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/api", () => ({
   getBill: vi.fn(),
+  getBillChanges: vi.fn(),
+  acknowledgeBillChanges: vi.fn(),
+  compareBillContracts: vi.fn(),
+  compareBillDocuments: vi.fn(),
   getContracts: vi.fn(),
   getVote: vi.fn(),
   getVotes: vi.fn(),
@@ -41,6 +47,17 @@ describe("BillDetailPage", () => {
     routeState.id = "10";
     vi.clearAllMocks();
     vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getBillChanges).mockResolvedValue({
+      results: [],
+      page_end_cursor: null,
+      stream_head_cursor: null,
+      older_cursor: null,
+      has_more_newer: false,
+      has_more_older: false,
+      unread_count: null,
+      personalized: false,
+      initial_window_truncated: false,
+    });
     vi.mocked(getBill).mockResolvedValue({
       id: 10,
       jurisdiction: "federal",
@@ -60,6 +77,7 @@ describe("BillDetailPage", () => {
         {
           id: 9,
           version_label: "Introduced",
+          source_order: 1,
           is_active_version: true,
           content_type: "application/pdf",
           file_size_bytes: 123,
@@ -166,6 +184,47 @@ describe("BillDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "View member positions" }));
     await waitFor(() => expect(getVote).toHaveBeenCalledWith(33));
     expect(await screen.findByText("Voting Representative")).toBeVisible();
+  });
+
+  it("keeps the newest contract comparison pair while browsing older history", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getContracts)
+      .mockResolvedValueOnce({
+        count: 4,
+        next: "http://example.test/api/contracts/?page=2",
+        previous: null,
+        results: [
+          { id: 4, schema_version: "1", contract_json: { plain_summary: "Newest" }, contract_hash: "four", computed_at: "2026-08-22T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
+          { id: 3, schema_version: "1", contract_json: { plain_summary: "Previous" }, contract_hash: "three", computed_at: "2026-08-21T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
+        ],
+      })
+      .mockResolvedValueOnce({
+        count: 4,
+        next: null,
+        previous: "http://example.test/api/contracts/?page=1",
+        results: [
+          { id: 2, schema_version: "1", contract_json: { plain_summary: "Older" }, contract_hash: "two", computed_at: "2026-08-20T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
+          { id: 1, schema_version: "1", contract_json: { plain_summary: "Oldest" }, contract_hash: "one", computed_at: "2026-08-19T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
+        ],
+      });
+    vi.mocked(compareBillContracts).mockResolvedValue({
+      before: 3,
+      after: 4,
+      changes: [],
+      total_change_count: 0,
+      returned_change_count: 0,
+      truncated: false,
+    });
+
+    render(<BillDetailPage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Next contract history page" }),
+    );
+    expect(await screen.findByText("Oldest")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Compare analysis" }));
+
+    expect(compareBillContracts).toHaveBeenCalledWith(10, 3, 4);
   });
 
   it("discards all bill-specific state when navigating to another bill", async () => {

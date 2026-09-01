@@ -5,7 +5,8 @@ Celery tasks for Congress.gov ingestion: poll, process_bill, versions, votes.
 import hashlib
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from copy import deepcopy
+from datetime import UTC, date, datetime, timedelta
 
 import requests
 from celery import shared_task
@@ -14,9 +15,14 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
-from apps.changelog.models import ChangeLog
-from apps.congress.current import current_congress
-from apps.congress.models import Representative, Vote, VoteRecord
+from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
+from apps.changelog.services import lock_bill_activity, record_bill_change
+from apps.congress.current import current_congress, current_congress_session
+from apps.congress.models import Representative, RepresentativeTerm, Vote, VoteRecord
+from apps.ingestion.committee_sources import (
+    CommitteeRosterError,
+    CommitteeRosterTransportError,
+)
 from apps.ingestion.congress_client import (
     CongressAPIError,
     bill_actions,
@@ -43,7 +49,9 @@ from apps.ingestion.models import (
     IngestionTaskFailure,
     IngestionWorkItem,
     IngestionWorkStatus,
+    RollCallIngestionState,
 )
+from apps.ingestion.vote_sources import HouseVoteSource, SenateVoteSource
 from apps.ingestion.work_queue import (
     enqueue_ingestion_work,
     fulfill_tracking_requests_for_bill,
@@ -62,6 +70,18 @@ WORK_KIND_BILL = "bill"
 WORK_KIND_BILL_VERSIONS = "bill_versions"
 WORK_KIND_BILL_VOTES = "bill_votes"
 WORK_KIND_DOCUMENT_DOWNLOAD = "document_download"
+WORK_KIND_BILL_RELATIONSHIPS = "bill_relationships"
+WORK_KIND_ROLL_CALL_VOTE = "roll_call_vote"
+WORK_KIND_REPRESENTATIVE_DETAIL = "representative_detail"
+
+
+class BlockedWork(Exception):
+    """Work that is valid but cannot proceed until exact identities exist."""
+
+    def __init__(self, dependency_keys: list[str], reason="blocked_on_dependencies"):
+        super().__init__(reason)
+        self.dependency_keys = sorted(set(dependency_keys))
+        self.reason = reason
 
 
 def _queue_bill_stage(bill, kind, *, source_updated_at=None):
@@ -73,6 +93,53 @@ def _queue_bill_stage(bill, kind, *, source_updated_at=None):
         jurisdiction=bill.jurisdiction,
         congress=bill.session,
     )
+
+
+def _queue_bill_relationships(bill, *, source_updated_at=None):
+    return _queue_bill_stage(
+        bill,
+        WORK_KIND_BILL_RELATIONSHIPS,
+        source_updated_at=source_updated_at,
+    )
+
+
+def _wake_blocked_work_for_dependencies(dependency_keys: set[str]) -> int:
+    """Make rows ready only when every persisted exact dependency is satisfied."""
+
+    if not dependency_keys:
+        return 0
+    now = timezone.now()
+    woken = 0
+    with transaction.atomic():
+        candidates = IngestionWorkItem.objects.select_for_update().filter(
+            status=IngestionWorkStatus.BLOCKED
+        )
+        for item in candidates:
+            dependencies = set(item.dependency_keys or [])
+            resolved = set(dependency_keys)
+            for dependency in dependencies:
+                if dependency.startswith("bioguide:"):
+                    bioguide_id = dependency.removeprefix("bioguide:")
+                    if Representative.objects.filter(bioguide_id=bioguide_id).exists():
+                        resolved.add(dependency)
+            if dependencies and dependencies.issubset(resolved):
+                item.status = IngestionWorkStatus.PENDING
+                item.available_at = now
+                item.lease_expires_at = None
+                item.dispatch_token = ""
+                item.last_error = ""
+                item.save(
+                    update_fields=[
+                        "status",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                woken += 1
+    return woken
 
 
 def _queue_document_download(document):
@@ -243,6 +310,15 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
     return rep
 
 
+def _normalize_member_chamber(value):
+    chamber = str(value or "").strip().casefold()
+    if chamber in {"house", "house of representatives"}:
+        return "house"
+    if chamber == "senate":
+        return "senate"
+    return ""
+
+
 def _member_chamber(member):
     terms = member.get("terms") or []
     if isinstance(terms, dict):
@@ -250,9 +326,10 @@ def _member_chamber(member):
     if isinstance(terms, list):
         for term in reversed(terms):
             if isinstance(term, dict) and term.get("chamber"):
-                return str(term["chamber"]).lower()
-    chamber = member.get("chamber") or ""
-    return str(chamber).lower() if chamber else "house"
+                chamber = _normalize_member_chamber(term["chamber"])
+                if chamber:
+                    return chamber
+    return _normalize_member_chamber(member.get("chamber")) or "house"
 
 
 def _member_party(member):
@@ -316,6 +393,95 @@ def _member_profile(summary, detail):
     }
 
 
+def _member_terms(summary, detail):
+    member = dict(summary)
+    member.update(detail or {})
+    if "terms" not in member:
+        return None
+    terms = member.get("terms") or []
+    if isinstance(terms, dict):
+        terms = terms.get("item") or terms.get("terms") or []
+    if not isinstance(terms, list):
+        raise CongressAPIError("Congress member terms payload is invalid")
+    if not terms:
+        return None
+    parsed = []
+    for term in terms:
+        if not isinstance(term, dict):
+            raise CongressAPIError("Congress member terms contain an invalid entry")
+        chamber = _normalize_member_chamber(term.get("chamber"))
+        try:
+            start_year = int(term.get("startYear"))
+            raw_end_year = term.get("endYear")
+            end_year = int(raw_end_year) if raw_end_year not in (None, "") else None
+        except (TypeError, ValueError) as exc:
+            raise CongressAPIError(
+                "Congress member term is missing a valid service year"
+            ) from exc
+        if not chamber or start_year < 1789 or (end_year is not None and end_year <= start_year):
+            raise CongressAPIError("Congress member term has an invalid service interval")
+        district = term.get("district")
+        parsed.append(
+            {
+                "chamber": chamber,
+                "state": state_code(term.get("stateCode") or member.get("state")),
+                "district": (
+                    str(district)[:10] if district not in (None, "") else None
+                ),
+                "member_type": str(term.get("memberType") or "")[:50],
+                "start_date": date(start_year, 1, 3),
+                "end_date": date(end_year, 1, 3) if end_year is not None else None,
+            }
+        )
+    return parsed
+
+
+def _replace_representative_terms(representative, terms):
+    if terms is None:
+        return
+    retained_ids = []
+    for values in terms:
+        term, _ = RepresentativeTerm.objects.update_or_create(
+            representative=representative,
+            chamber=values["chamber"],
+            start_date=values["start_date"],
+            defaults={
+                "state": values["state"],
+                "district": values["district"],
+                "member_type": values["member_type"],
+                "end_date": values["end_date"],
+            },
+        )
+        retained_ids.append(term.id)
+    representative.service_terms.exclude(pk__in=retained_ids).delete()
+
+
+def _process_representative_detail_impl(bioguide_id: str):
+    """Upsert one profile only after proving the response identity is exact."""
+
+    expected_id = str(bioguide_id).strip()
+    detail = member_detail(expected_id)
+    returned_id = str(
+        detail.get("bioguideId") or detail.get("bioguide_id") or ""
+    ).strip()
+    if returned_id != expected_id:
+        raise CongressAPIError(
+            "Congress member detail identity did not match requested Bioguide ID"
+        )
+    summary = {"bioguideId": expected_id}
+    profile = _member_profile(summary, detail)
+    terms = _member_terms(summary, detail)
+    with transaction.atomic():
+        persisted_id = profile.pop("bioguide_id")
+        representative, _ = Representative.objects.update_or_create(
+            bioguide_id=persisted_id,
+            defaults={**profile, "last_seen_at": timezone.now()},
+        )
+        _replace_representative_terms(representative, terms)
+    woken = _wake_blocked_work_for_dependencies({f"bioguide:{expected_id}"})
+    return {"bioguide_id": expected_id, "woken": woken}
+
+
 @shared_task(
     autoretry_for=(CongressAPIError,),
     retry_backoff=True,
@@ -360,25 +526,48 @@ def sync_representatives(congress=None):
         bioguide_id = summary.get("bioguideId") or summary.get("bioguide_id")
         if not bioguide_id:
             raise CongressAPIError("Congress member list entry is missing bioguideId")
-        profiles.append(_member_profile(summary, member_detail(bioguide_id)))
+        expected_id = str(bioguide_id).strip()
+        detail = member_detail(expected_id)
+        returned_id = str(
+            detail.get("bioguideId") or detail.get("bioguide_id") or ""
+        ).strip()
+        if returned_id != expected_id:
+            raise CongressAPIError(
+                "Congress member detail identity did not match requested Bioguide ID"
+            )
+        profiles.append(
+            (
+                _member_profile(summary, detail),
+                _member_terms(summary, detail),
+            )
+        )
 
     now = timezone.now()
     created_count = 0
     updated_count = 0
-    seen_ids = {profile["bioguide_id"] for profile in profiles}
+    seen_ids = {profile["bioguide_id"] for profile, _terms in profiles}
     with transaction.atomic():
-        for profile in profiles:
+        for profile, terms in profiles:
             bioguide_id = profile.pop("bioguide_id")
             profile["last_seen_at"] = now
-            _, created = Representative.objects.update_or_create(
+            representative, created = Representative.objects.update_or_create(
                 bioguide_id=bioguide_id,
                 defaults=profile,
             )
+            _replace_representative_terms(representative, terms)
             created_count += int(created)
             updated_count += int(not created)
         Representative.objects.filter(is_current=True).exclude(
             bioguide_id__in=seen_ids
         ).update(is_current=False)
+
+    try:
+        sync_committee_memberships.delay()
+    except Exception:
+        # The roster is durable only after its own validated sync; a later
+        # scheduled representative run will request it again if this handoff
+        # fails while the broker is unavailable.
+        logger.exception("sync_representatives: could not queue committee roster sync")
 
     return {
         "congress": congress,
@@ -386,6 +575,40 @@ def sync_representatives(congress=None):
         "created": created_count,
         "updated": updated_count,
     }
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(CommitteeRosterTransportError,),
+    retry_backoff=True,
+    retry_backoff_max=3600,
+    max_retries=3,
+)
+def sync_committee_memberships(self, congress=None):
+    """Atomically replace validated current House and Senate committee rosters."""
+
+    from apps.congress.committee_sync import sync_committee_memberships as sync
+
+    resolved_congress = current_congress() if congress is None else int(congress)
+    try:
+        results = sync(congress=resolved_congress)
+    except CommitteeRosterError as exc:
+        # Validation failures are immediately actionable. Transport failures
+        # are recorded only after Celery's bounded retry budget is exhausted.
+        if (
+            not isinstance(exc, CommitteeRosterTransportError)
+            or self.request.retries >= self.max_retries
+        ):
+            _record_task_failure(
+                self.request.id,
+                "apps.ingestion.tasks.sync_committee_memberships",
+                (resolved_congress,),
+                {},
+                None,
+                exc,
+            )
+        raise
+    return [result.__dict__ for result in results]
 
 
 @shared_task
@@ -515,6 +738,132 @@ def poll_congress(jurisdiction="federal", congress=None):
     }
 
 
+@shared_task(
+    autoretry_for=(CongressAPIError,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=2,
+)
+def discover_roll_calls(congress=None):
+    """Durably discover every current Congress chamber/session roll call."""
+
+    runtime_congress = current_congress()
+    active_congress = runtime_congress if congress is None else int(congress)
+    if active_congress > runtime_congress:
+        raise ValueError("Roll-call discovery cannot run for a future Congress")
+    session_count = (
+        current_congress_session() if active_congress == runtime_congress else 2
+    )
+    created_count = 0
+    for session_number in range(1, session_count + 1):
+        for source, chamber in (
+            (HouseVoteSource(), "house"),
+            (SenateVoteSource(), "senate"),
+        ):
+            while True:
+                state, _ = RollCallIngestionState.objects.get_or_create(
+                    congress=active_congress,
+                    chamber=chamber,
+                    session_number=session_number,
+                )
+                was_exhausted = state.source_exhausted_at is not None
+                cursor = "" if was_exhausted else state.next_page_or_roll
+                page = source.discover_page(
+                    congress=active_congress,
+                    session_number=session_number,
+                    cursor=cursor,
+                )
+                page_updated_at = max(
+                    (reference.source_updated_at for reference in page.refs),
+                    default=None,
+                )
+                now = timezone.now()
+                retry_with_new_state = False
+                with transaction.atomic():
+                    locked_state = (
+                        RollCallIngestionState.objects.select_for_update().get(
+                            pk=state.pk
+                        )
+                    )
+                    if (
+                        locked_state.source_exhausted_at is not None
+                    ) != was_exhausted or (
+                        not was_exhausted and locked_state.next_page_or_roll != cursor
+                    ):
+                        retry_with_new_state = True
+                    elif (
+                        was_exhausted
+                        and page_updated_at is not None
+                        and locked_state.source_updated_at is not None
+                        and page_updated_at <= locked_state.source_updated_at
+                    ):
+                        locked_state.last_polled_at = now
+                        locked_state.save(update_fields=["last_polled_at"])
+                    else:
+                        page_created = 0
+                        for reference in page.refs:
+                            _, created = IngestionWorkItem.objects.get_or_create(
+                                kind=WORK_KIND_ROLL_CALL_VOTE,
+                                dedupe_key=(
+                                    f"vote:{reference.congress}:{reference.chamber}:"
+                                    f"{reference.session_number}:{reference.roll_number}"
+                                ),
+                                source_updated_at=reference.source_updated_at,
+                                defaults={
+                                    "congress": reference.congress,
+                                    "payload_json": {
+                                        "congress": reference.congress,
+                                        "chamber": reference.chamber,
+                                        "session_number": reference.session_number,
+                                        "roll_number": reference.roll_number,
+                                        "source_url": reference.source_url,
+                                    },
+                                    "available_at": now,
+                                },
+                            )
+                            page_created += int(created)
+                        # An inserted head item shifts stable rows into later
+                        # offset pages. Replaying such a page creates no work,
+                        # but its persisted next cursor is still required to
+                        # reach the authoritative end without a gap.
+                        prefix = f"vote:{active_congress}:{chamber}:{session_number}:"
+                        locked_state.discovered_roll_count = (
+                            IngestionWorkItem.objects.filter(
+                                kind=WORK_KIND_ROLL_CALL_VOTE,
+                                dedupe_key__startswith=prefix,
+                            )
+                            .values("dedupe_key")
+                            .distinct()
+                            .count()
+                        )
+                        locked_state.next_page_or_roll = page.next_cursor or ""
+                        locked_state.source_exhausted_at = (
+                            now if page.next_cursor is None else None
+                        )
+                        if page_updated_at is not None:
+                            locked_state.source_updated_at = max(
+                                item
+                                for item in (
+                                    locked_state.source_updated_at,
+                                    page_updated_at,
+                                )
+                                if item is not None
+                            )
+                        locked_state.last_polled_at = now
+                        locked_state.save()
+                        created_count += page_created
+                if retry_with_new_state:
+                    continue
+                if was_exhausted or page.next_cursor is None:
+                    break
+    if created_count:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception("discover_roll_calls: could not wake the dispatcher")
+    return {"congress": active_congress, "created": created_count}
+
+
 def _retry_delay(attempt_count):
     """Bound exponential delay for persistent ingestion retries."""
     return timedelta(seconds=min(60 * (2 ** max(attempt_count - 1, 0)), 3600))
@@ -599,6 +948,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     """Execute one durable work item and persist its terminal or retry state."""
     now = timezone.now()
     claimed_dispatch_token = ""
+    claimed_payload_json = None
     with transaction.atomic():
         work_item = (
             IngestionWorkItem.objects.select_for_update()
@@ -610,6 +960,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         if work_item.status in (
             IngestionWorkStatus.SUCCEEDED,
             IngestionWorkStatus.DEAD,
+            IngestionWorkStatus.BLOCKED,
         ):
             return {"work_item_id": work_item.id, "status": work_item.status}
         if dispatch_token and work_item.dispatch_token != dispatch_token:
@@ -627,6 +978,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         work_item.lease_expires_at = now + WORK_LEASE_DURATION
         work_item.celery_task_id = self.request.id or work_item.celery_task_id
         claimed_dispatch_token = work_item.dispatch_token
+        claimed_payload_json = deepcopy(work_item.payload_json)
         work_item.save(
             update_fields=[
                 "status",
@@ -639,8 +991,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
 
     try:
         _process_durable_work(work_item)
-    except Exception as exc:
-        error_message = str(exc)[:10000]
+    except BlockedWork as exc:
         with transaction.atomic():
             work_item = IngestionWorkItem.objects.select_for_update().get(
                 pk=work_item_id
@@ -650,7 +1001,60 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 or work_item.dispatch_token != claimed_dispatch_token
             ):
                 return {"work_item_id": work_item.id, "status": "superseded"}
-            if isinstance(exc, DocumentValidationError) or (
+            work_item.status = IngestionWorkStatus.BLOCKED
+            work_item.attempt_count = max(work_item.attempt_count - 1, 0)
+            work_item.dependency_keys = exc.dependency_keys
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.last_error = exc.reason
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "attempt_count",
+                    "dependency_keys",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+        return {"work_item_id": work_item_id, "status": "blocked"}
+    except Exception as exc:
+        error_message = str(exc)[:10000]
+        requeued = False
+        with transaction.atomic():
+            work_item = IngestionWorkItem.objects.select_for_update().get(
+                pk=work_item_id
+            )
+            if (
+                work_item.status != IngestionWorkStatus.PROCESSING
+                or work_item.dispatch_token != claimed_dispatch_token
+            ):
+                return {"work_item_id": work_item.id, "status": "superseded"}
+            if work_item.payload_json != claimed_payload_json:
+                # The failure belongs to the stale claim, not the newer work
+                # payload that arrived while it was executing.
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.attempt_count = 0
+                work_item.available_at = timezone.now()
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.completed_at = None
+                work_item.last_error = ""
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "attempt_count",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "completed_at",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                requeued = True
+            elif isinstance(exc, DocumentValidationError) or (
                 work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
             ):
                 work_item.status = IngestionWorkStatus.DEAD
@@ -677,23 +1081,33 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 )
                 return {"work_item_id": work_item.id, "status": "dead"}
 
-            work_item.status = IngestionWorkStatus.PENDING
-            work_item.available_at = timezone.now() + _retry_delay(
-                work_item.attempt_count
-            )
-            work_item.lease_expires_at = None
-            work_item.dispatch_token = ""
-            work_item.last_error = error_message
-            work_item.save(
-                update_fields=[
-                    "status",
-                    "available_at",
-                    "lease_expires_at",
-                    "dispatch_token",
-                    "last_error",
-                    "updated_at",
-                ]
-            )
+            elif not requeued:
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.available_at = timezone.now() + _retry_delay(
+                    work_item.attempt_count
+                )
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.last_error = error_message
+                work_item.save(
+                    update_fields=[
+                        "status",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+        if requeued:
+            try:
+                dispatch_ingestion_work.delay()
+            except Exception:
+                logger.exception(
+                    "process_ingestion_work_item: could not re-dispatch revised work_item=%s",
+                    work_item_id,
+                )
+            return {"work_item_id": work_item_id, "status": "requeued"}
         logger.warning(
             "process_ingestion_work_item: retrying work_item=%s attempt=%s: %s",
             work_item_id,
@@ -709,21 +1123,54 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             or work_item.dispatch_token != claimed_dispatch_token
         ):
             return {"work_item_id": work_item.id, "status": "superseded"}
-        work_item.status = IngestionWorkStatus.SUCCEEDED
-        work_item.lease_expires_at = None
-        work_item.dispatch_token = ""
-        work_item.completed_at = timezone.now()
-        work_item.last_error = ""
-        work_item.save(
-            update_fields=[
-                "status",
-                "lease_expires_at",
-                "dispatch_token",
-                "completed_at",
-                "last_error",
-                "updated_at",
-            ]
-        )
+        if work_item.payload_json != claimed_payload_json:
+            work_item.status = IngestionWorkStatus.PENDING
+            work_item.attempt_count = 0
+            work_item.available_at = timezone.now()
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.completed_at = None
+            work_item.last_error = ""
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "attempt_count",
+                    "available_at",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "completed_at",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+            requeued = True
+        else:
+            requeued = False
+        if not requeued:
+            work_item.status = IngestionWorkStatus.SUCCEEDED
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ""
+            work_item.completed_at = timezone.now()
+            work_item.last_error = ""
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "completed_at",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+    if requeued:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception(
+                "process_ingestion_work_item: could not dispatch revised work_item=%s",
+                work_item_id,
+            )
+        return {"work_item_id": work_item_id, "status": "requeued"}
     return {"work_item_id": work_item_id, "status": "succeeded"}
 
 
@@ -739,6 +1186,14 @@ def _process_durable_work(work_item):
         return _process_bill_versions_impl(payload["bill_id"])
     if work_item.kind == WORK_KIND_BILL_VOTES:
         return _process_bill_votes_impl(payload["bill_id"])
+    if work_item.kind == WORK_KIND_BILL_RELATIONSHIPS:
+        from apps.congress.relationship_sync import sync_bill_relationships
+
+        return sync_bill_relationships(bill_id=payload["bill_id"])
+    if work_item.kind == WORK_KIND_REPRESENTATIVE_DETAIL:
+        return _process_representative_detail_impl(payload["bioguide_id"])
+    if work_item.kind == WORK_KIND_ROLL_CALL_VOTE:
+        return _process_roll_call_vote_impl(work_item)
     if work_item.kind == WORK_KIND_DOCUMENT_DOWNLOAD:
         return _download_document_impl(payload["document_id"])
 
@@ -760,6 +1215,26 @@ def _process_durable_work(work_item):
         )
     if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
         return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
+    if work_item.kind == legislation_tasks.WORK_KIND_SEARCH_INDEX:
+        from apps.legislation.search_index import (
+            latest_search_index_at,
+            rebuild_bill_search_index,
+        )
+
+        indexed_at = latest_search_index_at(bill_id=payload["bill_id"])
+        if indexed_at is not None and indexed_at >= work_item.source_updated_at:
+            return {
+                "bill_id": payload["bill_id"],
+                "stale": True,
+                "changed": False,
+            }
+        result = rebuild_bill_search_index(bill_id=payload["bill_id"])
+        return {
+            "bill_id": result.bill_id,
+            "stale": False,
+            "changed": result.changed,
+            "chunk_count": result.chunk_count,
+        }
     raise ValueError(f"Unsupported ingestion work kind: {work_item.kind}")
 
 
@@ -1038,6 +1513,7 @@ def _process_bill_impl(bill_key_str):
                             bill.id,
                         )
                     _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
+                    _queue_bill_relationships(bill)
                 except Exception:
                     logger.exception(
                         "process_bill: failed to enqueue versions/votes bill_id=%s",
@@ -1050,8 +1526,7 @@ def _process_bill_impl(bill_key_str):
                     bill_number=bill_number,
                 )
                 return {"bill_id": bill.id, "unchanged": True}
-            old_status = bill.status
-            old_title = bill.title
+            before_metadata = snapshot_bill_metadata(bill)
             bill.processing_status = ProcessingStatus.PROCESSING
             bill.title = title or bill.title
             bill.summary = summary if summary is not None else bill.summary
@@ -1066,18 +1541,27 @@ def _process_bill_impl(bill_key_str):
             bill.source_api_id = source_api_id
             bill.metadata_hash = metadata_hash
             bill.save()
-            ChangeLog.objects.create(
-                bill=bill,
-                change_type="status_update",
-                old_value={"status": old_status, "title": old_title},
-                new_value={"status": bill.status, "title": bill.title},
-            )
+            for pending_change in diff_bill_metadata(
+                before_metadata,
+                snapshot_bill_metadata(bill),
+            ):
+                record_bill_change(
+                    bill=bill,
+                    change_type=pending_change.change_type,
+                    old_value=pending_change.old_value,
+                    new_value=pending_change.new_value,
+                    event_key=(
+                        f"bill:metadata:{bill.metadata_hash}:"
+                        f"{pending_change.change_type}"
+                    ),
+                )
         else:
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
-                change_type="status_update",
+                change_type="bill_created",
                 old_value=None,
                 new_value={"status": status, "title": title},
+                event_key=f"bill:create:{bill.id}",
             )
         fulfill_tracking_requests_for_bill(
             bill,
@@ -1087,6 +1571,10 @@ def _process_bill_impl(bill_key_str):
     try:
         _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
         _queue_bill_stage(bill, WORK_KIND_BILL_VOTES)
+        _queue_bill_relationships(bill)
+        from apps.legislation.tasks import enqueue_search_index
+
+        enqueue_search_index(bill)
     except Exception:
         bill.processing_status = ProcessingStatus.FAILED
         bill.save(update_fields=["processing_status"])
@@ -1147,15 +1635,33 @@ def _process_bill_versions_impl(bill_id):
     for i, v in enumerate(versions):
         label = v.get("version_label") or v.get("url") or f"v{i}"
         url = v.get("url") or ""
+        source_order = v.get("source_order", i + 1)
+        try:
+            source_order = int(source_order)
+        except (TypeError, ValueError) as exc:
+            raise CongressAPIError("Congress bill text version has an invalid source order") from exc
+        if source_order < 1:
+            raise CongressAPIError("Congress bill text version has an invalid source order")
         doc, created = BillDocument.objects.get_or_create(
             bill=bill,
             version_label=label[:50],
-            defaults={"source_url": url or None, "is_active_version": False},
+            defaults={
+                "source_url": url or None,
+                "source_order": source_order,
+                "is_active_version": False,
+            },
         )
         source_url_changed = not created and (doc.source_url or "") != url
+        source_order_changed = not created and doc.source_order != source_order
+        update_fields = []
         if source_url_changed:
             doc.source_url = url or None
-            doc.save(update_fields=["source_url"])
+            update_fields.append("source_url")
+        if source_order_changed:
+            doc.source_order = source_order
+            update_fields.append("source_order")
+        if update_fields:
+            doc.save(update_fields=update_fields)
         if i == len(versions) - 1:
             BillDocument.objects.filter(bill=bill).update(is_active_version=False)
             doc.is_active_version = True
@@ -1214,8 +1720,345 @@ def process_bill_votes(self, bill_id):
     return _process_bill_votes_impl(bill_id)
 
 
+def _queue_roll_call_vote(*, bill, reference: dict):
+    chamber = str(
+        reference.get("chamber") or reference.get("chamberCode") or ""
+    ).casefold()
+    if chamber not in {"house", "senate"}:
+        raise CongressAPIError("recorded vote has an unsupported chamber")
+    try:
+        session_number = int(
+            reference.get("sessionNumber") or reference.get("session_number")
+        )
+        roll_number = int(reference.get("rollNumber") or reference.get("roll_number"))
+    except (TypeError, ValueError) as exc:
+        raise CongressAPIError(
+            "recorded vote is missing session or roll number"
+        ) from exc
+    source_updated_at = (
+        _parse_congress_update_datetime(
+            reference.get("updateDate") or reference.get("actionDate")
+        )
+        or UNKNOWN_SOURCE_UPDATED_AT
+    )
+    work_item = enqueue_ingestion_work(
+        kind=WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key=(f"vote:{bill.session}:{chamber}:{session_number}:{roll_number}"),
+        source_updated_at=source_updated_at,
+        congress=bill.session,
+        payload_json={
+            "bill_id": bill.id,
+            "congress": bill.session,
+            "chamber": chamber,
+            "session_number": session_number,
+            "roll_number": roll_number,
+            "source_url": str(reference.get("url") or "")[:1024],
+        },
+    )
+    requeued = False
+    with transaction.atomic():
+        work_item = IngestionWorkItem.objects.select_for_update().get(pk=work_item.pk)
+        payload = dict(work_item.payload_json)
+        existing_bill_id = payload.get("bill_id")
+        if existing_bill_id not in (None, bill.id):
+            raise CongressAPIError(
+                "recorded vote identity is already associated with another bill"
+            )
+        if existing_bill_id is None:
+            payload["bill_id"] = bill.id
+            work_item.payload_json = payload
+            update_fields = ["payload_json", "updated_at"]
+            if work_item.status in (
+                IngestionWorkStatus.SUCCEEDED,
+                IngestionWorkStatus.DEAD,
+            ):
+                work_item.status = IngestionWorkStatus.PENDING
+                work_item.attempt_count = 0
+                work_item.available_at = timezone.now()
+                work_item.lease_expires_at = None
+                work_item.dispatch_token = ""
+                work_item.last_error = ""
+                work_item.completed_at = None
+                update_fields.extend(
+                    [
+                        "status",
+                        "attempt_count",
+                        "available_at",
+                        "lease_expires_at",
+                        "dispatch_token",
+                        "last_error",
+                        "completed_at",
+                    ]
+                )
+                requeued = True
+            work_item.save(update_fields=update_fields)
+    if requeued:
+        try:
+            dispatch_ingestion_work.delay()
+        except Exception:
+            logger.exception(
+                "_queue_roll_call_vote: could not re-dispatch roll-call work_item=%s",
+                work_item.id,
+            )
+    return work_item
+
+
+def _normalize_vote_position(value: object) -> str:
+    raw = str(value or "").strip().casefold()
+    return {
+        "aye": "yes",
+        "ayes": "yes",
+        "yea": "yes",
+        "yeas": "yes",
+        "yes": "yes",
+        "nay": "no",
+        "nays": "no",
+        "no": "no",
+        "present": "present",
+        "not voting": "not_voting",
+        "not_voting": "not_voting",
+    }.get(raw, "other")
+
+
+def _normalized_vote_members(raw_members, *, chamber: str) -> list[dict]:
+    if isinstance(raw_members, dict):
+        members = []
+        for key, default_position in (
+            ("yeas", "yes"),
+            ("ayes", "yes"),
+            ("nays", "no"),
+            ("noes", "no"),
+            ("present", "present"),
+            ("notVoting", "not_voting"),
+        ):
+            for member in raw_members.get(key, []):
+                if isinstance(member, dict):
+                    members.append(
+                        {
+                            **member,
+                            "position": member.get("position") or default_position,
+                        }
+                    )
+    elif isinstance(raw_members, list):
+        members = raw_members
+    else:
+        raise CongressAPIError("roll-call detail has an invalid voter collection")
+
+    normalized = []
+    seen = set()
+    for member in members:
+        if not isinstance(member, dict):
+            raise CongressAPIError("roll-call detail contains an invalid voter")
+        bioguide_id = str(
+            member.get("bioguideId") or member.get("bioguide_id") or ""
+        ).strip()
+        if not bioguide_id:
+            raise CongressAPIError(
+                "roll-call detail contains a voter without Bioguide ID"
+            )
+        if bioguide_id in seen:
+            raise CongressAPIError(
+                "roll-call detail contains duplicate voter identities"
+            )
+        seen.add(bioguide_id)
+        raw_position = str(member.get("position") or member.get("vote") or "").strip()
+        normalized.append(
+            {
+                "bioguide_id": bioguide_id,
+                "position": _normalize_vote_position(raw_position),
+                "raw_position": raw_position[:100],
+                "chamber": chamber,
+            }
+        )
+    if not normalized:
+        raise CongressAPIError("roll-call detail contains no voters")
+    return normalized
+
+
+def _parse_vote_datetime(value):
+    if isinstance(value, datetime):
+        return _ensure_utc_aware(value)
+    if isinstance(value, str):
+        try:
+            return _ensure_utc_aware(
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            )
+        except ValueError:
+            pass
+    raise CongressAPIError("roll-call detail has no valid vote date")
+
+
+def _process_roll_call_vote_impl(work_item):
+    """Persist a complete official roll call after all exact members are known."""
+
+    payload = work_item.payload_json
+    congress = int(payload["congress"])
+    chamber = str(payload["chamber"])
+    session_number = int(payload["session_number"])
+    roll_number = int(payload["roll_number"])
+    vote_data = vote_detail(
+        congress,
+        chamber,
+        roll_number,
+        session_number=session_number,
+        source_url=payload.get("source_url") or None,
+    )
+    members = _normalized_vote_members(
+        vote_data.get("members") or vote_data.get("votes"), chamber=chamber
+    )
+    known = set(
+        Representative.objects.filter(
+            bioguide_id__in=[member["bioguide_id"] for member in members]
+        ).values_list("bioguide_id", flat=True)
+    )
+    missing = {member["bioguide_id"] for member in members} - known
+    if missing:
+        for bioguide_id in missing:
+            enqueue_ingestion_work(
+                kind=WORK_KIND_REPRESENTATIVE_DETAIL,
+                dedupe_key=f"bioguide:{bioguide_id}",
+                source_updated_at=work_item.source_updated_at,
+                congress=congress,
+                payload_json={"bioguide_id": bioguide_id},
+            )
+        raise BlockedWork([f"bioguide:{bioguide_id}" for bioguide_id in missing])
+
+    vote_date = _parse_vote_datetime(vote_data.get("date") or vote_data.get("voteDate"))
+    bill = None
+    bill_id = payload.get("bill_id")
+    if bill_id is not None:
+        bill = Bill.objects.filter(pk=bill_id, session=congress).first()
+        if bill is None:
+            raise ValueError("roll-call work references a missing bill")
+    result = str(vote_data.get("result") or vote_data.get("question") or "unknown")[:50]
+    question = str(vote_data.get("question") or "")
+    with transaction.atomic():
+        vote, created = Vote.objects.select_for_update().get_or_create(
+            congress=congress,
+            chamber=chamber,
+            session_number=session_number,
+            roll_number=roll_number,
+            defaults={
+                "bill": bill,
+                "vote_date": vote_date,
+                "result": result,
+                "question": question,
+                "source_url": str(payload.get("source_url") or "")[:1024],
+                "source_updated_at": work_item.source_updated_at,
+                "yeas": int(vote_data.get("yeas") or 0),
+                "nays": int(vote_data.get("nays") or 0),
+            },
+        )
+        if (
+            not created
+            and vote.source_updated_at is not None
+            and work_item.source_updated_at < vote.source_updated_at
+        ):
+            attached_bill = bill is not None and vote.bill_id is None
+            if attached_bill:
+                vote.bill = bill
+                vote.save(update_fields=["bill"])
+                record_bill_change(
+                    bill=bill,
+                    change_type="vote",
+                    new_value={
+                        "vote_id": vote.id,
+                        "congress": congress,
+                        "chamber": chamber,
+                        "session_number": session_number,
+                        "roll_number": roll_number,
+                        "result": vote.result,
+                        "yeas": vote.yeas,
+                        "nays": vote.nays,
+                    },
+                    event_key=(
+                        f"vote:{congress}:{chamber}:{session_number}:{roll_number}:"
+                        f"{work_item.source_updated_at.isoformat()}"
+                    ),
+                )
+            return {
+                "vote_id": vote.id,
+                "created_or_updated": attached_bill,
+                "member_count": 0,
+                "stale": True,
+            }
+        changed = created
+        for field, value in {
+            "bill": bill or vote.bill,
+            "vote_date": vote_date,
+            "result": result,
+            "question": question,
+            "source_url": str(payload.get("source_url") or "")[:1024],
+            "source_updated_at": work_item.source_updated_at,
+            "yeas": int(vote_data.get("yeas") or 0),
+            "nays": int(vote_data.get("nays") or 0),
+        }.items():
+            if getattr(vote, field) != value:
+                setattr(vote, field, value)
+                changed = True
+        if changed and not created:
+            vote.save()
+        representative_by_id = {
+            representative.bioguide_id: representative
+            for representative in Representative.objects.filter(
+                bioguide_id__in=[member["bioguide_id"] for member in members]
+            )
+        }
+        member_ids = set()
+        for member in members:
+            representative = representative_by_id[member["bioguide_id"]]
+            member_ids.add(representative.id)
+            record, record_created = VoteRecord.objects.get_or_create(
+                vote=vote,
+                representative=representative,
+                defaults={
+                    "position": member["position"],
+                    "raw_position": member["raw_position"],
+                },
+            )
+            if not record_created and (
+                record.position != member["position"]
+                or record.raw_position != member["raw_position"]
+            ):
+                record.position = member["position"]
+                record.raw_position = member["raw_position"]
+                record.save(update_fields=["position", "raw_position"])
+                changed = True
+            changed = changed or record_created
+        deleted, _ = (
+            VoteRecord.objects.filter(vote=vote)
+            .exclude(representative_id__in=member_ids)
+            .delete()
+        )
+        changed = changed or bool(deleted)
+        if changed and bill is not None:
+            record_bill_change(
+                bill=bill,
+                change_type="vote",
+                new_value={
+                    "vote_id": vote.id,
+                    "congress": congress,
+                    "chamber": chamber,
+                    "session_number": session_number,
+                    "roll_number": roll_number,
+                    "result": vote.result,
+                    "yeas": vote.yeas,
+                    "nays": vote.nays,
+                },
+                event_key=(
+                    f"vote:{congress}:{chamber}:{session_number}:{roll_number}:"
+                    f"{work_item.source_updated_at.isoformat()}"
+                ),
+            )
+    return {
+        "vote_id": vote.id,
+        "created_or_updated": changed,
+        "member_count": len(members),
+    }
+
+
 def _process_bill_votes_impl(bill_id):
-    """Fetch vote refs from bill detail, create Vote/VoteRecord/Representative, insert ChangeLog(vote)."""
+    """Discover bill action references and queue canonical roll-call work only."""
     logger.info("process_bill_votes: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
     if not bill:
@@ -1237,161 +2080,16 @@ def _process_bill_votes_impl(bill_id):
                 for recorded_vote in recorded_votes
                 if isinstance(recorded_vote, dict)
             )
-    votes_created = 0
-    for ref in votes_refs:
-        if not isinstance(ref, dict):
-            continue
-        chamber = (ref.get("chamber") or ref.get("chamberCode") or "house").lower()
-        roll = ref.get("rollNumber") or ref.get("roll_number")
-        if roll is None:
-            continue
-        raw_session_number = ref.get("sessionNumber") or ref.get("session_number")
-        try:
-            session_number = int(raw_session_number)
-        except (TypeError, ValueError) as exc:
-            raise CongressAPIError(
-                "recorded vote is missing a valid session number"
-            ) from exc
-        vote_data = vote_detail(
-            congress,
-            chamber,
-            roll,
-            session_number=session_number,
-            source_url=ref.get("url"),
-        )
-        vote_date = vote_data.get("date") or vote_data.get("voteDate")
-        if isinstance(vote_date, str):
-            try:
-                vote_date = datetime.fromisoformat(vote_date.replace("Z", "+00:00"))
-            except Exception:
-                vote_date = timezone.now()
-        if vote_date and timezone.is_naive(vote_date):
-            vote_date = timezone.make_aware(vote_date)
-        result = (vote_data.get("result") or vote_data.get("question") or "unknown")[
-            :50
-        ]
-        yeas = int(vote_data.get("yeas") or vote_data.get("total", {}).get("yeas") or 0)
-        nays = int(vote_data.get("nays") or vote_data.get("total", {}).get("nays") or 0)
-        effective_vote_date = vote_date or timezone.now()
-        with transaction.atomic():
-            vote_lookup = {
-                "bill": bill,
-                "chamber": chamber,
-                "session_number": session_number,
-                "roll_number": int(roll),
-            }
-            vote = Vote.objects.select_for_update().filter(**vote_lookup).first()
-            vote_created = False
-            if vote is None:
-                # Pre-session-number rows remain explicitly unknown after migration.
-                # Adopt one only when the authoritative vote timestamp identifies it.
-                vote = (
-                    Vote.objects.select_for_update()
-                    .filter(
-                        bill=bill,
-                        chamber=chamber,
-                        session_number__isnull=True,
-                        roll_number=int(roll),
-                        vote_date=effective_vote_date,
-                    )
-                    .first()
-                )
-                if vote is not None:
-                    vote.session_number = session_number
-                    vote.save(update_fields=["session_number"])
-                else:
-                    vote, vote_created = Vote.objects.get_or_create(
-                        **vote_lookup,
-                        defaults={
-                            "vote_date": effective_vote_date,
-                            "result": result,
-                            "yeas": yeas,
-                            "nays": nays,
-                        },
-                    )
-            vote_updated = False
-            for field, value in {
-                "vote_date": effective_vote_date,
-                "result": result,
-                "yeas": yeas,
-                "nays": nays,
-            }.items():
-                if getattr(vote, field) != value:
-                    setattr(vote, field, value)
-                    vote_updated = True
-            if vote_updated:
-                vote.save(update_fields=["vote_date", "result", "yeas", "nays"])
-            members = vote_data.get("members") or vote_data.get("votes") or {}
-            if isinstance(members, dict):
-                grouped_members = []
-                for group_name, position in (
-                    ("yeas", "yes"),
-                    ("ayes", "yes"),
-                    ("nays", "no"),
-                    ("noes", "no"),
-                    ("present", "present"),
-                    ("abstain", "abstain"),
-                    ("notVoting", "not_voting"),
-                ):
-                    for member in members.get(group_name, []):
-                        if isinstance(member, dict):
-                            grouped_members.append(
-                                {
-                                    **member,
-                                    "position": member.get("position")
-                                    or member.get("vote")
-                                    or position,
-                                }
-                            )
-                members = grouped_members
-            records_updated = False
-            for m in members if isinstance(members, list) else []:
-                if not isinstance(m, dict):
-                    continue
-                bio = m.get("bioguideId") or m.get("bioguide_id")
-                if not bio:
-                    continue
-                name = m.get("name") or m.get("fullName") or bio
-                state = (m.get("state") or "")[:2]
-                party = (m.get("party") or "")[:50]
-                chamber_m = (m.get("chamber") or chamber).lower()
-                rep = get_or_create_representative_from_sponsor(
-                    {
-                        "bioguideId": bio,
-                        "fullName": name,
-                        "chamber": chamber_m,
-                        "party": party,
-                        "state": state,
-                    }
-                )
-                pos = (m.get("position") or m.get("vote") or "yes").lower()[:20]
-                record, record_created = VoteRecord.objects.get_or_create(
-                    vote=vote,
-                    representative=rep,
-                    defaults={"position": pos or "yes"},
-                )
-                if not record_created and record.position != pos:
-                    record.position = pos
-                    record.save(update_fields=["position"])
-                    records_updated = True
-                records_updated = records_updated or record_created
-            if vote_created or vote_updated or records_updated:
-                ChangeLog.objects.create(
-                    bill=bill,
-                    change_type="vote",
-                    new_value={
-                        "vote_id": vote.id,
-                        "session_number": vote.session_number,
-                        "roll_number": vote.roll_number,
-                        "result": vote.result,
-                        "chamber": vote.chamber,
-                    },
-                )
-                votes_created += 1
+    queued = 0
+    for reference in votes_refs:
+        _queue_roll_call_vote(bill=bill, reference=reference)
+        queued += 1
     logger.info(
-        "process_bill_votes: done bill_id=%s votes_created=%s", bill_id, votes_created
+        "process_bill_votes: queued canonical roll calls bill_id=%s count=%s",
+        bill_id,
+        queued,
     )
-    return {"bill_id": bill_id, "votes_created": votes_created}
+    return {"bill_id": bill_id, "queued": queued}
 
 
 @shared_task(
@@ -1440,71 +2138,88 @@ def _download_document_impl(document_id):
     with downloaded:
         content_type = downloaded.content_type
         new_hash = downloaded.checksum
-        if doc.content_hash == new_hash and doc.object_storage_key:
+        unchanged = doc.content_hash == new_hash and bool(doc.object_storage_key)
+        extracted = None
+        if unchanged:
+            saved_key = doc.object_storage_key
+            size = doc.file_size_bytes
             logger.info(
-                "download_document: unchanged hash, skipping upload document_id=%s",
+                "download_document: unchanged hash, reconciling event document_id=%s",
                 document_id,
             )
-            doc.downloaded_at = timezone.now()
-            doc.save(update_fields=["downloaded_at"])
-            from apps.legislation.tasks import enqueue_document_contract
-
-            enqueue_document_contract(doc)
-            return {"document_id": document_id, "unchanged": True}
-
-        ext = ""
-        if content_type and "pdf" in content_type.lower():
-            ext = ".pdf"
-        elif content_type and "xml" in content_type.lower():
-            ext = ".xml"
-        elif content_type and "html" in content_type.lower():
-            ext = ".html"
         else:
-            ext = guess_extension(doc.source_url, content_type)
+            ext = ""
+            if content_type and "pdf" in content_type.lower():
+                ext = ".pdf"
+            elif content_type and "xml" in content_type.lower():
+                ext = ".xml"
+            elif content_type and "html" in content_type.lower():
+                ext = ".html"
+            else:
+                ext = guess_extension(doc.source_url, content_type)
 
-        object_key = build_object_key(
-            bill.session,
-            bill.bill_number,
-            doc.version_label,
-            ext,
-        )
-        extracted = extract_document_text(
-            downloaded.file,
-            content_type,
-            doc.source_url,
-        )
-        try:
-            saved_key, size = upload_and_metadata(
-                object_key,
+            object_key = build_object_key(
+                bill.session,
+                bill.bill_number,
+                doc.version_label,
+                ext,
+            )
+            extracted = extract_document_text(
                 downloaded.file,
                 content_type,
-                size=downloaded.size,
+                doc.source_url,
             )
-        except Exception as exc:
-            retryable_error = retryable_storage_error(exc)
-            if retryable_error:
-                raise retryable_error from exc
-            raise
+            try:
+                saved_key, size = upload_and_metadata(
+                    object_key,
+                    downloaded.file,
+                    content_type,
+                    size=downloaded.size,
+                )
+            except Exception as exc:
+                retryable_error = retryable_storage_error(exc)
+                if retryable_error:
+                    raise retryable_error from exc
+                raise
 
     now = timezone.now()
-    doc.object_storage_key = saved_key
-    doc.file_size_bytes = size
-    doc.content_hash = new_hash
-    doc.content_type = content_type[:128] if content_type else None
-    doc.extracted_text = extracted or None
-    doc.downloaded_at = now
-    doc.parsed_at = now if extracted else None
-    doc.save(
-        update_fields=[
-            "object_storage_key",
-            "file_size_bytes",
-            "content_hash",
-            "content_type",
-            "extracted_text",
-            "downloaded_at",
-            "parsed_at",
-        ]
-    )
+    with transaction.atomic():
+        locked_bill, _clock = lock_bill_activity(bill_id=bill.pk)
+        locked_doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
+
+        update_fields = ["downloaded_at"]
+        locked_doc.downloaded_at = now
+        if not unchanged:
+            locked_doc.object_storage_key = saved_key
+            locked_doc.file_size_bytes = size
+            locked_doc.content_hash = new_hash
+            locked_doc.content_type = content_type[:128] if content_type else None
+            locked_doc.extracted_text = extracted or None
+            locked_doc.parsed_at = now if extracted else None
+            update_fields.extend(
+                [
+                    "object_storage_key",
+                    "file_size_bytes",
+                    "content_hash",
+                    "content_type",
+                    "extracted_text",
+                    "parsed_at",
+                ]
+            )
+        locked_doc.save(update_fields=update_fields)
+        record_bill_change(
+            bill=locked_bill,
+            document=locked_doc,
+            change_type="new_version",
+            new_value={
+                "document_id": locked_doc.id,
+                "version_label": locked_doc.version_label,
+                "content_hash": new_hash,
+                "is_active_version": locked_doc.is_active_version,
+            },
+            event_key=f"document:{locked_doc.id}:{new_hash}",
+        )
+
     logger.info(
         "download_document: success document_id=%s key=%s bytes=%s",
         document_id,
@@ -1513,5 +2228,13 @@ def _download_document_impl(document_id):
     )
     from apps.legislation.tasks import enqueue_document_contract
 
-    enqueue_document_contract(doc)
-    return {"document_id": document_id, "object_storage_key": saved_key, "size": size}
+    enqueue_document_contract(locked_doc)
+    from apps.legislation.tasks import enqueue_search_index
+
+    enqueue_search_index(locked_bill)
+    return {
+        "document_id": document_id,
+        "object_storage_key": saved_key,
+        "size": size,
+        "unchanged": unchanged,
+    }

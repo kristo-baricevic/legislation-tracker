@@ -448,6 +448,43 @@ def test_staff_can_replay_a_dead_lettered_representative_sync(monkeypatch):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "task_name",
+    [
+        "sync_committee_memberships",
+        "apps.ingestion.tasks.sync_committee_memberships",
+    ],
+)
+def test_staff_can_replay_current_and_legacy_committee_sync_failures(
+    monkeypatch, task_name
+):
+    failure = IngestionTaskFailure.objects.create(
+        task_id=f"committee-{task_name}",
+        task_name=task_name,
+        args_json={"args": [119], "kwargs": {}},
+        error_message="roster validation failed",
+    )
+    calls = []
+    monkeypatch.setattr(
+        views.sync_committee_memberships,
+        "apply_async",
+        lambda args=None, kwargs=None: calls.append((args, kwargs))
+        or FakeAsyncResult(),
+        raising=False,
+    )
+    client = authenticated_client("committee-replay@example.com", is_staff=True)
+
+    listed = client.get("/api/ingestion/failures/")
+    replayed = client.post(
+        f"/api/ingestion/failures/{failure.id}/replay/", {}, format="json"
+    )
+
+    assert [item["id"] for item in listed.json()["results"]] == [failure.id]
+    assert replayed.status_code == 202
+    assert calls == [([119], {})]
+
+
+@pytest.mark.django_db
 def test_resolved_dead_lettered_stage_cannot_be_replayed_twice(monkeypatch):
     bill = Bill.objects.create(
         jurisdiction="federal",

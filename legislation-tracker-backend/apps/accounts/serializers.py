@@ -9,7 +9,13 @@ from apps.changelog.models import ChangeLog
 from apps.congress.serializers import RepresentativeSerializer
 from apps.legislation.serializers import BillListSerializer, TopicSerializer
 
-from .models import TrackedBill, TrackedLegislator, TrackedTopic, UserPreference
+from .models import (
+    SavedBillSearch,
+    TrackedBill,
+    TrackedLegislator,
+    TrackedTopic,
+    UserPreference,
+)
 
 User = get_user_model()
 
@@ -60,6 +66,49 @@ class UserPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPreference
         fields = ["id", "state", "chamber"]
+
+
+class SavedBillSearchSerializer(serializers.ModelSerializer):
+    new_result_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = SavedBillSearch
+        fields = [
+            "id",
+            "name",
+            "query_json",
+            "last_opened_at",
+            "last_opened_activity_sequence",
+            "new_result_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "last_opened_at",
+            "last_opened_activity_sequence",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SavedBillSearchWriteSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120, trim_whitespace=True)
+    query = serializers.JSONField()
+
+    def validate_name(self, value):
+        if not value:
+            raise serializers.ValidationError("name must not be blank")
+        return value
+
+    def validate_query(self, value):
+        from .saved_searches import canonical_saved_query
+
+        try:
+            normalized, query_hash = canonical_saved_query(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        self._normalized_hash = query_hash
+        return normalized
 
 
 class TrackedBillSerializer(serializers.ModelSerializer):

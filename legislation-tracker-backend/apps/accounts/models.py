@@ -135,6 +135,69 @@ class UserPreference(models.Model):
         return " ".join(parts)
 
 
+class SavedBillSearch(models.Model):
+    """A private normalized bill query and its acknowledged activity watermark."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="saved_bill_searches",
+    )
+    name = models.CharField(max_length=120)
+    query_json = models.JSONField(default=dict)
+    normalized_hash = models.CharField(max_length=64)
+    last_opened_at = models.DateTimeField(null=True, blank=True)
+    last_opened_activity_sequence = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "accounts_savedbillsearch"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                name="accounts_saved_search_user_name_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_hash"],
+                name="accounts_saved_search_user_query_uniq",
+            ),
+        ]
+        indexes = [models.Index(fields=["user", "updated_at"])]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.name}"
+
+
+class BillViewState(models.Model):
+    """Per-user acknowledgement cursor, intentionally not a ChangeLog foreign key."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="bill_view_states",
+    )
+    bill = models.ForeignKey(
+        "legislation.Bill",
+        on_delete=models.CASCADE,
+        related_name="view_states",
+    )
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_seen_change_created_at = models.DateTimeField(null=True, blank=True)
+    last_seen_change_id = models.BigIntegerField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "accounts_billviewstate"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "bill"],
+                name="accounts_bill_view_state_user_bill_uniq",
+            )
+        ]
+        indexes = [models.Index(fields=["user", "updated_at"])]
+
+
 class TrackedBill(models.Model):
     """A bill a user is personally tracking."""
 

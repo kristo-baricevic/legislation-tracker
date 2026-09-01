@@ -21,7 +21,7 @@ from apps.accounts.llm_credentials import (
     llm_feature_available,
 )
 from apps.accounts.models import LLMCredential
-from apps.changelog.models import ChangeLog
+from apps.changelog.services import record_bill_change
 from apps.congress.current import current_congress
 from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
@@ -64,6 +64,7 @@ WORK_KIND_DOCUMENT_CONTRACT = "document_contract"
 WORK_KIND_METADATA_CONTRACT = "metadata_contract"
 WORK_KIND_TOPIC_UPDATE = "topic_update"
 WORK_KIND_SIMILARITY = "similarity"
+WORK_KIND_SEARCH_INDEX = "search_index"
 SOURCE_REEXTRACTION_VERSION = "structured-source-1.0.0"
 
 _TAXONOMY_BY_SLUG = {entry["slug"]: entry for entry in TOPICS}
@@ -142,6 +143,34 @@ def enqueue_similarity(bill, *, source_updated_at=None):
     return enqueue_ingestion_work(
         kind=WORK_KIND_SIMILARITY,
         dedupe_key=f"{bill.id}:{fingerprint}",
+        source_updated_at=source_updated_at,
+        payload_json={"bill_id": bill.id},
+        jurisdiction=bill.jurisdiction,
+        congress=bill.session,
+    )
+
+
+def enqueue_search_index(bill, *, source_updated_at=None):
+    """Persist a coalesced public-search projection request for a bill."""
+    if source_updated_at is None:
+        current_bill = (
+            Bill.objects.filter(pk=bill.pk)
+            .values("updated_at", "last_activity_at")
+            .first()
+        )
+        source_updated_at = max(
+            value
+            for value in (
+                current_bill["updated_at"] if current_bill else bill.updated_at,
+                current_bill["last_activity_at"]
+                if current_bill
+                else bill.last_activity_at,
+            )
+            if value is not None
+        )
+    return enqueue_ingestion_work(
+        kind=WORK_KIND_SEARCH_INDEX,
+        dedupe_key=f"bill:{bill.id}",
         source_updated_at=source_updated_at,
         payload_json={"bill_id": bill.id},
         jurisdiction=bill.jurisdiction,
@@ -324,7 +353,7 @@ def _generate_contract_for_bill_impl(bill_id):
             bill.save(update_fields=["latest_contract"])
 
         if contract_created:
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 contract=contract,
                 change_type="contract_update",
@@ -334,9 +363,11 @@ def _generate_contract_for_bill_impl(bill_id):
                     "contract_hash": new_hash,
                     "schema_version": CONTRACT_SCHEMA_VERSION,
                 },
+                event_key=f"contract:{contract.id}:{new_hash}",
             )
 
     enqueue_topic_update(bill=bill)
+    enqueue_search_index(bill)
     logger.info(
         "generate_contract_for_bill: bill_id=%s contract_id=%s",
         bill.id,
@@ -476,7 +507,7 @@ def _generate_contract_impl(document_id, *, reextract_source=False):
         document.save(update_fields=["contract_generated_at"])
 
         if contract_created and document.is_active_version:
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 document=document,
                 contract=contract,
@@ -487,6 +518,7 @@ def _generate_contract_impl(document_id, *, reextract_source=False):
                     "contract_hash": new_hash,
                     "schema_version": extraction_result.schema_version,
                 },
+                event_key=f"contract:{contract.id}:{new_hash}",
             )
         _replace_evidence_spans(
             bill=bill,
@@ -497,6 +529,7 @@ def _generate_contract_impl(document_id, *, reextract_source=False):
 
     if document.is_active_version:
         enqueue_topic_update(contract=contract)
+        enqueue_search_index(bill)
 
     logger.info(
         "generate_contract: created contract_id=%s document_id=%s",
@@ -622,7 +655,7 @@ def _update_topics_impl(contract_id=None, bill_id=None):
                 bill_topic.save(update_fields=["confidence_score"])
 
         if set(old_slugs) != set(new_slugs):
-            ChangeLog.objects.create(
+            record_bill_change(
                 bill=bill,
                 contract=contract,
                 change_type="topic_update",
@@ -631,6 +664,11 @@ def _update_topics_impl(contract_id=None, bill_id=None):
                     "topics": new_slugs,
                     "contract_id": contract.id if contract else None,
                 },
+                event_key=(
+                    "topic:"
+                    f"{contract.id if contract else bill.id}:"
+                    f"{','.join(sorted(new_slugs))}"
+                ),
             )
 
     logger.info(
@@ -640,6 +678,7 @@ def _update_topics_impl(contract_id=None, bill_id=None):
         new_slugs,
     )
     enqueue_similarity(bill)
+    enqueue_search_index(bill)
     return {
         "contract_id": contract.id if contract else None,
         "bill_id": bill.id,

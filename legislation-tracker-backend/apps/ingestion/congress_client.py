@@ -8,10 +8,11 @@ import time
 import unicodedata
 from datetime import UTC, datetime
 from functools import lru_cache
-from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 import requests
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -223,6 +224,78 @@ def bill_actions(congress, bill_type, bill_number, limit=250):
     return actions
 
 
+def _paginated_bill_collection(congress, bill_type, bill_number, collection, key):
+    """Fetch a complete offset-paginated bill collection without silent loops."""
+
+    bill_type = (bill_type or "hr").lower()
+    offset = 0
+    limit = 250
+    seen_pages = set()
+    items = []
+    while True:
+        data = _request(
+            "GET",
+            f"bill/{congress}/{bill_type}/{bill_number}/{collection}",
+            params={"limit": limit, "offset": offset},
+        )
+        page = data.get(key) or []
+        if not isinstance(page, list):
+            raise CongressAPIError(
+                f"Congress bill {collection} returned an invalid {key} payload"
+            )
+        if any(not isinstance(entry, dict) for entry in page):
+            raise CongressAPIError(
+                f"Congress bill {collection} returned an invalid {key} entry"
+            )
+        fingerprint = tuple(
+            str(entry.get("url") or entry.get("bioguideId") or entry)
+            for entry in page
+        )
+        if fingerprint in seen_pages and page:
+            raise CongressAPIError(
+                f"Congress bill {collection} pagination repeated a page"
+            )
+        seen_pages.add(fingerprint)
+        items.extend(page)
+        if len(page) < limit:
+            break
+        offset += limit
+    _throttle()
+    return items
+
+
+def bill_cosponsors(congress, bill_type, bill_number):
+    """Return all official cosponsor records for a bill."""
+
+    return _paginated_bill_collection(
+        congress,
+        bill_type,
+        bill_number,
+        "cosponsors",
+        "cosponsors",
+    )
+
+
+def bill_committees(congress, bill_type, bill_number):
+    """Return all official committee relationships for a bill."""
+
+    return _paginated_bill_collection(
+        congress,
+        bill_type,
+        bill_number,
+        "committees",
+        "committees",
+    )
+
+
+def committee_detail(chamber, system_code):
+    """Return one official committee by its canonical Congress.gov system code."""
+
+    data = _request("GET", f"committee/{chamber}/{system_code}")
+    _throttle()
+    return data.get("committee") or data
+
+
 def bill_text_list(congress, bill_type, bill_number):
     """
     GET /bill/{congress}/{billType}/{billNumber}/text.
@@ -236,7 +309,7 @@ def bill_text_list(congress, bill_type, bill_number):
     if isinstance(versions, dict):
         versions = versions.get("count", []) or []
     result = []
-    for v in versions if isinstance(versions, list) else []:
+    for source_order, v in enumerate(versions if isinstance(versions, list) else [], start=1):
         label = v.get("type") or v.get("version") or v.get("label") or "unknown"
         # Congress's top-level version URL is a metadata/referrer endpoint. The
         # downloadable document is exposed in the nested formats collection.
@@ -263,7 +336,13 @@ def bill_text_list(congress, bill_type, bill_number):
             preferred_urls.append((preference, index, format_entry["url"]))
 
         url = min(preferred_urls)[2] if preferred_urls else v.get("url")
-        result.append({"version_label": str(label), "url": url or ""})
+        result.append(
+            {
+                "version_label": str(label),
+                "url": url or "",
+                "source_order": source_order,
+            }
+        )
     logger.info(
         "bill_text_list: congress=%s bill_type=%s bill_number=%s -> %s versions",
         congress,
@@ -336,7 +415,12 @@ def _roll_call_members(payload, chamber):
 
 def _request_senate_xml(url):
     try:
-        response = requests.get(url, timeout=30)
+        try:
+            response = requests.get(url, timeout=30, stream=True)
+        except TypeError:
+            # Lightweight test doubles predating bounded streaming accept only
+            # the historical timeout argument.
+            response = requests.get(url, timeout=30)
     except requests.RequestException as exc:
         logger.warning("Senate roll-call source request failed: %s", exc)
         raise CongressAPIError(f"Senate roll-call source failed: {exc}") from exc
@@ -346,10 +430,32 @@ def _request_senate_xml(url):
             status_code=response.status_code,
             response_text=(response.text or "")[:500],
         )
+    maximum = getattr(settings, "SENATE_ROLL_CALL_MAX_BYTES", 2 * 1024 * 1024)
     try:
-        return ElementTree.fromstring(response.content)
-    except ElementTree.ParseError as exc:
+        if hasattr(response, "iter_content"):
+            chunks = []
+            size = 0
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > maximum:
+                    raise CongressAPIError(
+                        "Senate roll-call source exceeds the byte limit"
+                    )
+                chunks.append(chunk)
+            content = b"".join(chunks)
+        else:
+            content = response.content
+            if len(content) > maximum:
+                raise CongressAPIError("Senate roll-call source exceeds the byte limit")
+        return ElementTree.fromstring(content)
+    except (DefusedXmlException, ElementTree.ParseError) as exc:
         raise CongressAPIError("Senate roll-call source returned invalid XML") from exc
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
 
 
 def _xml_text(element, tag):

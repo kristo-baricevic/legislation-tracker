@@ -35,6 +35,27 @@ The browser never receives a saved key from the API. See the backend
 [AI enhancement guide](../legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md)
 for the complete API, security, execution, and test contracts.
 
+### Representative browser journey on PostgreSQL
+
+The representative-insights journey uses the real Django API and a seeded
+PostgreSQL database. From the backend directory, start the isolated database:
+
+```bash
+docker compose -f docker-compose.e2e-postgres.yml up -d
+```
+
+Then, from this directory, run:
+
+```bash
+E2E_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/legislation_e2e \
+  pnpm test:e2e -- e2e/representative-insights.spec.ts
+```
+
+The E2E API bootstrap reads that URL, migrates the database, and seeds the
+bill, member, committee, and roll-call evidence used by the journey. Tear the
+database down with `docker compose -f docker-compose.e2e-postgres.yml down -v`
+from `legislation-tracker-backend/` when it is no longer needed.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## govinfo api docs
