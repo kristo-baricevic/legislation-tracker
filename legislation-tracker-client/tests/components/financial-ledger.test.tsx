@@ -81,7 +81,21 @@ describe("FinancialLedger", () => {
     expect(screen.getByText("What the money is for")).toBeVisible();
   });
 
-  it("sends action, year, line, and section filters to the server", async () => {
+  it("reports only the number of provisions actually loaded", async () => {
+    vi.mocked(getFinancialItems).mockResolvedValue({
+      count: 101,
+      next: "page-2",
+      previous: null,
+      results: [item("financial-1", "appropriation", "increase")],
+    });
+
+    render(<FinancialLedger contractId={12} totalCount={101} />);
+
+    expect(await screen.findByText("1 of 101 provisions shown")).toBeVisible();
+    expect(screen.queryByText("101 of 101 provisions shown")).not.toBeInTheDocument();
+  });
+
+  it("sends one association scope with the action and year filters", async () => {
     const user = userEvent.setup();
     vi.mocked(getFinancialItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
 
@@ -105,9 +119,8 @@ describe("FinancialLedger", () => {
         financialAction: "transfer",
         fiscalYear: 2027,
         lineItemId: "line-4",
-        sectionId: "section-4",
       }),
     );
-    expect(screen.getByText("0 of 9 provisions shown")).toBeVisible();
+    expect(screen.getByText("0 of 0 matching provisions shown")).toBeVisible();
   });
 });

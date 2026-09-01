@@ -103,6 +103,23 @@ const selectedVote: VoteDetailItem = {
       },
       position: "not voting",
     },
+    {
+      representative: {
+        id: 5,
+        bioguide_id: "D000001",
+        name: "Representative Diaz",
+        chamber: "House",
+        party: "Democratic",
+        state: "TX",
+        district: "9",
+        first_name: "Diaz",
+        last_name: "Representative",
+        official_website_url: null,
+        image_url: null,
+        is_current: true,
+      },
+      position: "present",
+    },
   ],
 };
 
@@ -133,8 +150,9 @@ describe("VotingRecord", () => {
     );
     expect(screen.getByRole("heading", { name: "Yes — 2" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "No — 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Present — 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Not voting — 1" })).toBeVisible();
-    expect(screen.getAllByText(/Representative (Adams|Garcia|Baker|Chen)/)).toHaveLength(4);
+    expect(screen.getAllByText(/Representative (Adams|Garcia|Baker|Chen|Diaz)/)).toHaveLength(5);
     expect(screen.getAllByText("Representative Adams")[0].compareDocumentPosition(
       screen.getAllByText("Representative Garcia")[0],
     ) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);

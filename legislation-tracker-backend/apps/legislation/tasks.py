@@ -87,6 +87,10 @@ GenerationReason = Literal["ingestion", "schema_backfill"]
 GENERATION_REASONS = frozenset({"ingestion", "schema_backfill"})
 
 
+class ContractWriterDisabledError(RuntimeError):
+    """A queued schema backfill cannot run under the active writer rollout."""
+
+
 def _validated_generation_reason(value: str) -> GenerationReason:
     if value not in GENERATION_REASONS:
         raise ValueError(f"Unsupported contract generation reason: {value}")
@@ -602,13 +606,10 @@ def _generate_contract_impl(
                 "reason": "extractor_superseded",
                 "replacement_work_id": replacement.id,
             }
-        return {
-            "document_id": document.id,
-            "skipped": True,
-            "reason": "writer_disabled",
-            "queued_extractor": extractor_version,
-            "active_extractor": current_extractor_version,
-        }
+        raise ContractWriterDisabledError(
+            "schema backfill writer is disabled: "
+            f"queued={extractor_version} active={current_extractor_version}"
+        )
     logger.info(
         "generate_contract: starting document_id=%s generation_reason=%s",
         document_id,

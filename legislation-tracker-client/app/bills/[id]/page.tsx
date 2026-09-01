@@ -12,12 +12,12 @@ import {
   getVote,
   getVotes,
   trackBill,
-  type BillContractItem,
   type BillDetailSummary,
   type VoteDetailItem,
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
+import type { BillContractSummary } from "@/lib/contracts";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
@@ -33,7 +33,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   const [isTracked, setIsTracked] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [comparisonContracts, setComparisonContracts] = useState<BillContractItem[] | null>(null);
+  const [comparisonContracts, setComparisonContracts] = useState<BillContractSummary[] | null>(null);
   const [votes, setVotes] = useState<VoteListItem[] | null>(null);
   const [votePage, setVotePage] = useState(1);
   const [voteLoadedPage, setVoteLoadedPage] = useState(1);
@@ -76,7 +76,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   useEffect(() => {
     if (Number.isNaN(id)) return;
     let cancelled = false;
-    getContracts(id, { page: 1 })
+    getContracts(id, { page: 1, view: "summary" })
       .then((contracts) => {
         if (!cancelled) setComparisonContracts(contracts.results);
       })

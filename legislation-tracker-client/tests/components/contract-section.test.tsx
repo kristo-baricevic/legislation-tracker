@@ -1,9 +1,22 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ContractSection } from "@/app/bills/[id]/contract-section";
-import type { BillContractItem } from "@/lib/api";
+import { getContract, getContractEvidence, getFinancialItems } from "@/lib/api";
+import type { BillContractItem, BillDetailSummary } from "@/lib/api";
+import type { BillContractSummary } from "@/lib/contracts";
+
+vi.mock("@/lib/api", () => ({
+  getApiBase: () => "http://localhost:8000",
+  getContract: vi.fn(),
+  getContractEvidence: vi.fn(),
+  getDefinitionItems: vi.fn(),
+  getFinancialItems: vi.fn(),
+  getOfficialSummary: vi.fn(),
+  getReaderItems: vi.fn(),
+  getTimelineItems: vi.fn(),
+}));
 
 function v2Contract(): BillContractItem {
   return {
@@ -123,6 +136,12 @@ function v2Contract(): BillContractItem {
 }
 
 describe("ContractSection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getContractEvidence).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+  });
+
   it("renders structured v2 categories with evidence attached to each claim", async () => {
     const user = userEvent.setup();
     render(<ContractSection contract={v2Contract()} />);
@@ -201,5 +220,95 @@ describe("ContractSection", () => {
     expect(screen.getByText("Safe fallback summary")).toBeVisible();
     expect(screen.getByText("Fallback source excerpt")).toBeVisible();
     expect(screen.getByText("Evidence spans (1)")).toBeVisible();
+  });
+
+  it("hydrates a compact 2.0 summary so the legacy reader remains visible", async () => {
+    const summary: BillContractSummary = {
+      id: 1,
+      schema_version: "2.0-legal-nlp",
+      contract_hash: "v2-hash",
+      computed_at: "2026-08-20T12:00:00Z",
+      document: 1,
+      document_version_label: "Introduced",
+      coverage_note: null,
+      orientation: null,
+      reader_stats: null,
+    };
+    vi.mocked(getContract).mockResolvedValue(v2Contract());
+
+    render(<ContractSection contract={summary} />);
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeVisible();
+    expect(getContract).toHaveBeenCalledWith(1);
+  });
+
+  it("uses the contract document for source links while a newer version is active", async () => {
+    const user = userEvent.setup();
+    const summary: BillContractSummary = {
+      id: 22,
+      schema_version: "2.1-legal-nlp",
+      contract_hash: "v21-hash",
+      computed_at: "2026-08-20T12:00:00Z",
+      document: 1,
+      document_version_label: "Introduced",
+      coverage_note: "Recognized provisions.",
+      orientation: { purpose_clause: null, purpose_line_item_id: null },
+      reader_stats: { line_item_count: 0, financial_item_count: 1, timeline_item_count: 0, definition_item_count: 0, section_group_count: 1 },
+    };
+    const bill = {
+      id: 7,
+      jurisdiction: "federal",
+      session: 119,
+      bill_number: "HR 7",
+      title: "Versioned Act",
+      status: "Introduced",
+      topics: [],
+      summary_preview: null,
+      summary_has_more: false,
+      summary_source: null,
+      summary_action_date: null,
+      summary_version_code: null,
+      summary_last_updated_at: null,
+      documents: [
+        { id: 1, version_label: "Introduced", source_order: 1, is_active_version: false, content_type: "text/plain", file_size_bytes: 10, source_url: null, downloaded_at: null, download_url: "/documents/1/download/", text_url: "/documents/1/text/" },
+        { id: 2, version_label: "Enrolled", source_order: 2, is_active_version: true, content_type: "text/plain", file_size_bytes: 20, source_url: null, downloaded_at: null, download_url: "/documents/2/download/", text_url: "/documents/2/text/" },
+      ],
+      congress_gov_url: null,
+      latest_contract: summary,
+    } as unknown as BillDetailSummary;
+    vi.mocked(getFinancialItems).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [{
+        id: "financial-1",
+        source_id: "financial-1",
+        section_id: "section-1",
+        section_label: "Sec. 1",
+        section_path: [{ level: "section", label: "Sec. 1", heading: "Funding" }],
+        display_text: "Appropriates $1,000.",
+        financial_action: "appropriation",
+        direction: "increase",
+        amount: "1000.00",
+        amount_type: "specified",
+        currency: "USD",
+        fiscal_years: [],
+        purpose: "the program",
+        source_account: null,
+        destination_account: null,
+      }],
+    });
+
+    render(<ContractSection contract={summary} bill={bill} />);
+    await user.click(await screen.findByRole("button", { name: "Read bill text" }));
+
+    expect(screen.getByRole("link", { name: "Read full text" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/documents/1/text/",
+    );
+    expect(screen.getByRole("link", { name: "Download document" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/documents/1/download/",
+    );
   });
 });

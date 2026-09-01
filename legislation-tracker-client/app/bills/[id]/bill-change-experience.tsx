@@ -9,12 +9,16 @@ import {
   compareBillDocuments,
   getBillChanges,
   type BillChangesPage,
-  type BillContractItem,
   type BillDocumentItem,
   type ContractComparison,
   type DocumentComparison,
   type DocumentSectionComparison,
 } from "@/lib/api";
+
+interface ContractComparisonIdentity {
+  id: number;
+  computed_at: string;
+}
 
 export function selectDocumentComparisonPair(
   documents: BillDocumentItem[],
@@ -35,8 +39,8 @@ export function selectDocumentComparisonPair(
 }
 
 function selectContractComparisonPair(
-  contracts: BillContractItem[],
-): [BillContractItem, BillContractItem] | null {
+  contracts: ContractComparisonIdentity[],
+): [ContractComparisonIdentity, ContractComparisonIdentity] | null {
   if (contracts.length < 2) return null;
   const newestFirst = [...contracts].sort(
     (left, right) =>
@@ -98,7 +102,7 @@ export default function BillChangeExperience({
   documents,
 }: {
   billId: number;
-  contracts: BillContractItem[];
+  contracts: ContractComparisonIdentity[];
   documents: BillDocumentItem[];
 }) {
   const [changes, setChanges] = useState<BillChangesPage | null>(null);

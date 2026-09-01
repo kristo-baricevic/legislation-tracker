@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
   getBill,
+  getContract,
   getContractEvidence,
   getContracts,
   getDefinitionItems,
@@ -156,6 +157,7 @@ describe("bounded bill brief API helpers", () => {
     };
 
     await getBill(7, { contractView: "summary" });
+    await getContract(12);
     await getContracts(7, { view: "summary", page: 2 });
     await getReaderItems(12, { page: 2, pageSize: 50 });
     await getFinancialItems(12, {
@@ -176,6 +178,7 @@ describe("bounded bill brief API helpers", () => {
 
     assert.deepEqual(urls, [
       "http://api.test/api/bills/7/?contract_view=summary",
+      "http://api.test/api/contracts/12/",
       "http://api.test/api/contracts/?bill=7&view=summary&page=2",
       "http://api.test/api/contracts/12/reader-items/?page=2&page_size=50",
       "http://api.test/api/contracts/12/financial-items/?page=3&page_size=10&financial_action=transfer&fiscal_year=2027&section_id=section-1",

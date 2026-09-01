@@ -75,7 +75,7 @@ _DIRECTION_BY_ACTION = {
     "rescission": "decrease",
     "reduction": "decrease",
     "cancellation": "decrease",
-    "set_aside": "increase",
+    "set_aside": "limit",
     "limitation": "limit",
     "other_explicit": "increase",
 }
@@ -228,7 +228,12 @@ def _inherited_context(
 ) -> _InheritedContext | None:
     parent = _parent_section(section, sections)
     while parent is not None:
-        for sentence in reversed(sentence_spans(parent, source_text)):
+        preceding_sentences = (
+            sentence
+            for sentence in sentence_spans(parent, source_text)
+            if sentence.end_char <= section.span.start_char
+        )
+        for sentence in reversed(tuple(preceding_sentences)):
             actions = _actions(sentence.text)
             if not actions:
                 continue
@@ -286,11 +291,19 @@ def _amount_subclause(text: str, amounts: Sequence[_AmountMatch], index: int) ->
 
 
 def _percentage_is_financial(text: str) -> bool:
+    financial_noun = re.search(
+        r"\b(?:amounts?|funds?|funding|appropriations?|budget\s+authority|"
+        r"unobligated\s+balances?|accounts?)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if financial_noun is None:
+        return False
     return (
         re.search(
             r"(?:"
-            r"\bpercent\s+of\s+(?:the\s+)?(?:amounts?|funds?|appropriations?|"
-            r"budget\s+authority|unobligated\s+balances)\b|"
+            r"\bpercent\s+of\s+(?:the\s+)?(?:amounts?|funds?|funding|"
+            r"appropriations?|budget\s+authority|unobligated\s+balances?|accounts?)\b|"
             r"\b(?:set\s+aside|allocate|transfer|reduce|rescind|cancel)\b"
             r"[^$%;.]{0,80}\b\d+(?:\.\d+)?\s+percent\b|"
             r"\b\d+(?:\.\d+)?\s+percent\b[^.;]{0,40}"

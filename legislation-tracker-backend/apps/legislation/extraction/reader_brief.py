@@ -41,6 +41,13 @@ _CATEGORY_ORDER = {
     "definitions": 5,
 }
 _OPERATIVE_CATEGORIES = {"requirements", "amendment_operations", "applicability"}
+_EXPLICIT_PURPOSE_RE = re.compile(
+    r"\bthe\s+purposes?\s+of\s+(?:this|the)\s+Act\s+(?:is|are)\s+to\s+"
+    r"(?P<purpose>[^.;]{1,1000})[.;]",
+    re.IGNORECASE,
+)
+_QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
+_QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 
 
 @dataclass
@@ -147,6 +154,51 @@ def _standalone_line(item: IdentifiedClaim) -> _LineDraft | ExtractionWarning:
         evidence=item.claim.evidence,
         exact_financial_refs=financial_refs,
         timeline_refs=timeline_refs,
+    )
+
+
+def _explicit_purpose_line(
+    sections: Sequence[StructuralSection],
+) -> _LineDraft | None:
+    candidates: dict[int, tuple[StructuralSection, re.Match[str]]] = {}
+    for section in sections:
+        for match in _EXPLICIT_PURPOSE_RE.finditer(section.span.text):
+            prefix = section.span.text[: match.start()]
+            if prefix.rfind(_QUOTED_BLOCK_START) > prefix.rfind(_QUOTED_BLOCK_END):
+                continue
+            start = section.span.start_char + match.start()
+            current = candidates.get(start)
+            if current is None or len(section.path) > len(current[0].path):
+                candidates[start] = (section, match)
+    if not candidates:
+        return None
+
+    start = min(candidates)
+    section, match = candidates[start]
+    purpose = normalize_reader_fragment(match.group("purpose")).strip().rstrip(".")
+    if not purpose:
+        return None
+    evidence_text = match.group(0)
+    evidence = SourceSpan(
+        text=evidence_text,
+        start_char=start,
+        end_char=start + len(evidence_text),
+    )
+    source_id = f"purpose-{start}-1"
+    return _LineDraft(
+        id=f"line-{source_id}",
+        source_id=source_id,
+        section_id=section.source_id,
+        section_path=section.path,
+        rendered=RenderedReaderClaim(
+            kind="purpose",
+            display_text=f"This bill aims to {purpose}.",
+            actor=None,
+            action=None,
+            effect=None,
+        ),
+        claim_refs=(),
+        evidence=(evidence,),
     )
 
 
@@ -289,6 +341,10 @@ def build_reader_brief(
             else:
                 lines.append(standalone)
 
+    purpose_line = _explicit_purpose_line(sections)
+    if purpose_line is not None:
+        lines.append(purpose_line)
+
     lines.sort(key=lambda line: line.evidence[0].start_char)
     for definition in definition_items:
         for line in lines:
@@ -342,7 +398,10 @@ def build_reader_brief(
     )
     return ReaderBrief(
         coverage_note=_coverage_note(stats),
-        orientation=ReaderOrientation(None, None),
+        orientation=ReaderOrientation(
+            purpose_line.rendered.display_text if purpose_line is not None else None,
+            purpose_line.id if purpose_line is not None else None,
+        ),
         reader_stats=stats,
         section_groups=tuple(section_groups),
         line_items=line_items,

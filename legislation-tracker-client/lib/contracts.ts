@@ -23,6 +23,7 @@ export interface LegalNlpExtractionMetadata {
 
 export interface LegalNlpKeyProvision {
   kind:
+    | "purpose"
     | "requirement"
     | "funding"
     | "timeline"
@@ -477,6 +478,7 @@ export function isLegalNlpLineItem(value: unknown): value is LegalNlpLineItem {
     !isIdentifier(value.section_id) ||
     !isSectionPath(value.section_path) ||
     ![
+      "purpose",
       "requirement",
       "prohibition",
       "permission",

@@ -67,6 +67,7 @@ Of the amounts appropriated by this Act, the Secretary shall set aside 10 percen
     assert claims[1].fields["amount"] == "10.00"
     assert claims[1].fields["amount_type"] == "percentage"
     assert claims[1].fields["currency"] is None
+    assert claims[1].fields["direction"] == "limit"
 
 
 def test_financial_rules_preserve_transfer_source_and_destination():
@@ -248,6 +249,29 @@ The Secretary shall report the percentage of applications approved and shall pub
 """
 
     assert extract(source) == ()
+
+
+def test_financial_rules_reject_nonfinancial_percentage_reductions():
+    source = """SEC. 15A. EMISSIONS
+The Administrator shall reduce greenhouse gas emissions by 50 percent by 2030.
+"""
+
+    assert extract(source) == ()
+
+
+def test_financial_rules_do_not_inherit_actions_from_later_sibling_sections():
+    source = """TITLE I--TEST
+SEC. 1. FEES.
+The fee is $100.
+SEC. 2. APPROPRIATION.
+There is appropriated $5,000.
+"""
+
+    claims = extract(source)
+
+    assert len(claims) == 1
+    assert claims[0].section_label == "Sec. 2"
+    assert claims[0].fields["amount"] == "5000.00"
 
 
 def test_financial_rules_reject_population_percentage_limitation():

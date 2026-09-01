@@ -454,6 +454,10 @@ export async function getBill(
 
 export type BillContractSummariesPage = PageResponse<BillContractSummary>;
 
+export function getContract(contractId: number): Promise<BillContractItem> {
+  return publicGet<BillContractItem>(`/api/contracts/${contractId}/`);
+}
+
 export function getContracts(
   billId: number,
   params: { view: "summary"; page?: number; signal?: AbortSignal },

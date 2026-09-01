@@ -11,7 +11,7 @@ from apps.accounts.bill_views import unread_change_count
 from apps.accounts.models import BillViewState, User
 from apps.changelog.models import ChangeLog
 from apps.ingestion import tasks as ingestion_tasks
-from apps.ingestion.models import IngestionWorkItem
+from apps.ingestion.models import IngestionWorkItem, IngestionWorkStatus
 from apps.legislation import tasks
 from apps.legislation.extraction.types import (
     EXTRACTOR_VERSION,
@@ -449,6 +449,7 @@ def test_schema_backfill_updates_reader_contract_without_activity_churn():
 
 
 @pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False)
 def test_durable_contract_refuses_a_stale_queued_extractor_before_persistence():
     bill = Bill.objects.create(
         jurisdiction="federal",
@@ -464,22 +465,56 @@ def test_durable_contract_refuses_a_stale_queued_extractor_before_persistence():
         extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
     )
 
-    result = tasks._generate_contract_impl(
-        document.id,
-        generation_reason="schema_backfill",
-        extractor_version=V21_EXTRACTOR_VERSION,
-    )
-
-    assert result == {
-        "document_id": document.id,
-        "skipped": True,
-        "reason": "writer_disabled",
-        "queued_extractor": V21_EXTRACTOR_VERSION,
-        "active_extractor": EXTRACTOR_VERSION,
-    }
+    with pytest.raises(tasks.ContractWriterDisabledError):
+        tasks._generate_contract_impl(
+            document.id,
+            generation_reason="schema_backfill",
+            extractor_version=V21_EXTRACTOR_VERSION,
+        )
     assert not BillContract.objects.filter(document=document).exists()
     assert document.contract_generated_at is None
     assert not ChangeLog.objects.filter(bill=bill).exists()
+
+
+@pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False)
+def test_writer_disabled_schema_backfill_remains_retryable_durable_work():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 202E",
+        title="Retryable Writer Toggle Act",
+        status="Introduced",
+    )
+    document = BillDocument.objects.create(
+        bill=bill,
+        version_label="Introduced",
+        is_active_version=True,
+        extracted_text="SEC. 2. DUTY\nThe Secretary shall report.",
+    )
+    BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version="2.0-legal-nlp",
+        contract_hash="existing-contract",
+    )
+    work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_DOCUMENT_CONTRACT,
+        dedupe_key=f"{document.id}:schema-backfill",
+        source_updated_at=timezone.now(),
+        payload_json={
+            "document_id": document.id,
+            "generation_reason": "schema_backfill",
+            "extractor_version": V21_EXTRACTOR_VERSION,
+        },
+    )
+
+    result = ingestion_tasks.process_ingestion_work_item(work.id)
+
+    work.refresh_from_db()
+    assert result == {"work_item_id": work.id, "status": "retrying"}
+    assert work.status == IngestionWorkStatus.PENDING
+    assert "writer is disabled" in work.last_error
 
 
 @pytest.mark.django_db

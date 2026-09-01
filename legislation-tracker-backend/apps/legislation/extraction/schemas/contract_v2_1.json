@@ -204,8 +204,8 @@
         "section_path": {"$ref": "#/$defs/sectionPath"},
         "kind": {
           "enum": [
-            "requirement", "prohibition", "permission", "amendment",
-            "applicability", "financial", "timeline"
+            "purpose", "requirement", "prohibition", "permission",
+            "amendment", "applicability", "financial", "timeline"
           ]
         },
         "display_text": {"type": "string", "minLength": 1, "maxLength": 4000},

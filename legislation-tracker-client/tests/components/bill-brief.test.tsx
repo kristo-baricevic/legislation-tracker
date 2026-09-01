@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BillBrief } from "@/app/bills/[id]/bill-brief";
-import { getDefinitionItems, getOfficialSummary, getReaderItems } from "@/lib/api";
+import { getDefinitionItems, getOfficialSummary, getReaderItems, getTimelineItems } from "@/lib/api";
 import type { BillDetailSummary } from "@/lib/api";
 import type { BillContractSummary, LegalNlpLineItem } from "@/lib/contracts";
 
@@ -80,12 +80,13 @@ describe("BillBrief", () => {
     vi.clearAllMocks();
     vi.mocked(getReaderItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [], section_supplements: [] });
     vi.mocked(getDefinitionItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+    vi.mocked(getTimelineItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
   });
 
   it("orients with attributed preview and fetches the complete CRS summary only on request", async () => {
     const user = userEvent.setup();
     vi.mocked(getOfficialSummary).mockResolvedValue({ summary: "Rural Health Act\n\nCreates grants for rural hospitals.\n\nRequires annual reports.", summary_source: "crs", summary_action_date: "2026-08-20", summary_version_code: "Introduced in House", summary_last_updated_at: "2026-08-21T00:00:00Z" });
-    render(<BillBrief bill={bill} contractSummary={contract} />);
+    render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
 
     expect(screen.getByRole("heading", { name: "What this bill does" })).toBeVisible();
     expect(screen.getByText(/Official CRS summary/)).toBeVisible();
@@ -102,8 +103,8 @@ describe("BillBrief", () => {
 
   it("provides a useful reader overview and links each topic to all matching bills", () => {
     const noSummary = { ...bill, summary_preview: null, summary_has_more: false, summary_source: null };
-    const { rerender } = render(<BillBrief bill={noSummary} contractSummary={contract} />);
-    expect(screen.getByText(/This federal bill changes health policy/i)).toBeVisible();
+    const { rerender } = render(<BillBrief bill={noSummary} contractSummary={contract} onShowAllFinancial={() => undefined} />);
+    expect(screen.getByText("Creates a rural hospital grant program.")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Topics" })).toBeVisible();
     expect(screen.getByRole("link", { name: /Health/ })).toHaveAttribute("href", "/bills?topic_id=1");
     expect(screen.getByText(/health-care programs, coverage, funding, or administration/i)).toBeVisible();
@@ -111,9 +112,13 @@ describe("BillBrief", () => {
     expect(screen.queryByText(/recognized line items/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Extraction coverage/i)).not.toBeInTheDocument();
 
-    rerender(<BillBrief bill={{ ...noSummary, summary_preview: "Source description", summary_source: "source_metadata" }} contractSummary={contract} />);
+    rerender(<BillBrief bill={{ ...noSummary, summary_preview: "Source description", summary_source: "source_metadata" }} contractSummary={contract} onShowAllFinancial={() => undefined} />);
     expect(screen.getByText(/Congress\.gov source description/)).toBeVisible();
     expect(screen.queryByText(/Official CRS summary/)).not.toBeInTheDocument();
+
+    rerender(<BillBrief bill={{ ...noSummary, summary_preview: "Previously stored summary" }} contractSummary={contract} onShowAllFinancial={() => undefined} />);
+    expect(screen.getByText(/Previously stored bill summary/)).toBeVisible();
+    expect(screen.getByText("Previously stored summary")).toBeVisible();
   });
 
   it("keeps detailed extraction collapsed and excludes malformed reader fragments", async () => {
@@ -132,7 +137,7 @@ describe("BillBrief", () => {
       section_supplements: [],
     });
 
-    render(<BillBrief bill={bill} contractSummary={contract} />);
+    render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
 
     expect(getReaderItems).not.toHaveBeenCalled();
     expect(screen.queryByText(/Requires action 2/)).not.toBeInTheDocument();
@@ -149,7 +154,7 @@ describe("BillBrief", () => {
       .mockResolvedValueOnce({ count: 61, next: "page-3", previous: "page-1", results: Array.from({ length: 25 }, (_, index) => line(index + 26)), section_supplements: [] })
       .mockResolvedValueOnce({ count: 61, next: null, previous: "page-2", results: Array.from({ length: 11 }, (_, index) => line(index + 51)), section_supplements: [] });
 
-    render(<BillBrief bill={bill} contractSummary={contract} />);
+    render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
     await user.click(screen.getByText("Browse detailed provisions"));
     expect(await screen.findByText("Requires action 25.")).toBeVisible();
     expect(screen.queryByText("Requires action 26.")).not.toBeInTheDocument();
@@ -161,5 +166,102 @@ describe("BillBrief", () => {
     await user.click(screen.getByRole("button", { name: "Show 25 more" }));
     expect(await screen.findByText("Requires action 61.")).toBeVisible();
     await waitFor(() => expect(getReaderItems).toHaveBeenLastCalledWith(12, { page: 3, pageSize: 25 }));
+  });
+
+  it("opens scoped money, timeline, and definition details for one provision", async () => {
+    const user = userEvent.setup();
+    const onShowAllFinancial = vi.fn();
+    const financialPreview = Array.from({ length: 3 }, (_, index) => ({
+      id: `financial-${index + 1}`,
+      display_text: `Appropriates $${index + 1},000.`,
+      financial_action: "appropriation" as const,
+      direction: "increase" as const,
+      amount: `${index + 1}000.00`,
+      amount_type: "specified" as const,
+      currency: "USD" as const,
+      fiscal_years: [2027],
+    }));
+    const timelinePreview = Array.from({ length: 3 }, (_, index) => ({
+      id: `timeline-${index + 1}`,
+      display_text: `Deadline ${index + 1}.`,
+      timeline_type: "relative" as const,
+      date: null,
+      relative_value: index + 1,
+      relative_unit: "days" as const,
+      trigger: "enactment",
+    }));
+    vi.mocked(getReaderItems).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [{
+        ...line(1),
+        exact_financial_count: 4,
+        exact_financial_preview: financialPreview,
+        timeline_count: 4,
+        timeline_preview: timelinePreview,
+        definition_count: 1,
+      }],
+      section_supplements: [],
+    });
+    vi.mocked(getTimelineItems).mockResolvedValue({
+      count: 4,
+      next: null,
+      previous: null,
+      results: Array.from({ length: 4 }, (_, index) => ({
+        ...timelinePreview[Math.min(index, 2)],
+        id: `timeline-${index + 1}`,
+        display_text: `Deadline ${index + 1}.`,
+        source_id: `timeline-${index + 1}`,
+        section_id: "section-1",
+        section_label: "Sec. 1",
+        section_path: line(1).section_path,
+      })),
+    });
+    vi.mocked(getDefinitionItems).mockResolvedValue({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [{
+        id: "definition-1",
+        source_id: "definition-1",
+        section_id: "section-1",
+        section_label: "Sec. 1",
+        section_path: line(1).section_path,
+        display_text: "Defines rural hospital.",
+        term: "rural hospital",
+        definition: "a hospital in a rural area",
+        definition_type: "means",
+      }],
+    });
+
+    render(
+      <BillBrief
+        bill={bill}
+        contractSummary={contract}
+        onShowAllFinancial={onShowAllFinancial}
+      />,
+    );
+    await user.click(screen.getByText("Browse detailed provisions"));
+    await screen.findByText("Requires action 1.");
+
+    await user.click(screen.getByRole("button", { name: "Show all 4 money items" }));
+    expect(onShowAllFinancial).toHaveBeenCalledWith("line-1");
+
+    await user.click(screen.getByRole("button", { name: "Show all 4 deadlines" }));
+    expect(await screen.findByText("Deadline 4.")).toBeVisible();
+    expect(getTimelineItems).toHaveBeenCalledWith(12, {
+      page: 1,
+      pageSize: 25,
+      lineItemId: "line-1",
+    });
+
+    await user.click(screen.getByRole("button", { name: "View 1 linked term" }));
+    expect(await screen.findByText("a hospital in a rural area")).toBeVisible();
+    expect(getDefinitionItems).toHaveBeenCalledWith(12, {
+      page: 1,
+      pageSize: 25,
+      lineItemId: "line-1",
+    });
   });
 });

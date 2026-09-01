@@ -16,21 +16,23 @@ interface VotingRecordProps {
   onNext: () => void;
 }
 
-type PositionGroup = "yes" | "no" | "not voting" | "other";
+type PositionGroup = "yes" | "no" | "present" | "not voting" | "other";
 
 const groupLabels: Record<PositionGroup, string> = {
   yes: "Yes",
   no: "No",
+  present: "Present",
   "not voting": "Not voting",
   other: "Other recorded positions",
 };
 
-const groupOrder: PositionGroup[] = ["yes", "no", "not voting", "other"];
+const groupOrder: PositionGroup[] = ["yes", "no", "present", "not voting", "other"];
 
 function normalizedPosition(position: string): PositionGroup {
   const normalized = position.trim().toLowerCase().replaceAll("_", " ");
-  if (["yes", "yea", "aye", "present"].includes(normalized)) return "yes";
+  if (["yes", "yea", "aye"].includes(normalized)) return "yes";
   if (["no", "nay"].includes(normalized)) return "no";
+  if (normalized === "present") return "present";
   if (["not voting", "not voting present", "absent", "paired"].includes(normalized)) {
     return "not voting";
   }

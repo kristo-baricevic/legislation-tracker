@@ -328,6 +328,10 @@ def main() -> None:
     )
     no_summary_json = {
         **contract_json,
+        "orientation": {
+            "purpose_clause": "This bill requires the Secretary to publish a report.",
+            "purpose_line_item_id": "line-0",
+        },
         "reader_stats": {**contract_json["reader_stats"], "line_item_count": 1},
         "section_groups": [
             {

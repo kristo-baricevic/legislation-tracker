@@ -255,7 +255,7 @@ describe("BillDetailPage", () => {
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
     expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
     expect(screen.getByText("Loading vote history…")).toBeVisible();
-    expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1 });
+    expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1, view: "summary" });
     expect(getVotes).toHaveBeenLastCalledWith(11, { page: 1 });
   });
 
@@ -521,7 +521,7 @@ describe("BillDetailPage", () => {
 
     expect(screen.queryByText("Newest contract revision")).not.toBeInTheDocument();
     expect(screen.queryByText("Older contract revision")).not.toBeInTheDocument();
-    expect(getContracts).toHaveBeenLastCalledWith(10, { page: 1 });
+    expect(getContracts).toHaveBeenLastCalledWith(10, { page: 1, view: "summary" });
 
     expect(await screen.findByText(/roll call 17: Passed/)).toBeVisible();
     await user.click(

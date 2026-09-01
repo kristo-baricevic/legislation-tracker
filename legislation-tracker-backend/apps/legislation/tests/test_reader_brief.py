@@ -258,6 +258,51 @@ There is appropriated $1,000,000 for the reporting program.
     assert "1 deadline or effective date" in brief.coverage_note
 
 
+def test_explicit_statutory_purpose_becomes_evidence_backed_orientation():
+    source = """SEC. 1. PURPOSE
+The purpose of this Act is to improve access to rural health care.
+SEC. 2. REPORT
+The Secretary shall publish an annual report.
+"""
+    sections = parse_federal_structure(source)
+
+    brief = build_reader_brief(reader_claims(source), sections)
+
+    assert brief.orientation.purpose_clause == (
+        "This bill aims to improve access to rural health care."
+    )
+    assert brief.orientation.purpose_line_item_id is not None
+    purpose_line = next(
+        item
+        for item in brief.line_items
+        if item.id == brief.orientation.purpose_line_item_id
+    )
+    assert purpose_line.kind == "purpose"
+    assert purpose_line.display_text == brief.orientation.purpose_clause
+    assert purpose_line.evidence[0].text == (
+        "The purpose of this Act is to improve access to rural health care."
+    )
+    assert (
+        source[purpose_line.evidence[0].start_char : purpose_line.evidence[0].end_char]
+        == purpose_line.evidence[0].text
+    )
+
+
+def test_quoted_prior_law_purpose_does_not_become_bill_orientation():
+    source = """SEC. 1. AMENDMENT
+Section 2 of prior law is amended by inserting [[QUOTED_BLOCK_START]]The purpose of this Act is to replace the former program.[[QUOTED_BLOCK_END]].
+SEC. 2. REPORT
+The Secretary shall publish an annual report.
+"""
+    sections = parse_federal_structure(source)
+
+    brief = build_reader_brief(reader_claims(source), sections)
+
+    assert brief.orientation.purpose_clause is None
+    assert brief.orientation.purpose_line_item_id is None
+    assert all(item.kind != "purpose" for item in brief.line_items)
+
+
 def test_missing_required_slots_never_create_section_number_only_lines():
     source = "SEC. 248. AMENDMENT\nSection 5 is amended.\n"
     sections = parse_federal_structure(source)

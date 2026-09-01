@@ -52,13 +52,18 @@ test("a visitor can read the complete bounded bill brief and official summary", 
   );
   await expect(page.getByText(/preserves the official roll-call record/)).toBeVisible();
 
-  const breakdown = page.getByRole("heading", { name: "Plain-English breakdown" }).locator("..");
+  const breakdown = page.getByText("Browse detailed provisions").locator("..");
   await expect(page.getByText("Requires the Secretary to complete reader provision 26.")).toHaveCount(0);
+  await clickForResponse(
+    page,
+    page.getByText("Browse detailed provisions"),
+    "reader-items/?page=1",
+  );
   await clickForResponse(page, page.getByRole("button", { name: "Show 25 more", exact: true }), "reader-items/?page=2");
   await expect(page.getByText("Requires the Secretary to complete reader provision 50.")).toBeVisible();
   await clickForResponse(page, page.getByRole("button", { name: "Show 25 more", exact: true }), "reader-items/?page=3");
   await expect(page.getByText("Requires the Secretary to complete reader provision 61.")).toBeVisible();
-  await expect(breakdown).toContainText("Shown in the same order as the bill text.");
+  await expect(breakdown).toContainText("These provisions are shown in bill order.");
 });
 
 test("a visitor sees a clear fallback when CRS has not published a summary", async ({
@@ -67,7 +72,8 @@ test("a visitor sees a clear fallback when CRS has not published a summary", asy
 }) => {
   const id = await billId(request, "HR E2E NO CRS");
   await page.goto(`/bills/${id}`);
-  await expect(page.getByText("No official CRS summary is available yet.")).toBeVisible();
+  await expect(page.getByText("This bill requires the Secretary to publish a report.")).toBeVisible();
+  await expect(page.getByText("No official CRS summary is available yet.")).toHaveCount(0);
 });
 
 test("a visitor can audit every financial item without a computed total", async ({
@@ -77,7 +83,7 @@ test("a visitor can audit every financial item without a computed total", async 
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
   const money = page.getByRole("region", { name: "Money in this bill" });
-  await expect(money.getByText("101 of 101 provisions shown")).toBeVisible();
+  await expect(money.getByText("25 of 101 provisions shown")).toBeVisible();
   for (const action of ["Appropriation", "Authorization", "Transfer", "Rescission"]) {
     await expect(money.locator("ol").getByText(action, { exact: true }).first()).toBeVisible();
   }
@@ -91,7 +97,10 @@ test("a visitor can audit every financial item without a computed total", async 
     );
   }
   await expect(money.locator("ol > li")).toHaveCount(101);
-  await expect(money.getByText(/Appropriates \$101,000\.00/)).toBeVisible();
+  await expect(money.getByText("101 of 101 provisions shown")).toBeVisible();
+  const finalItem = money.locator("ol > li").last();
+  await expect(finalItem.getByText("$101,000", { exact: true })).toBeVisible();
+  await expect(finalItem.getByText("Rural health program 101", { exact: true })).toBeVisible();
 
   await money.getByLabel("Financial action").selectOption("transfer");
   await clickForResponse(
@@ -99,7 +108,7 @@ test("a visitor can audit every financial item without a computed total", async 
     money.getByRole("button", { name: "Apply money filters" }),
     "financial_action=transfer",
   );
-  await expect(money.getByText("25 of 101 provisions shown")).toBeVisible();
+  await expect(money.getByText("25 of 25 matching provisions shown")).toBeVisible();
   await expect(money.locator("ol > li")).toHaveCount(25);
   await expect(money.locator("ol").getByText("Appropriation", { exact: true })).toHaveCount(0);
 });
@@ -110,6 +119,11 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
 }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
+  await clickForResponse(
+    page,
+    page.getByText("Browse detailed provisions"),
+    "reader-items/?page=1",
+  );
 
   const firstLine = page
     .getByText("Requires the Secretary to publish a complete rural health implementation plan.")
@@ -149,6 +163,11 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
 test("a visitor can inspect linked and paginated key terms", async ({ page, request }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
+  await clickForResponse(
+    page,
+    page.getByText("Browse detailed provisions"),
+    "reader-items/?page=1",
+  );
   await expect(page.getByText("1 linked term")).toBeVisible();
 
   const contractId = ((await (await request.get(
@@ -189,7 +208,8 @@ test("a visitor can select, search, and filter the complete voting record", asyn
     rollOne.getByRole("button", { name: "View voting record" }),
     "/api/votes/",
   );
-  await expect(voting.getByRole("heading", { name: "Yes — 3" })).toBeVisible();
+  await expect(voting.getByRole("heading", { name: "Yes — 2" })).toBeVisible();
+  await expect(voting.getByRole("heading", { name: "Present — 1" })).toBeVisible();
   await expect(voting.getByRole("heading", { name: "Not voting — 1" })).toBeVisible();
 
   await voting.getByLabel("Search members").fill("Casey");

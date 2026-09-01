@@ -43,10 +43,13 @@ prepending text does not by itself report every unchanged provision as changed.
 
 The bill brief is a deterministic aid, not an exhaustive legal interpretation.
 It starts with the latest attributed CRS summary when Congress.gov provides
-one. If no CRS summary exists, it says so and still shows the official title,
-an explicit purpose clause when one can be cited, policy areas, extraction
-counts, and the complete recognized line-item and financial breakdown. The
-orientation never substitutes generated prose for an unavailable CRS summary.
+one. If no CRS summary exists, the reader instead shows an evidence-backed
+statutory purpose when one can be cited, or a controlled
+jurisdiction/status/topic overview as a final fallback.
+This deterministic orientation is not presented as an official summary and
+never invents policy claims unsupported by those fields. Policy areas,
+extraction counts, and the complete recognized line-item and financial
+breakdown remain available below it.
 
 Reader lines are grouped by the federal source hierarchy and kept in source
 order. Controlled display text is separated from exact official evidence, so
@@ -126,6 +129,9 @@ counts, and active/inactive counts. Preview works while the writer is disabled.
 `--execute` refuses before enqueueing anything unless
 `LEGAL_NLP_V21_WRITE_ENABLED=True`, and requires a bounded limit or ID range.
 The command only enqueues durable work; it never runs extraction synchronously.
+If the writer is disabled after a schema backfill is queued, the work remains
+retryable instead of being recorded as successfully completed; re-enable the
+writer or replay the work after restoring a consistent rollout configuration.
 Executed batches rebuild `extracted_text` from the stored document before contract
 generation, so documents ingested before the structure-preserving parser can
 produce v2 contracts without a network re-download.

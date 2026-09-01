@@ -1,4 +1,8 @@
-import type { BillContractItem, BillDetailSummary } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { getContract, type BillContractItem, type BillDetailSummary } from "@/lib/api";
 import {
   getContractSummary,
   groupEvidenceByFieldPath,
@@ -259,24 +263,77 @@ function V2ContractSection({
 export function ContractSection({ contract, bill }: { contract: BillContractItem | BillContractSummary; bill?: BillDetailSummary }) {
   if (isLegalNlpV21ContractSummary(contract)) {
     if (!bill) return null;
-    const document = bill.documents.find((item) => item.is_active_version) ?? bill.documents[0] ?? null;
-    return (
-      <>
-        <BillBrief bill={bill} contractSummary={contract} />
-        <div id="money-in-this-bill">
-          <FinancialLedger
-            contractId={contract.id}
-            totalCount={contract.reader_stats.financial_item_count}
-            textUrl={document?.text_url}
-            downloadUrl={document?.download_url}
-          />
-        </div>
-      </>
-    );
+    return <V21ContractSection contract={contract} bill={bill} />;
   }
   if ("contract_json" in contract && isLegalNlpV2Contract(contract.schema_version, contract.contract_json)) {
     return <V2ContractSection contract={contract} value={contract.contract_json} />;
   }
   if ("contract_json" in contract) return <LegacyContractSection contract={contract} />;
-  return null;
+  return <CompactContractSection contract={contract} bill={bill} />;
+}
+
+function contractDocument(bill: BillDetailSummary, documentId: number | null) {
+  if (documentId !== null) {
+    return bill.documents.find((item) => item.id === documentId) ?? null;
+  }
+  return bill.documents.find((item) => item.is_active_version) ?? bill.documents[0] ?? null;
+}
+
+function V21ContractSection({ contract, bill }: { contract: BillContractSummary; bill: BillDetailSummary }) {
+  const [financialLineItemId, setFinancialLineItemId] = useState<string | undefined>();
+  const document = contractDocument(bill, contract.document);
+
+  function showLineItemMoney(lineItemId: string) {
+    setFinancialLineItemId(lineItemId);
+    globalThis.document?.getElementById("money-in-this-bill")?.scrollIntoView?.({ block: "start" });
+  }
+
+  return (
+    <>
+      <BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={showLineItemMoney} />
+      <div id="money-in-this-bill">
+        <FinancialLedger
+          contractId={contract.id}
+          totalCount={contract.reader_stats?.financial_item_count ?? 0}
+          lineItemId={financialLineItemId}
+          onClearLineItem={() => setFinancialLineItemId(undefined)}
+          textUrl={document?.text_url}
+          downloadUrl={document?.download_url}
+        />
+      </div>
+    </>
+  );
+}
+
+function CompactContractSection({ contract, bill }: { contract: BillContractSummary; bill?: BillDetailSummary }) {
+  const [resolved, setResolved] = useState<BillContractItem | null>(null);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolved(null);
+    setError(false);
+    getContract(contract.id)
+      .then((value) => {
+        if (!cancelled) setResolved(value);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt, contract.id]);
+
+  if (resolved) return <ContractSection contract={resolved} bill={bill} />;
+  if (error) {
+    return (
+      <div role="alert" className="mb-6 text-sm text-red-700 dark:text-red-300">
+        <p>Could not load the existing bill analysis.</p>
+        <button type="button" onClick={() => setAttempt((value) => value + 1)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill analysis</button>
+      </div>
+    );
+  }
+  return <p className="mb-6 text-sm text-slate-600 dark:text-green-600">Loading bill analysis…</p>;
 }

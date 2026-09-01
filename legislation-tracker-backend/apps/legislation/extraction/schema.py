@@ -287,7 +287,7 @@ def _validate_financial_axes(financial: dict[str, dict]) -> None:
         "rescission": "decrease",
         "reduction": "decrease",
         "cancellation": "decrease",
-        "set_aside": "increase",
+        "set_aside": "limit",
         "limitation": "limit",
         "other_explicit": "increase",
     }

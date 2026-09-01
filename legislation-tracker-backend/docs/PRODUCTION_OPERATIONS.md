@@ -302,9 +302,11 @@ Use a read-before-write deployment:
    ```
 
    The command enqueues durable work and never extracts synchronously. Inspect
-   pending/processing/blocked/dead work, payload and evidence counts, and verify
-   that the schema backfill created no `contract_update` or `topic_update`
-   ChangeLog, bill activity timestamp/sequence change, or unread update.
+   pending/processing/blocked/dead work plus payload and evidence counts. Verify
+   that work queued before a writer rollback remains retryable rather than being
+   marked successful without a contract, and that the schema backfill created no
+   `contract_update` or `topic_update` ChangeLog, bill activity timestamp/sequence
+   change, or unread update.
 6. Continue in 25-document batches. If results require investigation, disable
    new writes; persisted 2.1 readers remain operational.
 
