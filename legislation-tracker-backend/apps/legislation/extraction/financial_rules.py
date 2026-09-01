@@ -40,8 +40,7 @@ _SUCH_SUMS_RE = re.compile(
     r"\bsuch\s+sums\s+as\s+may\s+be\s+necessary\b", re.IGNORECASE
 )
 _FISCAL_RANGE_RE = re.compile(
-    r"\bfiscal\s+years\s+(?P<start>\d{4})\s+"
-    r"(?:through|to|-)\s+(?P<end>\d{4})\b",
+    r"\bfiscal\s+years\s+(?P<start>\d{4})\s+" r"(?:through|to|-)\s+(?P<end>\d{4})\b",
     re.IGNORECASE,
 )
 _FISCAL_YEAR_RE = re.compile(r"\bfiscal\s+year\s+(?P<year>\d{4})\b", re.I)

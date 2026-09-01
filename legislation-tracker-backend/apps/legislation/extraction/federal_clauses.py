@@ -94,9 +94,11 @@ def _split_modal_clauses(
     active_actor = actor
     active_conditions = conditions
     boundaries = [
-        _explicit_actor_boundary(sentence, matches[index - 1], match)
-        if index > 0
-        else None
+        (
+            _explicit_actor_boundary(sentence, matches[index - 1], match)
+            if index > 0
+            else None
+        )
         for index, match in enumerate(matches)
     ]
     clauses = []

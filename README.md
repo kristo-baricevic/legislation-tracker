@@ -1,6 +1,6 @@
 # Legislation Tracker
 
-Monorepo: **Django** API (`legislation-tracker-backend`) + **Next.js** app (`legislation-tracker-client`). Bills from Congress.gov, documents, deterministic plain-language “contracts,” change log, and (with Celery running) background ingestion. An optional, disabled-by-default AI layer lets signed-in users enhance individual federal bills with their own OpenAI API key without changing the canonical contract.
+Monorepo: **Django** API (`legislation-tracker-backend`) + **Next.js** app (`legislation-tracker-client`). Bills from Congress.gov, documents, deterministic plain-language bill briefs, change history, voting records, and (with Celery running) background ingestion. The reader-first brief explains the bill in source order, exposes every recognized financial provision without inventing a grand total, and keeps exact official text available on demand. An optional, disabled-by-default AI layer lets signed-in users enhance individual federal bills with their own OpenAI API key without changing the canonical contract.
 
 ---
 
@@ -114,6 +114,11 @@ celery -A config beat -l info
 
 The Django app alone will run without Celery; **polling Congress, downloading documents, and generating contracts** only run when the worker (and usually Beat) are up.
 
+The current reader contract writer is deliberately gated. Leave
+`LEGAL_NLP_V21_WRITE_ENABLED=False` until the compatible API and frontend have
+been deployed and verified; see the
+**[contract rollout guide](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)**.
+
 ---
 
 ### 5. Frontend (Next.js)
@@ -171,6 +176,7 @@ lint/audit/production build, and the extension test and syntax checks. GitHub
 Actions remain intentionally deferred.
 
 - **Backend detail:** [legislation-tracker-backend/README.md](legislation-tracker-backend/README.md) (includes Docker-based Postgres/Redis/MinIO if you prefer that later.)
+- **Deterministic bill briefs and rollout:** [legislation-tracker-backend/docs/PHASE_5_CONTRACT.md](legislation-tracker-backend/docs/PHASE_5_CONTRACT.md)
 - **User-owned AI enhancements:** [legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md](legislation-tracker-backend/docs/LLM_ENHANCEMENTS.md)
 - **Production operations:** [legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md](legislation-tracker-backend/docs/PRODUCTION_OPERATIONS.md)
 - **Build phases / checklist:** [BACKEND_BUILD_STEPS.md](BACKEND_BUILD_STEPS.md)

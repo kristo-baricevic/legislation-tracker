@@ -225,7 +225,9 @@ class BillSearchChunk(models.Model):
         ]
         indexes = [
             models.Index(fields=["bill", "kind"], name="leg_search_bill_kind_idx"),
-            models.Index(fields=["bill", "source_hash"], name="leg_search_bill_hash_idx"),
+            models.Index(
+                fields=["bill", "source_hash"], name="leg_search_bill_hash_idx"
+            ),
             GinIndex(fields=["search_vector"], name="legislation_search_vector_gin"),
         ]
 

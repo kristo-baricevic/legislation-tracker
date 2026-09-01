@@ -190,9 +190,9 @@ def test_bill_summaries_fetches_every_page(monkeypatch):
     def fake_request(method, path, params=None):
         calls.append((method, path, params))
         return {
-            "summaries": first_page
-            if params["offset"] == 0
-            else [{"text": "Summary 250"}]
+            "summaries": (
+                first_page if params["offset"] == 0 else [{"text": "Summary 250"}]
+            )
         }
 
     monkeypatch.setattr(congress_client, "_request", fake_request)

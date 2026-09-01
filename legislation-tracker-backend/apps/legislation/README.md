@@ -18,7 +18,30 @@ The **Django REST Framework (DRF)** exposes read-only **list/detail APIs** for b
 
 **Phase 4 — document files:** **`download_document`** (Celery, in `ingestion` app) saves bytes to **django-storages** targeting **MinIO** (local, free) or **filesystem** (`USE_LOCAL_DOCUMENT_STORAGE=True`).
 
-**Phase 5 — contract layer:** **`generate_contract`** selects the federal `2.0-legal-nlp` rules pipeline or the compatible `1.1-deterministic` fallback, hashes the result with **`contract_json.canonical_json_string`**, creates **`BillContract`** / **`EvidenceSpan`** / **`ChangeLog`**, and enqueues topic and similarity recomputation. V2 validates its JSON Schema and every exact source span before persistence. Full write-up: **[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
+**Phase 5 — contract layer:** **`generate_contract`** selects the federal
+`2.0-legal-nlp` pipeline by default, or the immutable `2.1-legal-nlp`
+reader-first pipeline when its write gate is enabled. The compatible
+`1.1-deterministic` fallback remains available for unsupported input. Generation
+hashes the result with **`contract_json.canonical_json_string`**, creates
+**`BillContract`** / **`EvidenceSpan`**, and enqueues topic and similarity work.
+Every version validates its JSON Schema and exact source spans before
+persistence. Schema-only backfills use semantic comparison and suppress bill
+activity, unread updates, and topic/contract ChangeLog noise. Full write-up:
+**[docs/PHASE_5_CONTRACT.md](../../docs/PHASE_5_CONTRACT.md)**.
+
+The public bill response is compact. A 2.1 contract exposes orientation and
+counts there, while substantive arrays and evidence are available through
+bounded contract endpoints:
+
+- `/api/contracts/{id}/reader-items/`
+- `/api/contracts/{id}/financial-items/`
+- `/api/contracts/{id}/timeline-items/`
+- `/api/contracts/{id}/definition-items/`
+- `/api/contracts/{id}/evidence/` (requires exactly one reader item ID)
+
+The bill's complete official summary is also loaded separately after explicit
+reader action. Legacy and 2.0 contracts continue to use their existing API and
+client projections.
 
 ## What you’ll find here
 
@@ -35,11 +58,14 @@ Key contract files:
 
 | File | Role |
 |---|---|
-| `extraction/federal_structure.py` | Offset-preserving federal structure parser. |
-| `extraction/legal_rules.py` | Deterministic legal claim rules. |
-| `extraction/renderer.py` | Controlled v2 language and evidence paths. |
-| `extraction/schema.py` | Contract and evidence validation. |
-| `extraction/service.py` | V2 selection and expected v1 fallback. |
+| `extraction/federal_structure.py` | Offset-preserving federal hierarchy and clause parser. |
+| `extraction/legal_rules.py` | Deterministic legal claim, timeline, and definition rules. |
+| `extraction/financial_rules.py` | Distinct, uncapped financial-action extraction. |
+| `extraction/renderer.py` | Immutable controlled 2.0 language and evidence paths. |
+| `extraction/reader_renderer.py` | Controlled 2.1 reader lines, associations, and evidence chunks. |
+| `extraction/schema.py` | Contract, association, and exact-evidence validation. |
+| `extraction/service.py` | Write-gated 2.1/2.0 selection and expected v1 fallback. |
+| `reader_api.py` | Bounded public reader projections and official-summary projection. |
 | `management/commands/backfill_contracts.py` | Preview-first durable backfill. |
 
 ## Who should read this

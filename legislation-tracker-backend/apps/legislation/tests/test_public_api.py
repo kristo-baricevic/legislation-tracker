@@ -153,7 +153,10 @@ def test_postgres_search_keeps_unindexed_bills_visible_and_fetches_headlines_for
         for segment in unindexed_page.json()["results"][0]["highlights"][0]["segments"]
     )
     assert len(headline_queries) == 1
-    assert f'"legislation_billsearchchunk"."bill_id" IN ({indexed.id})' in headline_queries[0]
+    assert (
+        f'"legislation_billsearchchunk"."bill_id" IN ({indexed.id})'
+        in headline_queries[0]
+    )
     assert BillSearchChunk.objects.filter(bill=unindexed).exists() is False
 
 

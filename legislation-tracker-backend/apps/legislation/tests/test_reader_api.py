@@ -106,15 +106,15 @@ def reader_contract(db):
                 "action": f"take action {index}",
                 "effect": None,
                 "claim_refs": [f"requirement-{index}"],
-                "exact_financial_refs": [f"financial-{item}" for item in range(5)]
-                if index == 0
-                else [],
-                "timeline_refs": [f"timeline-{item}" for item in range(4)]
-                if index == 0
-                else [],
-                "definition_refs": ["definition-0", "definition-1"]
-                if index == 0
-                else [],
+                "exact_financial_refs": (
+                    [f"financial-{item}" for item in range(5)] if index == 0 else []
+                ),
+                "timeline_refs": (
+                    [f"timeline-{item}" for item in range(4)] if index == 0 else []
+                ),
+                "definition_refs": (
+                    ["definition-0", "definition-1"] if index == 0 else []
+                ),
                 "evidence_paths": [f"line_items[{index}].display_text"],
             }
         )

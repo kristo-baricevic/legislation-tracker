@@ -388,9 +388,7 @@ def bill_committees(congress, bill_type, bill_number):
     )
 
 
-def bill_summaries(
-    congress, bill_type, bill_number
-) -> list[dict[str, object]]:
+def bill_summaries(congress, bill_type, bill_number) -> list[dict[str, object]]:
     """Return every published Congressional Research Service bill summary."""
 
     return _paginated_bill_collection(

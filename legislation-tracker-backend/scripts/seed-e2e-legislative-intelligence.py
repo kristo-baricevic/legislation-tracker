@@ -149,9 +149,9 @@ def _reader_contract_fixture():
                 "action": f"complete reader provision {index + 1}",
                 "effect": None,
                 "claim_refs": [f"requirement-{index}"],
-                "exact_financial_refs": [f"financial-{item}" for item in range(4)]
-                if index == 0
-                else [],
+                "exact_financial_refs": (
+                    [f"financial-{item}" for item in range(4)] if index == 0 else []
+                ),
                 "timeline_refs": [],
                 "definition_refs": ["definition-0"] if index == 0 else [],
                 "evidence_paths": [f"line_items[{index}].display_text"],

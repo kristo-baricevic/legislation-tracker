@@ -228,9 +228,11 @@ def enqueue_search_index(bill, *, source_updated_at=None):
             value
             for value in (
                 current_bill["updated_at"] if current_bill else bill.updated_at,
-                current_bill["last_activity_at"]
-                if current_bill
-                else bill.last_activity_at,
+                (
+                    current_bill["last_activity_at"]
+                    if current_bill
+                    else bill.last_activity_at
+                ),
             )
             if value is not None
         )
