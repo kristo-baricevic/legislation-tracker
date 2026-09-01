@@ -14,16 +14,33 @@ from apps.congress.current import current_congress
 from config.api import StrictQuerySerializer
 
 from .models import Bill, BillContract, BillDocument, BillSimilarity, BillTopic, Topic
+from .reader_api import (
+    ReaderContractUnavailable,
+    contract_evidence_page,
+    definition_items_page,
+    financial_items_page,
+    official_summary_projection,
+    reader_items_page,
+    timeline_items_page,
+)
 from .search import BillSearchQuery, apply_bill_list_filters, search_bills
 from .serializers import (
     BillContractListQuerySerializer,
     BillContractSerializer,
+    BillContractSummarySerializer,
+    BillDetailQuerySerializer,
     BillDetailSerializer,
+    BillDetailSummarySerializer,
     BillDocumentListQuerySerializer,
     BillDocumentSerializer,
     BillListQuerySerializer,
     BillListSerializer,
     BillRelatedQuerySerializer,
+    DefinitionItemsQuerySerializer,
+    EvidenceQuerySerializer,
+    FinancialItemsQuerySerializer,
+    ReaderItemsQuerySerializer,
+    TimelineItemsQuerySerializer,
     TopicListQuerySerializer,
     TopicSerializer,
 )
@@ -109,27 +126,110 @@ class BillContractViewSet(viewsets.ReadOnlyModelViewSet):
     authentication_classes = []
     permission_classes = [AllowAny]
     serializer_class = BillContractSerializer
-    queryset = (
-        BillContract.objects.select_related("bill", "document")
-        .prefetch_related("evidence_spans")
-        .order_by("-computed_at", "-id")
+    queryset = BillContract.objects.select_related("bill", "document").order_by(
+        "-computed_at", "-id"
     )
+
+    def get_serializer_class(self):
+        if self.action == "list" and self.request.query_params.get("view") == "summary":
+            return BillContractSummarySerializer
+        return BillContractSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
-        query_serializer = (
-            BillContractListQuerySerializer
-            if self.action == "list"
-            else StrictQuerySerializer
-        )
+        if self.action == "list":
+            query_serializer = BillContractListQuerySerializer
+        elif self.action in {
+            "reader_items",
+            "financial_items",
+            "timeline_items",
+            "definition_items",
+            "evidence",
+        }:
+            return qs
+        else:
+            query_serializer = StrictQuerySerializer
         query = query_serializer(data=self.request.query_params)
         query.is_valid(raise_exception=True)
         if self.action != "list":
-            return qs
+            return qs.prefetch_related("evidence_spans")
         bill = query.validated_data.get("bill")
         if bill is not None:
             qs = qs.filter(bill_id=bill)
+        if query.validated_data.get("view", "full") == "full":
+            qs = qs.prefetch_related("evidence_spans")
         return qs
+
+    @staticmethod
+    def _page_response(request, result):
+        def page_url(page_number):
+            if page_number is None:
+                return None
+            params = request.query_params.copy()
+            params["page"] = str(page_number)
+            return request.build_absolute_uri(f"{request.path}?{params.urlencode()}")
+
+        return Response(
+            {
+                **result,
+                "next": page_url(result["next"]),
+                "previous": page_url(result["previous"]),
+            }
+        )
+
+    def _reader_response(self, request, query_class, projection):
+        query = query_class(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        try:
+            result = projection(
+                self.get_object(),
+                page=query.validated_data.get("page", 1),
+                page_size=query.validated_data.get("page_size", 25),
+                **{
+                    key: value
+                    for key, value in query.validated_data.items()
+                    if key not in {"page", "page_size"} and key in request.query_params
+                },
+            )
+        except ReaderContractUnavailable:
+            return Response(
+                {
+                    "code": "reader_contract_unavailable",
+                    "detail": "This contract does not have a reader projection.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return self._page_response(request, result)
+
+    @action(detail=True, methods=["get"], url_path="reader-items")
+    def reader_items(self, request, pk=None):
+        return self._reader_response(
+            request, ReaderItemsQuerySerializer, reader_items_page
+        )
+
+    @action(detail=True, methods=["get"], url_path="financial-items")
+    def financial_items(self, request, pk=None):
+        return self._reader_response(
+            request, FinancialItemsQuerySerializer, financial_items_page
+        )
+
+    @action(detail=True, methods=["get"], url_path="timeline-items")
+    def timeline_items(self, request, pk=None):
+        return self._reader_response(
+            request, TimelineItemsQuerySerializer, timeline_items_page
+        )
+
+    @action(detail=True, methods=["get"], url_path="definition-items")
+    def definition_items(self, request, pk=None):
+        return self._reader_response(
+            request, DefinitionItemsQuerySerializer, definition_items_page
+        )
+
+    @action(detail=True, methods=["get"])
+    def evidence(self, request, pk=None):
+        return self._reader_response(
+            request, EvidenceQuerySerializer, contract_evidence_page
+        )
 
 
 class BillViewSet(viewsets.ReadOnlyModelViewSet):
@@ -143,7 +243,6 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         .select_related("sponsor", "latest_contract")
         .prefetch_related(
             "documents",
-            "latest_contract__evidence_spans",
             "bill_topics__topic",
         )
     )
@@ -151,6 +250,11 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
     def get_serializer_class(self):
         if self.action == "list":
             return BillListSerializer
+        if (
+            self.action == "retrieve"
+            and self.request.query_params.get("contract_view") == "summary"
+        ):
+            return BillDetailSummarySerializer
         return BillDetailSerializer
 
     def get_throttles(self):
@@ -162,6 +266,8 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         qs = super().get_queryset()
         if self.action == "list":
             query_serializer = BillListQuerySerializer
+        elif self.action == "retrieve":
+            query_serializer = BillDetailQuerySerializer
         elif self.action == "related":
             query_serializer = BillRelatedQuerySerializer
         else:
@@ -169,6 +275,11 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         query = query_serializer(data=self.request.query_params)
         query.is_valid(raise_exception=True)
         if self.action != "list":
+            if (
+                self.action == "retrieve"
+                and query.validated_data.get("contract_view", "full") == "full"
+            ):
+                qs = qs.prefetch_related("latest_contract__evidence_spans")
             return qs
         return apply_bill_list_filters(qs, query.validated_data)
 
@@ -188,7 +299,9 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
             bills,
             many=True,
             context={
-                "search_ranks": {bill_id: hit.rank for bill_id, hit in hit_by_bill.items()},
+                "search_ranks": {
+                    bill_id: hit.rank for bill_id, hit in hit_by_bill.items()
+                },
                 "search_highlights": {
                     bill_id: [
                         {
@@ -206,6 +319,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         )
         page_number = query.validated_data.get("page", 1)
         page_size = query.validated_data.get("page_size", 20)
+
         def page_url(next_page):
             if next_page < 1 or (next_page - 1) * page_size >= search_page.count:
                 return None
@@ -244,6 +358,12 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         """List documents for this bill."""
         bill = self.get_object()
         return Response(BillDocumentSerializer(bill.documents.all(), many=True).data)
+
+    @action(detail=True, methods=["get"], url_path="official-summary")
+    def official_summary(self, request, pk=None):
+        query = StrictQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response(official_summary_projection(self.get_object(), full=True))
 
     @action(
         detail=False,
