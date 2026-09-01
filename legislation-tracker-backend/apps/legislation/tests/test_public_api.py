@@ -27,6 +27,30 @@ POSTGRESQL_ONLY = pytest.mark.skipif(
 
 
 @pytest.mark.django_db
+def test_bill_detail_exposes_complete_summary_provenance():
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 1",
+        title="Summary provenance bill",
+        summary="Complete CRS summary",
+        summary_source="crs",
+        summary_action_date="2025-03-02",
+        summary_version_code="RS",
+        summary_last_updated_at="2025-03-04T10:00:00Z",
+        status="Introduced",
+    )
+
+    response = APIClient().get(f"/api/bills/{bill.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["summary_source"] == "crs"
+    assert response.json()["summary_action_date"] == "2025-03-02"
+    assert response.json()["summary_version_code"] == "RS"
+    assert response.json()["summary_last_updated_at"] == "2025-03-04T10:00:00Z"
+
+
+@pytest.mark.django_db
 def test_bill_search_uses_safe_highlight_segments_and_recent_activity_sorting():
     early = Bill.objects.create(
         jurisdiction="federal",
