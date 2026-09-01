@@ -13,7 +13,7 @@ import {
   getVotes,
   trackBill,
   type BillContractItem,
-  type BillDetail,
+  type BillDetailSummary,
   type VoteDetailItem,
   type VoteListItem,
   untrackBill,
@@ -197,7 +197,7 @@ function VoteHistorySection({
 
 function BillDetailInner({ routeId }: { routeId: string }) {
   const id = parseInt(routeId, 10);
-  const [bill, setBill] = useState<BillDetail | null>(null);
+  const [bill, setBill] = useState<BillDetailSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasAccount, setHasAccount] = useState(false);
@@ -236,7 +236,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     setError(null);
     setLoading(true);
     setComparisonContracts(null);
-    getBill(id)
+    getBill(id, { contractView: "summary" })
       .then((data) => {
         if (!cancelled) setBill(data);
       })
@@ -483,14 +483,6 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               <dd>{bill.introduced_at}</dd>
             </div>
           )}
-          {bill.summary && (
-            <div>
-              <dt className="text-sm text-slate-600 dark:text-green-500">Summary</dt>
-              <dd className="w-full break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {bill.summary}
-              </dd>
-            </div>
-          )}
         </dl>
 
         {bill.topics && bill.topics.length > 0 && (
@@ -520,7 +512,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         )}
 
         {bill.latest_contract ? (
-          <ContractSection contract={bill.latest_contract} />
+          <ContractSection contract={bill.latest_contract} bill={bill} />
         ) : (
           <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
             <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
@@ -539,7 +531,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
         <BillChangeExperience
           billId={bill.id}
-          contracts={comparisonContracts ?? (bill.latest_contract ? [bill.latest_contract] : [])}
+          contracts={comparisonContracts ?? []}
           documents={bill.documents}
         />
 

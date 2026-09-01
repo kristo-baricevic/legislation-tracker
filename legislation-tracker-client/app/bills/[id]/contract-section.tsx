@@ -1,11 +1,15 @@
-import type { BillContractItem } from "@/lib/api";
+import type { BillContractItem, BillDetailSummary } from "@/lib/api";
 import {
   getContractSummary,
   groupEvidenceByFieldPath,
   isLegalNlpV2Contract,
+  isLegalNlpV21ContractSummary,
+  type BillContractSummary,
   type EvidenceSpanItem,
   type LegalNlpV2ContractJson,
 } from "@/lib/contracts";
+import { BillBrief } from "./bill-brief";
+import { FinancialLedger } from "./financial-ledger";
 
 function LegacyContractSection({ contract }: { contract: BillContractItem }) {
   const j = contract.contract_json;
@@ -252,9 +256,27 @@ function V2ContractSection({
   );
 }
 
-export function ContractSection({ contract }: { contract: BillContractItem }) {
-  if (isLegalNlpV2Contract(contract.schema_version, contract.contract_json)) {
+export function ContractSection({ contract, bill }: { contract: BillContractItem | BillContractSummary; bill?: BillDetailSummary }) {
+  if (isLegalNlpV21ContractSummary(contract)) {
+    if (!bill) return null;
+    const document = bill.documents.find((item) => item.is_active_version) ?? bill.documents[0] ?? null;
+    return (
+      <>
+        <BillBrief bill={bill} contractSummary={contract} />
+        <div id="money-in-this-bill">
+          <FinancialLedger
+            contractId={contract.id}
+            totalCount={contract.reader_stats.financial_item_count}
+            textUrl={document?.text_url}
+            downloadUrl={document?.download_url}
+          />
+        </div>
+      </>
+    );
+  }
+  if ("contract_json" in contract && isLegalNlpV2Contract(contract.schema_version, contract.contract_json)) {
     return <V2ContractSection contract={contract} value={contract.contract_json} />;
   }
-  return <LegacyContractSection contract={contract} />;
+  if ("contract_json" in contract) return <LegacyContractSection contract={contract} />;
+  return null;
 }
