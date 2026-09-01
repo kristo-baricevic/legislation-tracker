@@ -24,7 +24,9 @@ def test_search_projection_chunks_active_document_and_is_idempotent():
         status="Introduced",
         sponsor=sponsor,
     )
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic = Topic.objects.get_or_create(
+        name="Health", slug="health", defaults={"description": ""}
+    )[0]
     BillTopic.objects.create(bill=bill, topic=topic, confidence_score=0.9)
     BillDocument.objects.create(
         bill=bill,

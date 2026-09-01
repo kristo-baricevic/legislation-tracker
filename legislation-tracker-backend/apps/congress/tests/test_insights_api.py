@@ -8,6 +8,31 @@ from apps.legislation.models import Bill
 
 
 @pytest.mark.django_db
+def test_representative_list_defaults_to_current_members():
+    current = Representative.objects.create(
+        bioguide_id="I000004",
+        name="Current Member",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=True,
+    )
+    Representative.objects.create(
+        bioguide_id="I000003",
+        name="Former Member",
+        chamber="house",
+        party="Independent",
+        state="NY",
+        is_current=False,
+    )
+
+    response = APIClient().get("/api/representatives/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["results"]] == [current.id]
+
+
+@pytest.mark.django_db
 def test_representative_insight_and_comparison_routes_are_public_and_validated():
     left = Representative.objects.create(
         bioguide_id="I000005",

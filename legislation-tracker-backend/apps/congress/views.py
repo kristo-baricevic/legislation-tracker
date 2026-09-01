@@ -59,8 +59,10 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         chamber = params.get("chamber")
         if chamber:
             qs = qs.filter(chamber=chamber)
-        if "is_current" in params:
+        if "is_current" in self.request.query_params:
             qs = qs.filter(is_current=params["is_current"])
+        else:
+            qs = qs.filter(is_current=True)
         return qs
 
     @action(detail=True, methods=["get"])

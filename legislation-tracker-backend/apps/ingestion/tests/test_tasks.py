@@ -421,6 +421,86 @@ def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(
 
 
 @pytest.mark.django_db
+def test_dispatch_prioritizes_bill_completion_over_roll_call_backlog(monkeypatch):
+    bill = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    roll_call = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+        dedupe_key="vote:119:house:1:1",
+        source_updated_at=timezone.now(),
+        payload_json={"congress": 119, "chamber": "house", "roll_number": 1},
+    )
+    representative = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_REPRESENTATIVE_DETAIL,
+        dedupe_key="representative:A000001",
+        source_updated_at=timezone.now(),
+        payload_json={"bioguide_id": "A000001"},
+    )
+    document_contract = IngestionWorkItem.objects.create(
+        kind="document_contract",
+        dedupe_key="document:1",
+        source_updated_at=timezone.now(),
+        payload_json={"document_id": 1},
+    )
+    enqueued = []
+
+    class Result:
+        id = "worker-task"
+
+    monkeypatch.setattr(
+        tasks.process_ingestion_work_item,
+        "apply_async",
+        lambda args=None, kwargs=None: enqueued.append(args[0]) or Result(),
+    )
+
+    assert tasks.dispatch_ingestion_work() == {"dispatched": 4}
+    assert enqueued == [
+        document_contract.id,
+        representative.id,
+        bill.id,
+        roll_call.id,
+    ]
+
+
+@pytest.mark.django_db
+def test_dispatch_leaves_new_work_pending_when_the_in_flight_cap_is_reached():
+    for number in range(tasks.MAX_DISPATCHED_INGESTION_WORK):
+        IngestionWorkItem.objects.create(
+            kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
+            dedupe_key=f"vote:119:house:1:{number}",
+            source_updated_at=timezone.now(),
+            payload_json={"roll_number": number},
+            status=IngestionWorkStatus.DISPATCHED,
+            lease_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+    pending = IngestionWorkItem.objects.create(
+        kind="document_contract",
+        dedupe_key="document:1",
+        source_updated_at=timezone.now(),
+        payload_json={"document_id": 1},
+    )
+
+    assert tasks.dispatch_ingestion_work() == {"dispatched": 0}
+    pending.refresh_from_db()
+    assert pending.status == IngestionWorkStatus.PENDING
+
+
+def test_durable_work_has_worker_enforced_time_limits():
+    assert (
+        tasks.process_ingestion_work_item.soft_time_limit
+        == tasks.DURABLE_WORK_SOFT_TIME_LIMIT_SECONDS
+    )
+    assert (
+        tasks.process_ingestion_work_item.time_limit
+        == tasks.DURABLE_WORK_TIME_LIMIT_SECONDS
+    )
+
+
+@pytest.mark.django_db
 def test_dispatch_does_not_release_a_replacement_lease_after_enqueue_failure(
     monkeypatch,
 ):
@@ -1282,7 +1362,9 @@ def test_bill_vote_reference_requeues_terminal_discovery_work_to_attach_bill(
 
 
 @pytest.mark.django_db
-def test_representative_detail_retains_terms_when_source_returns_empty_terms(monkeypatch):
+def test_representative_detail_retains_terms_when_source_returns_empty_terms(
+    monkeypatch,
+):
     representative = Representative.objects.create(
         bioguide_id="T000001",
         name="Term Member",
@@ -1407,7 +1489,35 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
         ("bill_versions", {"bill_id": bill.id}),
         ("bill_votes", {"bill_id": bill.id}),
         ("search_index", {"bill_id": bill.id}),
+        ("similarity", {"bill_id": bill.id}),
     ]
+
+
+@pytest.mark.django_db
+def test_process_bill_assigns_topics_before_downstream_work(monkeypatch):
+    monkeypatch.setattr(
+        tasks,
+        "bill_detail",
+        lambda congress, bill_type, number: {
+            "title": "Health care access bill",
+            "summary": "Improves hospital care and Medicare access.",
+            "latestAction": {
+                "actionDate": "2026-01-01",
+                "text": "Introduced in House",
+            },
+            "introducedDate": "2026-01-01",
+            "url": "https://api.congress.gov/v3/bill/119/hr/1",
+        },
+    )
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    result = tasks._process_bill_impl("119-hr-1")
+
+    assert list(
+        BillTopic.objects.filter(bill_id=result["bill_id"])
+        .order_by("topic__slug")
+        .values_list("topic__slug", flat=True)
+    ) == ["health"]
 
 
 @pytest.mark.django_db
@@ -1447,6 +1557,8 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
     ) == [
         ("bill_relationships", {"bill_id": bill.id}),
         ("bill_votes", {"bill_id": bill.id}),
+        ("search_index", {"bill_id": bill.id}),
+        ("similarity", {"bill_id": bill.id}),
     ]
 
 
@@ -2121,7 +2233,10 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
         party="Independent",
         state="NY",
     )
-    topic = Topic.objects.create(name="Health", slug="health")
+    topic, _ = Topic.objects.get_or_create(
+        slug="health",
+        defaults={"name": "Health"},
+    )
     direct_bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -2350,9 +2465,7 @@ def test_sync_representatives_rejects_mismatched_member_detail_identity(monkeypa
         tasks,
         "member_list",
         lambda congress, current_member=True, limit=250, offset=0: (
-            [{"bioguideId": "C000001", "name": "Doe, Jane"}]
-            if offset == 0
-            else []
+            [{"bioguideId": "C000001", "name": "Doe, Jane"}] if offset == 0 else []
         ),
     )
     monkeypatch.setattr(

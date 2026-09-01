@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime, timedelta
 import requests
 from celery import shared_task
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, When
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
@@ -65,6 +65,9 @@ TRACKED_REFRESH_INTERVAL = timedelta(minutes=5)
 WORK_LEASE_DURATION = timedelta(minutes=10)
 MAX_INGESTION_WORK_ATTEMPTS = 5
 UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=UTC)
+DURABLE_WORK_SOFT_TIME_LIMIT_SECONDS = 60
+DURABLE_WORK_TIME_LIMIT_SECONDS = 75
+MAX_DISPATCHED_INGESTION_WORK = 100
 
 WORK_KIND_BILL = "bill"
 WORK_KIND_BILL_VERSIONS = "bill_versions"
@@ -73,6 +76,38 @@ WORK_KIND_DOCUMENT_DOWNLOAD = "document_download"
 WORK_KIND_BILL_RELATIONSHIPS = "bill_relationships"
 WORK_KIND_ROLL_CALL_VOTE = "roll_call_vote"
 WORK_KIND_REPRESENTATIVE_DETAIL = "representative_detail"
+
+# A backlog of recorded votes must never delay the work that makes a newly
+# ingested bill usable in the product. Values are intentionally spaced so a
+# future stage can be inserted without changing established ordering.
+WORK_KIND_DISPATCH_PRIORITY = {
+    # Already-downloaded documents can produce a visible contract immediately;
+    # do not strand them behind a broad bill-discovery backlog.
+    WORK_KIND_DOCUMENT_DOWNLOAD: 0,
+    "document_contract": 10,
+    "metadata_contract": 10,
+    "topic_update": 20,
+    # A roster sync must not be starved by a full Congress bill poll.
+    WORK_KIND_REPRESENTATIVE_DETAIL: 30,
+    WORK_KIND_BILL: 40,
+    WORK_KIND_BILL_VERSIONS: 50,
+    WORK_KIND_BILL_RELATIONSHIPS: 60,
+    WORK_KIND_BILL_VOTES: 70,
+    WORK_KIND_ROLL_CALL_VOTE: 80,
+    "search_index": 90,
+    "similarity": 100,
+}
+
+
+def _work_dispatch_priority():
+    return Case(
+        *[
+            When(kind=kind, then=priority)
+            for kind, priority in WORK_KIND_DISPATCH_PRIORITY.items()
+        ],
+        default=999,
+        output_field=IntegerField(),
+    )
 
 
 class BlockedWork(Exception):
@@ -418,8 +453,14 @@ def _member_terms(summary, detail):
             raise CongressAPIError(
                 "Congress member term is missing a valid service year"
             ) from exc
-        if not chamber or start_year < 1789 or (end_year is not None and end_year <= start_year):
-            raise CongressAPIError("Congress member term has an invalid service interval")
+        if (
+            not chamber
+            or start_year < 1789
+            or (end_year is not None and end_year <= start_year)
+        ):
+            raise CongressAPIError(
+                "Congress member term has an invalid service interval"
+            )
         district = term.get("district")
         parsed.append(
             {
@@ -880,18 +921,30 @@ def _tracked_refresh_bucket(now):
 
 @shared_task
 def dispatch_ingestion_work(batch_size=100):
-    """Lease pending durable work and submit it to Celery without losing rows."""
+    """Lease bounded, priority-ordered durable work and submit it to Celery."""
     now = timezone.now()
     leased_items = []
     with transaction.atomic():
-        candidates = list(
-            IngestionWorkItem.objects.select_for_update(skip_locked=True)
-            .filter(
-                status=IngestionWorkStatus.PENDING,
-                available_at__lte=now,
+        # Lock one stable row before counting in-flight leases so concurrent
+        # dispatcher wakeups cannot each lease a full batch. Rows beyond the
+        # cap remain visibly pending and are selected by priority next time.
+        IngestionWorkItem.objects.select_for_update().order_by("id").first()
+        in_flight = IngestionWorkItem.objects.filter(
+            status=IngestionWorkStatus.DISPATCHED
+        ).count()
+        capacity = max(MAX_DISPATCHED_INGESTION_WORK - in_flight, 0)
+        candidates = []
+        if capacity:
+            candidates = list(
+                IngestionWorkItem.objects.select_for_update(skip_locked=True)
+                .filter(
+                    status=IngestionWorkStatus.PENDING,
+                    available_at__lte=now,
+                )
+                .order_by(_work_dispatch_priority(), "available_at", "id")[
+                    : min(batch_size, capacity)
+                ]
             )
-            .order_by("available_at", "id")[:batch_size]
-        )
         for work_item in candidates:
             work_item.status = IngestionWorkStatus.DISPATCHED
             work_item.lease_expires_at = now + WORK_LEASE_DURATION
@@ -943,7 +996,13 @@ def dispatch_ingestion_work(batch_size=100):
     return {"dispatched": dispatched}
 
 
-@shared_task(bind=True)
+@shared_task(
+    bind=True,
+    # Requests also use connection/read deadlines, but this outer guard makes
+    # a stuck library call retryable instead of pinning a prefork worker.
+    soft_time_limit=DURABLE_WORK_SOFT_TIME_LIMIT_SECONDS,
+    time_limit=DURABLE_WORK_TIME_LIMIT_SECONDS,
+)
 def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     """Execute one durable work item and persist its terminal or retry state."""
     now = timezone.now()
@@ -1520,6 +1579,12 @@ def _process_bill_impl(bill_key_str):
                         bill.id,
                     )
                     raise
+                # Topics are a required bill projection, not a best-effort
+                # downstream enrichment. Persist them before this bill work is
+                # allowed to succeed; document contracts may refine them later.
+                from apps.legislation.tasks import _update_topics_impl
+
+                _update_topics_impl(bill_id=bill.id)
                 fulfill_tracking_requests_for_bill(
                     bill,
                     bill_type=bill_type,
@@ -1563,6 +1628,12 @@ def _process_bill_impl(bill_key_str):
                 new_value={"status": status, "title": title},
                 event_key=f"bill:create:{bill.id}",
             )
+        # Topics are a required bill projection, not a best-effort downstream
+        # enrichment. Persist them before this bill work is allowed to succeed;
+        # document contracts may refine them later.
+        from apps.legislation.tasks import _update_topics_impl
+
+        _update_topics_impl(bill_id=bill.id)
         fulfill_tracking_requests_for_bill(
             bill,
             bill_type=bill_type,
@@ -1639,9 +1710,13 @@ def _process_bill_versions_impl(bill_id):
         try:
             source_order = int(source_order)
         except (TypeError, ValueError) as exc:
-            raise CongressAPIError("Congress bill text version has an invalid source order") from exc
+            raise CongressAPIError(
+                "Congress bill text version has an invalid source order"
+            ) from exc
         if source_order < 1:
-            raise CongressAPIError("Congress bill text version has an invalid source order")
+            raise CongressAPIError(
+                "Congress bill text version has an invalid source order"
+            )
         doc, created = BillDocument.objects.get_or_create(
             bill=bill,
             version_label=label[:50],
