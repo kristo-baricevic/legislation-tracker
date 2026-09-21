@@ -6,7 +6,9 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
 
-OUTPUT_SCHEMA_VERSION = "1.1"
+from .diagnostics import output_error
+
+OUTPUT_SCHEMA_VERSION = "1.2"
 
 SOURCE_REFS_SCHEMA = {
     "type": "array",
@@ -39,7 +41,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "uncertain_language",
     ],
     "properties": {
-        "schema_version": {"const": OUTPUT_SCHEMA_VERSION},
+        "schema_version": {"type": "string", "const": OUTPUT_SCHEMA_VERSION},
         "overview": {
             "type": "array",
             "items": ATOMIC_CLAIM_SCHEMA,
@@ -66,6 +68,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "actor": {"type": "string", "minLength": 1, "maxLength": 200},
                     "modality": {
+                        "type": "string",
                         "enum": ["required", "prohibited", "permitted"],
                     },
                     "action": {"type": "string", "minLength": 1, "maxLength": 600},
@@ -85,7 +88,10 @@ OUTPUT_SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
                 "required": ["kind", "text", "source_refs"],
                 "properties": {
-                    "kind": {"enum": ["funding", "timing"]},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["funding", "timing"],
+                    },
                     "text": {"type": "string", "minLength": 1, "maxLength": 600},
                     "source_refs": SOURCE_REFS_SCHEMA,
                 },
@@ -111,6 +117,37 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         },
     },
 }
+
+
+# Keep historical immutable 1.1 results readable and old in-flight jobs valid.
+LEGACY_OUTPUT_SCHEMA = copy.deepcopy(OUTPUT_SCHEMA)
+LEGACY_OUTPUT_SCHEMA["properties"]["schema_version"]["const"] = "1.1"
+SOURCE_QUOTES_SCHEMA = {
+    "type": "array",
+    "minItems": 1,
+    "maxItems": 12,
+    "items": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["source_ref", "quote"],
+        "properties": {
+            "source_ref": {"type": "string", "pattern": r"^src_[0-9]{4}$"},
+            "quote": {"type": "string", "minLength": 1, "maxLength": 800},
+        },
+    },
+}
+for _category in (
+    "overview",
+    "key_impacts",
+    "obligations",
+    "funding_and_timing",
+    "uncertain_language",
+):
+    # overview/key_impacts share an object; detach before adding requirements.
+    _item = copy.deepcopy(OUTPUT_SCHEMA["properties"][_category]["items"])
+    _item["required"].append("source_quotes")
+    _item["properties"]["source_quotes"] = SOURCE_QUOTES_SCHEMA
+    OUTPUT_SCHEMA["properties"][_category]["items"] = _item
 
 
 def _provider_schema(value: Any) -> Any:
@@ -152,15 +189,29 @@ def _validate_snapshot(source_snapshot: list[dict[str, Any]]) -> set[str]:
 def validate_enhancement_output(
     value: dict[str, Any],
     source_snapshot: list[dict[str, Any]],
+    *,
+    expected_version: str | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise output_error("provider_output_not_object")
+    if expected_version and value.get("schema_version") != expected_version:
+        raise output_error("schema_version_mismatch", ["schema_version"])
+    schema = (
+        LEGACY_OUTPUT_SCHEMA if value.get("schema_version") == "1.1" else OUTPUT_SCHEMA
+    )
     errors = sorted(
-        Draft202012Validator(OUTPUT_SCHEMA).iter_errors(value),
+        Draft202012Validator(schema).iter_errors(value),
         key=lambda error: (list(error.absolute_path), error.message),
     )
     if errors:
         raise errors[0]
 
-    source_ids = _validate_snapshot(source_snapshot)
+    try:
+        source_ids = _validate_snapshot(source_snapshot)
+    except ValidationError as error:
+        # Keep legacy exception wording for callers, but classify safely.
+        error.validator = "source_snapshot_invalid"
+        raise
     for category in (
         "overview",
         "key_impacts",
@@ -168,8 +219,41 @@ def validate_enhancement_output(
         "funding_and_timing",
         "uncertain_language",
     ):
-        for item in value[category]:
+        for item_index, item in enumerate(value[category]):
             for source_ref in item["source_refs"]:
                 if source_ref not in source_ids:
-                    raise ValidationError(f"Unknown source reference: {source_ref}")
+                    raise ValidationError(
+                        "Unknown source reference",
+                        validator="citation_reference_unknown",
+                        path=[category, item_index, "source_refs"],
+                    )
+            if value["schema_version"] == "1.2":
+                quotes = item["source_quotes"]
+                if {q["source_ref"] for q in quotes} != set(item["source_refs"]):
+                    raise output_error(
+                        "citation_reference_mismatch",
+                        [category, item_index, "source_quotes"],
+                    )
+                sources = {s["source_ref"]: s["quoted_text"] for s in source_snapshot}
+                for quote_index, quote in enumerate(quotes):
+                    if (
+                        not quote["quote"].strip()
+                        or sources[quote["source_ref"]].count(quote["quote"]) != 1
+                    ):
+                        code = (
+                            "citation_quote_ambiguous"
+                            if quote["quote"].strip()
+                            and sources[quote["source_ref"]].count(quote["quote"]) > 1
+                            else "citation_quote_not_found"
+                        )
+                        raise output_error(
+                            code,
+                            [
+                                category,
+                                item_index,
+                                "source_quotes",
+                                quote_index,
+                                "quote",
+                            ],
+                        )
     return copy.deepcopy(value)

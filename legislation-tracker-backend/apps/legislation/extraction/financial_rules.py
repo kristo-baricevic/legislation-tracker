@@ -16,7 +16,7 @@ _ACTION_RE = re.compile(
     r"(?P<authorization>\bauthorized\s+to\s+be\s+appropriated\b)|"
     r"(?P<appropriation>\b(?:there\s+(?:is|are)\s+|(?:is|are)\s+(?:hereby\s+)?)"
     r"appropriated\b)|"
-    r"(?P<set_aside>\bset(?:ting)?\s+aside\b)|"
+    r"(?P<set_aside>\bset(?:ting)?\s+aside\b|\breserve(?:s|d)?\b)|"
     r"(?P<allocation>\ballocat(?:e|es|ed|ing|ion)\b)|"
     r"(?P<transfer>\btransfer(?:s|red|ring)?\b)|"
     r"(?P<rescission>\brescind(?:s|ed|ing)?\b|\brescission\b)|"
@@ -46,7 +46,7 @@ _FISCAL_RANGE_RE = re.compile(
 _FISCAL_YEAR_RE = re.compile(r"\bfiscal\s+year\s+(?P<year>\d{4})\b", re.I)
 _PURPOSE_RE = re.compile(
     r"\bfor\s+(?!each\s+of\s+fiscal\s+years?\b|fiscal\s+years?\b)"
-    r"(?P<purpose>.+?)(?=,\s+(?:and|or)\b|;|\.$|$)",
+    r"(?P<purpose>.+?)(?=;|\.$|$)",
     re.IGNORECASE | re.DOTALL,
 )
 _CARRY_OUT_RE = re.compile(
@@ -95,6 +95,7 @@ class _AmountMatch:
     currency: str | None
     start: int
     end: int
+    is_minimum: bool = False
 
 
 @dataclass(frozen=True)
@@ -126,10 +127,60 @@ def _normalize_number(raw: str) -> str:
     return format((Decimal(normalized) * multiplier).quantize(Decimal("0.01")), ".2f")
 
 
+def _reservation_has_financial_object(before: str, after: str) -> bool:
+    tail = after.strip()
+    # Bare list introductions inherit their financial amounts from the leaves.
+    if not tail.rstrip(":—–-"):
+        return True
+    tail = re.sub(
+        r"^(?:not\s+(?:less|more)\s+than|at\s+least|up\s+to)\s+", "", tail, flags=re.I
+    )
+    if _MONEY_RE.match(tail) or _PERCENT_RE.match(tail) or _SUCH_SUMS_RE.match(tail):
+        return True
+    # A fronted purpose can separate the verb from its monetary object:
+    # 'reserve, for rural grants, $5 million'.
+    object_amount = _MONEY_RE.search(tail) or _PERCENT_RE.search(tail)
+    if object_amount and re.fullmatch(
+        r",?\s*for\s+[^,;.]+,?\s*", tail[: object_amount.start()], re.I
+    ):
+        return True
+    if re.match(
+        r"(?:(?:the|a|an|any|all|some|remaining|available|unobligated|additional|appropriated)\s+)*"
+        r"(?:funds?|amounts?|money|appropriations?|balances?|sums?)\b",
+        tail,
+        re.I,
+    ):
+        return True
+    # Passive monetary subjects: '$5 million is reserved for ...'. An amount
+    # elsewhere in a reservation of rights/authority is not the verb's object.
+    amounts = tuple(_MONEY_RE.finditer(before)) + tuple(_PERCENT_RE.finditer(before))
+    return any(
+        re.fullmatch(
+            r"\s+(?:(?:shall|must|may)\s+)?(?:is|are|was|were|be)\s+(?:hereby\s+)?",
+            before[amount.end() :],
+            re.I,
+        )
+        for amount in amounts
+    )
+
+
 def _actions(text: str) -> tuple[_ActionMatch, ...]:
     actions = []
     for match in _ACTION_RE.finditer(text):
         action = next(name for name, value in match.groupdict().items() if value)
+        if action == "set_aside" and match.group().lower().startswith("reserv"):
+            # A reservation must be operative, not an agency/account name or
+            # a reference to money previously reserved by another provision.
+            if not re.search(
+                r"\b(?:shall|must|may|to|is|are|be|was|were)\s+(?:(?:also|hereby)\s+)?$",
+                text[: match.start()],
+                re.I,
+            ):
+                continue
+            if not _reservation_has_financial_object(
+                text[: match.start()], text[match.end() :]
+            ):
+                continue
         actions.append(_ActionMatch(action, match.start(), match.end()))
     return tuple(actions)
 
@@ -144,6 +195,13 @@ def _amounts(text: str) -> tuple[_AmountMatch, ...]:
                 currency="USD",
                 start=match.start(),
                 end=match.end(),
+                is_minimum=bool(
+                    re.search(
+                        r"\b(?:not\s+less\s+than|at\s+least)\s*$",
+                        text[: match.start()],
+                        re.I,
+                    )
+                ),
             )
         )
     for match in _PERCENT_RE.finditer(text):
@@ -156,6 +214,13 @@ def _amounts(text: str) -> tuple[_AmountMatch, ...]:
                 currency=None,
                 start=match.start(),
                 end=match.end(),
+                is_minimum=bool(
+                    re.search(
+                        r"\b(?:not\s+less\s+than|at\s+least)\s*$",
+                        text[: match.start()],
+                        re.I,
+                    )
+                ),
             )
         )
     for match in _SUCH_SUMS_RE.finditer(text):
@@ -184,6 +249,12 @@ def _fiscal_years(text: str) -> tuple[int, ...]:
 
 
 def _accounts(text: str, action: str) -> tuple[str | None, str | None]:
+    # Percentage bases often precede the operative verb and include exclusions.
+    base = re.match(
+        r"\s*From\s+(.+?),\s+(?:the\s+)?\w+\s+(?:shall|may|must)\b", text, re.I | re.S
+    )
+    if base and action != "transfer":
+        return _strip(base.group(1)), None
     source_match = _FROM_ACCOUNT_RE.search(text)
     source = _strip(source_match.group("account")) if source_match else None
     destination = None
@@ -196,6 +267,16 @@ def _accounts(text: str, action: str) -> tuple[str | None, str | None]:
 
 
 def _purpose(text: str, action: str) -> str | None:
+    # Do not mistake the opening 'appropriated to carry out this Act' for
+    # the purpose of a reservation appearing later in the same sentence.
+    amounts = _amounts(text)
+    if amounts:
+        tail = text[amounts[-1].end :]
+        explicit = re.search(r"\b(?:for\s+|to\s+(?=award\b))(.+)", tail, re.I | re.S)
+        if explicit and not re.match(
+            r"(?:(?:a|each(?: of)?)\s+)?fiscal years?", explicit.group(1), re.I
+        ):
+            return _strip(explicit.group(1)) or None
     carry_out = _CARRY_OUT_RE.search(text)
     if carry_out is not None:
         return _strip(carry_out.group("purpose")) or None
@@ -304,7 +385,7 @@ def _percentage_is_financial(text: str) -> bool:
             r"(?:"
             r"\bpercent\s+of\s+(?:the\s+)?(?:amounts?|funds?|funding|"
             r"appropriations?|budget\s+authority|unobligated\s+balances?|accounts?)\b|"
-            r"\b(?:set\s+aside|allocate|transfer|reduce|rescind|cancel)\b"
+            r"\b(?:set\s+aside|reserve|allocate|transfer|reduce|rescind|cancel)\b"
             r"[^$%;.]{0,80}\b\d+(?:\.\d+)?\s+percent\b|"
             r"\b\d+(?:\.\d+)?\s+percent\b[^.;]{0,40}"
             r"\b(?:set\s+aside|allocated|transferred|reduced|rescinded|canceled)\b"
@@ -349,6 +430,7 @@ def _claim(
         source_id=section.source_id,
         section_id=section.source_id,
         section_path=section.path,
+        amount_is_minimum=amount.is_minimum,
     )
 
 
@@ -364,7 +446,18 @@ def extract_financial_claims(
             continue
         actions = _actions(span.text)
         inherited = (
-            None if actions else _inherited_context(source_text, section, sections)
+            _inherited_context(source_text, section, sections)
+            if (
+                not actions
+                or (
+                    any(
+                        amount.amount_type == "percentage"
+                        for amount in candidate_amounts
+                    )
+                    and all(action.action == "limitation" for action in actions)
+                )
+            )
+            else None
         )
         if not actions and inherited is None:
             continue
@@ -375,6 +468,20 @@ def extract_financial_claims(
             if amount.amount_type != "percentage"
             or _percentage_is_financial(
                 _amount_subclause(span.text, candidate_amounts, index)
+            )
+            or (
+                inherited is not None
+                and inherited.action == "set_aside"
+                and re.search(
+                    r"\b(?:amounts?|funds?|appropriations?)\b",
+                    inherited.evidence.text,
+                    re.I,
+                )
+                and re.match(
+                    r"\s*(?:not\s+(?:more|less)\s+than\s+|up\s+to\s+|at\s+least\s+)?\d+(?:\.\d+)?\s+percent\s+for\b",
+                    span.text,
+                    re.I,
+                )
             )
         )
         if not amounts:

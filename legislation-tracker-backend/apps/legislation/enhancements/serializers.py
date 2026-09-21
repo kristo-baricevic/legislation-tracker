@@ -30,6 +30,7 @@ def _attempt_payload(attempt: BillEnhancementAttempt) -> dict:
         },
         "resolved_model": attempt.resolved_model or None,
         "failure_category": attempt.failure_category or None,
+        "failure_detail": attempt.failure_detail or None,
         "retry_allowed": retry_allowed(attempt),
         "started_at": attempt.started_at,
         "completed_at": attempt.completed_at,
@@ -52,6 +53,30 @@ def _expanded_result(enhancement: BillEnhancement):
         "uncertain_language",
     ):
         for item in result.get(category, []):
+            if item.get("source_quotes"):
+                item["cited_sources"] = []
+                for quote in item["source_quotes"]:
+                    source = sources.get(quote["source_ref"])
+                    if not source:
+                        continue
+                    local_start = source["quoted_text"].find(quote["quote"])
+                    if local_start < 0:
+                        continue
+                    offset = source.get("start_char")
+                    start = offset + local_start if offset is not None else None
+                    item["cited_sources"].append(
+                        {
+                            "source_ref": quote["source_ref"],
+                            "label": "Cited source",
+                            "quoted_text": quote["quote"],
+                            "section_label": source.get("section_label"),
+                            "start_char": start,
+                            "end_char": start + len(quote["quote"])
+                            if start is not None
+                            else None,
+                        }
+                    )
+                continue
             item["cited_sources"] = [
                 {
                     "source_ref": source_ref,

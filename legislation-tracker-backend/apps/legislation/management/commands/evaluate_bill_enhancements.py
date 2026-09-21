@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+from time import perf_counter
 from types import SimpleNamespace
 
 from django.conf import settings
@@ -20,6 +21,9 @@ from apps.legislation.enhancements.source_packet import (
     estimate_input_tokens,
 )
 from apps.legislation.enhancements.types import EnhancementPreflight
+from apps.legislation.evaluation.reader_quality import ai_items, score_reader
+
+from .evaluate_reader_quality import CORPUS_DIR
 
 CORPUS_PATH = (
     Path(__file__).resolve().parents[2]
@@ -99,6 +103,11 @@ class Command(BaseCommand):
         parser.add_argument("--max-input-tokens", type=int, required=True)
         parser.add_argument("--max-output-tokens", type=int, required=True)
         parser.add_argument("--output")
+        parser.add_argument(
+            "--reader-case",
+            help="Run a gold-annotated reader corpus case instead of the legacy corpus",
+        )
+        parser.add_argument("--fail-on-quality", action="store_true")
 
     def handle(self, *args, **options):
         if not options["execute"]:
@@ -121,6 +130,42 @@ class Command(BaseCommand):
 
         corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
         cases = corpus["cases"]
+        if options["reader_case"]:
+            gold = next(
+                (
+                    json.loads(p.read_text())
+                    for p in CORPUS_DIR.glob("*.json")
+                    if json.loads(p.read_text())["id"] == options["reader_case"]
+                ),
+                None,
+            )
+            if gold is None:
+                raise CommandError("Unknown reader case")
+            cases = [
+                {
+                    **gold,
+                    "jurisdiction": "federal",
+                    "bill_number": gold["id"],
+                    "status": gold["source_version"],
+                    "category": "reader-quality",
+                    "truncated": False,
+                    "review_labels": {
+                        "must_capture": [f["id"] for f in gold["required_facts"]]
+                    },
+                    "sources": [
+                        {
+                            "quoted_text": gold["text"],
+                            "section_label": gold["source_version"],
+                        }
+                    ],
+                }
+            ]
+            corpus = {
+                "corpus_version": "reader-1",
+                "review_rubric": {
+                    "automated": "annotated fact regression; not semantic entailment"
+                },
+            }
         if case_limit > len(cases):
             raise CommandError("--case-limit exceeds the versioned evaluation corpus.")
         api_key = getattr(settings, "LLM_ENHANCEMENT_EVALUATION_API_KEY", "")
@@ -142,8 +187,9 @@ class Command(BaseCommand):
         original_output_cap = settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS
         settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = max_output_tokens
         try:
-            for case in cases[:case_limit]:
-                preflight = _case_preflight(case)
+            prepared = [(case, _case_preflight(case)) for case in cases[:case_limit]]
+            # Validate the entire budget before spending on the first case.
+            for case, preflight in prepared:
                 if preflight.estimated_input_tokens > max_input_tokens:
                     raise CommandError(
                         f"Case {case['id']} exceeds --max-input-tokens before any call."
@@ -155,6 +201,8 @@ class Command(BaseCommand):
                     raise CommandError(
                         f"Case {case['id']} exceeds the request byte safety cap."
                     )
+            for case, preflight in prepared:
+                started = perf_counter()
                 try:
                     provider_result = provider.enhance_bill(
                         api_key=api_key,
@@ -164,6 +212,7 @@ class Command(BaseCommand):
                     validated = validate_enhancement_output(
                         provider_result.output,
                         preflight.source_snapshot,
+                        expected_version=preflight.output_schema_version,
                     )
                     results.append(
                         {
@@ -180,10 +229,22 @@ class Command(BaseCommand):
                             },
                             "resolved_model": provider_result.resolved_model,
                             "status": "succeeded",
+                            "quality": score_reader(
+                                case,
+                                ai_items(validated),
+                                sources=preflight.source_snapshot,
+                                elapsed_ms=round((perf_counter() - started) * 1000, 2),
+                            ),
+                            "latency_ms": round((perf_counter() - started) * 1000, 2),
                         }
                     )
                     self.stdout.write(f"case={case['id']} status=succeeded")
                 except (ProviderError, ValidationError) as exc:
+                    usage = (
+                        exc.usage
+                        if isinstance(exc, ProviderError)
+                        else provider_result.usage
+                    )
                     failure_category = (
                         exc.category
                         if isinstance(exc, ProviderError)
@@ -196,6 +257,11 @@ class Command(BaseCommand):
                             "review_labels": case["review_labels"],
                             "status": "failed",
                             "failure_category": failure_category,
+                            "usage": {
+                                "input_tokens": usage.input_tokens,
+                                "output_tokens": usage.output_tokens,
+                                "total_tokens": usage.total_tokens,
+                            },
                         }
                     )
                     self.stdout.write(
@@ -223,3 +289,10 @@ class Command(BaseCommand):
             self.stdout.write(f"Wrote evaluation artifact to {output_path}")
         else:
             self.stdout.write("No artifact written; pass --output with a local path.")
+        if options["fail_on_quality"] and any(
+            row["status"] != "succeeded" or not row["quality"]["passed"]
+            for row in results
+        ):
+            raise CommandError(
+                "Reader quality evaluation failed; inspect the evaluation artifact."
+            )

@@ -86,7 +86,14 @@ def _explicit_actor_boundary(
 def _split_modal_clauses(
     sentence: SourceSpan,
 ) -> tuple[tuple[SourceSpan, ModalContext | None], ...]:
-    matches = list(_MODAL_RE.finditer(sentence.text))
+    such_sums = tuple(
+        re.finditer(r"\bsuch sums as may be necessary\b", sentence.text, re.I)
+    )
+    matches = [
+        m
+        for m in _MODAL_RE.finditer(sentence.text)
+        if not any(s.start() <= m.start() < s.end() for s in such_sums)
+    ]
     if len(matches) < 2 or _AMENDMENT_INSTRUCTION_RE.search(sentence.text):
         return ((sentence, None),)
 

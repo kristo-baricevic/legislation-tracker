@@ -59,6 +59,7 @@ from apps.ingestion.vote_sources import HouseVoteSource, SenateVoteSource
 from apps.ingestion.work_queue import (
     enqueue_ingestion_work,
     fulfill_tracking_requests_for_bill,
+    persist_ingestion_work,
 )
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
 
@@ -91,14 +92,16 @@ WORK_KIND_DISPATCH_PRIORITY = {
     "document_contract": 10,
     "metadata_contract": 10,
     "topic_update": 20,
+    # Fetch a known bill's versions before discovering more bill metadata. This
+    # is the gateway to document download and reader-visible contract creation.
+    WORK_KIND_BILL_VERSIONS: 30,
     # A roster sync must not be starved by a full Congress bill poll.
-    WORK_KIND_REPRESENTATIVE_DETAIL: 30,
-    WORK_KIND_BILL: 40,
-    WORK_KIND_BILL_VERSIONS: 50,
-    WORK_KIND_BILL_RELATIONSHIPS: 60,
-    WORK_KIND_BILL_VOTES: 70,
-    WORK_KIND_ROLL_CALL_VOTE: 80,
-    "search_index": 90,
+    WORK_KIND_REPRESENTATIVE_DETAIL: 40,
+    WORK_KIND_BILL_RELATIONSHIPS: 50,
+    WORK_KIND_BILL_VOTES: 60,
+    WORK_KIND_ROLL_CALL_VOTE: 70,
+    "search_index": 80,
+    WORK_KIND_BILL: 90,
     "similarity": 100,
 }
 
@@ -861,16 +864,13 @@ def poll_congress(jurisdiction="federal", congress=None):
         # backward after the other has committed its durable discoveries.
         state = IngestionState.objects.select_for_update().get(pk=state.pk)
         for key, source_updated_at in discovered_bills.items():
-            _, created = IngestionWorkItem.objects.get_or_create(
+            _, created = persist_ingestion_work(
                 kind="bill",
                 dedupe_key=key,
                 source_updated_at=source_updated_at,
-                defaults={
-                    "jurisdiction": jurisdiction,
-                    "congress": congress,
-                    "payload_json": {"bill_key": key},
-                    "available_at": now,
-                },
+                jurisdiction=jurisdiction,
+                congress=congress,
+                payload_json={"bill_key": key},
             )
             created_count += int(created)
         state.last_polled_at = now
@@ -1522,16 +1522,13 @@ def poll_tracked_bills():
             key = bill_to_bill_key(bill)
             if not key:
                 continue
-            _, created = IngestionWorkItem.objects.get_or_create(
+            _, created = persist_ingestion_work(
                 kind="bill",
                 dedupe_key=key,
                 source_updated_at=source_updated_at,
-                defaults={
-                    "jurisdiction": bill.jurisdiction,
-                    "congress": bill.session,
-                    "payload_json": {"bill_key": key},
-                    "available_at": now,
-                },
+                jurisdiction=bill.jurisdiction,
+                congress=bill.session,
+                payload_json={"bill_key": key},
             )
             created_count += int(created)
 

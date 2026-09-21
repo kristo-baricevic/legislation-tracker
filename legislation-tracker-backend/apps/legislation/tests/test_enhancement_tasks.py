@@ -43,9 +43,18 @@ def _pending_attempt(owner, bill):
 
 def _valid_output(source_ref):
     return {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "overview": [
-            {"text": "The bill requires a report.", "source_refs": [source_ref]}
+            {
+                "text": "The bill requires a report.",
+                "source_refs": [source_ref],
+                "source_quotes": [
+                    {
+                        "source_ref": source_ref,
+                        "quote": "The Secretary shall publish a report within 90 days.",
+                    }
+                ],
+            }
         ],
         "key_impacts": [],
         "obligations": [],
@@ -287,7 +296,45 @@ def test_provider_timeout_becomes_unknown_and_invalid_output_is_terminal(
 
     assert invalid == {"status": "failed", "category": "invalid_output"}
     assert attempt.failure_category == "invalid_output"
+    assert attempt.failure_detail["code"] == "schema_version_mismatch"
+    assert attempt.failure_detail["message"]
     assert attempt.total_tokens == 99
+
+
+@pytest.mark.django_db(transaction=True)
+def test_worker_saves_quote_failure_and_exposes_safe_detail(
+    enhancement_owner, source_bill, enhancement_settings, monkeypatch
+):
+    from apps.legislation.enhancements.serializers import _attempt_payload
+
+    class InvalidQuoteProvider:
+        def enhance_bill(self, **kwargs):
+            source_ref = kwargs["request"].source_snapshot[0]["source_ref"]
+            output = _valid_output(source_ref)
+            output["overview"][0]["source_quotes"][0]["quote"] = (
+                "private rejected content"
+            )
+            return ProviderResult(
+                output=output,
+                usage=ProviderUsage(total_tokens=42),
+                response_id="private-response",
+                resolved_model="test-model",
+            )
+
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        monkeypatch.setattr(
+            "apps.legislation.tasks.get_provider", lambda _: InvalidQuoteProvider()
+        )
+        result = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+        attempt.refresh_from_db()
+    assert result["status"] == "failed"
+    payload = _attempt_payload(attempt)
+    assert payload["failure_detail"]["code"] == "citation_quote_not_found"
+    assert payload["failure_detail"]["path"] == "/overview/0/source_quotes/0/quote"
+    assert "private" not in str(payload)
+    assert attempt.result_json is None
+    assert attempt.total_tokens == 42
 
 
 @pytest.mark.django_db(transaction=True)

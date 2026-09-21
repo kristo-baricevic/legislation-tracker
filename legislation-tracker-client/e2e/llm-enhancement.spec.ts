@@ -73,7 +73,12 @@ test("a user saves a key and completes a durable enhancement through the live AP
   await expect(
     page.getByText("The bill directs the Secretary to award grants to rural hospitals."),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Cited source").first()).toBeVisible();
+  const overviewItem = page.getByRole("listitem").filter({
+    hasText: "The bill directs the Secretary to award grants to rural hospitals.",
+  });
+  await expect(overviewItem.getByText("Cited source", { exact: true })).toBeHidden();
+  await overviewItem.getByText("Read bill text", { exact: true }).click();
+  await expect(overviewItem.getByText("Cited source", { exact: true })).toBeVisible();
 
   const historyResponse = await request.get(
     `${API_BASE}/api/bills/${billId}/enhancements/`,

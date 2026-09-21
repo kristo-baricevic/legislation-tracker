@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+from ..schema import OUTPUT_SCHEMA_VERSION
 from .base import CredentialCheck, ProviderResult, ProviderUsage
 
 
@@ -25,7 +26,7 @@ class E2EEnhancementProvider:
         source_ref = request.source_snapshot[0]["source_ref"]
         return ProviderResult(
             output={
-                "schema_version": "1.1",
+                "schema_version": OUTPUT_SCHEMA_VERSION,
                 "overview": [
                     {
                         "text": (
@@ -33,6 +34,14 @@ class E2EEnhancementProvider:
                             "rural hospitals."
                         ),
                         "source_refs": [source_ref],
+                        "source_quotes": [
+                            {
+                                "source_ref": source_ref,
+                                "quote": request.source_snapshot[0]["quoted_text"][
+                                    :800
+                                ],
+                            }
+                        ],
                     }
                 ],
                 "key_impacts": [],

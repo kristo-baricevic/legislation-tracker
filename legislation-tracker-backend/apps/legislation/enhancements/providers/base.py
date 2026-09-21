@@ -37,6 +37,7 @@ class ProviderError(RuntimeError):
         usage: ProviderUsage | None = None,
         response_id: str = "",
         resolved_model: str = "",
+        validation_code: str = "",
     ):
         super().__init__(f"Provider request failed: {category}")
         self.category = category
@@ -45,6 +46,7 @@ class ProviderError(RuntimeError):
         self.usage = usage or ProviderUsage()
         self.response_id = response_id
         self.resolved_model = resolved_model
+        self.validation_code = validation_code
 
 
 class EnhancementProvider(Protocol):

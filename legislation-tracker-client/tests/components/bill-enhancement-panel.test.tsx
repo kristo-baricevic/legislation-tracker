@@ -233,6 +233,8 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("renders server-owned citations as cited sources, never verified evidence", async () => {
+    const consoleError = vi.spyOn(console, "error");
+    const user = userEvent.setup();
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     vi.mocked(getLatestBillEnhancement).mockResolvedValue({
@@ -267,6 +269,13 @@ describe("BillEnhancementPanel", () => {
             section_label: "Introduced",
             start_char: 7,
             end_char: 44,
+          }, {
+            source_ref: "src_0001",
+            label: "Cited source",
+            quoted_text: "The report is due within 90 days.",
+            section_label: "Introduced",
+            start_char: 45,
+            end_char: 78,
           }],
         }],
         key_impacts: [],
@@ -282,8 +291,64 @@ describe("BillEnhancementPanel", () => {
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
     expect(await screen.findByText("The bill requires a report.")).toBeVisible();
-    expect(screen.getByText("Cited source")).toBeVisible();
+    expect(screen.getByText("The Secretary shall publish a report.")).not.toBeVisible();
+    await user.click(screen.getByText("Read bill text"));
+    expect(screen.getAllByText("Cited source")).toHaveLength(2);
+    expect(screen.getByText("The report is due within 90 days.")).toBeVisible();
+    expect(screen.getByText("The Secretary shall publish a report.")).toBeVisible();
     expect(screen.queryByText(/verified evidence/i)).not.toBeInTheDocument();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("shows a specific validation reason and its field location", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
+    const attempt = {
+      id: 12, sequence: 1, status: "failed" as const, credential_revision: 2,
+      estimated_input_tokens: 600, usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
+      resolved_model: "gpt-5.6-luna", failure_category: "invalid_output", retry_allowed: false,
+      failure_detail: { code: "citation_quote_not_found", message: "A cited quote does not exactly match its source text.", path: "/overview/0/source_quotes/0/quote" },
+      started_at: null, completed_at: null, created_at: "2026-08-21T00:00:00Z",
+    };
+    vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({ status: "failed", result: null, latest_attempt: attempt, attempts: [attempt] }));
+    render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
+    expect(await screen.findByText(attempt.failure_detail.message)).toBeVisible();
+    expect(screen.getByText(attempt.failure_detail.path)).toBeVisible();
+  });
+
+  it("keeps every funding item visible while requirements and technical details expand on demand", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
+    vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({
+      coverage_notice: "Only selected provisions were analyzed.",
+      result: {
+        schema_version: "1.1",
+        overview: [{ text: "Helps students finish college.", source_refs: ["src_0001"], cited_sources: [] }],
+        key_impacts: [],
+        funding_and_timing: Array.from({ length: 16 }, (_, index) => ({
+          kind: "funding" as const,
+          text: `$${index + 1} million for student program ${index + 1}.`,
+          source_refs: ["src_0001"], cited_sources: [],
+        })),
+        obligations: [{ actor: "Grant recipients", modality: "prohibited", action: "charge application fees.", conditions: null, source_refs: ["src_0001"], cited_sources: [] }],
+        uncertain_language: [],
+      },
+    }));
+    render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
+    expect(await screen.findByText("Helps students finish college.")).toBeVisible();
+    expect(screen.getByText("Only selected provisions were analyzed.")).toBeVisible();
+    for (let index = 1; index <= 16; index++) {
+      expect(screen.getByText(`$${index} million for student program ${index}.`)).toBeVisible();
+    }
+    expect(screen.getByText(/must not charge application fees/)).not.toBeVisible();
+    await user.click(screen.getByText("Requirements and conditions (1)"));
+    expect(screen.getByText(/must not charge application fees/)).toBeVisible();
+    expect(screen.getByText(/provider-reported usage/)).not.toBeVisible();
+    await user.click(screen.getByText("Generation details"));
+    expect(screen.getByText(/provider-reported usage/)).toBeVisible();
+    expect(createBillEnhancement).not.toHaveBeenCalled();
   });
 
   it("keeps a stale success readable and offers the current request identity", async () => {
@@ -420,6 +485,7 @@ describe("BillEnhancementPanel", () => {
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
     expect(await screen.findByText("Enhancement history")).toBeVisible();
+    await user.click(screen.getByText("Enhancement history"));
     await user.click(screen.getByRole("button", { name: /view enhancement from Aug 19, 2026/i }));
     expect(await screen.findByText("An older source-specific result remains readable.")).toBeVisible();
     expect(getBillEnhancement).toHaveBeenCalledWith(10, 4);

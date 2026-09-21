@@ -289,6 +289,7 @@ class ReaderLineItemPublicSerializer(serializers.Serializer):
     section_path = SectionPathItemPublicSerializer(many=True, allow_empty=False)
     kind = serializers.ChoiceField(
         choices=(
+            "purpose",
             "requirement",
             "prohibition",
             "permission",

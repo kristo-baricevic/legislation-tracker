@@ -1,0 +1,43 @@
+{
+  "id": "synthetic-optional-report",
+  "title": "synthetic-optional-report",
+  "source_version": "Synthetic test provision",
+  "source_url": null,
+  "corpus_kind": "synthetic_regression",
+  "name": "synthetic-optional-report",
+  "text": "SEC. 2. Reporting\nThe Secretary shall publish a report that may include the following:\n(1) Research results.\n(2) Recommendations.\nSEC. 3. Deadline\nThe Secretary shall publish the report not later than 90 days after enactment.",
+  "required_facts": [
+    {
+      "id": "report-duty",
+      "patterns": [
+        "Requires the Secretary to publish a report"
+      ]
+    },
+    {
+      "id": "optional-research",
+      "patterns": [
+        "Allows the Secretary to publish a report",
+        "Research results"
+      ]
+    },
+    {
+      "id": "optional-recommendations",
+      "patterns": [
+        "Allows the Secretary to publish a report",
+        "Recommendations"
+      ]
+    },
+    {
+      "id": "relative-deadline",
+      "patterns": [
+        "90 days",
+        "enactment"
+      ]
+    }
+  ],
+  "forbidden_patterns": [
+    "grant funds",
+    "Requires.{0,150}Research results"
+  ],
+  "expected_financial_count": 0
+}

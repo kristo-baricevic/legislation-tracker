@@ -278,6 +278,7 @@ def test_refusal_is_not_retryable_and_ownership_is_enforced(
         "feature_disabled",
         "invalid_credentials",
         "model_access_denied",
+        "provider_request_rejected",
         "provider_rate_limited",
         "provider_unavailable",
     ],

@@ -70,7 +70,7 @@ def _mapped_error(error: Exception) -> ProviderError:
     if isinstance(status_code, int) and status_code >= 500:
         return ProviderError("provider_unavailable", retry_allowed=True)
     if status_code == 400:
-        return ProviderError("invalid_output")
+        return ProviderError("provider_request_rejected", retry_allowed=True)
     return ProviderError("provider_unavailable", retry_allowed=True)
 
 
@@ -114,7 +114,7 @@ class OpenAIEnhancementProvider:
             response = client.responses.create(
                 model=requested_model,
                 input="Reply with OK.",
-                max_output_tokens=8,
+                max_output_tokens=16,
                 reasoning={"effort": "none"},
                 **self._privacy_controls(),
             )
@@ -183,6 +183,10 @@ class OpenAIEnhancementProvider:
         if _value(response, "status") != "completed":
             raise ProviderError(
                 "invalid_output",
+                validation_code="provider_output_limit"
+                if _value(_value(response, "incomplete_details"), "reason")
+                == "max_output_tokens"
+                else "provider_incomplete",
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,
@@ -193,6 +197,7 @@ class OpenAIEnhancementProvider:
         except (TypeError, ValueError):
             raise ProviderError(
                 "invalid_output",
+                validation_code="provider_invalid_json",
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,
@@ -200,6 +205,7 @@ class OpenAIEnhancementProvider:
         if not isinstance(output, dict):
             raise ProviderError(
                 "invalid_output",
+                validation_code="provider_output_not_object",
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,

@@ -192,6 +192,7 @@ export interface LegalNlpLineItem {
   section_id: string;
   section_path: LegalNlpSectionPathItem[];
   kind:
+    | "purpose"
     | "requirement"
     | "prohibition"
     | "permission"

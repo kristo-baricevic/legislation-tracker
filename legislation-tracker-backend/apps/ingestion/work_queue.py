@@ -21,6 +21,20 @@ logger = logging.getLogger(__name__)
 MANUAL_BILL_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=UTC)
 
 
+def _replace_superseded_pending_work(queryset, *, replacement):
+    # Roll-call payloads carry bill associations not present in independent
+    # vote discovery. A newer timestamp is not a complete replacement.
+    if replacement.kind == "roll_call_vote":
+        return
+    stale_ids = list(queryset.values_list("pk", flat=True))
+    if not stale_ids:
+        return
+    BillTrackingRequest.objects.filter(work_item_id__in=stale_ids).update(
+        work_item=replacement
+    )
+    IngestionWorkItem.objects.filter(pk__in=stale_ids).delete()
+
+
 def enqueue_ingestion_work(
     *,
     kind: str,
@@ -36,24 +50,91 @@ def enqueue_ingestion_work(
     A broker failure after this function returns cannot discard the work: beat
     will dispatch the pending row on its next run.
     """
+    work_item, _created = persist_ingestion_work(
+        kind=kind,
+        dedupe_key=dedupe_key,
+        source_updated_at=source_updated_at,
+        payload_json=payload_json,
+        jurisdiction=jurisdiction,
+        congress=congress,
+        dependency_keys=dependency_keys,
+    )
+    with transaction.atomic():
+        transaction.on_commit(_request_dispatch)
+    return work_item
+
+
+def persist_ingestion_work(
+    *,
+    kind: str,
+    dedupe_key: str,
+    source_updated_at,
+    payload_json: dict,
+    jurisdiction: str = "federal",
+    congress: int | None = None,
+    dependency_keys: list[str] | None = None,
+) -> tuple[IngestionWorkItem, bool]:
+    """Persist the newest source revision without retaining stale pending work.
+
+    Durable history that has started or completed is preserved. Only work that
+    has never been attempted is superseded, because every ingestion stage reads
+    the current upstream or database state rather than replaying a snapshot.
+    """
     if timezone.is_naive(source_updated_at):
         source_updated_at = timezone.make_aware(source_updated_at, UTC)
 
     with transaction.atomic():
-        work_item, _ = IngestionWorkItem.objects.get_or_create(
-            kind=kind,
-            dedupe_key=dedupe_key,
-            source_updated_at=source_updated_at,
-            defaults={
-                "jurisdiction": jurisdiction,
-                "congress": congress,
-                "payload_json": payload_json,
-                "dependency_keys": sorted(set(dependency_keys or [])),
-                "available_at": timezone.now(),
-            },
+        existing = list(
+            IngestionWorkItem.objects.select_for_update()
+            .filter(kind=kind, dedupe_key=dedupe_key)
+            .order_by("-source_updated_at", "-id")
         )
-        transaction.on_commit(_request_dispatch)
-    return work_item
+        latest = existing[0] if existing else None
+        if latest is not None and latest.source_updated_at > source_updated_at:
+            _replace_superseded_pending_work(
+                IngestionWorkItem.objects.filter(
+                    kind=kind,
+                    dedupe_key=dedupe_key,
+                    status=IngestionWorkStatus.PENDING,
+                    attempt_count=0,
+                    source_updated_at__lt=latest.source_updated_at,
+                ),
+                replacement=latest,
+            )
+            return latest, False
+
+        exact = next(
+            (item for item in existing if item.source_updated_at == source_updated_at),
+            None,
+        )
+        if exact is None:
+            work_item, created = IngestionWorkItem.objects.get_or_create(
+                kind=kind,
+                dedupe_key=dedupe_key,
+                source_updated_at=source_updated_at,
+                defaults={
+                    "jurisdiction": jurisdiction,
+                    "congress": congress,
+                    "payload_json": payload_json,
+                    "dependency_keys": sorted(set(dependency_keys or [])),
+                    "available_at": timezone.now(),
+                },
+            )
+        else:
+            work_item = exact
+            created = False
+
+        _replace_superseded_pending_work(
+            IngestionWorkItem.objects.filter(
+                kind=kind,
+                dedupe_key=dedupe_key,
+                status=IngestionWorkStatus.PENDING,
+                attempt_count=0,
+                source_updated_at__lt=source_updated_at,
+            ).exclude(pk=work_item.pk),
+            replacement=work_item,
+        )
+        return work_item, created
 
 
 def _request_dispatch() -> None:

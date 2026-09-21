@@ -1,0 +1,40 @@
+{
+  "id": "synthetic-budget-actions",
+  "title": "synthetic-budget-actions",
+  "source_version": "Synthetic test provision",
+  "source_url": null,
+  "corpus_kind": "synthetic_regression",
+  "name": "synthetic-budget-actions",
+  "text": "SEC. 2. Rural clinics\nThere is appropriated $2,000,000 for rural clinic grants.\nSEC. 3. Savings\n$500,000 of unobligated balances is hereby rescinded.\nSEC. 4. Authorization\nThere is authorized to be appropriated such sums as may be necessary for staff training.",
+  "required_facts": [
+    {
+      "id": "appropriation",
+      "category": "financial",
+      "patterns": [
+        "Appropriates \\$2,000,000",
+        "rural clinic grants"
+      ]
+    },
+    {
+      "id": "rescission",
+      "category": "financial",
+      "patterns": [
+        "Rescinds \\$500,000"
+      ]
+    },
+    {
+      "id": "authorization-not-appropriation",
+      "category": "financial",
+      "patterns": [
+        "Authorizes such sums as may be necessary",
+        "staff training"
+      ]
+    }
+  ],
+  "forbidden_patterns": [
+    "Appropriates such sums",
+    "\\$2,500,000",
+    "\\$0(?:\\.00)?\\b"
+  ],
+  "expected_financial_count": 3
+}

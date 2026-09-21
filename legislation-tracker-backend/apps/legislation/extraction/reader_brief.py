@@ -42,7 +42,8 @@ _CATEGORY_ORDER = {
 }
 _OPERATIVE_CATEGORIES = {"requirements", "amendment_operations", "applicability"}
 _EXPLICIT_PURPOSE_RE = re.compile(
-    r"\bthe\s+purposes?\s+of\s+(?:this|the)\s+Act\s+(?:is|are)\s+to\s+"
+    r"\b(?:the\s+purposes?\s+of\s+(?:this|the)\s+Act\s+(?:is|are)|"
+    r"It\s+is\s+the\s+purpose\s+of\s+(?:this|the)\s+Act)\s+to\s+"
     r"(?P<purpose>[^.;]{1,1000})[.;]",
     re.IGNORECASE,
 )
@@ -396,8 +397,13 @@ def build_reader_brief(
         definition_item_count=len(definition_items),
         section_group_count=len(section_groups),
     )
+    coverage_note = _coverage_note(stats)
+    if any(w.code == "reader_definition_too_long" for w in warnings):
+        coverage_note += " Some definitions are too long to display; read their full wording in the bill text."
+    if any(w.code == "reader_requirement_too_long" for w in warnings):
+        coverage_note += " Some requirements are too long to display; read their full wording in the bill text."
     return ReaderBrief(
-        coverage_note=_coverage_note(stats),
+        coverage_note=coverage_note,
         orientation=ReaderOrientation(
             purpose_line.rendered.display_text if purpose_line is not None else None,
             purpose_line.id if purpose_line is not None else None,

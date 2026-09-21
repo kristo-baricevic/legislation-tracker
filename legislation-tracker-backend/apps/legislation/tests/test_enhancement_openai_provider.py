@@ -94,6 +94,19 @@ def test_enhancement_uses_one_bounded_non_persistent_structured_request():
     assert call["text"]["format"]["strict"] is True
     provider_schema = call["text"]["format"]["schema"]
     assert "uniqueItems" not in json.dumps(provider_schema)
+    assert provider_schema["properties"]["schema_version"]["type"] == "string"
+    assert (
+        provider_schema["properties"]["obligations"]["items"]["properties"]["modality"][
+            "type"
+        ]
+        == "string"
+    )
+    assert (
+        provider_schema["properties"]["funding_and_timing"]["items"]["properties"][
+            "kind"
+        ]["type"]
+        == "string"
+    )
     assert (
         provider_schema["properties"]["overview"]["items"]["properties"]["source_refs"][
             "maxItems"
@@ -132,8 +145,19 @@ def test_declared_openai_floor_supports_the_adapter_privacy_argument():
 
 
 def test_explicit_validation_makes_exactly_one_minimal_request():
+    class ResponsesRequiringProviderMinimum(FakeResponses):
+        def create(self, **kwargs):
+            if kwargs["max_output_tokens"] < 16:
+                error = type(
+                    "FakeBadRequestError",
+                    (Exception,),
+                    {"status_code": 400, "param": "max_output_tokens"},
+                )("max_output_tokens is below the provider minimum")
+                raise error
+            return super().create(**kwargs)
+
     response = SimpleNamespace(status="completed", output_text="OK", output=[])
-    responses = FakeResponses(result=response)
+    responses = ResponsesRequiringProviderMinimum(result=response)
     factory = FakeClientFactory(responses)
     provider = OpenAIEnhancementProvider(client_factory=factory)
 
@@ -145,14 +169,42 @@ def test_explicit_validation_makes_exactly_one_minimal_request():
 
     assert check.valid is True
     assert len(responses.calls) == 1
-    assert responses.calls[0]["max_output_tokens"] == 8
+    assert responses.calls[0]["max_output_tokens"] == 16
     assert responses.calls[0]["store"] is False
     assert factory.calls[0]["max_retries"] == 0
 
 
 @pytest.mark.parametrize(
+    "status,text,reason,code",
+    [
+        ("incomplete", "private output", "max_output_tokens", "provider_output_limit"),
+        ("incomplete", "private output", "private reason", "provider_incomplete"),
+        ("completed", "private non-JSON output", None, "provider_invalid_json"),
+        ("completed", "[]", None, "provider_output_not_object"),
+    ],
+)
+def test_invalid_response_retains_sanitized_failure_stage(status, text, reason, code):
+    response = SimpleNamespace(
+        status=status,
+        output_text=text,
+        output=[],
+        incomplete_details=SimpleNamespace(reason=reason),
+    )
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
+    with pytest.raises(ProviderError) as caught:
+        provider.enhance_bill(
+            api_key="sk-test-secret", request=_request(), timeout_seconds=90
+        )
+    assert caught.value.validation_code == code
+    assert "private" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
     ("status_code", "category", "retry_allowed"),
     [
+        (400, "provider_request_rejected", True),
         (401, "invalid_credentials", False),
         (403, "model_access_denied", False),
         (429, "provider_rate_limited", True),

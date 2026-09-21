@@ -29,6 +29,7 @@ from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.comparison import semantic_contracts_equal
 from apps.legislation.contract_json import contract_hash_from_dict
+from apps.legislation.enhancements.diagnostics import diagnostic, validation_diagnostic
 from apps.legislation.enhancements.provider_registry import get_provider
 from apps.legislation.enhancements.providers.base import ProviderError, ProviderUsage
 from apps.legislation.enhancements.schema import validate_enhancement_output
@@ -1193,6 +1194,7 @@ def _finish_enhancement_attempt(
     run_token,
     attempt_status,
     failure_category="",
+    failure_detail=None,
     usage=None,
     result_json=None,
     provider_response_id="",
@@ -1217,6 +1219,7 @@ def _finish_enhancement_attempt(
         )
         attempt.status = attempt_status
         attempt.failure_category = failure_category
+        attempt.failure_detail = failure_detail or {}
         attempt.input_tokens = usage.input_tokens
         attempt.output_tokens = usage.output_tokens
         attempt.total_tokens = usage.total_tokens
@@ -1229,6 +1232,7 @@ def _finish_enhancement_attempt(
             update_fields=[
                 "status",
                 "failure_category",
+                "failure_detail",
                 "input_tokens",
                 "output_tokens",
                 "total_tokens",
@@ -1394,6 +1398,9 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             run_token=run_token,
             attempt_status=terminal_status,
             failure_category=exc.category,
+            failure_detail=diagnostic(exc.validation_code)
+            if exc.category == "invalid_output"
+            else {},
             usage=exc.usage,
             provider_response_id=exc.response_id,
             resolved_model=exc.resolved_model,
@@ -1408,13 +1415,15 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
         validated = validate_enhancement_output(
             provider_result.output,
             attempt.enhancement.source_snapshot_json,
+            expected_version=attempt.enhancement.output_schema_version,
         )
-    except ValidationError:
+    except ValidationError as error:
         persisted = _finish_enhancement_attempt(
             attempt_id=attempt_id,
             run_token=run_token,
             attempt_status=BillEnhancementAttempt.Status.FAILED,
             failure_category="invalid_output",
+            failure_detail=validation_diagnostic(error),
             usage=provider_result.usage,
             provider_response_id=provider_result.response_id,
             resolved_model=provider_result.resolved_model,

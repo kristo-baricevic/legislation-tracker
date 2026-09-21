@@ -112,9 +112,25 @@ def _render_requirement(
             if any(cleaned_conditions)
             else ""
         )
+    display = f"{text.rstrip('.')}."
+    # Check raw persisted slots as well as the rendered sentence. Nested list
+    # enrichment can exceed the schema even when every individual clause fits.
+    if (
+        len(claim.fields["actor"]) > 1000
+        or len(claim.fields["action"]) > 4000
+        or len(claim.fields.get("object") or "") > 4000
+        or any(len(value) > 2000 for value in (conditions or []))
+        or len(display) > 4000
+    ):
+        return ExtractionWarning(
+            code="reader_requirement_too_long",
+            rule_id=claim.rule_id,
+            source_id=claim.source_id,
+            evidence=claim.evidence,
+        )
     return RenderedReaderClaim(
         kind=kind,
-        display_text=f"{text.rstrip('.')}.",
+        display_text=display,
         actor=actor,
         action=action,
         effect=_clean(claim.fields.get("object")),
@@ -226,6 +242,12 @@ def _render_financial(
     currency = fields.get("currency")
     if amount_type == "such_sums":
         amount_text = "such sums as may be necessary"
+    elif (
+        amount_type in {"percentage", "ceiling"}
+        and currency is None
+        and amount is not None
+    ):
+        amount_text = f"{_number(amount)} percent"
     elif amount_type in {"specified", "ceiling"} and amount is not None:
         amount_text = _money(amount) if currency == "USD" else _number(amount)
     elif amount_type == "percentage" and amount is not None:
@@ -250,7 +272,18 @@ def _render_financial(
         "limitation": "Limits funding to no more than",
         "other_explicit": "Makes available",
     }
+    # The extractor associates qualifiers with the original amount span,
+    # before dollars, commas and scale words are normalized.
+    if amount is not None and claim.amount_is_minimum:
+        amount_text = f"at least {amount_text}"
     text = f"{verbs[str(action)]} {amount_text}"
+    if (
+        currency is None
+        and amount is not None
+        and source_account
+        and action != "transfer"
+    ):
+        text += f" of {source_account}"
     if action == "transfer":
         text += f" from {source_account} to {destination_account}"
     purpose = _clean(fields.get("purpose"))
@@ -324,9 +357,23 @@ def _render_definition(
         "includes": "to include",
         "excludes": "to exclude",
     }[str(definition_type)]
+    display = f"Defines “{term}” {connector} {definition.rstrip('.')}."
+    # Enrichment can span an entire enumerated definition. Omit only that
+    # unrenderable definition, not the otherwise valid bill-level contract.
+    if (
+        len(claim.fields["term"]) > 1000
+        or len(claim.fields["definition"]) > 4000
+        or len(display) > 4000
+    ):
+        return ExtractionWarning(
+            code="reader_definition_too_long",
+            rule_id=claim.rule_id,
+            source_id=claim.source_id,
+            evidence=claim.evidence,
+        )
     return RenderedReaderClaim(
         kind="definition",
-        display_text=f"Defines “{term}” {connector} {definition.rstrip('.')}.",
+        display_text=display,
         actor=None,
         action="define",
         effect=definition,

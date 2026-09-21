@@ -67,11 +67,19 @@ def test_evaluation_uses_dedicated_key_prints_budget_before_calls_and_writes_onl
             source_ref = kwargs["request"].source_snapshot[0]["source_ref"]
             return ProviderResult(
                 output={
-                    "schema_version": "1.1",
+                    "schema_version": "1.2",
                     "overview": [
                         {
                             "text": "The cited provision creates a duty.",
                             "source_refs": [source_ref],
+                            "source_quotes": [
+                                {
+                                    "source_ref": source_ref,
+                                    "quote": kwargs["request"].source_snapshot[0][
+                                        "quoted_text"
+                                    ],
+                                }
+                            ],
                         }
                     ],
                     "key_impacts": [],
@@ -103,7 +111,7 @@ def test_evaluation_uses_dedicated_key_prints_budget_before_calls_and_writes_onl
             "evaluate_bill_enhancements",
             execute=True,
             case_limit=1,
-            max_input_tokens=5000,
+            max_input_tokens=12000,
             max_output_tokens=200,
             output=str(output_path),
         )
@@ -111,14 +119,14 @@ def test_evaluation_uses_dedicated_key_prints_budget_before_calls_and_writes_onl
     assert len(events) == 1
     _, output_before_call, kwargs = events[0]
     assert "cases=1" in output_before_call
-    assert "max_input_tokens=5000" in output_before_call
+    assert "max_input_tokens=12000" in output_before_call
     assert "max_output_tokens=200" in output_before_call
     assert kwargs["api_key"] == "sk-evaluation-dedicated"
     artifact = json.loads(output_path.read_text(encoding="utf-8"))
     assert artifact["corpus_version"] == "1.1"
     assert artifact["review_rubric"]["citation_precision_target"] == 0.95
     assert artifact["results"][0]["review_labels"]
-    assert artifact["results"][0]["output"]["schema_version"] == "1.1"
+    assert artifact["results"][0]["output"]["schema_version"] == "1.2"
     combined = output_before_call + capsys.readouterr().out
     assert "sk-evaluation-dedicated" not in combined
     assert "private-evaluation-response" not in combined
@@ -135,7 +143,9 @@ def test_evaluation_sanitizes_schema_invalid_provider_output(
         def enhance_bill(self, **kwargs):
             return ProviderResult(
                 output={"schema_version": "1.1", "overview": secret_output},
-                usage=ProviderUsage(),
+                usage=ProviderUsage(
+                    input_tokens=120, output_tokens=30, total_tokens=150
+                ),
                 response_id="private-response-id",
                 resolved_model="evaluation-model",
             )
@@ -157,7 +167,7 @@ def test_evaluation_sanitizes_schema_invalid_provider_output(
             "evaluate_bill_enhancements",
             execute=True,
             case_limit=1,
-            max_input_tokens=5000,
+            max_input_tokens=12000,
             max_output_tokens=200,
             output=str(output_path),
         )
@@ -174,8 +184,67 @@ def test_evaluation_sanitizes_schema_invalid_provider_output(
             },
             "status": "failed",
             "failure_category": "invalid_output",
+            "usage": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
         }
     ]
     combined = capsys.readouterr().out + output_path.read_text(encoding="utf-8")
     assert secret_output not in combined
     assert "private-response-id" not in combined
+
+
+def test_reader_case_evaluation_records_quality_not_just_schema(monkeypatch, tmp_path):
+    class Provider:
+        def enhance_bill(self, **kwargs):
+            source = kwargs["request"].source_snapshot[0]
+            return ProviderResult(
+                output={
+                    "schema_version": "1.2",
+                    "overview": [
+                        {
+                            "text": "This bill does something.",
+                            "source_refs": [source["source_ref"]],
+                            "source_quotes": [
+                                {
+                                    "source_ref": source["source_ref"],
+                                    "quote": source["quoted_text"].splitlines()[0],
+                                }
+                            ],
+                        }
+                    ],
+                    "key_impacts": [],
+                    "obligations": [],
+                    "funding_and_timing": [],
+                    "uncertain_language": [],
+                },
+                usage=ProviderUsage(
+                    input_tokens=100, output_tokens=20, total_tokens=120
+                ),
+                resolved_model="evaluation-model",
+                response_id="not-for-artifact",
+            )
+
+    monkeypatch.setattr(
+        "apps.legislation.management.commands.evaluate_bill_enhancements.get_provider",
+        lambda _: Provider(),
+    )
+    output = tmp_path / "report.json"
+    with override_settings(
+        LLM_ENHANCEMENT_EVALUATION_API_KEY="test",
+        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=20000,
+    ):
+        with pytest.raises(CommandError, match="quality"):
+            call_command(
+                "evaluate_bill_enhancements",
+                execute=True,
+                case_limit=1,
+                max_input_tokens=20000,
+                max_output_tokens=200,
+                reader_case="hr9300-119-ih",
+                fail_on_quality=True,
+                output=str(output),
+            )
+    row = json.loads(output.read_text())["results"][0]
+    assert row["status"] == "succeeded"
+    assert row["quality"]["passed"] is False
+    assert "faculty" in row["quality"]["missing_facts"]
+    assert row["usage"]["input_tokens"] == 100
