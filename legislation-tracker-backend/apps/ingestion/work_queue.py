@@ -22,6 +22,10 @@ MANUAL_BILL_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _replace_superseded_pending_work(queryset, *, replacement):
+    # Roll-call payloads carry bill associations not present in independent
+    # vote discovery. A newer timestamp is not a complete replacement.
+    if replacement.kind == "roll_call_vote":
+        return
     stale_ids = list(queryset.values_list("pk", flat=True))
     if not stale_ids:
         return

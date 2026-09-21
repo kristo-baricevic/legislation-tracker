@@ -80,6 +80,10 @@ available and percentage caps are not presented as dollars.
   purpose syntax; connects enumerated activities to parent requirements; retains
   optional examples; fixes letter/roman hierarchy and list-versus-heading parsing;
   preserves funding minimums, percentage units, bases, and complete purposes.
+- Disjunctive and explicitly numbered choices remain grouped obligations rather
+  than separate compulsory duties. Nested percentage reservations recognize both
+  minimums and caps. The money ledger displays the qualified extraction text, not
+  just the bare amount.
 - AI prompt/schema 1.2: checks nested uses of funds, resolves local definitions,
   preserves financial conditions, and requests short exact supporting quotations.
   Every quote must match uniquely inside its saved source. The server calculates

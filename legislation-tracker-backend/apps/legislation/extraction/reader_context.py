@@ -16,6 +16,27 @@ def _clean(text):
     return re.sub(r"\s+", " ", text).strip().rstrip(".;:,—–- ")
 
 
+def _is_choice(introduction, children):
+    return bool(
+        re.search(
+            r"\b(?:one|two|three|\d+|any|either)(?:\s+or\s+more)?\s+of\s+(?:the\s+)?following\b",
+            introduction,
+            re.I,
+        )
+        or any(
+            re.search(r"\bor\s*[.;]?\s*$", child.span.text, re.I)
+            for child in children[:-1]
+        )
+    )
+
+
+def _has_independent_modal(text):
+    return any(
+        not re.search(r"\b(?:which|that)\s*$", text[: match.start()], re.I)
+        for match in MODAL_RE.finditer(text)
+    )
+
+
 def enrich_reader_claims(source, sections, claims):
     additions = []
     replaced_ranges = []
@@ -28,6 +49,20 @@ def enrich_reader_claims(source, sections, claims):
         parent = by_path.get(tuple((p.level, p.label) for p in section.path[:-1]))
         if parent:
             children.setdefault(parent.source_id, []).append(section)
+
+    def consume_inherited_fragments(start, end):
+        # Only replace leaves borrowing their duty from the list introduction.
+        # Explicit child actors/modals remain independently authoritative.
+        for claim in claims:
+            if claim.category != "requirements":
+                continue
+            span = claim.evidence[-1]
+            if (
+                start <= span.start_char
+                and span.end_char <= end
+                and not _has_independent_modal(span.text)
+            ):
+                replaced_ranges.append((span.start_char, span.end_char))
 
     def make(section, category, fields, evidence, rule):
         return ExtractedClaim(
@@ -92,11 +127,45 @@ def enrich_reader_claims(source, sections, claims):
         if not modal:
             continue
         # Process the highest modal list once; nested leaves retain every parent.
-        if any(a <= introduction.start_char and introduction.end_char <= b for a, b in replaced_ranges):
+        if any(
+            a <= introduction.start_char and introduction.end_char <= b
+            for a, b in replaced_ranges
+        ):
             continue
         actor = _clean(introduction.text[: modal.start()])
         action = _clean(introduction.text[modal.end() :])
         if not actor or modal.group().lower() not in {"shall", "must", "may"}:
+            continue
+        if _is_choice(action, direct):
+            # A choice is one obligation, not a required duty for every leaf.
+            # Keep its exact source-backed grouping, including cardinality.
+            start, end = direct[0].span.start_char, direct[-1].span.end_char
+            grouped_action = (
+                f"{action + ': ' if action else ''}{_clean(source[start:end])}"
+            )
+            if len(actor) + len(grouped_action) < 3900 and not any(
+                a < end and start < b for a, b in quoted_ranges
+            ):
+                additions.append(
+                    make(
+                        section,
+                        "requirements",
+                        {
+                            "modality": "permitted"
+                            if modal.group().lower() == "may"
+                            else "required",
+                            "actor": actor,
+                            "action": grouped_action,
+                            "object": None,
+                            "conditions": [],
+                        },
+                        [introduction, SourceSpan(source[start:end], start, end)],
+                        "reader.list.choice.v1",
+                    )
+                )
+                replaced_ranges.append((introduction.start_char, introduction.end_char))
+                consume_inherited_fragments(start, end)
+            # If too large or quoted, leave original claims authoritative.
             continue
         addition_start = len(additions)
         optional = re.search(r"\bmay include\b", action, re.I)
@@ -148,11 +217,7 @@ def enrich_reader_claims(source, sections, claims):
             for span in sentence_spans(node, source):
                 # An independent actor/modal is its own duty, not a list
                 # fragment. Leave its claims (and any nested list) intact.
-                independent = any(
-                    not re.search(r"\b(?:which|that)\s*$", span.text[:m.start()], re.I)
-                    for m in MODAL_RE.finditer(span.text)
-                )
-                if independent:
+                if _has_independent_modal(span.text):
                     break
                 own_spans.append(span)
             if not own_spans:
@@ -161,20 +226,69 @@ def enrich_reader_claims(source, sections, claims):
             phrase = _clean(raw)
             phrase = re.sub(r";?\s+(?:and|or)$", "", phrase).rstrip(";")
             descendants = children.get(node.source_id, [])
-            local_optional = re.search(r"\b(?:which|that)\s+may include\b", phrase, re.I)
+            local_optional = re.search(
+                r"\b(?:which|that)\s+may include\b", phrase, re.I
+            )
             if local_optional and not optional and modal.group().lower() != "may":
                 # Keep the compulsory category separate from optional examples.
-                duty = "; ".join(parents + [phrase[:local_optional.start()].rstrip(" ,")])
-                additions.append(make(
-                    node, "requirements",
-                    {"modality": "required", "actor": actor, "action": f"{prefix} {duty}", "object": None, "conditions": []},
-                    evidence + own_spans, "reader.list.duty.v1",
-                ))
+                duty = "; ".join(
+                    parents + [phrase[: local_optional.start()].rstrip(" ,")]
+                )
+                additions.append(
+                    make(
+                        node,
+                        "requirements",
+                        {
+                            "modality": "required",
+                            "actor": actor,
+                            "action": f"{prefix} {duty}",
+                            "object": None,
+                            "conditions": [],
+                        },
+                        evidence + own_spans,
+                        "reader.list.duty.v1",
+                    )
+                )
             optional = optional or bool(local_optional)
+            if descendants and _is_choice(phrase, descendants):
+                start, end = (
+                    descendants[0].span.start_char,
+                    descendants[-1].span.end_char,
+                )
+                grouped = f"{prefix} {'; '.join(parents + [phrase])}: {_clean(source[start:end])}"
+                if len(actor) + len(grouped) >= 3900:
+                    return
+                additions.append(
+                    make(
+                        node,
+                        "requirements",
+                        {
+                            "modality": "permitted"
+                            if optional or modal.group().lower() == "may"
+                            else "required",
+                            "actor": actor,
+                            "action": grouped,
+                            "object": None,
+                            "conditions": [],
+                        },
+                        evidence
+                        + own_spans
+                        + [SourceSpan(source[start:end], start, end)],
+                        "reader.list.choice.v1",
+                    )
+                )
+                replaced_ranges.extend((s.start_char, s.end_char) for s in own_spans)
+                consume_inherited_fragments(start, end)
+                return
             replaced_ranges.extend((s.start_char, s.end_char) for s in own_spans)
             if descendants:
                 for child in descendants:
-                    walk(child, parents + [phrase], evidence + own_spans, optional=optional)
+                    walk(
+                        child,
+                        parents + [phrase],
+                        evidence + own_spans,
+                        optional=optional,
+                    )
                 return
             joined = "; ".join(parents + [phrase])
             joined = re.sub(r"\bwhich may include\b", "including", joined, flags=re.I)

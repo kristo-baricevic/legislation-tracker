@@ -13,6 +13,7 @@ def collapse_stale_pending_work(apps, schema_editor):
         )
         stale_ids = list(
             work_item.objects.filter(status="pending", attempt_count=0)
+            .exclude(kind="roll_call_vote")
             .annotate(has_newer_revision=Exists(newer_revision))
             .filter(has_newer_revision=True)
             .values_list("pk", flat=True)[:1000]

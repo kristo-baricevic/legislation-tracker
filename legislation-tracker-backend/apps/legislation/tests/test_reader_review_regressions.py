@@ -97,3 +97,85 @@ def test_minimum_does_not_leak_to_an_equal_amount_elsewhere_in_sentence():
     money = contract["financial_items"]
     assert "at least" in money[0]["display_text"]
     assert "at least" not in money[1]["display_text"]
+
+
+@pytest.mark.parametrize("lead", ["submit the following", "do one of the following"])
+def test_disjunctive_list_keeps_alternatives_in_one_obligation(lead):
+    contract = extract(
+        f"SEC. 2. Reports\nThe Secretary shall {lead}:\n(1) Publish an annual report; or\n(2) Publish a certified statement."
+    )
+    choices = [
+        x
+        for x in contract["line_items"]
+        if "annual report" in x["display_text"]
+        or "certified statement" in x["display_text"]
+    ]
+    assert len(choices) == 1
+    assert "annual report; or" in choices[0]["display_text"]
+    assert "certified statement" in choices[0]["display_text"]
+    assert choices[0]["kind"] == "requirement"
+
+
+@pytest.mark.parametrize("minimum", ["not less than", "at least"])
+def test_nested_reservations_include_minimum_and_maximum(minimum):
+    contract = extract(
+        f"SEC. 2. Grants\nFrom the total amount appropriated, the Secretary shall reserve—\n(1) {minimum} 20 percent for rural grants; and\n(2) not more than 5 percent for administration."
+    )
+    money = contract["financial_items"]
+    assert len(money) == 2
+    assert (
+        "at least 20 percent of the total amount appropriated"
+        in money[0]["display_text"]
+    )
+    assert "rural grants" in money[0]["purpose"]
+    assert "no more than 5 percent" in money[1]["display_text"]
+
+
+@pytest.mark.parametrize("outer", ["shall", "may"])
+def test_nested_choices_keep_the_parent_modality_and_independent_duties(outer):
+    contract = extract(
+        f"SEC. 2. Reports\nThe Secretary shall notify Congress. The Secretary {outer} provide the following:\n(1) Reports, including one of the following:\n(A) An annual report; or\n(B) A certified statement.\n(2) Public notices."
+    )
+    items = contract["line_items"]
+    choice = [x for x in items if "annual report" in x["display_text"]]
+    assert len(choice) == 1
+    assert "certified statement" in choice[0]["display_text"]
+    assert "one of" in choice[0]["display_text"] and "; or" in choice[0]["display_text"]
+    assert choice[0]["kind"] == ("requirement" if outer == "shall" else "permission")
+    assert any("Public notices" in x["display_text"] for x in items)
+    assert any(
+        x["kind"] == "requirement" and "notify Congress" in x["display_text"]
+        for x in items
+    )
+
+
+def test_conjunctive_list_still_exposes_each_required_item():
+    contract = extract(
+        "SEC. 2. Reports\nThe Secretary shall submit the following:\n(1) An annual report; and\n(2) A certified statement."
+    )
+    duties = [x for x in contract["line_items"] if x["kind"] == "requirement"]
+    assert len(duties) == 2
+    assert "annual report" in duties[0]["display_text"]
+    assert "certified statement" in duties[1]["display_text"]
+
+
+def test_bare_modal_choice_replaces_inherited_leaf_duties():
+    contract = extract(
+        "SEC. 2. Reports\nThe Secretary shall—\n(1) publish an annual report; or\n(2) publish a certified statement."
+    )
+    duties = [x for x in contract["line_items"] if x["kind"] == "requirement"]
+    assert len(duties) == 1
+    assert (
+        "to publish an annual report; or publish a certified statement"
+        in duties[0]["display_text"]
+    )
+
+
+def test_grouped_nested_choice_preserves_independent_child_duties():
+    contract = extract(
+        "SEC. 2. Reports\nThe Secretary shall provide the following:\n(1) A program using one of the following:\n(A) Grants; or\n(B) Loans. Recipients shall submit annual accounts.\n(2) Public notices."
+    )
+    assert any(
+        x["actor"] == "Recipients" and "annual accounts" in x["display_text"]
+        for x in contract["requirements"]
+    )

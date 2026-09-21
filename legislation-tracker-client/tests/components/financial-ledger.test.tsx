@@ -37,6 +37,18 @@ function item(id: string, financial_action: LegalNlpFinancialItem["financial_act
 describe("FinancialLedger", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("shows qualified financial text including minimums and percentage caps", async () => {
+    const records = [
+      { ...item("minimum", "set_aside", "limit"), amount: "5000000.00", display_text: "Sets aside at least $5,000,000.00 for rural grants.", purpose: "rural grants" },
+      { ...item("maximum", "limitation", "limit"), amount: "5.00", amount_type: "ceiling" as const, currency: null, display_text: "Limits funding to no more than 5 percent of available funds for administration.", purpose: "administration" },
+    ];
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 2, next: null, previous: null, results: records });
+    render(<FinancialLedger contractId={12} totalCount={2} />);
+    expect(await screen.findByText("Rural grants")).toBeVisible();
+    expect(screen.getByText(records[0].display_text)).toBeVisible();
+    expect(screen.getByText(records[1].display_text)).toBeVisible();
+  });
+
   it("keeps legal actions distinct and never presents a computed total", async () => {
     vi.mocked(getFinancialItems).mockResolvedValue({
       count: 7,

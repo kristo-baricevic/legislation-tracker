@@ -136,7 +136,8 @@ def _actions(text: str) -> tuple[_ActionMatch, ...]:
             # a reference to money previously reserved by another provision.
             if not re.search(
                 r"\b(?:shall|must|may|to|is|are|be|was|were)\s+(?:(?:also|hereby)\s+)?$",
-                text[:match.start()], re.I,
+                text[: match.start()],
+                re.I,
             ):
                 continue
         actions.append(_ActionMatch(action, match.start(), match.end()))
@@ -153,7 +154,13 @@ def _amounts(text: str) -> tuple[_AmountMatch, ...]:
                 currency="USD",
                 start=match.start(),
                 end=match.end(),
-                is_minimum=bool(re.search(r"\b(?:not\s+less\s+than|at\s+least)\s*$", text[:match.start()], re.I)),
+                is_minimum=bool(
+                    re.search(
+                        r"\b(?:not\s+less\s+than|at\s+least)\s*$",
+                        text[: match.start()],
+                        re.I,
+                    )
+                ),
             )
         )
     for match in _PERCENT_RE.finditer(text):
@@ -166,7 +173,13 @@ def _amounts(text: str) -> tuple[_AmountMatch, ...]:
                 currency=None,
                 start=match.start(),
                 end=match.end(),
-                is_minimum=bool(re.search(r"\b(?:not\s+less\s+than|at\s+least)\s*$", text[:match.start()], re.I)),
+                is_minimum=bool(
+                    re.search(
+                        r"\b(?:not\s+less\s+than|at\s+least)\s*$",
+                        text[: match.start()],
+                        re.I,
+                    )
+                ),
             )
         )
     for match in _SUCH_SUMS_RE.finditer(text):
@@ -424,7 +437,7 @@ def extract_financial_claims(
                     re.I,
                 )
                 and re.match(
-                    r"\s*(?:not\s+more\s+than\s+|up\s+to\s+)?\d+(?:\.\d+)?\s+percent\s+for\b",
+                    r"\s*(?:not\s+(?:more|less)\s+than\s+|up\s+to\s+|at\s+least\s+)?\d+(?:\.\d+)?\s+percent\s+for\b",
                     span.text,
                     re.I,
                 )

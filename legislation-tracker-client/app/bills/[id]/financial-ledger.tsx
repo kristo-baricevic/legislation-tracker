@@ -181,6 +181,7 @@ export function FinancialLedger({
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">What the money is for</p>
                   <p className="mt-1 text-lg font-semibold leading-7 text-slate-950 dark:text-green-200">{financialPurpose(item)}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-green-200">{item.display_text}</p>
                   <p className="mt-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
                   {item.fiscal_years.length > 0 && <p className="mt-2 text-sm text-slate-600 dark:text-green-600">Fiscal {item.fiscal_years.join(", ")}</p>}
                   {(item.source_account || item.destination_account) && <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
