@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from .display_text import normalize_reader_fragment
-from .federal_clauses import grammar_text, iter_operative_clauses
+from .federal_clauses import _actor_and_conditions, grammar_text, iter_operative_clauses
 from .federal_structure import sentence_spans
 from .types import ExtractedClaim, SourceSpan, StructuralSection
 
@@ -299,15 +299,15 @@ def extract_modality_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     for section, sentence, context in iter_operative_clauses(
-        source_text, sections, date_aware=date_aware
+        source_text, sections, reader_mode=reader_mode
     ):
         modal_matches = list(
             MODAL_RE.finditer(
-                grammar_text(sentence.text) if date_aware else sentence.text
+                grammar_text(sentence.text) if reader_mode else sentence.text
             )
         )
         if not modal_matches:
@@ -340,7 +340,15 @@ def extract_modality_claims(
             actor = _strip_terminal_punctuation(sentence.text[: modal_match.start()])
             action = _strip_terminal_punctuation(sentence.text[modal_match.end() :])
             conditions = list(context.conditions) if context is not None else []
-            leading_condition = _LEADING_CONDITION_RE.match(actor)
+            leading_condition = (
+                _LEADING_CONDITION_RE.match(actor) if not reader_mode else None
+            )
+            if reader_mode:
+                actor, leading_conditions = _actor_and_conditions(
+                    actor, reader_mode=True
+                )
+                conditions.extend(leading_conditions)
+                conditions = list(dict.fromkeys(conditions))
             if leading_condition is not None:
                 conditions.append(
                     _strip_terminal_punctuation(leading_condition.group("condition"))
@@ -379,7 +387,9 @@ def extract_modality_claims(
                         "conditions": conditions,
                     },
                     section=section,
-                    evidence=(sentence,),
+                    evidence=(context.evidence,)
+                    if reader_mode and context is not None
+                    else (sentence,),
                     rule_id=f"modality.{modal.replace(' ', '_')}.v1",
                 )
             )
@@ -391,11 +401,11 @@ def extract_definition_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     for section, sentence, _ in iter_operative_clauses(
-        source_text, sections, date_aware=date_aware
+        source_text, sections, reader_mode=reader_mode
     ):
         match = _EXPLICIT_DEFINITION_RE.search(sentence.text)
         explicit = match is not None
@@ -430,7 +440,7 @@ def extract_applicability_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     patterns = (
         (_DOES_NOT_APPLY_RE, "does_not_apply", "does_not_apply"),
@@ -440,7 +450,7 @@ def extract_applicability_claims(
     )
     claims = []
     for section, sentence, _ in iter_operative_clauses(
-        source_text, sections, date_aware=date_aware
+        source_text, sections, reader_mode=reader_mode
     ):
         text = sentence.text.strip()
         for pattern, applicability_type, rule_name in patterns:
@@ -552,11 +562,11 @@ def extract_funding_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     for section, sentence, _ in iter_operative_clauses(
-        source_text, sections, date_aware=date_aware
+        source_text, sections, reader_mode=reader_mode
     ):
         text = sentence.text
         lowered = text.casefold()
@@ -642,11 +652,11 @@ def extract_timeline_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     for section, sentence, _ in iter_operative_clauses(
-        source_text, sections, date_aware=date_aware
+        source_text, sections, reader_mode=reader_mode
     ):
         relative = _RELATIVE_TIMELINE_RE.search(sentence.text)
         date_match = _DATE_RE.search(sentence.text)
@@ -727,11 +737,11 @@ def extract_amendment_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     for section, sentence, _ in iter_operative_clauses(
-        source_text, sections, date_aware=date_aware
+        source_text, sections, reader_mode=reader_mode
     ):
         details = _amendment_details(sentence.text)
         if details is None:
@@ -775,7 +785,7 @@ def extract_claims(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[ExtractedClaim, ...]:
     category_order = {
         "requirements": 0,
@@ -786,12 +796,12 @@ def extract_claims(
         "applicability": 5,
     }
     claims = (
-        extract_modality_claims(source_text, sections, date_aware=date_aware)
-        + extract_amendment_claims(source_text, sections, date_aware=date_aware)
-        + extract_funding_claims(source_text, sections, date_aware=date_aware)
-        + extract_timeline_claims(source_text, sections, date_aware=date_aware)
-        + extract_definition_claims(source_text, sections, date_aware=date_aware)
-        + extract_applicability_claims(source_text, sections, date_aware=date_aware)
+        extract_modality_claims(source_text, sections, reader_mode=reader_mode)
+        + extract_amendment_claims(source_text, sections, reader_mode=reader_mode)
+        + extract_funding_claims(source_text, sections, reader_mode=reader_mode)
+        + extract_timeline_claims(source_text, sections, reader_mode=reader_mode)
+        + extract_definition_claims(source_text, sections, reader_mode=reader_mode)
+        + extract_applicability_claims(source_text, sections, reader_mode=reader_mode)
     )
     return tuple(
         sorted(

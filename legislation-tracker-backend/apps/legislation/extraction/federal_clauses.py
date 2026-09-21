@@ -28,7 +28,8 @@ _QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 _OPERATIVE_LEVELS = {"section", "subsection", "paragraph", "subparagraph", "clause"}
 
 _CALENDAR_DATE = re.compile(
-    r"\b(?:May\s+\d{1,2}(?:\s*,?\s*\d{4})?|\d{1,2}\s+May(?:\s+\d{4})?)\b",
+    r"\b(?:May\s+(?:\d{4}|\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?)|"
+    r"\d{1,2}(?:st|nd|rd|th)?\s+(?:day\s+of\s+)?May(?:\s*,?\s*\d{4})?)\b",
     re.I,
 )
 
@@ -68,9 +69,19 @@ def _intersects_quoted_block(
     return any(span.start_char < end and start < span.end_char for start, end in ranges)
 
 
-def _actor_and_conditions(value: str) -> tuple[str, tuple[str, ...]]:
+def _actor_and_conditions(
+    value: str, *, reader_mode=False
+) -> tuple[str, tuple[str, ...]]:
     candidate = _strip(value)
-    leading = _LEADING_CONDITION_RE.match(candidate)
+    leading = (
+        re.match(
+            r"^(?P<condition>(?:if|when|unless|subject\s+to|for\s+fiscal\s+years?)\b.*),\s*(?P<actor>[^,]+)$",
+            candidate,
+            re.I,
+        )
+        if reader_mode
+        else _LEADING_CONDITION_RE.match(candidate)
+    )
     if leading is None:
         return candidate, ()
     return _strip(leading.group("actor")), (_strip(leading.group("condition")),)
@@ -96,7 +107,7 @@ def _explicit_actor_boundary(
 def _split_modal_clauses(
     sentence: SourceSpan,
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> tuple[tuple[SourceSpan, ModalContext | None], ...]:
     such_sums = tuple(
         re.finditer(r"\bsuch sums as may be necessary\b", sentence.text, re.I)
@@ -104,14 +115,16 @@ def _split_modal_clauses(
     matches = [
         m
         for m in _MODAL_RE.finditer(
-            grammar_text(sentence.text) if date_aware else sentence.text
+            grammar_text(sentence.text) if reader_mode else sentence.text
         )
         if not any(s.start() <= m.start() < s.end() for s in such_sums)
     ]
     if len(matches) < 2 or _AMENDMENT_INSTRUCTION_RE.search(sentence.text):
         return ((sentence, None),)
 
-    actor, conditions = _actor_and_conditions(sentence.text[: matches[0].start()])
+    actor, conditions = _actor_and_conditions(
+        sentence.text[: matches[0].start()], reader_mode=reader_mode
+    )
     active_actor = actor
     active_conditions = conditions
     boundaries = [
@@ -127,7 +140,8 @@ def _split_modal_clauses(
         prior_boundary = boundaries[index]
         if prior_boundary is not None:
             explicit_actor, explicit_conditions = _actor_and_conditions(
-                sentence.text[prior_boundary[1] : match.start()]
+                sentence.text[prior_boundary[1] : match.start()],
+                reader_mode=reader_mode,
             )
             if explicit_actor:
                 active_actor = explicit_actor
@@ -159,7 +173,9 @@ def _split_modal_clauses(
         )
         context = (
             None
-            if index == 0 or prior_boundary is not None or not active_actor
+            if index == 0
+            or (prior_boundary is not None and not reader_mode)
+            or not active_actor
             else ModalContext(
                 modal=matches[index - 1].group("modal").casefold(),
                 actor=active_actor,
@@ -191,7 +207,7 @@ def _ancestor_modal_context(
     sections: Sequence[StructuralSection],
     quoted_ranges: Sequence[tuple[int, int]],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> ModalContext | None:
     parent = _parent_section(section, sections)
     while parent is not None:
@@ -200,7 +216,7 @@ def _ancestor_modal_context(
                 continue
             matches = list(
                 _MODAL_RE.finditer(
-                    grammar_text(sentence.text) if date_aware else sentence.text
+                    grammar_text(sentence.text) if reader_mode else sentence.text
                 )
             )
             if not matches:
@@ -224,7 +240,7 @@ def iter_operative_clauses(
     source_text: str,
     sections: Sequence[StructuralSection],
     *,
-    date_aware=False,
+    reader_mode=False,
 ) -> Iterator[tuple[StructuralSection, SourceSpan, ModalContext | None]]:
     """Yield raw, source-offset-preserving clauses outside quoted amendment text."""
 
@@ -237,21 +253,21 @@ def iter_operative_clauses(
             section,
             sections,
             quoted_ranges,
-            date_aware=date_aware,
+            reader_mode=reader_mode,
         )
         for sentence in sentence_spans(section, source_text):
             if _intersects_quoted_block(sentence, quoted_ranges):
                 continue
             matches = list(
                 _MODAL_RE.finditer(
-                    grammar_text(sentence.text) if date_aware else sentence.text
+                    grammar_text(sentence.text) if reader_mode else sentence.text
                 )
             )
             if matches:
                 yield from (
                     (section, clause, context)
                     for clause, context in _split_modal_clauses(
-                        sentence, date_aware=date_aware
+                        sentence, reader_mode=reader_mode
                     )
                 )
             else:

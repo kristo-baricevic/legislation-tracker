@@ -47,7 +47,8 @@ describe("FinancialLedger", () => {
     vi.mocked(getFinancialItems).mockResolvedValue({ count: 2, next: null, previous: null, results: records });
     render(<FinancialLedger contractId={12} totalCount={2} />);
     expect(await screen.findByText(records[0].display_text)).toBeVisible();
-    expect(screen.getByText("No fixed dollar amount")).toBeVisible();
+    expect(screen.getByText("Amount not extracted")).toBeVisible();
+    expect(screen.queryByText("No fixed dollar amount")).not.toBeInTheDocument();
     expect(screen.getAllByText("Application or processing fee").some((element) => element.tagName === "P")).toBe(true);
     expect(screen.getByRole("option", { name: "Fee exemption" })).toHaveValue("fee_exemption");
   });

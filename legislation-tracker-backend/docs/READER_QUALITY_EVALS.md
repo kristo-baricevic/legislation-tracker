@@ -116,6 +116,13 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.11` carries shared conditions into the breakdown
+  as well as payment evidence, preserves the full coordinated introduction when
+  a nested condition requires source-only fallback, and gives spending and fees
+  the same source-offset ownership/order rules. Fiscal qualifiers are recognized
+  on either side of the payment noun. The ledger labels unresolved amounts as
+  "Amount not extracted", not a claim that the source contains no fixed amount.
+
 - Extractor `federal-rules-2.1.10` keeps sentence-level evidence distinct from
   payment-owned spans: splitting a coordinated predicate no longer drops shared
   conditions or suppresses independent spending limits. Calendar dates are

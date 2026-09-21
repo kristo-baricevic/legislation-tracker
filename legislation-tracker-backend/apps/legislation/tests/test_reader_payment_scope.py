@@ -17,7 +17,9 @@ def output(text):
     )
 
 
-@pytest.mark.parametrize("date", ["May 1, 2028", "1 May 2028", "June 1, 2028"])
+@pytest.mark.parametrize(
+    "date", ["May 1, 2028", "1 May 2028", "June 1, 2028", "May 2028", "May 1st, 2028"]
+)
 @pytest.mark.parametrize("wrap", [" ", "\n"])
 @pytest.mark.parametrize("actor", ["no agency shall", "the Secretary shall not"])
 def test_calendar_dates_do_not_override_prohibitions(date, wrap, actor):
@@ -155,4 +157,61 @@ def test_active_payments_are_in_source_order(reverse):
     _, contract = output("The Secretary shall " + " and ".join(parts) + ".")
     assert [i["amount"] for i in contract.contract_json["financial_items"]] == (
         ["25.00", "100.00"] if reverse else ["100.00", "25.00"]
+    )
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "If an application is approved",
+        "Unless an application is denied",
+        "For fiscal year 2027",
+    ],
+)
+def test_breakdown_keeps_same_shared_scope_as_financial_items(prefix):
+    result, _ = output(
+        prefix
+        + ", applicants shall pay a fee of $100 and renewing applicants shall pay a fee of $50."
+    )
+    requirements = [
+        i for i in result.contract_json["line_items"] if i["kind"] == "requirement"
+    ]
+    assert len(requirements) == 2
+    assert all(prefix in i["display_text"] for i in requirements)
+    second = requirements[-1]
+    assert any(
+        prefix in e.quoted_text
+        for e in result.evidence
+        if e.field_path in second["evidence_paths"]
+    )
+
+
+def test_nested_fallback_preserves_whole_coordinated_introduction():
+    text = "If the applicant is eligible, the Secretary shall review the application and applicants shall pay a fee of $100 if they—\n(1) are citizens; and\n(2) hold a permit which may be renewed and shall expire after one year."
+    result, _ = output(text)
+    assert result.contract_json["financial_items"] == []
+    assert [i["display_text"] for i in result.contract_json["line_items"]] == [
+        "Source text (not simplified): " + text
+    ]
+
+
+def test_fiscal_qualifier_can_separate_payment_noun_and_price():
+    _, contract = output("Applicants shall pay a fee for fiscal year 2027 of $100.")
+    assert [
+        (i["amount"], i["fiscal_years"])
+        for i in contract.contract_json["financial_items"]
+    ] == [("100.00", [2027])]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_receipts_and_spending_keep_source_order(reverse):
+    parts = [
+        "Applicants shall pay a fee of $100",
+        "there is appropriated $5 million for processing",
+    ]
+    if reverse:
+        parts.reverse()
+    _, contract = output(", and ".join(parts) + ".")
+    assert [i["amount"] for i in contract.contract_json["financial_items"]] == (
+        ["5000000.00", "100.00"] if reverse else ["100.00", "5000000.00"]
     )

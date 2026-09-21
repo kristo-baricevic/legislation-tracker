@@ -414,6 +414,7 @@ def _claim(
     source_account: str | None,
     destination_account: str | None,
     inherited: bool,
+    source_span: SourceSpan,
 ) -> ExtractedClaim:
     amount_type = "ceiling" if action == "limitation" else amount.amount_type
     suffix = ".inherited" if inherited else ""
@@ -429,6 +430,10 @@ def _claim(
             "purpose": purpose,
             "source_account": source_account,
             "destination_account": destination_account,
+            "_amount_span": (
+                source_span.start_char + amount.start,
+                source_span.start_char + amount.end,
+            ),
         },
         section_label=section.label,
         evidence=evidence,
@@ -453,7 +458,7 @@ def extract_financial_claims(
         if claim.fields.get("_amount_span")
     }
     for section, span, _ in iter_operative_clauses(
-        source_text, sections, date_aware=True
+        source_text, sections, reader_mode=True
     ):
         payment_sentence = any(
             start <= span.start_char and span.end_char <= end
@@ -465,13 +470,14 @@ def extract_financial_claims(
         if payment_sentence and not any(a.action != "limitation" for a in actions):
             continue
         candidate_amounts = _amounts(span.text)
-        if payment_sentence:
-            candidate_amounts = tuple(
-                a
-                for a in candidate_amounts
-                if (span.start_char + a.start, span.start_char + a.end)
-                not in payment_offsets
-            )
+        # Ownership is an exact source range, independent of how the legacy
+        # spending parser splits (or does not split) the surrounding sentence.
+        candidate_amounts = tuple(
+            a
+            for a in candidate_amounts
+            if (span.start_char + a.start, span.start_char + a.end)
+            not in payment_offsets
+        )
         if not candidate_amounts:
             continue
         inherited = (
@@ -564,6 +570,7 @@ def extract_financial_claims(
                     source_account=source_account,
                     destination_account=destination_account,
                     inherited=inherited is not None,
+                    source_span=span,
                 )
             )
     return tuple(
@@ -581,6 +588,15 @@ def extract_financial_claims(
                 c.fields.get("_amount_span") or (c.evidence[-1].start_char,)
             )[0],
         )
+    )
+
+
+def _without_fiscal_qualifiers(text):
+    return re.sub(
+        r"\bfor\s+fiscal\s+years?\s+\d{4}(?:\s+(?:through|to|-)\s+\d{4})?\s*,?",
+        "",
+        text,
+        flags=re.I,
     )
 
 
@@ -609,7 +625,7 @@ def _payment_amounts(text, action):
             r"\s*(?:(?:of|equal to|in (?:the|an) amount of)\s*)?"
             r"(?:[—:–]\s*\([a-z0-9]+\)\s*)?"
             r"(?:(?:not more than|not less than|not to exceed|at least|up to)\s+)?",
-            bridge,
+            _without_fiscal_qualifiers(bridge),
             re.I,
         )
         # Cost-based fees often state a cap later in the same clause.
@@ -635,12 +651,7 @@ def _payment_amounts(text, action):
             between = text[owned.end : amount.start]
             # Fiscal qualifiers may precede or follow a schedule price. They
             # belong to that price, not to the payment-noun continuation grammar.
-            between = re.sub(
-                r"\bfor\s+fiscal\s+years?\s+\d{4}(?:\s+(?:through|to|-)\s+\d{4})?\s*,?",
-                "",
-                between,
-                flags=re.I,
-            )
+            between = _without_fiscal_qualifiers(between)
             # A coordinated price or the next enumerated price inherits the
             # payment noun, but an income/eligibility threshold does not.
             continuation = bool(

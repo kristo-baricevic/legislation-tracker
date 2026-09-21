@@ -173,16 +173,16 @@ def parse_operative_clauses(source, sections):
             continue
         root = by_span.get(clause.context[0], clause) if clause.context else clause
         descendants = [c for c in clauses if root.span in c.context]
-        end = max([root.span.end_char, *(c.span.end_char for c in descendants)])
-        groups[root.span.start_char] = replace(
+        governing = root.sentence or root.span
+        start = governing.start_char
+        end = max([governing.end_char, *(c.span.end_char for c in descendants)])
+        groups[start] = replace(
             root,
             disposition="uncertain",
             context=(),
             evidence_context=(),
             sentence=None,
-            span=SourceSpan(
-                source[root.span.start_char : end], root.span.start_char, end
-            ),
+            span=SourceSpan(source[start:end], start, end),
         )
     roots = [
         g

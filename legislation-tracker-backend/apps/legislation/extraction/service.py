@@ -34,7 +34,7 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
 
         sections = parse_federal_structure(source_text)
         claims = legal_rules.extract_claims(
-            source_text, sections, date_aware=settings.LEGAL_NLP_V21_WRITE_ENABLED
+            source_text, sections, reader_mode=settings.LEGAL_NLP_V21_WRITE_ENABLED
         )
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:
             clauses = parse_operative_clauses(source_text, sections)
