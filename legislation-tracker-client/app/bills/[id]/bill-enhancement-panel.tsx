@@ -21,20 +21,24 @@ import {
 } from "@/lib/api";
 
 function CitedSources({ sources }: { sources: EnhancementCitedSource[] }) {
+  if (!sources.length) return null;
   return (
-    <div className="mt-2 space-y-2">
+    <details className="mt-2 text-xs text-slate-600 dark:text-green-500">
+      <summary className="cursor-pointer underline underline-offset-2">Read bill text</summary>
+      <div className="mt-2 space-y-3">
       {sources.map((source) => (
-        <details key={source.source_ref} className="border-l-2 border-amber-400 pl-3 text-xs">
-          <summary className="font-mono font-semibold text-amber-800 dark:text-amber-300">
+        <div key={source.source_ref} className="border-l-2 border-amber-400 pl-3 text-xs">
+          <p className="font-semibold text-amber-800 dark:text-amber-300">
             <span>{source.label}</span>
             {source.section_label ? ` · ${source.section_label}` : ""}
-          </summary>
+          </p>
           <blockquote className="mt-2 whitespace-pre-wrap text-slate-700 dark:text-green-500">
             {source.quoted_text}
           </blockquote>
-        </details>
+        </div>
       ))}
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -42,10 +46,11 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
   const result = enhancement.result;
   if (!result) return null;
   return (
-    <div className="mt-5 font-sans text-slate-900 dark:text-green-200">
+    <div className="mt-5 max-w-3xl space-y-6 font-sans leading-relaxed text-slate-900 dark:text-green-200">
+      {enhancement.coverage_notice && <p className="text-sm text-amber-900 dark:text-amber-300">{enhancement.coverage_notice}</p>}
       {result.overview.length > 0 && (
         <section>
-          <h3 className="font-mono text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-green-600">Overview</h3>
+          <h3 className="text-base font-semibold">What this bill does</h3>
           <ul className="mt-2 space-y-4">
             {result.overview.map((item, index) => (
               <li key={`${item.text}-${index}`}>
@@ -58,8 +63,8 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
       )}
       {result.key_impacts.length > 0 && (
         <section className="mt-6">
-          <h3 className="font-mono text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-green-600">Key impacts</h3>
-          <ul className="mt-2 space-y-4">
+          <h3 className="text-base font-semibold">What would change</h3>
+          <ul className="mt-2 list-disc space-y-3 pl-5">
             {result.key_impacts.map((item, index) => (
               <li key={`${item.text}-${index}`}>
                 <p>{item.text}</p>
@@ -70,35 +75,35 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
         </section>
       )}
       {result.obligations.length > 0 && (
-        <section className="mt-6">
-          <h3 className="font-mono text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-green-600">Obligations</h3>
+        <details className="mt-6 border-t border-slate-300 pt-4 dark:border-green-900/70">
+          <summary className="cursor-pointer font-semibold">Requirements and conditions ({result.obligations.length})</summary>
           <ul className="mt-2 space-y-4">
             {result.obligations.map((item, index) => (
               <li key={`${item.action}-${index}`}>
-                <p><strong>{item.actor}</strong> is {item.modality} to {item.action}</p>
-                {item.conditions && <p className="mt-1 text-sm text-slate-600 dark:text-green-500">Condition: {item.conditions}</p>}
+                <p><strong>{item.actor}</strong> {({ required: "must", prohibited: "must not", permitted: "may" } as const)[item.modality]} {item.action}</p>
+                {item.conditions && <p className="mt-1 text-sm text-slate-600 dark:text-green-500">{item.conditions}</p>}
                 <CitedSources sources={item.cited_sources} />
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
-      {result.funding_and_timing.length > 0 && (
-        <section className="mt-6">
-          <h3 className="font-mono text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-green-600">Funding and timing</h3>
+      {(["funding", "timing"] as const).map((kind) => result.funding_and_timing.some((item) => item.kind === kind) && (
+        <section key={kind} className="mt-6">
+          <h3 className="text-base font-semibold">{kind === "funding" ? "Money and its purpose" : "Dates and deadlines"}</h3>
           <ul className="mt-2 space-y-4">
-            {result.funding_and_timing.map((item, index) => (
-              <li key={`${item.text}-${index}`}>
+            {result.funding_and_timing.filter((item) => item.kind === kind).map((item, index) => (
+              <li key={`${item.text}-${index}`} className="border-l-2 border-amber-400 pl-4">
                 <p>{item.text}</p>
                 <CitedSources sources={item.cited_sources} />
               </li>
             ))}
           </ul>
         </section>
-      )}
+      ))}
       {result.uncertain_language.length > 0 && (
-        <section className="mt-6">
-          <h3 className="font-mono text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-green-600">Uncertain language</h3>
+        <details className="mt-6 border-t border-slate-300 pt-4 dark:border-green-900/70">
+          <summary className="cursor-pointer font-semibold">Wording to review ({result.uncertain_language.length})</summary>
           <ul className="mt-2 space-y-4">
             {result.uncertain_language.map((item, index) => (
               <li key={`${item.text}-${index}`}>
@@ -108,7 +113,7 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
     </div>
   );
@@ -387,11 +392,10 @@ export default function BillEnhancementPanel({
     <section className="mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-400">Private overlay</p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-green-300">AI enhancement</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-green-600">Generated only when you confirm; it never changes the shared bill contract.</p>
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-green-300">Your AI explanation</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-green-500">Only visible to you. Based on the cited bill text.</p>
         </div>
-        {enhancement && <span className="border border-slate-400 px-2 py-1 text-xs uppercase tracking-wide dark:border-green-800">{enhancement.status.replace("_", " ")}</span>}
+        {enhancement && enhancement.status !== "succeeded" && <span className="border border-slate-400 px-2 py-1 text-xs uppercase tracking-wide dark:border-green-800">{enhancement.status.replace("_", " ")}</span>}
       </div>
 
       {estimate && !estimate.can_enhance && (
@@ -413,7 +417,10 @@ export default function BillEnhancementPanel({
           {enhancement.stale && <p className="mt-4 border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-300">This result is for an older bill source or execution version.</p>}
           <EnhancementResult enhancement={enhancement} />
           <p className="mt-5 text-xs leading-5 text-slate-600 dark:text-green-600">{enhancement.disclaimer}</p>
-          <p className="mt-2 text-xs text-slate-500 dark:text-green-700">Requested {enhancement.requested_model}; resolved {enhancement.latest_attempt?.resolved_model ?? "unknown"}; provider-reported usage {enhancement.usage.total_tokens ?? "unknown"} total tokens.</p>
+          <details className="mt-3 text-xs text-slate-600 dark:text-green-500">
+            <summary className="cursor-pointer">Generation details</summary>
+            <p className="mt-2">Requested {enhancement.requested_model}; resolved {enhancement.latest_attempt?.resolved_model ?? "unknown"}; provider-reported usage {enhancement.usage.total_tokens ?? "unknown"} total tokens.</p>
+          </details>
         </>
       )}
       {enhancement && ["failed", "refused", "outcome_unknown"].includes(enhancement.status) && (
@@ -457,8 +464,8 @@ export default function BillEnhancementPanel({
         </details>
       )}
       {(historyLoading || history) && (
-        <section className="mt-5 border-t border-slate-300 pt-4 text-sm dark:border-green-900/70">
-          <h3 className="font-semibold">Enhancement history</h3>
+        <details className="mt-5 border-t border-slate-300 pt-4 text-sm dark:border-green-900/70">
+          <summary className="cursor-pointer font-semibold">Enhancement history</summary>
           {historyLoading && !history && <p className="mt-2">Loading enhancement history…</p>}
           {history && history.results.length === 0 && <p className="mt-2 text-slate-600 dark:text-green-600">No prior enhancements.</p>}
           {history && history.results.length > 0 && (
@@ -487,7 +494,7 @@ export default function BillEnhancementPanel({
               <button type="button" disabled={!history.next || historyLoading} onClick={() => setHistoryPage((page) => page + 1)} className="border border-slate-600 px-3 py-1 font-semibold disabled:opacity-50">Next</button>
             </nav>
           )}
-        </section>
+        </details>
       )}
       {error && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-400">{error}</p>}
     </section>

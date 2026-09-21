@@ -39,7 +39,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "uncertain_language",
     ],
     "properties": {
-        "schema_version": {"const": OUTPUT_SCHEMA_VERSION},
+        "schema_version": {"type": "string", "const": OUTPUT_SCHEMA_VERSION},
         "overview": {
             "type": "array",
             "items": ATOMIC_CLAIM_SCHEMA,
@@ -66,6 +66,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "actor": {"type": "string", "minLength": 1, "maxLength": 200},
                     "modality": {
+                        "type": "string",
                         "enum": ["required", "prohibited", "permitted"],
                     },
                     "action": {"type": "string", "minLength": 1, "maxLength": 600},
@@ -85,7 +86,10 @@ OUTPUT_SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
                 "required": ["kind", "text", "source_refs"],
                 "properties": {
-                    "kind": {"enum": ["funding", "timing"]},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["funding", "timing"],
+                    },
                     "text": {"type": "string", "minLength": 1, "maxLength": 600},
                     "source_refs": SOURCE_REFS_SCHEMA,
                 },

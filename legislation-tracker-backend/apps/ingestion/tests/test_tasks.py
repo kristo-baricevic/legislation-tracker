@@ -1,5 +1,6 @@
 import hashlib
 from datetime import UTC, date, datetime, timedelta
+from importlib import import_module
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
@@ -13,9 +14,10 @@ from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
 from apps.changelog.models import ChangeLog
 from apps.congress.committee_sync import CommitteeSnapshotValidationError
 from apps.congress.models import Representative, RepresentativeTerm, Vote, VoteRecord
-from apps.ingestion import document_download, tasks
+from apps.ingestion import document_download, tasks, work_queue
 from apps.ingestion.congress_client import CongressAPIError
 from apps.ingestion.models import (
+    BillTrackingRequest,
     IngestionState,
     IngestionTaskFailure,
     IngestionWorkItem,
@@ -446,6 +448,12 @@ def test_dispatch_prioritizes_bill_completion_over_roll_call_backlog(monkeypatch
         source_updated_at=timezone.now(),
         payload_json={"document_id": 1},
     )
+    bill_versions = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL_VERSIONS,
+        dedupe_key="bill-versions:1",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_id": 1},
+    )
     enqueued = []
 
     class Result:
@@ -457,13 +465,168 @@ def test_dispatch_prioritizes_bill_completion_over_roll_call_backlog(monkeypatch
         lambda args=None, kwargs=None: enqueued.append(args[0]) or Result(),
     )
 
-    assert tasks.dispatch_ingestion_work() == {"dispatched": 4}
+    assert tasks.dispatch_ingestion_work() == {"dispatched": 5}
     assert enqueued == [
         document_contract.id,
+        bill_versions.id,
         representative.id,
-        bill.id,
         roll_call.id,
+        bill.id,
     ]
+
+
+@pytest.mark.django_db
+def test_enqueue_ingestion_work_supersedes_older_unstarted_work(monkeypatch):
+    old_source_updated_at = datetime(2026, 1, 1, tzinfo=UTC)
+    new_source_updated_at = datetime(2026, 1, 2, tzinfo=UTC)
+    old_work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=old_source_updated_at,
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    monkeypatch.setattr(work_queue, "_request_dispatch", lambda: None)
+
+    new_work = work_queue.enqueue_ingestion_work(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=new_source_updated_at,
+        payload_json={"bill_key": "119-hr-1"},
+        jurisdiction="federal",
+        congress=119,
+    )
+
+    assert not IngestionWorkItem.objects.filter(pk=old_work.pk).exists()
+    assert list(
+        IngestionWorkItem.objects.filter(
+            kind=tasks.WORK_KIND_BILL,
+            dedupe_key="119-hr-1",
+        ).values_list("id", "source_updated_at", "status")
+    ) == [
+        (
+            new_work.id,
+            new_source_updated_at,
+            IngestionWorkStatus.PENDING,
+        )
+    ]
+
+
+@pytest.mark.django_db
+def test_enqueue_ingestion_work_ignores_an_older_late_arrival(monkeypatch):
+    newer = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    monkeypatch.setattr(work_queue, "_request_dispatch", lambda: None)
+
+    returned = work_queue.enqueue_ingestion_work(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+        jurisdiction="federal",
+        congress=119,
+    )
+
+    assert returned.id == newer.id
+    assert (
+        IngestionWorkItem.objects.filter(
+            kind=tasks.WORK_KIND_BILL,
+            dedupe_key="119-hr-1",
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_enqueue_ingestion_work_transfers_manual_tracking_before_superseding(
+    monkeypatch,
+):
+    user = get_user_model().objects.create_user(
+        username="owner@example.com",
+        email="owner@example.com",
+        password="password",
+    )
+    old_work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(1970, 1, 1, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    tracking_request = BillTrackingRequest.objects.create(
+        user=user,
+        work_item=old_work,
+        jurisdiction="federal",
+        congress=119,
+        bill_type="hr",
+        bill_number="1",
+    )
+    monkeypatch.setattr(work_queue, "_request_dispatch", lambda: None)
+
+    new_work = work_queue.enqueue_ingestion_work(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+        jurisdiction="federal",
+        congress=119,
+    )
+
+    tracking_request.refresh_from_db()
+    assert tracking_request.work_item_id == new_work.id
+    assert not IngestionWorkItem.objects.filter(pk=old_work.pk).exists()
+
+
+@pytest.mark.django_db
+def test_queue_cleanup_migration_removes_only_superseded_pending_work():
+    user = get_user_model().objects.create_user(
+        username="owner@example.com",
+        email="owner@example.com",
+        password="password",
+    )
+    old_pending = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    processing = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+        status=IngestionWorkStatus.PROCESSING,
+    )
+    newest_pending = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL,
+        dedupe_key="119-hr-1",
+        source_updated_at=datetime(2026, 1, 3, tzinfo=UTC),
+        payload_json={"bill_key": "119-hr-1"},
+    )
+    tracking_request = BillTrackingRequest.objects.create(
+        user=user,
+        work_item=old_pending,
+        jurisdiction="federal",
+        congress=119,
+        bill_type="hr",
+        bill_number="1",
+    )
+    migration = import_module(
+        "apps.ingestion.migrations.0007_collapse_stale_pending_work"
+    )
+
+    migration.collapse_stale_pending_work(
+        import_module("django.apps").apps,
+        None,
+    )
+
+    assert not IngestionWorkItem.objects.filter(pk=old_pending.pk).exists()
+    assert IngestionWorkItem.objects.filter(pk=processing.pk).exists()
+    assert IngestionWorkItem.objects.filter(pk=newest_pending.pk).exists()
+    tracking_request.refresh_from_db()
+    assert tracking_request.work_item_id == newest_pending.id
 
 
 @pytest.mark.django_db
@@ -2199,7 +2362,7 @@ def test_downloaded_congress_text_reaches_legal_nlp_v2(
 
     document.refresh_from_db()
     result = extract_contract(document=document, bill=bill)
-    assert result.schema_version == "2.0-legal-nlp"
+    assert result.schema_version == "2.1-legal-nlp"
     assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
     assert result.contract_json["requirements"][0]["action"] == "publish a report"
 
@@ -2287,7 +2450,7 @@ def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
     assert "DIVISION A Programs" in document.extracted_text
     assert "SUBCHAPTER I Reports" in document.extracted_text
     assert "(AA) The Secretary shall publish a grant report." in document.extracted_text
-    assert result.schema_version == "2.0-legal-nlp"
+    assert result.schema_version == "2.1-legal-nlp"
     assert result.contract_json["requirements"][0]["actor"] == "The Secretary"
     assert result.contract_json["requirements"][0]["action"] == (
         "publish a grant report"
@@ -2337,7 +2500,7 @@ def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_t
     assert document.extracted_text == (
         "SEC. 2. Reports\nThe Secretary shall publish a report."
     )
-    assert result.schema_version == "2.0-legal-nlp"
+    assert result.schema_version == "2.1-legal-nlp"
 
 
 @pytest.mark.django_db
@@ -2600,6 +2763,42 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
             datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
             {"bill_key": "119-s-202"},
         ),
+    ]
+
+
+@pytest.mark.django_db
+def test_poll_tracked_bills_replaces_the_previous_unstarted_refresh(monkeypatch):
+    user = get_user_model().objects.create_user(
+        username="owner@example.com",
+        email="owner@example.com",
+        password="password",
+    )
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 101",
+        title="Tracked bill",
+        status="Introduced",
+    )
+    TrackedBill.objects.create(user=user, bill=bill)
+    current_time = [datetime(2026, 1, 2, 12, 3, tzinfo=UTC)]
+    monkeypatch.setattr(tasks.timezone, "now", lambda: current_time[0])
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+
+    assert tasks.poll_tracked_bills() == {"enqueued": 1}
+    current_time[0] = datetime(2026, 1, 2, 12, 8, tzinfo=UTC)
+    assert tasks.poll_tracked_bills() == {"enqueued": 1}
+
+    assert list(
+        IngestionWorkItem.objects.filter(
+            kind=tasks.WORK_KIND_BILL,
+            dedupe_key="119-hr-101",
+        ).values_list("source_updated_at", "status")
+    ) == [
+        (
+            datetime(2026, 1, 2, 12, 5, tzinfo=UTC),
+            IngestionWorkStatus.PENDING,
+        )
     ]
 
 

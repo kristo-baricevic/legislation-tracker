@@ -268,16 +268,23 @@ def build_enhancement_preflight(bill) -> EnhancementPreflight:
         )
 
     active_document = _marked_active_document(bill)
+    document_candidates, document_identity = _document_candidates(
+        bill, active_document=active_document,
+    )
     candidates, source_identity = _evidence_candidates(
         bill,
         active_document=active_document,
     )
     source_kind = "contract_evidence"
+    # Keep definitions and surrounding clauses together when the complete text
+    # fits. For oversized bills retain the balanced evidence selection.
+    if document_candidates and _within_limits(canonical_json_bytes(
+        _request_envelope(bill, _numbered_sources(document_candidates), truncated=False)
+    )):
+        candidates, source_identity = document_candidates, document_identity
+        source_kind = "document_chunk"
     if not candidates:
-        candidates, source_identity = _document_candidates(
-            bill,
-            active_document=active_document,
-        )
+        candidates, source_identity = document_candidates, document_identity
         source_kind = "document_chunk"
     if not candidates:
         raise PreflightUnavailable("No stored source text is available for this bill")

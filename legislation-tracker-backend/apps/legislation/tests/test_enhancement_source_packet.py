@@ -73,19 +73,14 @@ def _bill_with_contract_and_evidence():
 
 
 @pytest.mark.django_db
-def test_complete_request_is_canonical_bounded_and_uses_exact_evidence():
+def test_complete_request_prefers_full_text_over_fragments_when_it_fits():
     bill = _bill_with_contract_and_evidence()
 
     first = build_enhancement_preflight(bill)
     second = build_enhancement_preflight(Bill.objects.get(pk=bill.pk))
 
-    assert [item["field_path"] for item in first.source_snapshot] == [
-        "requirements[0].display_text",
-        "funding_items[0].display_text",
-    ]
-    assert first.source_snapshot[0]["quoted_text"] == (
-        "The Secretary shall publish a report."
-    )
+    assert first.source_snapshot[0]["kind"] == "document_chunk"
+    assert first.source_snapshot[0]["quoted_text"] == bill.documents.get().extracted_text
     assert first.estimated_input_tokens == len(first.request_bytes)
     assert first.request_fingerprint == hashlib.sha256(first.request_bytes).hexdigest()
     assert first.request_bytes == second.request_bytes
@@ -227,14 +222,19 @@ def test_source_selection_shrinks_until_the_complete_request_fits():
     document.extracted_text = source_text
     document.save(update_fields=["extracted_text"])
 
+    # Leave a small source budget after the current instructions and schema.
+    overhead = len(source_packet.canonical_json_bytes(
+        source_packet._request_envelope(bill, [], truncated=True)
+    ))
+    byte_limit = overhead + 2500
     with override_settings(
-        LLM_ENHANCEMENT_MAX_REQUEST_BYTES=9000,
-        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=4500,
+        LLM_ENHANCEMENT_MAX_REQUEST_BYTES=byte_limit,
+        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=byte_limit,
     ):
         preflight = build_enhancement_preflight(bill)
 
-    assert len(preflight.request_bytes) <= 9000
-    assert preflight.estimated_input_tokens <= 4500
+    assert len(preflight.request_bytes) <= byte_limit
+    assert preflight.estimated_input_tokens <= byte_limit
     assert preflight.truncated is True
     assert len(preflight.source_snapshot) < 10
 

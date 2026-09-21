@@ -70,7 +70,7 @@ def _mapped_error(error: Exception) -> ProviderError:
     if isinstance(status_code, int) and status_code >= 500:
         return ProviderError("provider_unavailable", retry_allowed=True)
     if status_code == 400:
-        return ProviderError("invalid_output")
+        return ProviderError("provider_request_rejected", retry_allowed=True)
     return ProviderError("provider_unavailable", retry_allowed=True)
 
 
@@ -114,7 +114,7 @@ class OpenAIEnhancementProvider:
             response = client.responses.create(
                 model=requested_model,
                 input="Reply with OK.",
-                max_output_tokens=8,
+                max_output_tokens=16,
                 reasoning={"effort": "none"},
                 **self._privacy_controls(),
             )

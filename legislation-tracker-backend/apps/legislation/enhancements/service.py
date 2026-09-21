@@ -24,6 +24,7 @@ USER_RETRYABLE_FAILURES = {
     "feature_disabled",
     "invalid_credentials",
     "model_access_denied",
+    "provider_request_rejected",
     "provider_rate_limited",
     "provider_unavailable",
     "source_unavailable",
