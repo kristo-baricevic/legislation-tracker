@@ -76,6 +76,12 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.5` preserves appropriations alongside account
+  availability rules, binds payment amounts to payment expressions (not income
+  thresholds), retains percentage rates/caps and fiscal-year filters, and rejects
+  prohibited or merely contemplated grant programs in the synopsis. Regression
+  tests include mixed fee/appropriation sentences and governing year ranges.
+
 - Extractor `federal-rules-2.1.2` classifies application fees, surcharges,
   fines, fee exemptions, and account-availability rules separately from spending.
   Payment clauses retain their source wording and conditions. Unspecified fees

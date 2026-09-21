@@ -445,16 +445,33 @@ def extract_financial_claims(
 
     claims = list(_payment_claims(source_text, sections))
     payment_spans = [span for claim in claims for span in claim.evidence]
+    payment_offsets = {
+        (p.start_char + amount.start, p.start_char + amount.end)
+        for claim in claims
+        if claim.fields.get("financial_action") in {"fee", "surcharge", "penalty"}
+        for p in claim.evidence
+        for amount in _payment_amounts(p.text, claim.fields["financial_action"])
+    }
     for section, span, _ in iter_operative_clauses(source_text, sections):
-        if any(
+        payment_sentence = any(
             p.start_char <= span.start_char and span.end_char <= p.end_char
             for p in payment_spans
-        ):
+        )
+        actions = _actions(span.text)
+        # A payment/account sentence can also contain a distinct appropriation.
+        # Suppress only payment-owned amounts, not the entire sentence.
+        if payment_sentence and not any(a.action != "limitation" for a in actions):
             continue
         candidate_amounts = _amounts(span.text)
+        if payment_sentence:
+            candidate_amounts = tuple(
+                a
+                for a in candidate_amounts
+                if (span.start_char + a.start, span.start_char + a.end)
+                not in payment_offsets
+            )
         if not candidate_amounts:
             continue
-        actions = _actions(span.text)
         inherited = (
             _inherited_context(source_text, section, sections)
             if (
@@ -550,6 +567,42 @@ def extract_financial_claims(
     return tuple(claims)
 
 
+def _payment_amounts(text, action):
+    noun = {"fee": r"fees?", "surcharge": r"surcharge", "penalty": r"fined"}[action]
+    anchors = list(re.finditer(r"\b" + noun + r"\b", text, re.I))
+    for amount in _amounts(text):
+        if amount.amount is None:
+            continue
+        before = [anchor for anchor in anchors if anchor.end() <= amount.start]
+        bridge = text[before[-1].end() : amount.start] if before else None
+        direct = bridge is not None and re.fullmatch(
+            r"\s*(?:(?:of|equal to|in (?:the|an) amount of)\s+)?"
+            r"(?:(?:not more than|not less than|not to exceed|at least|up to)\s+)?",
+            bridge,
+            re.I,
+        )
+        # Cost-based fees often state a cap later in the same clause.
+        cap = (
+            bridge is not None
+            and not _amounts(bridge)
+            and not re.search(
+                r"\b(?:if|when|income|assets|salary|earnings|appropriated)\b",
+                bridge,
+                re.I,
+            )
+            and re.search(
+                r"\b(?:does not exceed|shall not exceed|must not exceed|not more than|not to exceed|up to)\s*$",
+                bridge,
+                re.I,
+            )
+        )
+        prefixed = action == "fee" and re.match(
+            r"\s+(?:(?:application|processing)\s+)?fee\b", text[amount.end :], re.I
+        )
+        if direct or cap or prefixed:
+            yield amount
+
+
 def _payment_claims(source, sections):
     """Keep payment conditions together; these are not government spending totals."""
     quoted = _quoted_block_ranges(source)
@@ -595,12 +648,22 @@ def _payment_claims(source, sections):
             if action is None:
                 continue
             amounts = (
-                tuple(a for a in _amounts(text) if a.currency == "USD")
+                tuple(_payment_amounts(text, action))
                 if action in {"fee", "surcharge", "penalty"}
                 else ()
             )
             if not amounts:
                 amounts = (_AmountMatch(None, "unspecified", None, 0, 0),)
+            fiscal_years = _fiscal_years(text)
+            parent = _parent_section(section, sections)
+            while not fiscal_years and parent is not None:
+                # Only inherit an explicit list introduction governing this child.
+                introductions = sentence_spans(parent, source)
+                if introductions and introductions[-1].text.rstrip().endswith(
+                    (":", "—", "–")
+                ):
+                    fiscal_years = _fiscal_years(introductions[-1].text)
+                parent = _parent_section(parent, sections)
             for amount in amounts:
                 ceiling = amount.amount is not None and bool(
                     re.search(
@@ -615,7 +678,7 @@ def _payment_claims(source, sections):
                     "amount": amount.amount,
                     "amount_type": "ceiling" if ceiling else amount.amount_type,
                     "currency": amount.currency,
-                    "fiscal_years": [],
+                    "fiscal_years": list(fiscal_years),
                     "purpose": None,
                     "source_account": None,
                     "destination_account": None,

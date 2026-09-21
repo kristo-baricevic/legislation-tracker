@@ -97,3 +97,22 @@ def test_existing_explicit_purpose_is_preserved():
         result.contract_json["orientation"]["purpose_clause"]
         == "This bill aims to improve access to rural health care."
     )
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "No agency shall establish",
+        "The Secretary shall report whether the agency shall establish",
+        "The Secretary shall not establish",
+        "The Secretary shall study whether to establish",
+        "The Secretary shall establish whether to create",
+    ],
+)
+def test_nonoperative_grant_language_cannot_create_a_program(prefix):
+    result = extract(
+        "SEC. 1. Grants\n"
+        + prefix
+        + " a program to award grants to eligible nonprofit organizations to assist eligible applicants."
+    )
+    assert not result.contract_json.get("orientation", {}).get("purpose_clause")

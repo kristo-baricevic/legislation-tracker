@@ -124,7 +124,7 @@
       "properties": {
         "method": {"const": "federal-rules"},
         "parser_version": {"const": "2.1.0"},
-        "extractor_version": {"enum": ["federal-rules-2.1.0", "federal-rules-2.1.1", "federal-rules-2.1.2", "federal-rules-2.1.3", "federal-rules-2.1.4"]},
+        "extractor_version": {"enum": ["federal-rules-2.1.0", "federal-rules-2.1.1", "federal-rules-2.1.2", "federal-rules-2.1.3", "federal-rules-2.1.4", "federal-rules-2.1.5"]},
         "sections_seen": {"type": "integer", "minimum": 0},
         "sections_with_claims": {"type": "integer", "minimum": 0},
         "warnings": {

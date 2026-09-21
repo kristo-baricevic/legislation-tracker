@@ -100,11 +100,16 @@ def structured_synopsis(sections, claims, source_text):
             )
 
         grant = re.search(
-            r"\bshall establish[^\n]*\ba program to award grants\b[^\n]*\beligible nonprofit organizations\b[^\n]*\bassist eligible applicants\b",
+            r"\bshall establish(?:,\s*within[^,\n]+,)?\s+a program to award grants\b[^\n]*\beligible nonprofit organizations\b[^\n]*\bassist eligible applicants\b",
             text,
             re.I,
         )
         if grant:
+            prefix = text[text.rfind("\n", 0, grant.start()) + 1 : grant.start()]
+            if re.search(
+                r"\b(?:no|not|neither|report|study|recommend|whether)\b", prefix, re.I
+            ):
+                continue
             add(
                 "application_grants",
                 "Creates a grant program for nonprofit organizations to help eligible applicants.",

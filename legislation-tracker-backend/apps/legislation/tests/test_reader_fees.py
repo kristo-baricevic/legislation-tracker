@@ -91,6 +91,89 @@ def test_account_deposit_and_availability_are_not_new_appropriations():
     assert "until expended" in items[0]["display_text"]
 
 
+def test_availability_does_not_hide_an_appropriation_in_the_same_sentence():
+    items = extract(
+        "SEC. 1. Funding\nThere is appropriated $5 million for rural hospitals, and such funds shall remain available until expended."
+    )
+    assert any(
+        i["financial_action"] == "appropriation" and i["amount"] == "5000000.00"
+        for i in items
+    )
+
+
+@pytest.mark.parametrize(
+    "text,amount,kind",
+    [
+        (
+            "The Secretary shall require applicants with annual income above $50,000 to pay a fee of $100.",
+            "100.00",
+            "specified",
+        ),
+        (
+            "The Secretary shall require applicants to pay a fee of $100 if their income exceeds $50,000.",
+            "100.00",
+            "specified",
+        ),
+        (
+            "The Secretary shall require applicants to pay a fee equal to 2 percent of the loan amount.",
+            "2.00",
+            "percentage",
+        ),
+        (
+            "The Secretary shall require applicants to pay a fee of not more than 2 percent of the loan amount.",
+            "2.00",
+            "ceiling",
+        ),
+        (
+            "The Secretary shall require applicants to pay a $100 application fee.",
+            "100.00",
+            "specified",
+        ),
+    ],
+)
+def test_payment_amount_is_bound_to_fee_not_eligibility(text, amount, kind):
+    items = extract("SEC. 1. Fees\n" + text)
+    assert [(i["financial_action"], i["amount"], i["amount_type"]) for i in items] == [
+        ("fee", amount, kind)
+    ]
+
+
+def test_fee_and_appropriation_both_survive_in_one_sentence():
+    items = extract(
+        "SEC. 1. Funding\nThe Secretary shall require a fee of $100, and there is appropriated $5 million for processing applications."
+    )
+    assert {(i["financial_action"], i["amount"]) for i in items} == {
+        ("fee", "100.00"),
+        ("appropriation", "5000000.00"),
+    }
+
+
+def test_fee_fiscal_year_survives_api_filter():
+    from apps.legislation.reader_api import financial_items_page
+
+    text = "SEC. 1. Fees\nFor fiscal year 2027, the Secretary shall require applicants to pay a fee of $100."
+    with override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True):
+        result = extract_contract(
+            bill=SimpleNamespace(title="Fees", jurisdiction="federal"),
+            document=SimpleNamespace(extracted_text=text, version_label="Introduced"),
+        )
+    contract = SimpleNamespace(
+        contract_json=result.contract_json,
+        schema_version=result.schema_version,
+        contract_hash="test",
+    )
+    page = financial_items_page(contract, page=1, page_size=25, fiscal_year=2027)
+    assert page["count"] == 1
+    assert page["results"][0]["fiscal_years"] == [2027]
+
+
+def test_fee_inherits_fiscal_year_from_governing_parent():
+    items = extract(
+        "SEC. 1. Fees\nFor fiscal years 2027 through 2029:\n(1) The Secretary shall require applicants to pay a fee of $100."
+    )
+    assert items[0]["fiscal_years"] == [2027, 2028, 2029]
+
+
 def test_grant_purpose_resolves_this_section_without_duplicate_years():
     items = extract(
         "SEC. 1. Grant program to assist eligible applicants\n(a) Authorization.—There are authorized to be appropriated such sums as may be necessary for each of the fiscal years 2026 through 2036 to carry out this section."
