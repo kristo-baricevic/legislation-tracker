@@ -24,7 +24,6 @@ import {
   isReaderReady,
   readablePath,
   readerOverview,
-  topicExplanation,
 } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
 
@@ -147,7 +146,7 @@ function LinkedDefinitionDetails({ contractId, item, document }: { contractId: n
         <div className="mt-3">
           {loading && items.length === 0 && <p className="text-sm text-slate-600 dark:text-green-600">Loading linked terms…</p>}
           {error && <div role="alert" className="text-sm text-red-700 dark:text-red-300"><p>{error}</p><button type="button" onClick={() => void load(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry linked terms</button></div>}
-          <dl className="space-y-3">{items.map((definition) => <div key={definition.id} className="border-l-2 border-slate-300 pl-3 dark:border-green-800"><dt className="font-semibold text-slate-950 dark:text-green-300">{definition.term}</dt><dd className="mt-1 text-sm text-slate-700 dark:text-green-200">{definition.definition}</dd><SourceEvidence contractId={contractId} definitionItemId={definition.id} textUrl={document?.text_url} downloadUrl={document?.download_url} /></div>)}</dl>
+          <dl className="space-y-3">{items.map((definition) => <GlossaryTerm key={definition.id} item={definition} contractId={contractId} document={document} />)}</dl>
           {hasMore && !error && <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-3 border border-slate-700 px-3 py-1.5 text-sm font-semibold dark:border-green-700">{loading ? "Loading linked terms…" : "Show 25 more linked terms"}</button>}
         </div>
       )}
@@ -188,6 +187,19 @@ function ReaderItem({ contractId, item, document, onShowAllFinancial }: { contra
   );
 }
 
+function GlossaryTerm({ item, contractId, document }: { item: LegalNlpDefinitionItem; contractId: number; document: BillDocument | null }) {
+  return <div className="border-l-2 border-slate-300 pl-3 dark:border-green-800">
+    <dt className="font-semibold text-slate-950 dark:text-green-300">{item.term}</dt>
+    <dd className="mt-1 text-slate-700 dark:text-green-200">{item.display_text}</dd>
+    <dd><details className="mt-2 text-sm">
+      <summary className="cursor-pointer text-blue-900 underline dark:text-green-400">Legal definition and source</summary>
+      <p className="mt-2 text-slate-700 dark:text-green-200">{item.definition}</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-green-500">{pathLabel(item.section_path)}</p>
+      <SourceEvidence contractId={contractId} definitionItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} />
+    </details></dd>
+  </div>;
+}
+
 function KeyTerms({ document, contractId, totalCount }: { document: BillDocument | null; contractId: number; totalCount: number }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<LegalNlpDefinitionItem[]>([]);
@@ -204,7 +216,7 @@ function KeyTerms({ document, contractId, totalCount }: { document: BillDocument
     setLoading(true);
     setError(null);
     try {
-      const response = await getDefinitionItems(contractId, { page: targetPage, pageSize: 25, unlinked: true });
+      const response = await getDefinitionItems(contractId, { page: targetPage, pageSize: 25 });
       if (requestId.current !== activeRequest) return;
       setItems((current) => append ? [...current, ...response.results] : response.results);
       setPage(targetPage);
@@ -226,7 +238,7 @@ function KeyTerms({ document, contractId, totalCount }: { document: BillDocument
         <div className="mt-3">
           {loading && items.length === 0 && <p className="text-sm text-slate-600 dark:text-green-600">Loading key terms…</p>}
           {error && <div role="alert" className="text-sm text-red-700 dark:text-red-300"><p>{error}</p><button type="button" onClick={() => void load(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry key terms</button></div>}
-          <dl className="space-y-4">{items.map((item) => <div key={item.id} className="border-l-2 border-slate-300 pl-3 dark:border-green-800"><dt className="font-semibold text-slate-950 dark:text-green-300">{item.term}</dt><dd className="mt-1 text-slate-700 dark:text-green-200">{item.definition}</dd><dd className="mt-1 font-mono text-xs text-slate-500 dark:text-green-700">{pathLabel(item.section_path)}</dd><SourceEvidence contractId={contractId} definitionItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} /></div>)}</dl>
+          <dl className="space-y-4">{items.map((item) => <GlossaryTerm key={item.id} item={item} contractId={contractId} document={document} />)}</dl>
           {hasMore && !error && <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-4 border border-slate-700 px-3 py-1.5 text-sm font-semibold dark:border-green-700">{loading ? "Loading key terms…" : "Show 25 more key terms"}</button>}
         </div>
       )}
@@ -324,18 +336,20 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
             {bill.summary_has_more && !summary && <button type="button" disabled={summaryLoading} onClick={() => void loadSummary()} className="mt-3 cursor-pointer text-sm font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 dark:text-green-400">{summaryLoading ? "Loading complete summary…" : bill.summary_source === "crs" ? "Read full official summary" : "Read full source description"}</button>}
             {summaryError && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300"><p>{summaryError}</p><button type="button" onClick={() => void loadSummary()} className="mt-1 border border-current px-2 py-1 font-semibold">Retry complete summary</button></div>}
           </div>
-        ) : <p className="mt-4 max-w-4xl text-base leading-7 text-slate-900 dark:text-green-100">{fallbackOverview}</p>}
+        ) : <div className="mt-4">
+          <p className="mt-2 max-w-4xl text-base leading-7 text-slate-900 dark:text-green-100">{fallbackOverview}</p>
+          {contract.orientation.purpose_clause && contract.orientation.purpose_line_item_id && <SourceEvidence contractId={contract.id} lineItemId={contract.orientation.purpose_line_item_id} textUrl={document?.text_url} downloadUrl={document?.download_url} label="Read synopsis source text" />}
+        </div>}
         {bill.congress_gov_url && <a href={bill.congress_gov_url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-semibold text-blue-900 underline dark:text-green-400">View on Congress.gov</a>}
       </div>
 
       <div className="border-y border-slate-300 bg-slate-50/70 p-4 dark:border-green-900 dark:bg-black/20 sm:p-5">
         <h3 className="text-xl font-semibold text-slate-950 dark:text-green-400">Topics</h3>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-green-600">Policy areas covered by this bill. Select a topic to see every matching bill.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-3 flex flex-wrap gap-2">
           {bill.topics.map((topic) => (
-            <Link key={topic.topic_id} href={`/bills?topic_id=${topic.topic_id}`} className="border-l-4 border-blue-700 bg-white px-4 py-3 transition-colors hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:border-green-600 dark:bg-green-950/20 dark:hover:bg-green-950/40 dark:focus-visible:outline-green-500">
-              <h4 className="font-semibold text-slate-950 dark:text-green-300">{topic.name}</h4>
-              <p className="mt-1 text-sm leading-6 text-slate-700 dark:text-green-200">{topicExplanation(topic.name)}</p>
+            <Link key={topic.topic_id} href={`/bills?topic_id=${topic.topic_id}`} className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-900 transition-colors hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:border-green-800 dark:bg-green-950/20 dark:text-green-300 dark:hover:border-green-600 dark:hover:bg-green-950/40 dark:focus-visible:outline-green-500">
+              {topic.name}
             </Link>
           ))}
         </div>

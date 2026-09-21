@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FinancialLedger } from "@/app/bills/[id]/financial-ledger";
 import { getFinancialItems } from "@/lib/api";
 import type { LegalNlpFinancialItem } from "@/lib/contracts";
+import { isLegalNlpFinancialItem } from "@/lib/contracts";
 
 vi.mock("@/lib/api", () => ({
   getApiBase: () => "http://localhost:8000",
@@ -36,6 +37,21 @@ function item(id: string, financial_action: LegalNlpFinancialItem["financial_act
 
 describe("FinancialLedger", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("displays fees and exemptions separately from spending", async () => {
+    const records = [
+      { ...item("financial-1", "fee", "not_applicable"), amount: "495.00", amount_type: "ceiling" as const, display_text: "The application fee must not exceed $495.", purpose: "application processing" },
+      { ...item("financial-2", "fee_exemption", "not_applicable"), amount: null, currency: null, amount_type: "unspecified" as const, display_text: "An applicant may be exempted from paying a fee.", purpose: "fee exemptions" },
+    ];
+    for (const record of records) expect(isLegalNlpFinancialItem(record)).toBe(true);
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 2, next: null, previous: null, results: records });
+    render(<FinancialLedger contractId={12} totalCount={2} />);
+    expect(await screen.findByText(records[0].display_text)).toBeVisible();
+    expect(screen.getByText("Amount not extracted")).toBeVisible();
+    expect(screen.queryByText("No fixed dollar amount")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Application or processing fee").some((element) => element.tagName === "P")).toBe(true);
+    expect(screen.getByRole("option", { name: "Fee exemption" })).toHaveValue("fee_exemption");
+  });
 
   it("shows qualified financial text including minimums and percentage caps", async () => {
     const records = [

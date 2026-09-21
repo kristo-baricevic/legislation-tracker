@@ -14,6 +14,11 @@ import { financialPurpose, readablePath } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
 
 const actionLabels: Record<FinancialAction, string> = {
+  fee: "Application or processing fee",
+  surcharge: "Surcharge",
+  penalty: "Fine or penalty",
+  fee_exemption: "Fee exemption",
+  account_rule: "Account and availability rule",
   appropriation: "Appropriation",
   authorization: "Authorization",
   allocation: "Allocation",
@@ -41,6 +46,7 @@ function pathLabel(item: LegalNlpFinancialItem): string {
 }
 
 function formatAmount(item: LegalNlpFinancialItem): string | null {
+  if (item.amount_type === "unspecified") return "Amount not extracted";
   if (item.amount_type === "such_sums") return "Such sums as necessary";
   if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) return item.amount ? `${Number(item.amount)}%` : null;
   if (!item.amount) return null;

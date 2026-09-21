@@ -13,6 +13,68 @@ def _path(section="Sec. 1"):
 
 
 @pytest.mark.django_db
+def test_generated_payment_scope_survives_storage_filters_and_source_api():
+    from .test_reader_synopsis import extract
+
+    text = "SEC. 1. Fees\nIf an application is approved, applicants shall pay a fee of $100 for fiscal year 2027 and renewing applicants shall pay a fee of $50 for fiscal year 2028."
+    result = extract(text)
+    bill = Bill.objects.create(
+        jurisdiction="federal", session=119, bill_number="HR 502", title="Payment scope"
+    )
+    document = BillDocument.objects.create(
+        bill=bill, version_label="Introduced", extracted_text=text
+    )
+    contract = BillContract.objects.create(
+        bill=bill,
+        document=document,
+        schema_version=result.schema_version,
+        contract_hash="payment-scope",
+        contract_json=result.contract_json,
+    )
+    EvidenceSpan.objects.bulk_create(
+        [
+            EvidenceSpan(
+                bill=bill,
+                document=document,
+                contract=contract,
+                field_path=e.field_path,
+                start_char=e.start_char,
+                end_char=e.end_char,
+                quoted_text=e.quoted_text,
+            )
+            for e in result.evidence
+        ]
+    )
+    client = APIClient()
+    response = client.get(
+        f"/api/contracts/{contract.pk}/financial-items/", {"fiscal_year": 2028}
+    )
+    assert response.status_code == 200, response.data
+    assert [i["amount"] for i in response.data["results"]] == ["50.00"]
+    item = response.data["results"][0]
+    assert "If an application is approved" in item["display_text"]
+    response = client.get(
+        f"/api/contracts/{contract.pk}/evidence/", {"financial_item_id": item["id"]}
+    )
+    assert response.status_code == 200, response.data
+    assert any(
+        "If an application is approved" in e["quoted_text"]
+        for e in response.data["results"]
+    )
+    assert all(
+        text[e["start_char"] : e["end_char"]] == e["quoted_text"]
+        for e in response.data["results"]
+    )
+    response = client.get(f"/api/contracts/{contract.pk}/reader-items/")
+    assert response.status_code == 200, response.data
+    requirements = [i for i in response.data["results"] if i["kind"] == "requirement"]
+    assert len(requirements) == 2
+    assert all(
+        "If an application is approved" in i["display_text"] for i in requirements
+    )
+
+
+@pytest.mark.django_db
 def test_extracted_hr9300_breakdown_can_be_served_including_purpose(reader_contract):
     from .test_reader_quality import extract_fixture
 
@@ -21,12 +83,20 @@ def test_extracted_hr9300_breakdown_can_be_served_including_purpose(reader_contr
     reader_contract.contract_json = result.contract_json
     reader_contract.save(update_fields=["contract_json"])
     response = APIClient().get(
-        f"/api/contracts/{reader_contract.pk}/reader-items/", {"page_size": 25}
+        f"/api/contracts/{reader_contract.pk}/reader-items/", {"page_size": 10}
     )
     assert response.status_code == 200, response.data
     assert any(item["kind"] == "purpose" for item in response.data["results"])
-    assert len(response.data["results"]) == 25
+    assert len(response.data["results"]) == 10
     assert response.data["next"]
+    items = list(response.data["results"])
+    while response.data["next"]:
+        response = APIClient().get(response.data["next"])
+        assert response.status_code == 200, response.data
+        items.extend(response.data["results"])
+    assert [i["id"] for i in items] == [
+        i["id"] for i in result.contract_json["line_items"]
+    ]
 
 
 def _financial(index, *, action="appropriation", year=2026, section_id="section-1"):

@@ -157,13 +157,15 @@ export type FinancialAction =
   | "cancellation"
   | "set_aside"
   | "limitation"
-  | "other_explicit";
+  | "other_explicit"
+  | "fee" | "surcharge" | "penalty" | "fee_exemption" | "account_rule";
 
 export type FinancialDirection =
   | "increase"
   | "decrease"
   | "neutral_transfer"
-  | "limit";
+  | "limit"
+  | "not_applicable";
 
 export interface LegalNlpFinancialPreview {
   id: string;
@@ -171,7 +173,7 @@ export interface LegalNlpFinancialPreview {
   financial_action: FinancialAction;
   direction: FinancialDirection;
   amount: string | null;
-  amount_type: "specified" | "such_sums" | "percentage" | "ceiling";
+  amount_type: "specified" | "such_sums" | "percentage" | "ceiling" | "unspecified";
   currency: "USD" | null;
   fiscal_years: number[];
 }
@@ -388,12 +390,14 @@ const FINANCIAL_ACTIONS: readonly FinancialAction[] = [
   "set_aside",
   "limitation",
   "other_explicit",
+  "fee", "surcharge", "penalty", "fee_exemption", "account_rule",
 ];
 
 const FINANCIAL_DIRECTIONS: readonly FinancialDirection[] = [
   "increase",
   "decrease",
   "neutral_transfer",
+  "not_applicable",
   "limit",
 ];
 
@@ -416,7 +420,7 @@ function isFinancialPreview(value: unknown): value is LegalNlpFinancialPreview {
     FINANCIAL_DIRECTIONS.includes(value.direction as FinancialDirection) &&
     (value.amount === null ||
       (typeof value.amount === "string" && /^[0-9]+(?:\.[0-9]{2})$/.test(value.amount))) &&
-    ["specified", "such_sums", "percentage", "ceiling"].includes(
+    ["specified", "such_sums", "percentage", "ceiling", "unspecified"].includes(
       value.amount_type as string,
     ) &&
     (value.currency === "USD" || value.currency === null) &&

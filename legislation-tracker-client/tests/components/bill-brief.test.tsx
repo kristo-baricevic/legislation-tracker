@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BillBrief } from "@/app/bills/[id]/bill-brief";
-import { getDefinitionItems, getOfficialSummary, getReaderItems, getTimelineItems } from "@/lib/api";
+import { getContractEvidence, getDefinitionItems, getOfficialSummary, getReaderItems, getTimelineItems } from "@/lib/api";
 import type { BillDetailSummary } from "@/lib/api";
 import type { BillContractSummary, LegalNlpLineItem } from "@/lib/contracts";
 
@@ -76,6 +76,38 @@ function line(number: number): LegalNlpLineItem {
 }
 
 describe("BillBrief", () => {
+  it("shows linked and unlinked definitions in the complete key terms list", async () => {
+    const user = userEvent.setup();
+    const terms = Array.from({ length: 12 }, (_, index) => ({
+      id: `definition-${index + 1}`, source_id: `definition-${index + 1}`,
+      section_id: "section-1", section_label: "Sec. 1", section_path: [],
+      display_text: `Term ${index + 1} means its stated definition.`,
+      term: `Term ${index + 1}`, definition: "Its stated definition.", definition_type: "means" as const,
+    }));
+    vi.mocked(getDefinitionItems).mockImplementation(async (_id, params) => {
+      const results = params?.unlinked ? terms.slice(0, 2) : terms;
+      return { count: results.length, next: null, previous: null, results };
+    });
+    render(<BillBrief bill={bill} contractSummary={{ ...contract, reader_stats: { ...contract.reader_stats!, definition_item_count: 12 } }} onShowAllFinancial={() => undefined} />);
+    await user.click(screen.getByRole("button", { name: "Key terms (12)" }));
+    expect(await screen.findAllByRole("term")).toHaveLength(12);
+    expect(screen.getByText("Term 12", { exact: true })).toBeVisible();
+    expect(screen.getByText("Term 12 means its stated definition.")).toBeVisible();
+    expect(screen.getAllByText("Its stated definition.")[0]).not.toBeVisible();
+    await user.click(screen.getAllByText("Legal definition and source")[0]);
+    expect(screen.getAllByText("Its stated definition.")[0]).toBeVisible();
+  });
+
+  it("shows a cited non-AI synopsis when there is no official summary", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getContractEvidence).mockResolvedValue({ count: 1, next: null, previous: null, results: [{start_char: 0, end_char: 24, quoted_text: "The Secretary shall act.", page_number: null}] });
+    render(<BillBrief bill={{...bill, summary_preview: null, summary_source: "", summary_has_more: false}} contractSummary={contract} onShowAllFinancial={() => undefined} />);
+    expect(screen.getByText("Creates a rural hospital grant program.")).toBeVisible();
+    expect(screen.queryByText(/Rule-based synopsis/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Read synopsis source text"}));
+    expect(await screen.findByText("The Secretary shall act.")).toBeVisible();
+    expect(getContractEvidence).toHaveBeenCalledWith(12, expect.objectContaining({lineItemId:"line-1"}));
+  });
   it("discloses omitted definitions even when no key terms remain", () => {
     const notice = "Some definitions are too long to display; read their full wording in the bill text.";
     render(<BillBrief bill={bill} contractSummary={{ ...contract, coverage_note: notice, reader_stats: { ...contract.reader_stats!, definition_item_count: 0 } }} onShowAllFinancial={() => undefined} />);
@@ -113,8 +145,8 @@ describe("BillBrief", () => {
     const { rerender } = render(<BillBrief bill={noSummary} contractSummary={contract} onShowAllFinancial={() => undefined} />);
     expect(screen.getByText("Creates a rural hospital grant program.")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Topics" })).toBeVisible();
-    expect(screen.getByRole("link", { name: /Health/ })).toHaveAttribute("href", "/bills?topic_id=1");
-    expect(screen.getByText(/health-care programs, coverage, funding, or administration/i)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/bills?topic_id=1");
+    expect(screen.queryByText(/health-care programs, coverage, funding, or administration/i)).not.toBeInTheDocument();
     expect(screen.queryByText("No official CRS summary is available yet.")).not.toBeInTheDocument();
     expect(screen.queryByText(/recognized line items/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Extraction coverage/i)).not.toBeInTheDocument();
@@ -264,7 +296,9 @@ describe("BillBrief", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "View 1 linked term" }));
-    expect(await screen.findByText("a hospital in a rural area")).toBeVisible();
+    expect(await screen.findByText("Defines rural hospital.")).toBeVisible();
+    await user.click(screen.getByText("Legal definition and source"));
+    expect(screen.getByText("a hospital in a rural area")).toBeVisible();
     expect(getDefinitionItems).toHaveBeenCalledWith(12, {
       page: 1,
       pageSize: 25,

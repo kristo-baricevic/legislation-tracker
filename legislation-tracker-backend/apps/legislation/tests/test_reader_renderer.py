@@ -161,7 +161,7 @@ def claim(category: str, fields: dict[str, object]) -> ExtractedClaim:
                 },
             ),
             "definition",
-            "Defines “covered entity” to mean a rural hospital.",
+            "Legal definition: a rural hospital.",
             None,
             "define",
             "a rural hospital",

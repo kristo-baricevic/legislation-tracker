@@ -1,0 +1,214 @@
+"""Source-owned clause context shared by payment extraction and synopses.
+
+Each leaf sentence is visited once. Ancestors supply context, not duplicate
+facts. This is a conservative grammar for supported patterns, not general NLP.
+"""
+
+import re
+from dataclasses import dataclass, replace
+
+from .federal_clauses import _parent_section, _quoted_block_ranges, grammar_text
+from .federal_structure import sentence_spans
+from .types import SourceSpan, StructuralSection
+
+MODAL = re.compile(r"\b(?:shall|must|may)(?:\s+not)?\b", re.I)
+DISCUSSION = re.compile(
+    r"\b(?:report|study|recommend|determine)\b.*\b(?:whether|that|to)\b", re.I | re.S
+)
+COORDINATE = re.compile(
+    r"\bexcept that\s+|[,;]?\s+\b(?:and|but|or)\s+(?=(?:shall|must|may)\b|(?:the\s+\w+|an?\s+\w+|applicants|any\s+person|renewing\s+applicants)\b[^.;]*?\b(?:shall|must|may)\b)",
+    re.I,
+)
+
+
+@dataclass(frozen=True)
+class OperativeClause:
+    section: StructuralSection
+    span: SourceSpan
+    actor: str
+    modality: str | None
+    action: str
+    disposition: str
+    context: tuple[SourceSpan, ...] = ()
+    evidence_context: tuple[SourceSpan, ...] = ()
+    sentence: SourceSpan | None = None
+
+    @property
+    def asserted(self):
+        return self.disposition == "operative"
+
+    @property
+    def evidence(self):
+        return (*self.evidence_context, self.sentence or self.span)
+
+
+def _classify(section, span, parent=None):
+    text = grammar_text(span.text)
+    modal = MODAL.search(text)
+    actor = text[: modal.start()].strip() if modal else ""
+    action = text[modal.end() :].strip() if modal else text
+    disposition = "operative"
+    if parent and parent.disposition in {"prohibition", "discussion", "uncertain"}:
+        disposition = parent.disposition
+    elif re.search(
+        r"\b(?:exempt|waive)\b.*\b(?:fees?|surcharges?|penalt(?:y|ies))\b",
+        action,
+        re.I | re.S,
+    ):
+        # Active relief is not a payment mandate. Until its scope is supported,
+        # preserve the complete provision rather than matching an embedded pay.
+        disposition = "uncertain"
+    elif modal and (
+        re.search(r"\b(?:who|which|that)\b", actor, re.I)
+        and len(list(MODAL.finditer(text))) > 1
+    ):
+        # A modal inside a relative clause is not necessarily the governing verb.
+        disposition = "uncertain"
+    elif re.search(
+        r"\b(?:and|but|or)\s+not\b",
+        re.sub(r"\bwhether\s+or\s+not\b", "whether", action, flags=re.I),
+        re.I,
+    ):
+        # Implicit negative coordination is unsafe regardless of the verb;
+        # retain the whole source rather than guessing which predicate it owns.
+        disposition = "uncertain"
+    elif DISCUSSION.search(text) or re.match(r"establish\s+whether\b", action, re.I):
+        disposition = "discussion"
+    elif len(list(MODAL.finditer(text))) > 1 and re.search(
+        r"\b(?:which|that)\b.*\b(?:shall|must|may)\b",
+        re.sub(
+            r"\b(?:shall|must)\s+not\s+exceed\b",
+            "is capped at",
+            re.sub(r"\bexcept that\b", "except", action, flags=re.I),
+            flags=re.I,
+        ),
+        re.I | re.S,
+    ):
+        disposition = "uncertain"
+    elif modal and (
+        "not" in modal.group().lower()
+        or re.search(
+            r"(?:^|,\s*)(?:no(?!\s+later\b)|neither)\b",
+            actor,
+            re.I,
+        )
+    ):
+        disposition = "prohibition"
+    elif not modal and parent is None:
+        disposition = "unasserted"
+    return OperativeClause(
+        section,
+        span,
+        actor or (parent.actor if parent else ""),
+        modal.group().lower() if modal else (parent.modality if parent else None),
+        action,
+        disposition,
+        (*parent.context, parent.span) if parent else (),
+        parent.evidence if parent else (),
+    )
+
+
+def parse_operative_clauses(source, sections):
+    quoted = _quoted_block_ranges(source)
+    introductions = {}
+    clauses = []
+    for section in sections:
+        parent_section = _parent_section(section, sections)
+        parent = None
+        while parent_section is not None:
+            if parent_section.source_id in introductions:
+                parent = introductions[parent_section.source_id]
+                break
+            parent_section = _parent_section(parent_section, sections)
+        for sentence in sentence_spans(section, source):
+            if any(
+                sentence.start_char < end and start < sentence.end_char
+                for start, end in quoted
+            ):
+                continue
+            # Explicit exceptions are a supported boundary: classify each side
+            # before attempting to interpret nested modals across that boundary.
+            exception_parts = list(
+                re.finditer(r"\bexcept that\s+", sentence.text, re.I)
+            )
+            whole = _classify(section, sentence, parent)
+            first_modal = MODAL.search(grammar_text(sentence.text))
+            if whole.disposition == "discussion" and re.search(
+                r"[,;]\s*(?:and|but)\b.*\b(?:shall|must|may)\b",
+                sentence.text[first_modal.end() :] if first_modal else "",
+                re.I | re.S,
+            ):
+                # Coordination after a discussion may be inside or outside its
+                # scope. Preserve the whole source rather than guessing.
+                whole = replace(whole, disposition="uncertain")
+            if whole.disposition == "uncertain" and (
+                not exception_parts or DISCUSSION.search(sentence.text)
+            ):
+                clauses.append(whole)
+                if sentence.text.rstrip().endswith(("—", "–", ":")):
+                    introductions[section.source_id] = whole
+                continue
+            separators = (
+                []
+                if whole.disposition == "discussion"
+                else list(COORDINATE.finditer(sentence.text))
+            )
+            starts = [0] + [
+                m.start() if m.group().lower().startswith("except that") else m.end()
+                for m in separators
+            ]
+            ends = [m.start() for m in separators] + [len(sentence.text)]
+            for start, end in zip(starts, ends, strict=True):
+                while start < end and sentence.text[start].isspace():
+                    start += 1
+                while end > start and sentence.text[end - 1].isspace():
+                    end -= 1
+                span = SourceSpan(
+                    sentence.text[start:end],
+                    sentence.start_char + start,
+                    sentence.start_char + end,
+                )
+                clause = _classify(section, span, parent)
+                if separators:
+                    # A split predicate is not a new scope. Retain the complete
+                    # governing sentence for conditions, exceptions and evidence.
+                    clause = replace(clause, sentence=sentence)
+                clauses.append(clause)
+                if span.text.rstrip().endswith(("—", "–", ":")):
+                    introductions[section.source_id] = clause
+    # If one list condition cannot be interpreted, abstain for the complete
+    # governing provision. Never publish the remaining conditions independently.
+    by_span = {c.span: c for c in clauses}
+    groups = {}
+    for clause in clauses:
+        if clause.disposition != "uncertain":
+            continue
+        root = by_span.get(clause.context[0], clause) if clause.context else clause
+        descendants = [c for c in clauses if root.span in c.context]
+        governing = root.sentence or root.span
+        start = governing.start_char
+        end = max([governing.end_char, *(c.span.end_char for c in descendants)])
+        groups[start] = replace(
+            root,
+            disposition="uncertain",
+            context=(),
+            evidence_context=(),
+            sentence=None,
+            span=SourceSpan(source[start:end], start, end),
+        )
+    roots = [
+        g
+        for g in groups.values()
+        if not any(
+            other.span.start_char < g.span.start_char < other.span.end_char
+            for other in groups.values()
+        )
+    ]
+    retained = [
+        c
+        for c in clauses
+        if not any(
+            g.span.start_char <= c.span.start_char < g.span.end_char for g in roots
+        )
+    ]
+    return tuple(sorted([*retained, *roots], key=lambda c: c.span.start_char))

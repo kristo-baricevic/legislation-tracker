@@ -101,7 +101,7 @@ def test_offline_command_runs_real_extractor_and_fails_bad_replay(tmp_path):
     from django.core.management.base import CommandError
 
     report = tmp_path / "report.json"
-    call_command("evaluate_reader_quality", output=str(report))
+    call_command("evaluate_reader_quality", "--case", "hr9300-119-ih", output=str(report))
     artifact = json.loads(report.read_text())
     assert artifact["results"][0]["quality"]["passed"]
     assert artifact["results"][0]["quality"]["metrics"]["required_fact_recall"] == 1
@@ -124,7 +124,7 @@ def test_offline_command_runs_real_extractor_and_fails_bad_replay(tmp_path):
         )
     )
     with pytest.raises(CommandError, match="failed"):
-        call_command("evaluate_reader_quality", replay=str(replay), output=str(report))
+        call_command("evaluate_reader_quality", "--case", "hr9300-119-ih", replay=str(replay), output=str(report))
     assert not json.loads(report.read_text())["results"][0]["quality"]["passed"]
 
 

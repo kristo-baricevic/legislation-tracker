@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 
 from .display_text import normalize_reader_fragment
+from .glossary import explain_definition
 from .schema import validate_contract
 from .types import (
     V21_EXTRACTOR_VERSION,
@@ -223,6 +224,18 @@ def _render_financial(
 ) -> RenderedReaderClaim | ExtractionWarning:
     fields = claim.fields
     action = fields.get("financial_action")
+    if action in {"fee", "surcharge", "penalty", "fee_exemption", "account_rule"}:
+        # Keep exceptions and eligibility attached; never describe receipts as funding.
+        text = normalize_reader_fragment(" ".join(span.text for span in claim.evidence))
+        if not text or len(text) > 4000:
+            return _warning(claim)
+        return RenderedReaderClaim(
+            kind="financial",
+            display_text=text,
+            actor=None,
+            action=str(action),
+            effect=None,
+        )
     amount_type = fields.get("amount_type")
     direction = fields.get("direction")
     if action not in {
@@ -352,18 +365,21 @@ def _render_definition(
         }
     ):
         return _warning(claim)
+    display = explain_definition(term, definition, definition_type)
+    # Keep the existing legal-text size budget even when its explanation is short.
     connector = {
         "means": "to mean",
         "includes": "to include",
         "excludes": "to exclude",
     }[str(definition_type)]
-    display = f"Defines “{term}” {connector} {definition.rstrip('.')}."
+    legal_display = f"Defines “{term}” {connector} {definition.rstrip('.')}."
     # Enrichment can span an entire enumerated definition. Omit only that
     # unrenderable definition, not the otherwise valid bill-level contract.
     if (
         len(claim.fields["term"]) > 1000
         or len(claim.fields["definition"]) > 4000
         or len(display) > 4000
+        or len(legal_display) > 4000
     ):
         return ExtractionWarning(
             code="reader_definition_too_long",
@@ -510,10 +526,11 @@ def render_contract(
     sections: Sequence[StructuralSection],
     claims: Sequence[ExtractedClaim],
     source_text: str,
+    clauses=None,
 ) -> ExtractionResult:
     from .reader_brief import build_reader_brief
 
-    brief = build_reader_brief(claims, sections)
+    brief = build_reader_brief(claims, sections, source_text, clauses)
     evidence = []
     warnings = list(brief.warnings)
     contract_categories: dict[str, list[dict[str, object]]] = {
