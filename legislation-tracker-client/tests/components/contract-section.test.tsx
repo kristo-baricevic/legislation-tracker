@@ -304,7 +304,7 @@ describe("ContractSection", () => {
 
     expect(screen.getByRole("link", { name: "Read full text" })).toHaveAttribute(
       "href",
-      "http://localhost:8000/documents/1/text/",
+      "/documents/1",
     );
     expect(screen.getByRole("link", { name: "Download document" })).toHaveAttribute(
       "href",

@@ -186,7 +186,7 @@ describe("BillDetailPage", () => {
     );
     expect(screen.getByRole("link", { name: "Read text" })).toHaveAttribute(
       "href",
-      "http://localhost:8000/api/documents/9/text/",
+      "/documents/9",
     );
     expect(screen.queryByRole("heading", { name: "Contract history" })).not.toBeInTheDocument();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();

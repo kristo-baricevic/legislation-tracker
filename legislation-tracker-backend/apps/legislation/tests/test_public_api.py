@@ -419,6 +419,9 @@ def test_public_document_download_uses_the_stored_object_url(monkeypatch):
     assert detail.json()["documents"] == [
         {
             "id": document.id,
+            "bill": bill.id,
+            "bill_title": bill.title,
+            "bill_number": bill.bill_number,
             "version_label": "Introduced",
             "source_order": None,
             "is_active_version": False,
@@ -480,6 +483,11 @@ def test_public_document_text_endpoint_serves_extracted_or_raw_text():
 
     assert response.status_code == 200
     assert response.json() == {"text": "An accessible plain-text bill version."}
+    metadata = APIClient().get(f"/api/documents/{document.id}/")
+    assert metadata.status_code == 200
+    assert metadata.json()["bill"] == bill.id
+    assert metadata.json()["bill_title"] == bill.title
+    assert metadata.json()["bill_number"] == "HR 105"
 
 
 @pytest.mark.django_db

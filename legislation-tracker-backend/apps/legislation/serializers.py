@@ -170,6 +170,8 @@ class BillTopicSerializer(serializers.ModelSerializer):
 
 
 class BillDocumentSerializer(serializers.ModelSerializer):
+    bill_title = serializers.CharField(source="bill.title", read_only=True)
+    bill_number = serializers.CharField(source="bill.bill_number", read_only=True)
     download_url = serializers.SerializerMethodField()
     text_url = serializers.SerializerMethodField()
 
@@ -177,6 +179,9 @@ class BillDocumentSerializer(serializers.ModelSerializer):
         model = BillDocument
         fields = [
             "id",
+            "bill",
+            "bill_title",
+            "bill_number",
             "version_label",
             "source_order",
             "is_active_version",

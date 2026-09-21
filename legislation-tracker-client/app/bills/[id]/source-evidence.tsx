@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 import {
   getApiBase,
@@ -143,10 +144,10 @@ export function SourceEvidence(props: SourceEvidenceProps) {
           )}
           {(props.textUrl || props.downloadUrl) && (
             <div className="mt-3 flex flex-wrap gap-4 text-sm">
-              {props.textUrl && (
-                <a href={documentUrl(props.textUrl)} target="_blank" rel="noopener noreferrer" className="text-blue-900 underline dark:text-green-400">
+              {props.textUrl && /\/documents\/([1-9]\d*)\/text\/?$/.test(props.textUrl) && (
+                <Link href={`/documents/${props.textUrl.match(/\/documents\/([1-9]\d*)\/text\/?$/)![1]}`} className="text-blue-900 underline dark:text-green-400">
                   Read full text
-                </a>
+                </Link>
               )}
               {props.downloadUrl && (
                 <a href={documentUrl(props.downloadUrl)} target="_blank" rel="noopener noreferrer" className="text-blue-900 underline dark:text-green-400">

@@ -53,7 +53,7 @@ describe("SourceEvidence", () => {
     );
     expect(screen.getByRole("link", { name: "Read full text" })).toHaveAttribute(
       "href",
-      "http://localhost:8000/api/documents/4/text/",
+      "/documents/4",
     );
     expect(screen.getByRole("link", { name: "Download document" })).toHaveAttribute(
       "href",
