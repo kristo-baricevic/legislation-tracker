@@ -76,6 +76,19 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.2` classifies application fees, surcharges,
+  fines, fee exemptions, and account-availability rules separately from spending.
+  Payment clauses retain their source wording and conditions. Unspecified fees
+  are not treated as zero or as appropriations. New API action filters and reader
+  labels expose these categories; deploy the frontend validators with the backend
+  before regenerating contracts. No migration is required.
+- The full H.R. 1589 introduced text is now an annotated evaluation case.
+  Its eight financial fact checks pass, including both fee caps, the counsel
+  surcharge, fine, grant purpose, exemption, processing fee, and account rule.
+  The full-reader gate still reports nonfinancial fragments and duplicates;
+  financial coverage passing is not a claim that the entire reader output passes.
+  `test_reader_fees.py` separately gates the financial output and API shapes.
+
 - NLP extractor `federal-rules-2.1.1`: recognizes XML's unquoted definitions and
   purpose syntax; connects enumerated activities to parent requirements; retains
   optional examples; fixes letter/roman hierarchy and list-versus-heading parsing;
@@ -110,7 +123,43 @@ contract. Their source text remains unchanged. The reader displays the coverage
 note outside collapsed details, including omitted-definition and requirement
 warnings, with a full-text link when the document text URL is available.
 
+## Rule-based synopsis
+
+Extractor `federal-rules-2.1.3` adds a cited synopsis when no explicit purpose
+clause is available. Initial supported patterns cover conditional residence,
+protected-status residence pathways, nonprofit applicant-assistance grants,
+and recognized financial categories. Residence dates come from the source;
+amounts are not combined into a misleading bill-wide total.
+
+This is deliberately limited template coverage, not a general semantic summary
+of every bill or every eligibility condition. Official summaries retain priority.
+The reader provides expandable source evidence for generated synopses.
+Unsupported patterns retain the existing fallback. Existing contracts require
+re-extraction; no paid AI requests are made.
+
+`test_reader_synopsis.py` checks the full H.R.1589 fixture, changed source dates,
+negative/reporting language, quoted amendments, exact evidence offsets, and
+preservation of explicit purpose clauses. These checks do not imply that all
+detailed line items pass the broader reader-quality gate.
+
 ## Diagnosing failed app requests
+
+### Glossary quality
+
+Extractor `federal-rules-2.1.4` separates source-matched plain-English glossary
+explanations from the retained legal definition and evidence. Reviewed rules
+match the entire definition, including conditions, not merely the term. Unknown
+wording stays labelled legal text; incorporated external definitions are marked
+unresolved rather than guessed. This does not implement external-law retrieval.
+Both the glossary and per-provision linked terms display the same explanation.
+
+The H.R.9300 corpus adds NLP-only `glossary_facts`, matched within a named term.
+They check graduation versus transfer, evidence-tier qualifications, and explicit
+disclosure of unclear source wording. Mutation tests remove qualifiers and move
+an explanation to the wrong term. Citation-only explanations fail the quality
+gate. Metrics separately count unresolved references, literal definitions, and
+ambiguous definitions; disclosure is not counted as successful resolution.
+These regression checks do not establish legal entailment for arbitrary bills.
 
 After migration `0014`, attempts retain `failure_detail` alongside
 `failure_category`. The owner-scoped API returns a stable code, a static

@@ -62,6 +62,11 @@ class FinancialItemsQuerySerializer(PaginatedQuerySerializer):
             "set_aside",
             "limitation",
             "other_explicit",
+            "fee",
+            "surcharge",
+            "penalty",
+            "fee_exemption",
+            "account_rule",
         ),
         required=False,
     )
@@ -258,14 +263,19 @@ class FinancialPreviewPublicSerializer(serializers.Serializer):
             "set_aside",
             "limitation",
             "other_explicit",
+            "fee",
+            "surcharge",
+            "penalty",
+            "fee_exemption",
+            "account_rule",
         )
     )
     direction = serializers.ChoiceField(
-        choices=("increase", "decrease", "neutral_transfer", "limit")
+        choices=("increase", "decrease", "neutral_transfer", "limit", "not_applicable")
     )
     amount = serializers.CharField(allow_null=True, allow_blank=False, max_length=100)
     amount_type = serializers.ChoiceField(
-        choices=("specified", "such_sums", "percentage", "ceiling")
+        choices=("specified", "such_sums", "percentage", "ceiling", "unspecified")
     )
     currency = serializers.ChoiceField(choices=("USD",), allow_null=True)
     fiscal_years = serializers.ListField(

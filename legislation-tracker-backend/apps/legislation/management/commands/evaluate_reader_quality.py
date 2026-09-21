@@ -107,6 +107,7 @@ class Command(BaseCommand):
                 quality = score_reader(
                     case,
                     nlp_items(result.contract_json),
+                    pipeline="nlp",
                     elapsed_ms=round((perf_counter() - start) * 1000, 2),
                 )
                 exact = all(

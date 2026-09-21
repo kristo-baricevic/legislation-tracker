@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from .display_text import normalize_reader_fragment
 from .reader_renderer import render_reader_claim
+from .synopsis import structured_synopsis
 from .types import (
     ExtractedClaim,
     ExtractionWarning,
@@ -245,7 +246,9 @@ def _coverage_note(stats: ReaderStats) -> str:
 
 
 def build_reader_brief(
-    claims: Sequence[ExtractedClaim], sections: Sequence[StructuralSection]
+    claims: Sequence[ExtractedClaim],
+    sections: Sequence[StructuralSection],
+    source_text: str | None = None,
 ) -> ReaderBrief:
     warnings = []
     rendered_by_claim: dict[int, RenderedReaderClaim] = {}
@@ -343,6 +346,24 @@ def build_reader_brief(
                 lines.append(standalone)
 
     purpose_line = _explicit_purpose_line(sections)
+    if (
+        purpose_line is None
+        and source_text is not None
+        and (synopsis := structured_synopsis(sections, renderable_claims, source_text))
+    ):
+        text, section, evidence = synopsis
+        source_id = f"synopsis-{evidence[0].start_char}-1"
+        purpose_line = _LineDraft(
+            id=f"line-{source_id}",
+            source_id=source_id,
+            section_id=section.source_id,
+            section_path=section.path,
+            rendered=RenderedReaderClaim(
+                kind="purpose", display_text=text, actor=None, action=None, effect=None
+            ),
+            claim_refs=(),
+            evidence=evidence,
+        )
     if purpose_line is not None:
         lines.append(purpose_line)
 

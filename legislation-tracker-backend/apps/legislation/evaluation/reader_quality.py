@@ -24,7 +24,7 @@ def nlp_items(contract):
         for x in contract.get("financial_items", [])
     ]
     items += [
-        {"category": "definition", "text": x["display_text"]}
+        {"category": "definition", "text": x["display_text"], "term": x["term"]}
         for x in contract.get("definitions", [])
     ]
     return items
@@ -60,13 +60,22 @@ def ai_items(output):
     return result
 
 
-def score_reader(case, items, *, sources=None, usage=None, elapsed_ms=None, rates=None):
+def score_reader(
+    case, items, *, sources=None, usage=None, elapsed_ms=None, rates=None, pipeline=None
+):
     missing = []
-    for fact in case.get("required_facts", []):
+    facts = case.get("required_facts", []) + (
+        case.get("glossary_facts", []) if pipeline == "nlp" else []
+    )
+    for fact in facts:
         candidates = [
             x["text"]
             for x in items
-            if not fact.get("category") or x.get("category") == fact["category"]
+            if (not fact.get("category") or x.get("category") == fact["category"])
+            and (
+                not fact.get("term")
+                or x.get("term", "").casefold() == fact["term"].casefold()
+            )
         ]
         if not any(
             all(re.search(p, text, re.I | re.S) for p in fact["patterns"])
@@ -79,6 +88,13 @@ def score_reader(case, items, *, sources=None, usage=None, elapsed_ms=None, rate
         if any(re.search(p, x["text"], re.I) for x in items)
     ]
     texts = [x["text"] for x in items]
+    definitions = [x["text"] for x in items if x.get("category") == "definition"]
+    unresolved = sum("unresolved legal reference" in t.lower() for t in definitions)
+    unexplained = sum(
+        bool(re.search(r"\bmeaning (?:given|assigned|provided)\b", t, re.I))
+        and "unresolved legal reference" not in t.lower()
+        for t in definitions
+    )
     word_counts = [len(re.findall(r"\b[\w'-]+\b", text)) for text in texts]
     duplicates = sum(
         n - 1
@@ -124,7 +140,7 @@ def score_reader(case, items, *, sources=None, usage=None, elapsed_ms=None, rate
             usage["input_tokens"] * rates["input_per_million"]
             + usage["output_tokens"] * rates["output_per_million"]
         ) / 1_000_000
-    required = len(case.get("required_facts", []))
+    required = len(facts)
     absence_claims = (
         sum(
             bool(
@@ -141,6 +157,8 @@ def score_reader(case, items, *, sources=None, usage=None, elapsed_ms=None, rate
         else 0
     )
     failures = []
+    if unexplained:
+        failures.append("unexplained_definitions")
     if missing:
         failures.append("missing_required_facts")
     if forbidden:
@@ -161,6 +179,14 @@ def score_reader(case, items, *, sources=None, usage=None, elapsed_ms=None, rate
         "missing_facts": missing,
         "forbidden_matches": forbidden,
         "metrics": {
+            "unexplained_definition_count": unexplained,
+            "unresolved_definition_count": unresolved,
+            "literal_definition_count": sum(
+                t.startswith("Legal definition:") for t in definitions
+            ),
+            "ambiguous_definition_count": sum(
+                "source wording is unclear" in t for t in definitions
+            ),
             "annotated_fact_count": required,
             "unsupported_absence_claim_count": absence_claims,
             "required_fact_recall": (required - len(missing)) / required

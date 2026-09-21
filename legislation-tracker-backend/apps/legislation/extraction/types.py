@@ -4,7 +4,7 @@ from enum import StrEnum
 V2_SCHEMA_VERSION = "2.0-legal-nlp"
 V21_SCHEMA_VERSION = "2.1-legal-nlp"
 V2_EXTRACTOR_VERSION = "federal-rules-2.0.0"
-V21_EXTRACTOR_VERSION = "federal-rules-2.1.1"
+V21_EXTRACTOR_VERSION = "federal-rules-2.1.4"
 
 # Compatibility aliases for the immutable 2.0 renderer.
 SCHEMA_VERSION = V2_SCHEMA_VERSION
@@ -41,6 +41,11 @@ def active_extractor_version() -> str:
 
 
 class FinancialAction(StrEnum):
+    FEE = "fee"
+    SURCHARGE = "surcharge"
+    PENALTY = "penalty"
+    FEE_EXEMPTION = "fee_exemption"
+    ACCOUNT_RULE = "account_rule"
     APPROPRIATION = "appropriation"
     AUTHORIZATION = "authorization"
     ALLOCATION = "allocation"
@@ -54,6 +59,7 @@ class FinancialAction(StrEnum):
 
 
 class FinancialDirection(StrEnum):
+    NOT_APPLICABLE = "not_applicable"
     INCREASE = "increase"
     DECREASE = "decrease"
     NEUTRAL_TRANSFER = "neutral_transfer"
@@ -61,6 +67,7 @@ class FinancialDirection(StrEnum):
 
 
 class FinancialAmountType(StrEnum):
+    UNSPECIFIED = "unspecified"
     SPECIFIED = "specified"
     SUCH_SUMS = "such_sums"
     PERCENTAGE = "percentage"

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from .display_text import normalize_reader_fragment
-from .federal_clauses import iter_operative_clauses
+from .federal_clauses import _quoted_block_ranges, iter_operative_clauses
 from .federal_structure import sentence_spans
 from .types import ExtractedClaim, SourceSpan, StructuralSection
 
@@ -68,6 +68,10 @@ _TO_ACCOUNT_RE = re.compile(
 )
 
 _DIRECTION_BY_ACTION = {
+    **dict.fromkeys(
+        ("fee", "surcharge", "penalty", "fee_exemption", "account_rule"),
+        "not_applicable",
+    ),
     "appropriation": "increase",
     "authorization": "increase",
     "allocation": "increase",
@@ -274,7 +278,7 @@ def _purpose(text: str, action: str) -> str | None:
         tail = text[amounts[-1].end :]
         explicit = re.search(r"\b(?:for\s+|to\s+(?=award\b))(.+)", tail, re.I | re.S)
         if explicit and not re.match(
-            r"(?:(?:a|each(?: of)?)\s+)?fiscal years?", explicit.group(1), re.I
+            r"(?:(?:a|each(?: of)?)(?: the)?\s+)?fiscal years?", explicit.group(1), re.I
         ):
             return _strip(explicit.group(1)) or None
     carry_out = _CARRY_OUT_RE.search(text)
@@ -439,8 +443,14 @@ def extract_financial_claims(
 ) -> tuple[ExtractedClaim, ...]:
     """Return every explicitly supported financial provision in source order."""
 
-    claims = []
+    claims = list(_payment_claims(source_text, sections))
+    payment_spans = [span for claim in claims for span in claim.evidence]
     for section, span, _ in iter_operative_clauses(source_text, sections):
+        if any(
+            p.start_char <= span.start_char and span.end_char <= p.end_char
+            for p in payment_spans
+        ):
+            continue
         candidate_amounts = _amounts(span.text)
         if not candidate_amounts:
             continue
@@ -501,6 +511,29 @@ def extract_financial_claims(
                     destination_account or inherited.destination_account
                 )
                 evidence = (inherited.evidence, span)
+            purpose = _purpose(local_text, action)
+            if purpose and re.fullmatch(r"carry out this section", purpose, re.I):
+                owner = next(
+                    (
+                        s
+                        for s in sections
+                        if s.level == "section"
+                        and s.span.start_char <= span.start_char < s.span.end_char
+                    ),
+                    None,
+                )
+                if owner and owner.heading:
+                    purpose = owner.heading
+                    heading_end = source_text.find("\n", owner.span.start_char)
+                    if heading_end >= 0:
+                        evidence = (
+                            *evidence,
+                            SourceSpan(
+                                source_text[owner.span.start_char : heading_end],
+                                owner.span.start_char,
+                                heading_end,
+                            ),
+                        )
             claims.append(
                 _claim(
                     section=section,
@@ -508,10 +541,92 @@ def extract_financial_claims(
                     action=action,
                     amount=amount,
                     fiscal_years=fiscal_years,
-                    purpose=_purpose(local_text, action),
+                    purpose=purpose,
                     source_account=source_account,
                     destination_account=destination_account,
                     inherited=inherited is not None,
                 )
             )
     return tuple(claims)
+
+
+def _payment_claims(source, sections):
+    """Keep payment conditions together; these are not government spending totals."""
+    quoted = _quoted_block_ranges(source)
+    for section in sections:
+        for span in sentence_spans(section, source):
+            if any(
+                span.start_char < end and start < span.end_char for start, end in quoted
+            ):
+                continue
+            text = span.text
+            action = None
+            if re.search(
+                r"\b(?:may|shall|must) be exempted from paying\b.*\bfee\b", text, re.I
+            ):
+                action = "fee_exemption"
+                # An introductory exemption must include its complete eligibility list.
+                if text.rstrip().endswith(("—", ":")):
+                    end = section.span.end_char
+                    span = SourceSpan(
+                        source[span.start_char : end], span.start_char, end
+                    )
+                    text = span.text
+            elif re.search(
+                r"\bsurcharge\b.*\b(?:shall|must) be (?:imposed|collected)\b",
+                text,
+                re.I,
+            ):
+                action = "surcharge"
+            elif re.search(r"\b(?:shall|must|may) be fined\b", text, re.I):
+                action = "penalty"
+            elif re.search(r"\bfees?\b", text, re.I) and re.search(
+                r"\b(?:shall|may|must)\b.*\b(?:pay|require|include a requirement)\b.*\bfee\b",
+                text,
+                re.I,
+            ):
+                action = "fee"
+            elif re.search(
+                r"\b(?:fees|amounts|funds)\b.*\bshall (?:be deposited|remain available)\b",
+                text,
+                re.I,
+            ):
+                action = "account_rule"
+            if action is None:
+                continue
+            amounts = (
+                tuple(a for a in _amounts(text) if a.currency == "USD")
+                if action in {"fee", "surcharge", "penalty"}
+                else ()
+            )
+            if not amounts:
+                amounts = (_AmountMatch(None, "unspecified", None, 0, 0),)
+            for amount in amounts:
+                ceiling = amount.amount is not None and bool(
+                    re.search(
+                        r"\b(?:does not exceed|not more than|not to exceed|shall not exceed|up to)\s*$",
+                        text[: amount.start],
+                        re.I,
+                    )
+                )
+                fields = {
+                    "financial_action": action,
+                    "direction": "not_applicable",
+                    "amount": amount.amount,
+                    "amount_type": "ceiling" if ceiling else amount.amount_type,
+                    "currency": amount.currency,
+                    "fiscal_years": [],
+                    "purpose": None,
+                    "source_account": None,
+                    "destination_account": None,
+                }
+                yield ExtractedClaim(
+                    "financial_items",
+                    fields,
+                    section.label,
+                    (span,),
+                    f"financial.{action}.v1",
+                    section.source_id,
+                    section.source_id,
+                    section.path,
+                )
