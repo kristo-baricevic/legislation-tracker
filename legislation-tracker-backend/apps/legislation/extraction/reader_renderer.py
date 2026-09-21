@@ -526,10 +526,11 @@ def render_contract(
     sections: Sequence[StructuralSection],
     claims: Sequence[ExtractedClaim],
     source_text: str,
+    clauses=None,
 ) -> ExtractionResult:
     from .reader_brief import build_reader_brief
 
-    brief = build_reader_brief(claims, sections, source_text)
+    brief = build_reader_brief(claims, sections, source_text, clauses)
     evidence = []
     warnings = list(brief.warnings)
     contract_categories: dict[str, list[dict[str, object]]] = {

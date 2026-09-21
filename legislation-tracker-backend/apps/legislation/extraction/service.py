@@ -8,6 +8,7 @@ from apps.legislation.models import Bill, BillDocument
 from . import financial_rules, legal_rules, reader_renderer, renderer
 from .federal_structure import parse_federal_structure
 from .legacy import build_legacy_document_contract
+from .operative_context import parse_operative_clauses
 from .schema import ContractValidationError
 from .types import ExpectedExtractionRejection, ExtractionResult
 
@@ -34,7 +35,10 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
         sections = parse_federal_structure(source_text)
         claims = legal_rules.extract_claims(source_text, sections)
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:
-            claims += financial_rules.extract_financial_claims(source_text, sections)
+            clauses = parse_operative_clauses(source_text, sections)
+            claims += financial_rules.extract_financial_claims(
+                source_text, sections, clauses
+            )
             from .reader_context import enrich_reader_claims
 
             claims = enrich_reader_claims(source_text, sections, claims)
@@ -42,6 +46,7 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
             raise ExpectedExtractionRejection("no_supported_claims")
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:
             return reader_renderer.render_contract(
+                clauses=clauses,
                 title=bill.title,
                 version_label=document.version_label,
                 sections=sections,

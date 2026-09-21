@@ -76,6 +76,21 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.7` parses shared source-owned clause context once
+  for payment extraction and synopsis generation. It distinguishes operative,
+  prohibited, discussed, and unasserted clauses; retains ancestor introductions
+  as evidence; and uses the existing abbreviation-aware sentence boundaries.
+  Parent fee introductions no longer create duplicate child prices. Independent
+  fees, surcharges, and exemptions retain their own amounts. Synopsis templates
+  consume affirmative clause facts, including eligibility dates, rather than
+  independently searching the full section text.
+- `test_operative_matrix.py` tests deadlines versus prohibitions, negative
+  eligibility conditions, abbreviations, whitespace, reversed payment order,
+  prefixed amounts, exemptions, explicit/implicit child prices, parent reporting
+  scopes, and positive/negative residence-date statements. These are deterministic
+  regression guarantees, not proof of arbitrary legal entailment. API and UI
+  schemas are unchanged. Existing immutable analyses require re-extraction.
+
 - Extractor `federal-rules-2.1.6` rejects negative and reporting payment/synopsis
   contexts across wrapped lines, while retaining explicit payment exceptions.
   It retains multiple payment categories and coordinated or enumerated fee

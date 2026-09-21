@@ -6,17 +6,20 @@ Unsupported effects remain in the detailed reader, not guessed in the synopsis.
 
 import re
 
-from .federal_clauses import _quoted_block_ranges
-from .operative_context import has_nonoperative_prefix
+from .operative_context import parse_operative_clauses
 from .types import SourceSpan
 
 
-def structured_synopsis(sections, claims, source_text):
+def structured_synopsis(sections, claims, source_text, clauses=None):
     sentences = []
     evidence = []
     owner = None
     seen = set()
-    quoted = _quoted_block_ranges(source_text)
+    clauses = (
+        clauses
+        if clauses is not None
+        else parse_operative_clauses(source_text, sections)
+    )
 
     def add(key, text, section, spans):
         nonlocal owner
@@ -31,26 +34,15 @@ def structured_synopsis(sections, claims, source_text):
         if section.level != "section":
             continue
         raw = section.span.text
-        if any(start <= section.span.start_char < end for start, end in quoted):
-            continue
-        # Mask quoted amendment bodies without changing character offsets.
-        masked = list(raw)
-        for start, end in _quoted_block_ranges(raw):
-            masked[start:end] = " " * (end - start)
-        text = "".join(masked)
         heading = section.heading or ""
-
-        def span_for(match, text=text, raw=raw, section=section):
-            start = text.rfind("\n", 0, match.start()) + 1
-            end = text.find("\n", match.end())
-            if end < 0:
-                end = len(text)
-            return SourceSpan(
-                raw[start:end],
-                section.span.start_char + start,
-                section.span.start_char + end,
-            )
-
+        facts = [
+            clause
+            for clause in clauses
+            if clause.asserted
+            and section.span.start_char
+            <= clause.span.start_char
+            < section.span.end_char
+        ]
         heading_end = raw.find("\n")
         heading_span = (
             SourceSpan(
@@ -61,28 +53,42 @@ def structured_synopsis(sections, claims, source_text):
             if heading_end > 0
             else section.span
         )
-        residence = re.search(
-            r"\bshall adjust to the status of an alien lawfully admitted for permanent residence\b",
-            text,
-            re.I,
+        residence = next(
+            (
+                fact
+                for fact in facts
+                if re.search(
+                    r"\bshall\s+adjust\s+to\s+the\s+status\s+of\s+an\s+alien\s+lawfully\s+admitted\s+for\s+permanent\s+residence\b",
+                    fact.span.text,
+                    re.I,
+                )
+            ),
+            None,
         )
-        if residence:
-            if has_nonoperative_prefix(text, residence.start()):
-                residence = None
         if (
             residence
             and re.search(r"entered the United States as children", heading, re.I)
             and re.search(r"on a conditional basis", heading, re.I)
         ):
             summary = "Provides a path to conditional permanent residence (a green card with conditions) for eligible long-term residents who entered the United States as children."
-            spans = [heading_span, span_for(residence)]
-            presence = re.search(
-                r"\bhas been continuously physically present in the United States since ([A-Za-z]+ \d{1,2}, \d{4})",
-                text,
+            spans = [heading_span, *residence.evidence]
+            presence = next(
+                (
+                    (fact, match)
+                    for fact in facts
+                    if (
+                        match := re.search(
+                            r"\bhas been continuously physically present in the United States since ([A-Za-z]+ \d{1,2}, \d{4})",
+                            fact.span.text,
+                        )
+                    )
+                ),
+                None,
             )
             if presence:
-                summary += f" Residence requirements include continuous presence since {presence.group(1)}."
-                spans.append(span_for(presence))
+                fact, match = presence
+                summary += f" Residence requirements include continuous presence since {match.group(1)}."
+                spans.extend(fact.evidence)
             summary += " Eligibility is subject to the conditions in the bill."
             add("conditional_residence", summary, section, spans)
         elif (
@@ -94,22 +100,27 @@ def structured_synopsis(sections, claims, source_text):
                 "protected_residence",
                 "Provides a path to permanent residence for eligible people covered by temporary protected status or deferred enforced departure, subject to the bill’s eligibility requirements.",
                 section,
-                [heading_span, span_for(residence)],
+                [heading_span, *residence.evidence],
             )
 
-        grant = re.search(
-            r"\bshall establish(?:,\s*within[^,\n]+,)?\s+a program to award grants\b[^\n]*\beligible nonprofit organizations\b[^\n]*\bassist eligible applicants\b",
-            text,
-            re.I,
+        grant = next(
+            (
+                fact
+                for fact in facts
+                if re.search(
+                    r"\bshall establish(?:,\s*within[^,\n]+,)?\s+a program to award grants\b.*\beligible nonprofit organizations\b.*\bassist eligible applicants\b",
+                    re.sub(r"\s+", " ", fact.span.text),
+                    re.I | re.S,
+                )
+            ),
+            None,
         )
         if grant:
-            if has_nonoperative_prefix(text, grant.start()):
-                continue
             add(
                 "application_grants",
                 "Creates a grant program for nonprofit organizations to help eligible applicants.",
                 section,
-                [heading_span, span_for(grant)],
+                [heading_span, *grant.evidence],
             )
 
     # Financial categories are already classified, with their original evidence.

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from .display_text import normalize_reader_fragment
-from .federal_clauses import _quoted_block_ranges, iter_operative_clauses
+from .federal_clauses import iter_operative_clauses
 from .federal_structure import sentence_spans
-from .operative_context import has_nonoperative_prefix
+from .operative_context import parse_operative_clauses
 from .types import ExtractedClaim, SourceSpan, StructuralSection
 
 _ACTION_RE = re.compile(
@@ -440,18 +440,16 @@ def _claim(
 
 
 def extract_financial_claims(
-    source_text: str, sections: Sequence[StructuralSection]
+    source_text: str, sections: Sequence[StructuralSection], clauses=None
 ) -> tuple[ExtractedClaim, ...]:
     """Return every explicitly supported financial provision in source order."""
 
-    claims = list(_payment_claims(source_text, sections))
+    claims = list(_payment_claims(source_text, sections, clauses))
     payment_spans = [span for claim in claims for span in claim.evidence]
     payment_offsets = {
-        (p.start_char + amount.start, p.start_char + amount.end)
+        claim.fields["_amount_span"]
         for claim in claims
-        if claim.fields.get("financial_action") in {"fee", "surcharge", "penalty"}
-        for p in claim.evidence
-        for amount in _payment_amounts(p.text, claim.fields["financial_action"])
+        if claim.fields.get("_amount_span")
     }
     for section, span, _ in iter_operative_clauses(source_text, sections):
         payment_sentence = any(
@@ -565,7 +563,17 @@ def extract_financial_claims(
                     inherited=inherited is not None,
                 )
             )
-    return tuple(claims)
+    return tuple(
+        replace(
+            claim,
+            fields={
+                key: value
+                for key, value in claim.fields.items()
+                if key != "_amount_span"
+            },
+        )
+        for claim in claims
+    )
 
 
 def _payment_amounts(text, action):
@@ -579,12 +587,14 @@ def _payment_amounts(text, action):
         before = [anchor for anchor in anchors if anchor.end() <= amount.start]
         bridge = text[before[-1].end() : amount.start] if before else None
         preceding_payment = [m for m in payment_nouns if m.end() <= amount.start]
-        if preceding_payment and not re.fullmatch(
-            noun, preceding_payment[-1].group(), re.I
+        prefixed = action == "fee" and re.match(
+            r"\s+(?:(?:application|processing)\s+)?fee\b", text[amount.end :], re.I
+        )
+        if (
+            not prefixed
+            and preceding_payment
+            and not re.fullmatch(noun, preceding_payment[-1].group(), re.I)
         ):
-            owned = None
-            continue
-        if before and has_nonoperative_prefix(text, before[-1].start()):
             owned = None
             continue
         direct = bridge is not None and re.fullmatch(
@@ -631,76 +641,88 @@ def _payment_amounts(text, action):
             yield amount
 
 
-def _payment_claims(source, sections):
-    """Keep payment conditions together; these are not government spending totals."""
-    quoted = _quoted_block_ranges(source)
-    for section in sections:
-        for span in sentence_spans(section, source):
-            if any(
-                span.start_char < end and start < span.end_char for start, end in quoted
+def _payment_actions(text):
+    text = re.sub(r"\s+", " ", text)
+    actions = []
+    if re.search(
+        r"\b(?:may|shall|must) be exempted from paying\b.*\bfee\b", text, re.I | re.S
+    ):
+        actions.append("fee_exemption")
+    if re.search(
+        r"\bsurcharge\b.*\b(?:shall|must) be (?:imposed|collected)\b", text, re.I | re.S
+    ):
+        actions.append("surcharge")
+    if re.search(r"\b(?:shall|must|may) be fined\b", text, re.I):
+        actions.append("penalty")
+    if not actions and re.search(
+        r"\b(?:shall|may|must)\b.*\b(?:pay|require|include a requirement)\b.*\bfee\b",
+        text,
+        re.I | re.S,
+    ):
+        actions.append("fee")
+    if re.search(
+        r"\b(?:fees|amounts|funds)\b.*\bshall (?:be deposited|remain available)\b",
+        text,
+        re.I | re.S,
+    ):
+        actions.append("account_rule")
+    return actions
+
+
+def _payment_claims(source, sections, clauses=None):
+    clauses = (
+        clauses if clauses is not None else parse_operative_clauses(source, sections)
+    )
+    for clause in clauses:
+        if not clause.asserted:
+            continue
+        span, section = clause.span, clause.section
+        children = [child for child in clauses if span in child.context]
+        actions = _payment_actions(span.text)
+        inherited = False
+        if not actions and clause.context and clause.modality:
+            # Only bare list prices inherit a parent's payment action.
+            if re.match(r"\s*(?:\$|[0-9]+(?:\.[0-9]+)?\s+percent)", span.text):
+                actions = _payment_actions(clause.context[-1].text)
+                inherited = True
+        for action in actions:
+            if (
+                action in {"fee", "surcharge", "penalty"}
+                and children
+                and not tuple(_payment_amounts(span.text, action))
             ):
                 continue
-            text = span.text
-            actions = []
-            if re.search(
-                r"\b(?:may|shall|must) be exempted from paying\b.*\bfee\b", text, re.I
+            evidence = clause.evidence
+            if children and (
+                action == "fee_exemption" or action in {"fee", "surcharge", "penalty"}
             ):
-                actions.append("fee_exemption")
-                # An introductory exemption must include its complete eligibility list.
-                if text.rstrip().endswith(("—", ":")):
-                    end = section.span.end_char
-                    span = SourceSpan(
-                        source[span.start_char : end], span.start_char, end
-                    )
-                    text = span.text
-            if re.search(
-                r"\bsurcharge\b.*\b(?:shall|must) be (?:imposed|collected)\b",
-                text,
-                re.I,
-            ):
-                actions.append("surcharge")
-            if re.search(r"\b(?:shall|must|may) be fined\b", text, re.I):
-                actions.append("penalty")
-            if (
-                "fee_exemption" not in actions
-                and re.search(r"\bfees?\b", text, re.I)
-                and re.search(
-                    r"\b(?:shall|may|must)\b.*\b(?:pay|require|include a requirement)\b.*\bfee\b",
-                    text,
-                    re.I,
+                # Eligibility alternatives are context for one exemption.
+                end = max(c.span.end_char for c in children)
+                evidence = (
+                    *clause.context,
+                    SourceSpan(source[span.start_char : end], span.start_char, end),
                 )
-            ):
-                actions.append("fee")
-                if text.rstrip().endswith(("—", ":", "–")):
-                    end = section.span.end_char
-                    span = SourceSpan(
-                        source[span.start_char : end], span.start_char, end
-                    )
-                    text = span.text
-            if re.search(
-                r"\b(?:fees|amounts|funds)\b.*\bshall (?:be deposited|remain available)\b",
-                text,
-                re.I,
-            ):
-                actions.append("account_rule")
-            for action in actions:
-                yield from _payment_records(source, sections, section, span, action)
+            yield from _payment_records(
+                source, sections, section, span, action, evidence, inherited
+            )
 
 
-def _payment_records(source, sections, section, span, action):
+def _payment_records(
+    source, sections, section, span, action, evidence, inherited=False
+):
     text = span.text
-    noun_pattern = {
-        "fee": r"fees?",
-        "fee_exemption": r"fees?",
-        "surcharge": r"surcharge",
-        "penalty": r"fined",
-        "account_rule": r"fees|funds|amounts",
-    }[action]
-    nouns = list(re.finditer(r"\b(?:" + noun_pattern + r")\b", text, re.I))
-    if nouns and all(has_nonoperative_prefix(text, noun.start()) for noun in nouns):
-        return
+    prefix = (
+        {"fee": "fee of ", "surcharge": "surcharge of ", "penalty": "fined "}.get(
+            action, ""
+        )
+        if inherited
+        else ""
+    )
     amounts = (
-        tuple(_payment_amounts(text, action))
+        tuple(
+            replace(a, start=a.start - len(prefix), end=a.end - len(prefix))
+            for a in _payment_amounts(prefix + text, action)
+        )
         if action in {"fee", "surcharge", "penalty"}
         else ()
     )
@@ -732,12 +754,18 @@ def _payment_records(source, sections, section, span, action):
             "purpose": None,
             "source_account": None,
             "destination_account": None,
+            "_amount_span": (
+                span.start_char + amount.start,
+                span.start_char + amount.end,
+            )
+            if amount.amount is not None
+            else None,
         }
         yield ExtractedClaim(
             "financial_items",
             fields,
             section.label,
-            (span,),
+            evidence,
             f"financial.{action}.v1",
             section.source_id,
             section.source_id,

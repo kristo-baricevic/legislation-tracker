@@ -249,6 +249,7 @@ def build_reader_brief(
     claims: Sequence[ExtractedClaim],
     sections: Sequence[StructuralSection],
     source_text: str | None = None,
+    clauses=None,
 ) -> ReaderBrief:
     warnings = []
     rendered_by_claim: dict[int, RenderedReaderClaim] = {}
@@ -349,7 +350,11 @@ def build_reader_brief(
     if (
         purpose_line is None
         and source_text is not None
-        and (synopsis := structured_synopsis(sections, renderable_claims, source_text))
+        and (
+            synopsis := structured_synopsis(
+                sections, renderable_claims, source_text, clauses
+            )
+        )
     ):
         text, section, evidence = synopsis
         source_id = f"synopsis-{evidence[0].start_char}-1"

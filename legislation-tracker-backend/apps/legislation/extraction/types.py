@@ -4,7 +4,7 @@ from enum import StrEnum
 V2_SCHEMA_VERSION = "2.0-legal-nlp"
 V21_SCHEMA_VERSION = "2.1-legal-nlp"
 V2_EXTRACTOR_VERSION = "federal-rules-2.0.0"
-V21_EXTRACTOR_VERSION = "federal-rules-2.1.6"
+V21_EXTRACTOR_VERSION = "federal-rules-2.1.7"
 
 # Compatibility aliases for the immutable 2.0 renderer.
 SCHEMA_VERSION = V2_SCHEMA_VERSION
