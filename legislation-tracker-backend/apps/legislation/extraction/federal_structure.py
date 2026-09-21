@@ -95,6 +95,18 @@ def _subdivision_rank(label: str, prior_markers: list[_Marker]) -> int:
         return _PARAGRAPH_RANK
     if token.isupper():
         return _SUBPARAGRAPH_RANK
+    if prior_markers:
+        previous_marker = prior_markers[-1]
+        previous_token = previous_marker.label[1:-1]
+        if (
+            (token == "i" and previous_marker.rank == _SUBPARAGRAPH_RANK)
+            or (
+                previous_marker.rank == _CLAUSE_RANK
+                and re.fullmatch(r"[ivxlcdm]+", token)
+                and _roman_number(token) == _roman_number(previous_token) + 1
+            )
+        ):
+            return _CLAUSE_RANK
     # A new subsection (d) after (c)'s nested list is not roman clause 500.
     subsection = next(
         (m for m in reversed(prior_markers) if m.rank <= _SUBSECTION_RANK), None
@@ -111,6 +123,16 @@ def _subdivision_rank(label: str, prior_markers: list[_Marker]) -> int:
     ):
         return _CLAUSE_RANK
     return _SUBSECTION_RANK
+
+
+def _roman_number(token: str) -> int:
+    values = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+    total = largest = 0
+    for letter in reversed(token):
+        value = values.get(letter, 0)
+        total += -value if value < largest else value
+        largest = max(largest, value)
+    return total
 
 
 def _provision_level(rank: int) -> str:

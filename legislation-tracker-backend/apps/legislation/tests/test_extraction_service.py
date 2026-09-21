@@ -37,6 +37,7 @@ def test_active_extractor_version_follows_the_writer_gate(enabled, expected):
         assert active_extractor_version() == expected
 
 
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False)
 def test_extract_contract_selects_v2_for_supported_federal_text():
     result = extract_contract(
         document=document("SEC. 2. REPORTS\nThe Secretary shall publish a report."),
@@ -58,7 +59,7 @@ $5,000,000 in unobligated balances is hereby rescinded.
 
     assert result.schema_version == "2.1-legal-nlp"
     assert result.contract_json["extraction"]["extractor_version"] == (
-        "federal-rules-2.1.0"
+        "federal-rules-2.1.1"
     )
     assert result.contract_json["financial_items"][0]["financial_action"] == (
         "rescission"
@@ -96,6 +97,7 @@ def test_extract_contract_uses_legacy_for_expected_rejections(
         ("evidence_validation_failed", "evidence_validation_failed"),
     ],
 )
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False)
 def test_extract_contract_uses_legacy_for_validation_failures(reason, expected):
     with patch(
         "apps.legislation.extraction.renderer.validate_contract",

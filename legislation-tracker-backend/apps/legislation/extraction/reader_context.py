@@ -92,13 +92,13 @@ def enrich_reader_claims(source, sections, claims):
         if not modal:
             continue
         # Process the highest modal list once; nested leaves retain every parent.
-        if any(a <= section.span.start_char < b for a, b in replaced_ranges):
+        if any(a <= introduction.start_char and introduction.end_char <= b for a, b in replaced_ranges):
             continue
         actor = _clean(introduction.text[: modal.start()])
         action = _clean(introduction.text[modal.end() :])
         if not actor or modal.group().lower() not in {"shall", "must", "may"}:
             continue
-        replaced_ranges.append((section.span.start_char, section.span.end_char))
+        addition_start = len(additions)
         optional = re.search(r"\bmay include\b", action, re.I)
         if optional:
             # Preserve the compulsory lead separately from its optional examples.
@@ -134,7 +134,7 @@ def enrich_reader_claims(source, sections, claims):
             parents,
             evidence,
             *,
-            optional=optional,
+            optional=bool(optional),
             modal=modal,
             actor=actor,
             prefix=prefix,
@@ -144,16 +144,37 @@ def enrich_reader_claims(source, sections, claims):
                 for start, end in quoted_ranges
             ):
                 return
-            own_spans = sentence_spans(node, source)
+            own_spans = []
+            for span in sentence_spans(node, source):
+                # An independent actor/modal is its own duty, not a list
+                # fragment. Leave its claims (and any nested list) intact.
+                independent = any(
+                    not re.search(r"\b(?:which|that)\s*$", span.text[:m.start()], re.I)
+                    for m in MODAL_RE.finditer(span.text)
+                )
+                if independent:
+                    break
+                own_spans.append(span)
             if not own_spans:
                 return
             raw = " ".join(s.text for s in own_spans)
             phrase = _clean(raw)
             phrase = re.sub(r";?\s+(?:and|or)$", "", phrase).rstrip(";")
             descendants = children.get(node.source_id, [])
+            local_optional = re.search(r"\b(?:which|that)\s+may include\b", phrase, re.I)
+            if local_optional and not optional and modal.group().lower() != "may":
+                # Keep the compulsory category separate from optional examples.
+                duty = "; ".join(parents + [phrase[:local_optional.start()].rstrip(" ,")])
+                additions.append(make(
+                    node, "requirements",
+                    {"modality": "required", "actor": actor, "action": f"{prefix} {duty}", "object": None, "conditions": []},
+                    evidence + own_spans, "reader.list.duty.v1",
+                ))
+            optional = optional or bool(local_optional)
+            replaced_ranges.extend((s.start_char, s.end_char) for s in own_spans)
             if descendants:
                 for child in descendants:
-                    walk(child, parents + [phrase], evidence + list(own_spans))
+                    walk(child, parents + [phrase], evidence + own_spans, optional=optional)
                 return
             joined = "; ".join(parents + [phrase])
             joined = re.sub(r"\bwhich may include\b", "including", joined, flags=re.I)
@@ -184,13 +205,18 @@ def enrich_reader_claims(source, sections, claims):
 
         for child in direct:
             walk(child, [], [introduction])
+        if len(additions) > addition_start:
+            replaced_ranges.append((introduction.start_char, introduction.end_char))
 
     retained = [
         c
         for c in claims
         if not (
             c.category == "requirements"
-            and any(a <= c.evidence[-1].start_char < b for a, b in replaced_ranges)
+            and any(
+                a <= c.evidence[-1].start_char and c.evidence[-1].end_char <= b
+                for a, b in replaced_ranges
+            )
         )
     ]
     # Avoid duplicates where the quoted-term extractor already recognized a term.

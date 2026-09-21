@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from decimal import Decimal
 
@@ -257,13 +256,9 @@ def _render_financial(
         "limitation": "Limits funding to no more than",
         "other_explicit": "Makes available",
     }
-    # Match this amount's qualifier, not another amount elsewhere in the span.
-    local_evidence = claim.evidence[-1].text if claim.evidence else ""
-    if amount is not None and re.search(
-        rf"\b(?:not less than|at least)\s+{re.escape(_number(amount))}(?:\.0+)?\s*(?:percent|dollars|million|billion|$)",
-        local_evidence,
-        re.I,
-    ):
+    # The extractor associates qualifiers with the original amount span,
+    # before dollars, commas and scale words are normalized.
+    if amount is not None and claim.amount_is_minimum:
         amount_text = f"at least {amount_text}"
     text = f"{verbs[str(action)]} {amount_text}"
     if (

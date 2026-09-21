@@ -95,6 +95,7 @@ class _AmountMatch:
     currency: str | None
     start: int
     end: int
+    is_minimum: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,14 @@ def _actions(text: str) -> tuple[_ActionMatch, ...]:
     actions = []
     for match in _ACTION_RE.finditer(text):
         action = next(name for name, value in match.groupdict().items() if value)
+        if action == "set_aside" and match.group().lower().startswith("reserv"):
+            # A reservation must be operative, not an agency/account name or
+            # a reference to money previously reserved by another provision.
+            if not re.search(
+                r"\b(?:shall|must|may|to|is|are|be|was|were)\s+(?:(?:also|hereby)\s+)?$",
+                text[:match.start()], re.I,
+            ):
+                continue
         actions.append(_ActionMatch(action, match.start(), match.end()))
     return tuple(actions)
 
@@ -144,6 +153,7 @@ def _amounts(text: str) -> tuple[_AmountMatch, ...]:
                 currency="USD",
                 start=match.start(),
                 end=match.end(),
+                is_minimum=bool(re.search(r"\b(?:not\s+less\s+than|at\s+least)\s*$", text[:match.start()], re.I)),
             )
         )
     for match in _PERCENT_RE.finditer(text):
@@ -156,6 +166,7 @@ def _amounts(text: str) -> tuple[_AmountMatch, ...]:
                 currency=None,
                 start=match.start(),
                 end=match.end(),
+                is_minimum=bool(re.search(r"\b(?:not\s+less\s+than|at\s+least)\s*$", text[:match.start()], re.I)),
             )
         )
     for match in _SUCH_SUMS_RE.finditer(text):
@@ -365,6 +376,7 @@ def _claim(
         source_id=section.source_id,
         section_id=section.source_id,
         section_path=section.path,
+        amount_is_minimum=amount.is_minimum,
     )
 
 

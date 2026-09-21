@@ -12,7 +12,7 @@ def collapse_stale_pending_work(apps, schema_editor):
             source_updated_at__gt=OuterRef("source_updated_at"),
         )
         stale_ids = list(
-            work_item.objects.filter(status="pending")
+            work_item.objects.filter(status="pending", attempt_count=0)
             .annotate(has_newer_revision=Exists(newer_revision))
             .filter(has_newer_revision=True)
             .values_list("pk", flat=True)[:1000]
@@ -38,7 +38,7 @@ def collapse_stale_pending_work(apps, schema_editor):
             tracking_request.objects.filter(work_item_id=stale.pk).update(
                 work_item_id=replacement_id
             )
-        work_item.objects.filter(pk__in=stale_ids).delete()
+        work_item.objects.filter(pk__in=stale_ids, status="pending", attempt_count=0).delete()
 
 
 class Migration(migrations.Migration):

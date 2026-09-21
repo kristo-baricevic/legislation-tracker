@@ -8,6 +8,7 @@ import pytest
 from botocore.exceptions import ClientError
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
+from django.test import override_settings
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
@@ -2329,6 +2330,7 @@ def test_download_document_closes_spooled_file_when_extraction_fails(monkeypatch
         ),
     ],
 )
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
 def test_downloaded_congress_text_reaches_legal_nlp_v2(
     monkeypatch, content_type, payload
 ):
@@ -2408,6 +2410,7 @@ def test_download_document_records_one_atomic_new_version_event(monkeypatch):
 
 
 @pytest.mark.django_db
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
 def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
     payload = (
         b"<bill><legis-body><division><enum>A</enum><header>Programs</header>"
@@ -2459,6 +2462,7 @@ def test_downloaded_nested_congress_xml_reaches_legal_nlp_v2(monkeypatch):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("content_type", [None, "application/octet-stream"])
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True)
 def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_type(
     monkeypatch, content_type
 ):

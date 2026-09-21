@@ -1278,7 +1278,7 @@ export interface EnhancementUncertainLanguage extends EnhancementAtomicItem {
 }
 
 export interface EnhancementResult {
-  schema_version: "1.1";
+  schema_version: "1.1" | "1.2";
   overview: EnhancementAtomicItem[];
   key_impacts: EnhancementAtomicItem[];
   obligations: EnhancementObligation[];

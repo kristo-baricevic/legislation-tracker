@@ -104,6 +104,7 @@ class ExtractedClaim:
     source_id: str | None = None
     section_id: str | None = None
     section_path: tuple[SectionPathItem, ...] = ()
+    amount_is_minimum: bool = False
 
 
 @dataclass(frozen=True)
