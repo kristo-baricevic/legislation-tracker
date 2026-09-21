@@ -341,9 +341,23 @@ def _render_definition(
         "includes": "to include",
         "excludes": "to exclude",
     }[str(definition_type)]
+    display = f"Defines “{term}” {connector} {definition.rstrip('.')}."
+    # Enrichment can span an entire enumerated definition. Omit only that
+    # unrenderable definition, not the otherwise valid bill-level contract.
+    if (
+        len(claim.fields["term"]) > 1000
+        or len(claim.fields["definition"]) > 4000
+        or len(display) > 4000
+    ):
+        return ExtractionWarning(
+            code="reader_definition_too_long",
+            rule_id=claim.rule_id,
+            source_id=claim.source_id,
+            evidence=claim.evidence,
+        )
     return RenderedReaderClaim(
         kind="definition",
-        display_text=f"Defines “{term}” {connector} {definition.rstrip('.')}.",
+        display_text=display,
         actor=None,
         action="define",
         effect=definition,

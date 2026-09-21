@@ -397,8 +397,11 @@ def build_reader_brief(
         definition_item_count=len(definition_items),
         section_group_count=len(section_groups),
     )
+    coverage_note = _coverage_note(stats)
+    if any(w.code == "reader_definition_too_long" for w in warnings):
+        coverage_note += " Some definitions are too long to display; read their full wording in the bill text."
     return ReaderBrief(
-        coverage_note=_coverage_note(stats),
+        coverage_note=coverage_note,
         orientation=ReaderOrientation(
             purpose_line.rendered.display_text if purpose_line is not None else None,
             purpose_line.id if purpose_line is not None else None,

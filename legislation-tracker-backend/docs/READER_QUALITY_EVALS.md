@@ -84,6 +84,13 @@ available and percentage caps are not presented as dollars.
   than separate compulsory duties. Nested percentage reservations recognize both
   minimums and caps. The money ledger displays the qualified extraction text, not
   just the bare amount.
+- Definitions exceeding the schema's field or display limits are omitted with a
+  `reader_definition_too_long` warning and a reader-facing coverage notice. The
+  full wording remains in the bill text; unrelated provisions and money items
+  remain available instead of forcing the entire bill into legacy extraction.
+- Reservation extraction requires a monetary object or a bare list introduction;
+  reserving rights, authority, or rooms does not create a budget entry merely
+  because the same clause mentions a dollar amount.
 - AI prompt/schema 1.2: checks nested uses of funds, resolves local definitions,
   preserves financial conditions, and requests short exact supporting quotations.
   Every quote must match uniquely inside its saved source. The server calculates

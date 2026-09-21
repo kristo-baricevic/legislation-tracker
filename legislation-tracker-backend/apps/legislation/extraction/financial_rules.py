@@ -127,6 +127,43 @@ def _normalize_number(raw: str) -> str:
     return format((Decimal(normalized) * multiplier).quantize(Decimal("0.01")), ".2f")
 
 
+def _reservation_has_financial_object(before: str, after: str) -> bool:
+    tail = after.strip()
+    # Bare list introductions inherit their financial amounts from the leaves.
+    if not tail.rstrip(":—–-"):
+        return True
+    tail = re.sub(
+        r"^(?:not\s+(?:less|more)\s+than|at\s+least|up\s+to)\s+", "", tail, flags=re.I
+    )
+    if _MONEY_RE.match(tail) or _PERCENT_RE.match(tail) or _SUCH_SUMS_RE.match(tail):
+        return True
+    # A fronted purpose can separate the verb from its monetary object:
+    # 'reserve, for rural grants, $5 million'.
+    object_amount = _MONEY_RE.search(tail) or _PERCENT_RE.search(tail)
+    if object_amount and re.fullmatch(
+        r",?\s*for\s+[^,;.]+,?\s*", tail[: object_amount.start()], re.I
+    ):
+        return True
+    if re.match(
+        r"(?:(?:the|a|an|any|all|some|remaining|available|unobligated|additional|appropriated)\s+)*"
+        r"(?:funds?|amounts?|money|appropriations?|balances?|sums?)\b",
+        tail,
+        re.I,
+    ):
+        return True
+    # Passive monetary subjects: '$5 million is reserved for ...'. An amount
+    # elsewhere in a reservation of rights/authority is not the verb's object.
+    amounts = tuple(_MONEY_RE.finditer(before)) + tuple(_PERCENT_RE.finditer(before))
+    return any(
+        re.fullmatch(
+            r"\s+(?:(?:shall|must|may)\s+)?(?:is|are|was|were|be)\s+(?:hereby\s+)?",
+            before[amount.end() :],
+            re.I,
+        )
+        for amount in amounts
+    )
+
+
 def _actions(text: str) -> tuple[_ActionMatch, ...]:
     actions = []
     for match in _ACTION_RE.finditer(text):
@@ -138,6 +175,10 @@ def _actions(text: str) -> tuple[_ActionMatch, ...]:
                 r"\b(?:shall|must|may|to|is|are|be|was|were)\s+(?:(?:also|hereby)\s+)?$",
                 text[: match.start()],
                 re.I,
+            ):
+                continue
+            if not _reservation_has_financial_object(
+                text[: match.start()], text[match.end() :]
             ):
                 continue
         actions.append(_ActionMatch(action, match.start(), match.end()))

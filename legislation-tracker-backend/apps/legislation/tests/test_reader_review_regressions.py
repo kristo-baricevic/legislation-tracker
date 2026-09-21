@@ -179,3 +179,60 @@ def test_grouped_nested_choice_preserves_independent_child_duties():
         x["actor"] == "Recipients" and "annual accounts" in x["display_text"]
         for x in contract["requirements"]
     )
+
+
+@pytest.mark.parametrize("length", [3950, 5100])
+def test_oversized_definition_does_not_discard_other_reader_items(length):
+    text = (
+        "SEC. 2. Definitions\nThe term eligible entity means—\n"
+        "(1) an institution providing "
+        + "student services "
+        * (length // 17)
+        + ".\nSEC. 3. Grants\nThere is appropriated $5 million for rural grants.\n"
+        "The Secretary shall publish a report."
+    )
+    contract = extract(text)
+    assert contract["schema_version"] == "2.1-legal-nlp"
+    assert contract["financial_items"][0]["amount"] == "5000000.00"
+    assert any(
+        "publish a report" in item["display_text"] for item in contract["line_items"]
+    )
+    assert contract["definitions"] == []
+    assert "reader_definition_too_long" in contract["extraction"]["warnings"]
+    assert (
+        "definitions" in contract["coverage_note"]
+        and "bill text" in contract["coverage_note"]
+    )
+
+
+@pytest.mark.parametrize(
+    "object_text",
+    [
+        "the right to reject applications requesting more than $5 million",
+        "the right to recover $5 million in damages",
+        "authority over projects costing $5 million",
+        "rooms for a conference costing $5 million",
+    ],
+)
+def test_nonfinancial_reservations_do_not_invent_budget_items(object_text):
+    contract = extract(f"SEC. 2. Rules\nThe Secretary may reserve {object_text}.")
+    assert contract["financial_items"] == []
+    assert any("reserve" in item["display_text"] for item in contract["line_items"])
+
+
+@pytest.mark.parametrize(
+    "provision",
+    [
+        "The Secretary shall reserve $5 million for rural grants.",
+        "The Secretary shall reserve funds totaling $5 million for rural grants.",
+        "The Secretary shall reserve for rural grants $5 million.",
+        "The Secretary shall reserve, for rural grants, $5 million.",
+        "$5 million is reserved for rural grants.",
+        "From available funds, the Secretary shall reserve—\n(1) $5 million for rural grants.",
+    ],
+)
+def test_financial_reservation_forms_remain_supported(provision):
+    contract = extract("SEC. 2. Grants\n" + provision)
+    assert len(contract["financial_items"]) == 1
+    assert contract["financial_items"][0]["financial_action"] == "set_aside"
+    assert contract["financial_items"][0]["amount"] == "5000000.00"
