@@ -56,14 +56,15 @@ def _classify(section, span, parent=None):
         disposition = "uncertain"
     elif DISCUSSION.search(text) or re.match(r"establish\s+whether\b", action, re.I):
         disposition = "discussion"
-    elif (
-        len(list(MODAL.finditer(text))) > 1
-        and re.search(
-            r"\b(?:which|that)\b.*\b(?:shall|must|may)\b",
+    elif len(list(MODAL.finditer(text))) > 1 and re.search(
+        r"\b(?:which|that)\b.*\b(?:shall|must|may)\b",
+        re.sub(
+            r"\b(?:shall|must)\s+not\s+exceed\b",
+            "is capped at",
             re.sub(r"\bexcept that\b", "except", action, flags=re.I),
-            re.I | re.S,
-        )
-        and not re.search(r"\b(?:shall|must)\s+not\s+exceed\b", action, re.I)
+            flags=re.I,
+        ),
+        re.I | re.S,
     ):
         disposition = "uncertain"
     elif modal and (
@@ -152,4 +153,37 @@ def parse_operative_clauses(source, sections):
                 clauses.append(clause)
                 if span.text.rstrip().endswith(("—", "–", ":")):
                     introductions[section.source_id] = clause
-    return tuple(clauses)
+    # If one list condition cannot be interpreted, abstain for the complete
+    # governing provision. Never publish the remaining conditions independently.
+    by_span = {c.span: c for c in clauses}
+    groups = {}
+    for clause in clauses:
+        if clause.disposition != "uncertain":
+            continue
+        root = by_span.get(clause.context[0], clause) if clause.context else clause
+        descendants = [c for c in clauses if root.span in c.context]
+        end = max([root.span.end_char, *(c.span.end_char for c in descendants)])
+        groups[root.span.start_char] = replace(
+            root,
+            disposition="uncertain",
+            context=(),
+            span=SourceSpan(
+                source[root.span.start_char : end], root.span.start_char, end
+            ),
+        )
+    roots = [
+        g
+        for g in groups.values()
+        if not any(
+            other.span.start_char < g.span.start_char < other.span.end_char
+            for other in groups.values()
+        )
+    ]
+    retained = [
+        c
+        for c in clauses
+        if not any(
+            g.span.start_char <= c.span.start_char < g.span.end_char for g in roots
+        )
+    ]
+    return tuple(sorted([*retained, *roots], key=lambda c: c.span.start_char))

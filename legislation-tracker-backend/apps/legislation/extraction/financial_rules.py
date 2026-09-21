@@ -732,7 +732,9 @@ def _payment_records(
     )
     if not amounts:
         amounts = (_AmountMatch(None, "unspecified", None, 0, 0),)
-    fiscal_years = _fiscal_years(text)
+    # Only a leading year governs the whole schedule. Trailing years belong
+    # to the individual price, not every amount in this sentence.
+    fiscal_years = _fiscal_years(text[: amounts[0].start])
     parent = _parent_section(section, sections)
     while not fiscal_years and parent is not None:
         # Only inherit an explicit list introduction governing this child.
@@ -740,7 +742,10 @@ def _payment_records(
         if introductions and introductions[-1].text.rstrip().endswith((":", "—", "–")):
             fiscal_years = _fiscal_years(introductions[-1].text)
         parent = _parent_section(parent, sections)
-    for amount in amounts:
+    for index, amount in enumerate(amounts):
+        amount_years = (
+            _fiscal_years(_amount_subclause(text, amounts, index)) or fiscal_years
+        )
         ceiling = amount.amount is not None and bool(
             re.search(
                 r"\b(?:does\s+not\s+exceed|not\s+more\s+than|not\s+to\s+exceed|shall\s+not\s+exceed|must\s+not\s+exceed|up\s+to)\s*$",
@@ -754,7 +759,7 @@ def _payment_records(
             "amount": amount.amount,
             "amount_type": "ceiling" if ceiling else amount.amount_type,
             "currency": amount.currency,
-            "fiscal_years": list(fiscal_years),
+            "fiscal_years": list(amount_years),
             "purpose": None,
             "source_account": None,
             "destination_account": None,

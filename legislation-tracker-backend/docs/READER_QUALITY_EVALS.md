@@ -116,6 +116,16 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.9` limits the cap exception to the cap's own
+  modal, so it cannot override unrelated ambiguous scope. Each fee schedule
+  amount retains its own fiscal year, including API filtering. An uncertain
+  list condition now causes source-only presentation of the complete governing
+  provision, including all sibling conditions; partial simplified requirements
+  are suppressed. `test_reader_scope_regressions.py` is part of the acceptance
+  gate and tests reversed years and condition order. Re-extraction is required
+  for existing immutable analyses; this change does not restart the app or
+  regenerate stored or paid analyses.
+
 - Extractor `federal-rules-2.1.7` parses shared source-owned clause context once
   for payment extraction and synopsis generation. It distinguishes operative,
   prohibited, discussed, and unasserted clauses; retains ancestor introductions
