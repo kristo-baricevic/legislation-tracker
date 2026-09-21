@@ -96,13 +96,15 @@ def test_enhancement_uses_one_bounded_non_persistent_structured_request():
     assert "uniqueItems" not in json.dumps(provider_schema)
     assert provider_schema["properties"]["schema_version"]["type"] == "string"
     assert (
-        provider_schema["properties"]["obligations"]["items"]["properties"]
-        ["modality"]["type"]
+        provider_schema["properties"]["obligations"]["items"]["properties"]["modality"][
+            "type"
+        ]
         == "string"
     )
     assert (
-        provider_schema["properties"]["funding_and_timing"]["items"]["properties"]
-        ["kind"]["type"]
+        provider_schema["properties"]["funding_and_timing"]["items"]["properties"][
+            "kind"
+        ]["type"]
         == "string"
     )
     assert (
@@ -170,6 +172,33 @@ def test_explicit_validation_makes_exactly_one_minimal_request():
     assert responses.calls[0]["max_output_tokens"] == 16
     assert responses.calls[0]["store"] is False
     assert factory.calls[0]["max_retries"] == 0
+
+
+@pytest.mark.parametrize(
+    "status,text,reason,code",
+    [
+        ("incomplete", "private output", "max_output_tokens", "provider_output_limit"),
+        ("incomplete", "private output", "private reason", "provider_incomplete"),
+        ("completed", "private non-JSON output", None, "provider_invalid_json"),
+        ("completed", "[]", None, "provider_output_not_object"),
+    ],
+)
+def test_invalid_response_retains_sanitized_failure_stage(status, text, reason, code):
+    response = SimpleNamespace(
+        status=status,
+        output_text=text,
+        output=[],
+        incomplete_details=SimpleNamespace(reason=reason),
+    )
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
+    with pytest.raises(ProviderError) as caught:
+        provider.enhance_bill(
+            api_key="sk-test-secret", request=_request(), timeout_seconds=90
+        )
+    assert caught.value.validation_code == code
+    assert "private" not in str(caught.value)
 
 
 @pytest.mark.parametrize(

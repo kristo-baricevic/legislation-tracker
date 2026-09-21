@@ -251,6 +251,24 @@ The Secretary shall report the percentage of applications approved and shall pub
     assert extract(source) == ()
 
 
+def test_reserved_funding_and_nested_percentage_caps_are_all_extracted():
+    source = """SEC. 4. RESERVATION
+From the total amount appropriated for a fiscal year, the Secretary shall reserve 2 percent for tribal college grants.
+SEC. 5. GRANTS
+(d) Programs.—From the total amount appropriated and not reserved under section 4, the Secretary shall reserve not less than 20 percent for student success programs.
+(f) Administration.—From the total amount appropriated and not reserved under section 4 or subsection (d), the Secretary may set aside—
+(1) not more than 5 percent for administration, research, and reporting; and
+(2) not more than 2 percent for technical assistance.
+"""
+    claims = extract(source)
+    assert [(c.fields["amount"], c.fields["currency"]) for c in claims] == [
+        ("2.00", None), ("20.00", None), ("5.00", None), ("2.00", None),
+    ]
+    assert "technical assistance" in claims[-1].fields["purpose"]
+    assert len(claims[-1].evidence) == 2
+    assert_exact_evidence(source, claims)
+
+
 def test_financial_rules_reject_nonfinancial_percentage_reductions():
     source = """SEC. 15A. EMISSIONS
 The Administrator shall reduce greenhouse gas emissions by 50 percent by 2030.

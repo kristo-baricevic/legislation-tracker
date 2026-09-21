@@ -42,7 +42,7 @@ function pathLabel(item: LegalNlpFinancialItem): string {
 
 function formatAmount(item: LegalNlpFinancialItem): string | null {
   if (item.amount_type === "such_sums") return "Such sums as necessary";
-  if (item.amount_type === "percentage") return item.amount ? `${item.amount}%` : null;
+  if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) return item.amount ? `${Number(item.amount)}%` : null;
   if (!item.amount) return null;
   const amount = Number(item.amount);
   if (!Number.isFinite(amount)) return item.amount;
@@ -70,6 +70,8 @@ export function FinancialLedger({
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<FinancialAction | "">("");
   const [yearInput, setYearInput] = useState("");
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const [filtersApplied, setFiltersApplied] = useState(false);
   const [filters, setFilters] = useState<{ action: FinancialAction | ""; year: number | null }>({ action: "", year: null });
   const requestId = useRef(0);
 
@@ -115,7 +117,13 @@ export function FinancialLedger({
   }, [contractId, filters, lineItemId, sectionId, totalCount]);
 
   function applyFilters() {
-    const parsedYear = /^\d{4}$/.test(yearInput) ? Number(yearInput) : null;
+    if (yearInput.trim() && !/^\d{4}$/.test(yearInput.trim())) {
+      setFilterError("Enter a four-digit fiscal year, or leave it blank for all years.");
+      return;
+    }
+    setFilterError(null);
+    setFiltersApplied(true);
+    const parsedYear = yearInput.trim() ? Number(yearInput.trim()) : null;
     setFilters({ action, year: parsedYear });
   }
 
@@ -130,7 +138,7 @@ export function FinancialLedger({
       </header>
 
       <div className="p-4">
-        <div className="grid gap-3 border-b border-slate-200 pb-4 dark:border-green-900/70 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
+        <fieldset disabled={totalCount === 0} className="grid gap-3 border-b border-slate-200 pb-4 disabled:opacity-50 dark:border-green-900/70 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
           <label className="text-sm font-semibold text-slate-800 dark:text-green-300">
             Financial action
             <select value={action} onChange={(event) => setAction(event.target.value as FinancialAction | "")} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
@@ -143,7 +151,9 @@ export function FinancialLedger({
             <input inputMode="numeric" value={yearInput} onChange={(event) => setYearInput(event.target.value)} placeholder="e.g. 2027" className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
           </label>
           <button type="button" onClick={applyFilters} className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:border-green-700 dark:text-green-300">Apply money filters</button>
-        </div>
+        </fieldset>
+        {filterError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{filterError}</p>}
+        {filtersApplied && !loading && !error && !filterError && <p role="status" className="mt-3 text-sm text-slate-700 dark:text-green-300">Filters applied: {filteredCount} matching provisions.</p>}
 
         {lineItemId && onClearLineItem && (
           <button type="button" onClick={onClearLineItem} className="mt-4 cursor-pointer text-sm font-semibold text-blue-900 underline dark:text-green-400">Show all money in this bill</button>
@@ -158,7 +168,7 @@ export function FinancialLedger({
           </div>
         )}
         {loading && items.length === 0 && <p aria-live="polite" className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading money provisions…</p>}
-        {!loading && !error && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">No recognized financial provisions match these filters.</p>}
+        {!loading && !error && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">{totalCount === 0 ? "No financial provisions have been extracted for this bill. Filters are unavailable until financial records exist; this does not mean the bill has no financial effects." : "No recognized financial provisions match these filters."}</p>}
 
         {items.length > 0 && (
           <ol className="mt-4 divide-y divide-slate-300 border-y border-slate-300 dark:divide-green-900 dark:border-green-900">

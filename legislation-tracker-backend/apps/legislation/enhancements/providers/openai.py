@@ -183,6 +183,10 @@ class OpenAIEnhancementProvider:
         if _value(response, "status") != "completed":
             raise ProviderError(
                 "invalid_output",
+                validation_code="provider_output_limit"
+                if _value(_value(response, "incomplete_details"), "reason")
+                == "max_output_tokens"
+                else "provider_incomplete",
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,
@@ -193,6 +197,7 @@ class OpenAIEnhancementProvider:
         except (TypeError, ValueError):
             raise ProviderError(
                 "invalid_output",
+                validation_code="provider_invalid_json",
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,
@@ -200,6 +205,7 @@ class OpenAIEnhancementProvider:
         if not isinstance(output, dict):
             raise ProviderError(
                 "invalid_output",
+                validation_code="provider_output_not_object",
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,

@@ -1295,6 +1295,7 @@ export interface EnhancementAttempt {
   usage: EnhancementUsage;
   resolved_model: string | null;
   failure_category: string | null;
+  failure_detail?: { code: string; message: string; path: string } | null;
   retry_allowed: boolean;
   started_at: string | null;
   completed_at: string | null;

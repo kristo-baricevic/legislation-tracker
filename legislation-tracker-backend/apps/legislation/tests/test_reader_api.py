@@ -12,6 +12,23 @@ def _path(section="Sec. 1"):
     return [{"level": "section", "label": section, "heading": "Programs"}]
 
 
+@pytest.mark.django_db
+def test_extracted_hr9300_breakdown_can_be_served_including_purpose(reader_contract):
+    from .test_reader_quality import extract_fixture
+
+    _, result = extract_fixture()
+    _, reader_contract = reader_contract
+    reader_contract.contract_json = result.contract_json
+    reader_contract.save(update_fields=["contract_json"])
+    response = APIClient().get(
+        f"/api/contracts/{reader_contract.pk}/reader-items/", {"page_size": 25}
+    )
+    assert response.status_code == 200, response.data
+    assert any(item["kind"] == "purpose" for item in response.data["results"])
+    assert len(response.data["results"]) == 25
+    assert response.data["next"]
+
+
 def _financial(index, *, action="appropriation", year=2026, section_id="section-1"):
     return {
         "id": f"financial-{index}",

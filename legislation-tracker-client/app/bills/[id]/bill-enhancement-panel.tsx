@@ -26,8 +26,8 @@ function CitedSources({ sources }: { sources: EnhancementCitedSource[] }) {
     <details className="mt-2 text-xs text-slate-600 dark:text-green-500">
       <summary className="cursor-pointer underline underline-offset-2">Read bill text</summary>
       <div className="mt-2 space-y-3">
-      {sources.map((source) => (
-        <div key={source.source_ref} className="border-l-2 border-amber-400 pl-3 text-xs">
+      {sources.map((source, index) => (
+        <div key={`${source.source_ref}:${source.start_char}:${index}`} className="border-l-2 border-amber-400 pl-3 text-xs">
           <p className="font-semibold text-amber-800 dark:text-amber-300">
             <span>{source.label}</span>
             {source.section_label ? ` · ${source.section_label}` : ""}
@@ -424,9 +424,19 @@ export default function BillEnhancementPanel({
         </>
       )}
       {enhancement && ["failed", "refused", "outcome_unknown"].includes(enhancement.status) && (
+        <div>
         <p className="mt-4 text-sm text-slate-700 dark:text-green-500">
           {enhancement.status === "outcome_unknown" ? "The provider outcome is unknown. The earlier request may already have incurred usage." : `The request ended as ${enhancement.status}.`}
         </p>
+        {enhancement.latest_attempt?.failure_detail ? (
+          <div className="mt-2 text-sm text-slate-700 dark:text-green-500">
+            <p>{enhancement.latest_attempt.failure_detail.message}</p>
+            <p className="mt-1 text-xs">Field: <code className="break-all">{enhancement.latest_attempt.failure_detail.path}</code></p>
+          </div>
+        ) : enhancement.latest_attempt?.failure_category === "invalid_output" ? (
+          <p className="mt-2 text-sm text-slate-700 dark:text-green-500">No detailed validation reason was recorded for this older attempt.</p>
+        ) : null}
+        </div>
       )}
 
       {confirming && estimate && (
@@ -458,6 +468,7 @@ export default function BillEnhancementPanel({
                 Attempt {attempt.sequence}: {attempt.status} · {attempt.usage.total_tokens ?? "unknown"} total tokens
                 {attempt.resolved_model ? ` · ${attempt.resolved_model}` : ""}
                 {attempt.failure_category ? ` · ${attempt.failure_category.replaceAll("_", " ")}` : ""}
+                {attempt.failure_detail && <p className="mt-1 break-all">{attempt.failure_detail.code} · {attempt.failure_detail.path}</p>}
               </li>
             ))}
           </ol>

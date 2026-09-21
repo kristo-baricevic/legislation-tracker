@@ -233,6 +233,7 @@ describe("BillEnhancementPanel", () => {
   });
 
   it("renders server-owned citations as cited sources, never verified evidence", async () => {
+    const consoleError = vi.spyOn(console, "error");
     const user = userEvent.setup();
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
@@ -268,6 +269,13 @@ describe("BillEnhancementPanel", () => {
             section_label: "Introduced",
             start_char: 7,
             end_char: 44,
+          }, {
+            source_ref: "src_0001",
+            label: "Cited source",
+            quoted_text: "The report is due within 90 days.",
+            section_label: "Introduced",
+            start_char: 45,
+            end_char: 78,
           }],
         }],
         key_impacts: [],
@@ -285,9 +293,28 @@ describe("BillEnhancementPanel", () => {
     expect(await screen.findByText("The bill requires a report.")).toBeVisible();
     expect(screen.getByText("The Secretary shall publish a report.")).not.toBeVisible();
     await user.click(screen.getByText("Read bill text"));
-    expect(screen.getByText("Cited source")).toBeVisible();
+    expect(screen.getAllByText("Cited source")).toHaveLength(2);
+    expect(screen.getByText("The report is due within 90 days.")).toBeVisible();
     expect(screen.getByText("The Secretary shall publish a report.")).toBeVisible();
     expect(screen.queryByText(/verified evidence/i)).not.toBeInTheDocument();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("shows a specific validation reason and its field location", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
+    const attempt = {
+      id: 12, sequence: 1, status: "failed" as const, credential_revision: 2,
+      estimated_input_tokens: 600, usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
+      resolved_model: "gpt-5.6-luna", failure_category: "invalid_output", retry_allowed: false,
+      failure_detail: { code: "citation_quote_not_found", message: "A cited quote does not exactly match its source text.", path: "/overview/0/source_quotes/0/quote" },
+      started_at: null, completed_at: null, created_at: "2026-08-21T00:00:00Z",
+    };
+    vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({ status: "failed", result: null, latest_attempt: attempt, attempts: [attempt] }));
+    render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
+    expect(await screen.findByText(attempt.failure_detail.message)).toBeVisible();
+    expect(screen.getByText(attempt.failure_detail.path)).toBeVisible();
   });
 
   it("keeps every funding item visible while requirements and technical details expand on demand", async () => {

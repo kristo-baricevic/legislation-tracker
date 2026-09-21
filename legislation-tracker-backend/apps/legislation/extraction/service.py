@@ -35,6 +35,9 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
         claims = legal_rules.extract_claims(source_text, sections)
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:
             claims += financial_rules.extract_financial_claims(source_text, sections)
+            from .reader_context import enrich_reader_claims
+
+            claims = enrich_reader_claims(source_text, sections, claims)
         if not claims:
             raise ExpectedExtractionRejection("no_supported_claims")
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:

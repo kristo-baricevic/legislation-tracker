@@ -375,6 +375,7 @@ class BillEnhancementAttempt(models.Model):
     resolved_model = models.CharField(max_length=128, blank=True, default="")
     result_json = models.JSONField(null=True, blank=True)
     failure_category = models.CharField(max_length=64, blank=True, default="")
+    failure_detail = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -41,7 +41,7 @@ _SUBSECTION_RANK = 120
 _PARAGRAPH_RANK = 130
 _SUBPARAGRAPH_RANK = 140
 _CLAUSE_RANK = 150
-_HEADING_SEPARATOR_RE = re.compile(r"^(?P<heading>[^\n]{1,160}?)(?:\.—|\.—|—|\. -|\.―)")
+_HEADING_SEPARATOR_RE = re.compile(r"^(?P<heading>[^\n]{1,160}?)(?:\.—|\. -|\.―)")
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?=\s|$)")
 _STATUTORY_ABBREVIATION_RE = re.compile(
     r"\b(?:U\.S\.C|U\.S|Sec|No|e\.g|i\.e)\.$",
@@ -95,8 +95,19 @@ def _subdivision_rank(label: str, prior_markers: list[_Marker]) -> int:
         return _PARAGRAPH_RANK
     if token.isupper():
         return _SUBPARAGRAPH_RANK
-    if re.fullmatch(r"[ivxlcdm]+", token) and any(
-        marker.rank >= _SUBPARAGRAPH_RANK for marker in prior_markers[-3:]
+    # A new subsection (d) after (c)'s nested list is not roman clause 500.
+    subsection = next(
+        (m for m in reversed(prior_markers) if m.rank <= _SUBSECTION_RANK), None
+    )
+    if subsection and subsection.rank == _SUBSECTION_RANK:
+        previous = subsection.label[1:-1]
+        if len(previous) == len(token) == 1 and ord(token) == ord(previous) + 1:
+            return _SUBSECTION_RANK
+    if (
+        re.fullmatch(r"[ivxlcdm]+", token)
+        and prior_markers
+        and (prior_markers[-1].rank >= _SUBPARAGRAPH_RANK)
+        and (len(token) > 1 or token in {"i", "v", "x"})
     ):
         return _CLAUSE_RANK
     return _SUBSECTION_RANK
@@ -160,7 +171,11 @@ def _subdivision_markers(source_text: str, prior: list[_Marker]) -> list[_Marker
         remainder = source_text[remainder_start:line_end].rstrip("\r\n")
         separator = _HEADING_SEPARATOR_RE.match(remainder)
         heading = separator.group("heading").strip() if separator else None
-        rank = _subdivision_rank(match.group("label"), prior + markers)
+        preceding = sorted(
+            [m for m in prior if m.start < match.start()] + markers,
+            key=lambda m: m.start,
+        )
+        rank = _subdivision_rank(match.group("label"), preceding)
         markers.append(
             _Marker(
                 start=match.start(),

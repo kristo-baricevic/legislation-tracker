@@ -102,6 +102,7 @@ def load_fixtures(path: Path):
     return [_prepare_fixture(fixture, path) for fixture in fixtures]
 
 
+@override_settings(LEGAL_NLP_V21_WRITE_ENABLED=False)
 def test_legal_nlp_evaluation_corpus_meets_release_gates():
     paths = sorted(FIXTURE_DIR.glob("*.json"))
     assert len(paths) >= 25, "Legal NLP evaluation requires at least 25 fixtures"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from decimal import Decimal
 
@@ -226,6 +227,12 @@ def _render_financial(
     currency = fields.get("currency")
     if amount_type == "such_sums":
         amount_text = "such sums as may be necessary"
+    elif (
+        amount_type in {"percentage", "ceiling"}
+        and currency is None
+        and amount is not None
+    ):
+        amount_text = f"{_number(amount)} percent"
     elif amount_type in {"specified", "ceiling"} and amount is not None:
         amount_text = _money(amount) if currency == "USD" else _number(amount)
     elif amount_type == "percentage" and amount is not None:
@@ -250,7 +257,22 @@ def _render_financial(
         "limitation": "Limits funding to no more than",
         "other_explicit": "Makes available",
     }
+    # Match this amount's qualifier, not another amount elsewhere in the span.
+    local_evidence = claim.evidence[-1].text if claim.evidence else ""
+    if amount is not None and re.search(
+        rf"\b(?:not less than|at least)\s+{re.escape(_number(amount))}(?:\.0+)?\s*(?:percent|dollars|million|billion|$)",
+        local_evidence,
+        re.I,
+    ):
+        amount_text = f"at least {amount_text}"
     text = f"{verbs[str(action)]} {amount_text}"
+    if (
+        currency is None
+        and amount is not None
+        and source_account
+        and action != "transfer"
+    ):
+        text += f" of {source_account}"
     if action == "transfer":
         text += f" from {source_account} to {destination_account}"
     purpose = _clean(fields.get("purpose"))

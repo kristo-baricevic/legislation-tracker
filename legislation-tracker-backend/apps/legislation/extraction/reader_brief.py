@@ -42,7 +42,8 @@ _CATEGORY_ORDER = {
 }
 _OPERATIVE_CATEGORIES = {"requirements", "amendment_operations", "applicability"}
 _EXPLICIT_PURPOSE_RE = re.compile(
-    r"\bthe\s+purposes?\s+of\s+(?:this|the)\s+Act\s+(?:is|are)\s+to\s+"
+    r"\b(?:the\s+purposes?\s+of\s+(?:this|the)\s+Act\s+(?:is|are)|"
+    r"It\s+is\s+the\s+purpose\s+of\s+(?:this|the)\s+Act)\s+to\s+"
     r"(?P<purpose>[^.;]{1,1000})[.;]",
     re.IGNORECASE,
 )
