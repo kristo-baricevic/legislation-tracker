@@ -80,7 +80,7 @@ describe("BillBrief", () => {
     const notice = "Some definitions are too long to display; read their full wording in the bill text.";
     render(<BillBrief bill={bill} contractSummary={{ ...contract, coverage_note: notice, reader_stats: { ...contract.reader_stats!, definition_item_count: 0 } }} onShowAllFinancial={() => undefined} />);
     expect(screen.getByText(notice)).toBeVisible();
-    expect(screen.getByRole("link", { name: "Read full bill text" })).toHaveAttribute("href", "http://localhost:8000/text/");
+    expect(screen.getByRole("link", { name: "Read full bill text" })).toHaveAttribute("href", "/documents/4");
   });
 
   beforeEach(() => {

@@ -401,14 +401,12 @@ function BillDetailInner({ routeId }: { routeId: string }) {
                       </a>
                     )}
                     {doc.text_url && (
-                      <a
-                        href={`${getApiBase()}${doc.text_url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Link
+                        href={`/documents/${doc.id}`}
                         className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
                       >
                         Read text
-                      </a>
+                      </Link>
                     )}
                     {doc.source_url && (
                       <a

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  getApiBase,
   getDefinitionItems,
   getOfficialSummary,
   getReaderItems,
@@ -345,7 +344,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
       <div className="p-4 sm:p-5">
         <aside className="mb-4 text-sm leading-6 text-slate-700 dark:text-green-300" aria-label="About this breakdown">
           <p>{contract.coverage_note}</p>
-          {document?.text_url && <a href={/^https?:\/\//.test(document.text_url) ? document.text_url : `${getApiBase()}${document.text_url}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-900 underline dark:text-green-400">Read full bill text</a>}
+          {document?.text_url && <Link href={`/documents/${document.id}`} className="font-semibold text-blue-900 underline dark:text-green-400">Read full bill text</Link>}
         </aside>
         <details onToggle={(event) => {
           const open = event.currentTarget.open;
