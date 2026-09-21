@@ -213,7 +213,7 @@ def test_validate_contract_accepts_complete_v21_reader_contract():
     validate_contract(contract, result.evidence, V21_SOURCE)
     assert contract["schema_version"] == "2.1-legal-nlp"
     assert contract["extraction"]["parser_version"] == "2.1.0"
-    assert contract["extraction"]["extractor_version"] == "federal-rules-2.1.7"
+    assert contract["extraction"]["extractor_version"] == "federal-rules-2.1.8"
     assert contract["reader_stats"] == {
         "line_item_count": 2,
         "financial_item_count": 1,

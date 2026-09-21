@@ -88,6 +88,7 @@ def score_reader(
         if any(re.search(p, x["text"], re.I) for x in items)
     ]
     texts = [x["text"] for x in items]
+    source_only = sum(t.startswith("Source text (not simplified):") for t in texts)
     definitions = [x["text"] for x in items if x.get("category") == "definition"]
     unresolved = sum("unresolved legal reference" in t.lower() for t in definitions)
     unexplained = sum(
@@ -179,6 +180,8 @@ def score_reader(
         "missing_facts": missing,
         "forbidden_matches": forbidden,
         "metrics": {
+            "source_only_item_count": source_only,
+            "source_only_item_fraction": source_only / len(texts) if texts else None,
             "unexplained_definition_count": unexplained,
             "unresolved_definition_count": unresolved,
             "literal_definition_count": sum(

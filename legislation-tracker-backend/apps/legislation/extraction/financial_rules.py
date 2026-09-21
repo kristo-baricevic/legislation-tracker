@@ -682,7 +682,11 @@ def _payment_claims(source, sections, clauses=None):
         inherited = False
         if not actions and clause.context and clause.modality:
             # Only bare list prices inherit a parent's payment action.
-            if re.match(r"\s*(?:\$|[0-9]+(?:\.[0-9]+)?\s+percent)", span.text):
+            if re.match(
+                r"\s*(?:(?:not\s+(?:more|less)\s+than|not\s+to\s+exceed|at\s+least|up\s+to)\s+)?(?:\$|[0-9]+(?:\.[0-9]+)?\s+percent)",
+                span.text,
+                re.I,
+            ):
                 actions = _payment_actions(clause.context[-1].text)
                 inherited = True
         for action in actions:
@@ -739,7 +743,7 @@ def _payment_records(
     for amount in amounts:
         ceiling = amount.amount is not None and bool(
             re.search(
-                r"\b(?:does not exceed|not more than|not to exceed|shall not exceed|must not exceed|up to)\s*$",
+                r"\b(?:does\s+not\s+exceed|not\s+more\s+than|not\s+to\s+exceed|shall\s+not\s+exceed|must\s+not\s+exceed|up\s+to)\s*$",
                 text[: amount.start],
                 re.I,
             )

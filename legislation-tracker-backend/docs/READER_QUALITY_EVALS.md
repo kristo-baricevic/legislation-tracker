@@ -5,6 +5,46 @@ items and usable source citations—not merely valid JSON.
 
 ## Free, offline runs
 
+### Reader acceptance gate
+
+Run from the backend directory:
+
+```sh
+rtk proxy env LEGAL_NLP_V21_WRITE_ENABLED=False .venv/bin/pytest -c pytest.reader.ini
+```
+
+This is the fixed gate for reader extraction changes. It combines the reported
+scope failures, the existing combination matrix, payment/synopsis regressions,
+glossary mutation checks, schema validation, and the H.R.1589 and H.R.9300
+source fixtures. Expected facts are handwritten. Do not replace expected facts
+with snapshots of whatever the extractor currently returns.
+
+Acceptance requires every selected test to pass: no invented payment/program,
+no loss of a supported fee or qualifier, no duplicate list prices, exact evidence,
+and visible source text for ambiguous scope. `test_reader_acceptance.py` additionally
+combines negation with deadlines and wrapping and tests grouped uncertain lists.
+The tests exercise extraction through the public contract-producing service.
+
+Extractor `federal-rules-2.1.8` abstains from simplifying detected ambiguous
+relative-clause and discussion/coordination scopes. Those passages appear as
+"Source text (not simplified)" with source evidence and a
+`reader_uncertain_clause` extraction warning, not an inferred money item or
+synopsis claim. Their original text remains accessible; oversized displays point
+to complete source evidence. Existing immutable analyses require re-extraction.
+The evaluator reports `source_only_item_count` and `source_only_item_fraction`
+separately, so abstention cannot be mistaken for successful simplification.
+Negative subjects also use source wording where the old requirement renderer
+would incorrectly turn a prohibition into a requirement. API pagination is
+checked against the complete generated item sequence, not a fixed bill item count.
+
+This is a **bounded regression gate**, not a claim of complete legal understanding.
+H.R.1589 checks financial coverage and synopsis facts; its known whole-reader
+fragment/duplicate failures remain separate in `evaluate_reader_quality` below.
+Do not weaken that evaluator or claim its full-reader result passes because this
+gate passes. New unsupported constructions must receive an explicit source-only
+expectation, not silently disappear. No provider calls, application restart, or
+production backfill is part of running this gate.
+
 From the backend directory:
 
 ```sh

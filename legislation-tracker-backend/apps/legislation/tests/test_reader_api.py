@@ -21,12 +21,20 @@ def test_extracted_hr9300_breakdown_can_be_served_including_purpose(reader_contr
     reader_contract.contract_json = result.contract_json
     reader_contract.save(update_fields=["contract_json"])
     response = APIClient().get(
-        f"/api/contracts/{reader_contract.pk}/reader-items/", {"page_size": 25}
+        f"/api/contracts/{reader_contract.pk}/reader-items/", {"page_size": 10}
     )
     assert response.status_code == 200, response.data
     assert any(item["kind"] == "purpose" for item in response.data["results"])
-    assert len(response.data["results"]) == 25
+    assert len(response.data["results"]) == 10
     assert response.data["next"]
+    items = list(response.data["results"])
+    while response.data["next"]:
+        response = APIClient().get(response.data["next"])
+        assert response.status_code == 200, response.data
+        items.extend(response.data["results"])
+    assert [i["id"] for i in items] == [
+        i["id"] for i in result.contract_json["line_items"]
+    ]
 
 
 def _financial(index, *, action="appropriation", year=2026, section_id="section-1"):

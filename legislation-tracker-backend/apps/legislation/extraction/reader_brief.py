@@ -252,9 +252,23 @@ def build_reader_brief(
     clauses=None,
 ) -> ReaderBrief:
     warnings = []
+    # The legacy requirement renderer cannot safely paraphrase a negative
+    # subject ("No agency shall ...") as an ordinary actor. Keep its source too.
+    uncertain = [
+        c
+        for c in (clauses or ())
+        if c.disposition == "uncertain"
+        or (c.disposition == "prohibition" and c.modality and "not" not in c.modality)
+    ]
     rendered_by_claim: dict[int, RenderedReaderClaim] = {}
     renderable_claims = []
     for claim in claims:
+        if any(
+            span.start_char < c.span.end_char and c.span.start_char < span.end_char
+            for c in uncertain
+            for span in claim.evidence
+        ):
+            continue
         if claim.category not in _PREFIX_BY_CATEGORY:
             continue
         rendered = render_reader_claim(claim)
@@ -345,6 +359,53 @@ def build_reader_brief(
                 warnings.append(standalone)
             else:
                 lines.append(standalone)
+
+    uncertain_spans = {c.span for c in uncertain}
+    for clause in uncertain:
+        if any(span in uncertain_spans for span in clause.context):
+            continue
+        source_id = f"source-{clause.span.start_char}"
+        descendants = [c for c in uncertain if clause.span in c.context]
+        evidence = clause.evidence
+        if descendants and source_text is not None:
+            end = max(c.span.end_char for c in descendants)
+            evidence = (
+                *clause.context,
+                SourceSpan(
+                    source_text[clause.span.start_char : end],
+                    clause.span.start_char,
+                    end,
+                ),
+            )
+        raw = " ".join(span.text for span in evidence)
+        display = "Source text (not simplified): " + raw
+        if len(display) > 4000:
+            display = display[:3900] + "… Open the source for the complete wording."
+        lines.append(
+            _LineDraft(
+                id=f"line-{source_id}",
+                source_id=source_id,
+                section_id=clause.section.source_id,
+                section_path=clause.section.path,
+                rendered=RenderedReaderClaim(
+                    kind="applicability",
+                    display_text=display,
+                    actor=None,
+                    action=None,
+                    effect=None,
+                ),
+                claim_refs=(),
+                evidence=evidence,
+            )
+        )
+        warnings.append(
+            ExtractionWarning(
+                "reader_uncertain_clause",
+                "clause.scope.v1",
+                clause.section.source_id,
+                evidence,
+            )
+        )
 
     purpose_line = _explicit_purpose_line(sections)
     if (
