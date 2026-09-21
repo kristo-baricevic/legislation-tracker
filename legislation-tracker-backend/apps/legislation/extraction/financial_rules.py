@@ -6,6 +6,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from itertools import pairwise
 
 from .display_text import normalize_reader_fragment
 from .federal_clauses import iter_operative_clauses
@@ -445,16 +446,18 @@ def extract_financial_claims(
     """Return every explicitly supported financial provision in source order."""
 
     claims = list(_payment_claims(source_text, sections, clauses))
-    payment_spans = [span for claim in claims for span in claim.evidence]
+    payment_spans = [claim.fields["_payment_span"] for claim in claims]
     payment_offsets = {
         claim.fields["_amount_span"]
         for claim in claims
         if claim.fields.get("_amount_span")
     }
-    for section, span, _ in iter_operative_clauses(source_text, sections):
+    for section, span, _ in iter_operative_clauses(
+        source_text, sections, date_aware=True
+    ):
         payment_sentence = any(
-            p.start_char <= span.start_char and span.end_char <= p.end_char
-            for p in payment_spans
+            start <= span.start_char and span.end_char <= end
+            for start, end in payment_spans
         )
         actions = _actions(span.text)
         # A payment/account sentence can also contain a distinct appropriation.
@@ -569,10 +572,15 @@ def extract_financial_claims(
             fields={
                 key: value
                 for key, value in claim.fields.items()
-                if key != "_amount_span"
+                if key not in {"_amount_span", "_payment_span"}
             },
         )
-        for claim in claims
+        for claim in sorted(
+            claims,
+            key=lambda c: (
+                c.fields.get("_amount_span") or (c.evidence[-1].start_char,)
+            )[0],
+        )
     )
 
 
@@ -625,12 +633,20 @@ def _payment_amounts(text, action):
         continuation = False
         if owned is not None:
             between = text[owned.end : amount.start]
+            # Fiscal qualifiers may precede or follow a schedule price. They
+            # belong to that price, not to the payment-noun continuation grammar.
+            between = re.sub(
+                r"\bfor\s+fiscal\s+years?\s+\d{4}(?:\s+(?:through|to|-)\s+\d{4})?\s*,?",
+                "",
+                between,
+                flags=re.I,
+            )
             # A coordinated price or the next enumerated price inherits the
             # payment noun, but an income/eligibility threshold does not.
             continuation = bool(
                 re.fullmatch(
                     r"\s*(?:for\s+(?:(?!\b(?:if|income|assets|salary|earnings|when)\b).)+?)?"
-                    r"\s*(?:;?\s*(?:and|or)\s+|;?\s*(?:(?:and|or)\s*)?\n\s*\([a-z0-9]+\)\s*)"
+                    r"\s*(?:;?\s*(?:and|or)\s*,?\s*|;?\s*(?:(?:and|or)\s*)?\n\s*\([a-z0-9]+\)\s*)"
                     r"(?:(?:not more than|not less than|at least|up to)\s+)?",
                     between,
                     re.I | re.S,
@@ -650,11 +666,15 @@ def _payment_actions(text):
         actions.append("fee_exemption")
     if re.search(
         r"\bsurcharge\b.*\b(?:shall|must) be (?:imposed|collected)\b", text, re.I | re.S
+    ) or re.search(
+        r"\b(?:shall|must|may)\b.*\b(?:impose|collect|pay)\s+(?:an?\s+)?(?:additional\s+)?surcharge\b",
+        text,
+        re.I | re.S,
     ):
         actions.append("surcharge")
     if re.search(r"\b(?:shall|must|may) be fined\b", text, re.I):
         actions.append("penalty")
-    if not actions and re.search(
+    if re.search(
         r"\b(?:shall|may|must)\b.*\b(?:pay|require|include a requirement)\b.*\bfee\b",
         text,
         re.I | re.S,
@@ -703,16 +723,47 @@ def _payment_claims(source, sections, clauses=None):
                 # Eligibility alternatives are context for one exemption.
                 end = max(c.span.end_char for c in children)
                 evidence = (
-                    *clause.context,
+                    *clause.evidence_context,
                     SourceSpan(source[span.start_char : end], span.start_char, end),
                 )
             yield from _payment_records(
-                source, sections, section, span, action, evidence, inherited
+                source,
+                sections,
+                section,
+                span,
+                action,
+                evidence,
+                inherited,
+                governing_sentence=clause.sentence,
+                owned_end=max([span.end_char, *(c.span.end_char for c in children)]),
             )
 
 
+def _payment_subclauses(text, amounts):
+    """Keep a coordinated price's leading and trailing qualifiers together."""
+    boundaries = [0]
+    for previous, current in pairwise(amounts):
+        between = text[previous.end : current.start]
+        connectors = list(
+            re.finditer(r"\b(?:and|or)\b\s*,?\s*|\n\s*\([a-z0-9]+\)\s*", between, re.I)
+        )
+        boundaries.append(
+            previous.end + connectors[-1].end() if connectors else current.start
+        )
+    boundaries.append(len(text))
+    return [text[start:end] for start, end in pairwise(boundaries)]
+
+
 def _payment_records(
-    source, sections, section, span, action, evidence, inherited=False
+    source,
+    sections,
+    section,
+    span,
+    action,
+    evidence,
+    inherited=False,
+    governing_sentence=None,
+    owned_end=None,
 ):
     text = span.text
     prefix = (
@@ -735,6 +786,12 @@ def _payment_records(
     # Only a leading year governs the whole schedule. Trailing years belong
     # to the individual price, not every amount in this sentence.
     fiscal_years = _fiscal_years(text[: amounts[0].start])
+    if not fiscal_years and governing_sentence is not None:
+        governing_amounts = _amounts(governing_sentence.text)
+        if governing_amounts:
+            fiscal_years = _fiscal_years(
+                governing_sentence.text[: governing_amounts[0].start]
+            )
     parent = _parent_section(section, sections)
     while not fiscal_years and parent is not None:
         # Only inherit an explicit list introduction governing this child.
@@ -742,10 +799,10 @@ def _payment_records(
         if introductions and introductions[-1].text.rstrip().endswith((":", "—", "–")):
             fiscal_years = _fiscal_years(introductions[-1].text)
         parent = _parent_section(parent, sections)
-    for index, amount in enumerate(amounts):
-        amount_years = (
-            _fiscal_years(_amount_subclause(text, amounts, index)) or fiscal_years
-        )
+    for amount, local_text in zip(
+        amounts, _payment_subclauses(text, amounts), strict=True
+    ):
+        amount_years = _fiscal_years(local_text) or fiscal_years
         ceiling = amount.amount is not None and bool(
             re.search(
                 r"\b(?:does\s+not\s+exceed|not\s+more\s+than|not\s+to\s+exceed|shall\s+not\s+exceed|must\s+not\s+exceed|up\s+to)\s*$",
@@ -763,6 +820,7 @@ def _payment_records(
             "purpose": None,
             "source_account": None,
             "destination_account": None,
+            "_payment_span": (span.start_char, owned_end or span.end_char),
             "_amount_span": (
                 span.start_char + amount.start,
                 span.start_char + amount.end,

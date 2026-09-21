@@ -27,6 +27,16 @@ _QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
 _QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 _OPERATIVE_LEVELS = {"section", "subsection", "paragraph", "subparagraph", "clause"}
 
+_CALENDAR_DATE = re.compile(
+    r"\b(?:May\s+\d{1,2}(?:\s*,?\s*\d{4})?|\d{1,2}\s+May(?:\s+\d{4})?)\b",
+    re.I,
+)
+
+
+def grammar_text(text):
+    """Mask calendar dates for modal recognition without changing offsets."""
+    return _CALENDAR_DATE.sub(lambda m: " " * len(m.group()), text)
+
 
 @dataclass(frozen=True)
 class ModalContext:
@@ -85,13 +95,17 @@ def _explicit_actor_boundary(
 
 def _split_modal_clauses(
     sentence: SourceSpan,
+    *,
+    date_aware=False,
 ) -> tuple[tuple[SourceSpan, ModalContext | None], ...]:
     such_sums = tuple(
         re.finditer(r"\bsuch sums as may be necessary\b", sentence.text, re.I)
     )
     matches = [
         m
-        for m in _MODAL_RE.finditer(sentence.text)
+        for m in _MODAL_RE.finditer(
+            grammar_text(sentence.text) if date_aware else sentence.text
+        )
         if not any(s.start() <= m.start() < s.end() for s in such_sums)
     ]
     if len(matches) < 2 or _AMENDMENT_INSTRUCTION_RE.search(sentence.text):
@@ -176,13 +190,19 @@ def _ancestor_modal_context(
     section: StructuralSection,
     sections: Sequence[StructuralSection],
     quoted_ranges: Sequence[tuple[int, int]],
+    *,
+    date_aware=False,
 ) -> ModalContext | None:
     parent = _parent_section(section, sections)
     while parent is not None:
         for sentence in reversed(sentence_spans(parent, source_text)):
             if _intersects_quoted_block(sentence, quoted_ranges):
                 continue
-            matches = list(_MODAL_RE.finditer(sentence.text))
+            matches = list(
+                _MODAL_RE.finditer(
+                    grammar_text(sentence.text) if date_aware else sentence.text
+                )
+            )
             if not matches:
                 continue
             match = matches[-1]
@@ -201,7 +221,10 @@ def _ancestor_modal_context(
 
 
 def iter_operative_clauses(
-    source_text: str, sections: Sequence[StructuralSection]
+    source_text: str,
+    sections: Sequence[StructuralSection],
+    *,
+    date_aware=False,
 ) -> Iterator[tuple[StructuralSection, SourceSpan, ModalContext | None]]:
     """Yield raw, source-offset-preserving clauses outside quoted amendment text."""
 
@@ -210,16 +233,26 @@ def iter_operative_clauses(
         if section.level not in _OPERATIVE_LEVELS:
             continue
         inherited = _ancestor_modal_context(
-            source_text, section, sections, quoted_ranges
+            source_text,
+            section,
+            sections,
+            quoted_ranges,
+            date_aware=date_aware,
         )
         for sentence in sentence_spans(section, source_text):
             if _intersects_quoted_block(sentence, quoted_ranges):
                 continue
-            matches = list(_MODAL_RE.finditer(sentence.text))
+            matches = list(
+                _MODAL_RE.finditer(
+                    grammar_text(sentence.text) if date_aware else sentence.text
+                )
+            )
             if matches:
                 yield from (
                     (section, clause, context)
-                    for clause, context in _split_modal_clauses(sentence)
+                    for clause, context in _split_modal_clauses(
+                        sentence, date_aware=date_aware
+                    )
                 )
             else:
                 yield section, sentence, inherited

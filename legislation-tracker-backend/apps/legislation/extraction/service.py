@@ -33,7 +33,9 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
             raise ExpectedExtractionRejection("missing_source_text")
 
         sections = parse_federal_structure(source_text)
-        claims = legal_rules.extract_claims(source_text, sections)
+        claims = legal_rules.extract_claims(
+            source_text, sections, date_aware=settings.LEGAL_NLP_V21_WRITE_ENABLED
+        )
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:
             clauses = parse_operative_clauses(source_text, sections)
             claims += financial_rules.extract_financial_claims(

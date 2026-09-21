@@ -7,7 +7,7 @@ facts. This is a conservative grammar for supported patterns, not general NLP.
 import re
 from dataclasses import dataclass, replace
 
-from .federal_clauses import _parent_section, _quoted_block_ranges
+from .federal_clauses import _parent_section, _quoted_block_ranges, grammar_text
 from .federal_structure import sentence_spans
 from .types import SourceSpan, StructuralSection
 
@@ -16,7 +16,7 @@ DISCUSSION = re.compile(
     r"\b(?:report|study|recommend|determine)\b.*\b(?:whether|that|to)\b", re.I | re.S
 )
 COORDINATE = re.compile(
-    r"\bexcept that\s+|[,;]?\s+\b(?:and|but)\s+(?=(?:shall|must|may)\s+(?:pay|be exempted)\b|(?:the\s+\w+|an?\s+\w+|applicants|any\s+person|renewing\s+applicants)\b[^.;]*?\b(?:shall|must|may)\b)",
+    r"\bexcept that\s+|[,;]?\s+\b(?:and|but|or)\s+(?=(?:shall|must|may)\b|(?:the\s+\w+|an?\s+\w+|applicants|any\s+person|renewing\s+applicants)\b[^.;]*?\b(?:shall|must|may)\b)",
     re.I,
 )
 
@@ -30,6 +30,8 @@ class OperativeClause:
     action: str
     disposition: str
     context: tuple[SourceSpan, ...] = ()
+    evidence_context: tuple[SourceSpan, ...] = ()
+    sentence: SourceSpan | None = None
 
     @property
     def asserted(self):
@@ -37,11 +39,11 @@ class OperativeClause:
 
     @property
     def evidence(self):
-        return (*self.context, self.span)
+        return (*self.evidence_context, self.sentence or self.span)
 
 
 def _classify(section, span, parent=None):
-    text = span.text
+    text = grammar_text(span.text)
     modal = MODAL.search(text)
     actor = text[: modal.start()].strip() if modal else ""
     action = text[modal.end() :].strip() if modal else text
@@ -53,6 +55,10 @@ def _classify(section, span, parent=None):
         and len(list(MODAL.finditer(text))) > 1
     ):
         # A modal inside a relative clause is not necessarily the governing verb.
+        disposition = "uncertain"
+    elif re.search(
+        r"\b(?:and|but|or)\s+not\s+(?:pay|impose|collect|require)\b", action, re.I
+    ):
         disposition = "uncertain"
     elif DISCUSSION.search(text) or re.match(r"establish\s+whether\b", action, re.I):
         disposition = "discussion"
@@ -85,6 +91,7 @@ def _classify(section, span, parent=None):
         modal.group().lower() if modal else (parent.modality if parent else None),
         action,
         disposition,
+        (*parent.context, parent.span) if parent else (),
         parent.evidence if parent else (),
     )
 
@@ -113,7 +120,7 @@ def parse_operative_clauses(source, sections):
                 re.finditer(r"\bexcept that\s+", sentence.text, re.I)
             )
             whole = _classify(section, sentence, parent)
-            first_modal = MODAL.search(sentence.text)
+            first_modal = MODAL.search(grammar_text(sentence.text))
             if whole.disposition == "discussion" and re.search(
                 r"[,;]\s*(?:and|but)\b.*\b(?:shall|must|may)\b",
                 sentence.text[first_modal.end() :] if first_modal else "",
@@ -150,6 +157,10 @@ def parse_operative_clauses(source, sections):
                     sentence.start_char + end,
                 )
                 clause = _classify(section, span, parent)
+                if separators:
+                    # A split predicate is not a new scope. Retain the complete
+                    # governing sentence for conditions, exceptions and evidence.
+                    clause = replace(clause, sentence=sentence)
                 clauses.append(clause)
                 if span.text.rstrip().endswith(("—", "–", ":")):
                     introductions[section.source_id] = clause
@@ -167,6 +178,8 @@ def parse_operative_clauses(source, sections):
             root,
             disposition="uncertain",
             context=(),
+            evidence_context=(),
+            sentence=None,
             span=SourceSpan(
                 source[root.span.start_char : end], root.span.start_char, end
             ),
