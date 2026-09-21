@@ -76,6 +76,13 @@ function line(number: number): LegalNlpLineItem {
 }
 
 describe("BillBrief", () => {
+  it("discloses omitted definitions even when no key terms remain", () => {
+    const notice = "Some definitions are too long to display; read their full wording in the bill text.";
+    render(<BillBrief bill={bill} contractSummary={{ ...contract, coverage_note: notice, reader_stats: { ...contract.reader_stats!, definition_item_count: 0 } }} onShowAllFinancial={() => undefined} />);
+    expect(screen.getByText(notice)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Read full bill text" })).toHaveAttribute("href", "http://localhost:8000/text/");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getReaderItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [], section_supplements: [] });

@@ -112,9 +112,25 @@ def _render_requirement(
             if any(cleaned_conditions)
             else ""
         )
+    display = f"{text.rstrip('.')}."
+    # Check raw persisted slots as well as the rendered sentence. Nested list
+    # enrichment can exceed the schema even when every individual clause fits.
+    if (
+        len(claim.fields["actor"]) > 1000
+        or len(claim.fields["action"]) > 4000
+        or len(claim.fields.get("object") or "") > 4000
+        or any(len(value) > 2000 for value in (conditions or []))
+        or len(display) > 4000
+    ):
+        return ExtractionWarning(
+            code="reader_requirement_too_long",
+            rule_id=claim.rule_id,
+            source_id=claim.source_id,
+            evidence=claim.evidence,
+        )
     return RenderedReaderClaim(
         kind=kind,
-        display_text=f"{text.rstrip('.')}.",
+        display_text=display,
         actor=actor,
         action=action,
         effect=_clean(claim.fields.get("object")),

@@ -400,6 +400,8 @@ def build_reader_brief(
     coverage_note = _coverage_note(stats)
     if any(w.code == "reader_definition_too_long" for w in warnings):
         coverage_note += " Some definitions are too long to display; read their full wording in the bill text."
+    if any(w.code == "reader_requirement_too_long" for w in warnings):
+        coverage_note += " Some requirements are too long to display; read their full wording in the bill text."
     return ReaderBrief(
         coverage_note=coverage_note,
         orientation=ReaderOrientation(

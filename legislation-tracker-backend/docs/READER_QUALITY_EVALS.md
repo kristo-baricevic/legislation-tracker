@@ -104,6 +104,12 @@ Existing contracts and AI results are immutable. Re-extract affected documents t
 create updated NLP contracts. New AI behavior applies on a newly confirmed
 enhancement; do not silently regenerate paid results or reinterpret old output.
 
+Oversized requirements, including cumulative nested-list context and rendered
+sentence overhead, are omitted individually instead of invalidating the whole
+contract. Their source text remains unchanged. The reader displays the coverage
+note outside collapsed details, including omitted-definition and requirement
+warnings, with a full-text link when the document text URL is available.
+
 ## Diagnosing failed app requests
 
 After migration `0014`, attempts retain `failure_detail` alongside

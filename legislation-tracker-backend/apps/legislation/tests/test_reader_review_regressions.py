@@ -4,7 +4,9 @@ import pytest
 from django.test import override_settings
 
 from apps.legislation.extraction.federal_structure import parse_federal_structure
+from apps.legislation.extraction.reader_renderer import _render_requirement
 from apps.legislation.extraction.service import extract_contract
+from apps.legislation.extraction.types import ExtractedClaim, ExtractionWarning
 
 
 def extract(text):
@@ -218,6 +220,39 @@ def test_nonfinancial_reservations_do_not_invent_budget_items(object_text):
     contract = extract(f"SEC. 2. Rules\nThe Secretary may reserve {object_text}.")
     assert contract["financial_items"] == []
     assert any("reserve" in item["display_text"] for item in contract["line_items"])
+
+
+@pytest.mark.parametrize("repetitions", [46, 55])
+def test_long_composed_requirement_preserves_other_bill_items(repetitions):
+    text = (
+        "SEC. 2. Reports\nThe Secretary shall submit the following:\n"
+        "(1) A detailed report on "
+        + "program implementation and student support, " * repetitions
+        + "including—\n(A) An assessment of "
+        + "regional participation and student outcomes, " * repetitions
+        + ".\nSEC. 3. Grants\nThere is appropriated $5 million for rural grants.\n"
+        "The Secretary shall publish annual accounts."
+    )
+    contract = extract(text)
+    assert contract["schema_version"] == "2.1-legal-nlp"
+    assert contract["financial_items"][0]["amount"] == "5000000.00"
+    assert any("publish annual accounts" in x["display_text"] for x in contract["requirements"])
+    assert "reader_requirement_too_long" in contract["extraction"]["warnings"]
+    assert "requirements" in contract["coverage_note"]
+    assert "bill text" in contract["coverage_note"]
+
+
+@pytest.mark.parametrize("modality", ["required", "permitted", "prohibited"])
+def test_requirement_display_overhead_is_included_in_length_limit(modality):
+    claim = ExtractedClaim(
+        "requirements",
+        {"actor": "The Secretary", "action": "publish " + "x" * 3982,
+         "modality": modality, "object": None, "conditions": []},
+        "Sec. 2", (), "reader.list.leaf.v1",
+    )
+    rendered = _render_requirement(claim)
+    assert isinstance(rendered, ExtractionWarning)
+    assert rendered.code == "reader_requirement_too_long"
 
 
 @pytest.mark.parametrize(
