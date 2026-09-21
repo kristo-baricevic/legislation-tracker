@@ -116,6 +116,9 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.12` additionally separates contrastive (`but`)
+  clauses and retains directly governed spending caps alongside fees without
+  promoting applicant income thresholds into spending limits.
 - Extractor `federal-rules-2.1.11` carries shared conditions into the breakdown
   as well as payment evidence, preserves the full coordinated introduction when
   a nested condition requires source-only fallback, and gives spending and fees

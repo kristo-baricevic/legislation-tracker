@@ -57,8 +57,12 @@ def _classify(section, span, parent=None):
         # A modal inside a relative clause is not necessarily the governing verb.
         disposition = "uncertain"
     elif re.search(
-        r"\b(?:and|but|or)\s+not\s+(?:pay|impose|collect|require)\b", action, re.I
+        r"\b(?:and|but|or)\s+not\b",
+        re.sub(r"\bwhether\s+or\s+not\b", "whether", action, flags=re.I),
+        re.I,
     ):
+        # Implicit negative coordination is unsafe regardless of the verb;
+        # retain the whole source rather than guessing which predicate it owns.
         disposition = "uncertain"
     elif DISCUSSION.search(text) or re.match(r"establish\s+whether\b", action, re.I):
         disposition = "discussion"

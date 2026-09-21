@@ -467,8 +467,6 @@ def extract_financial_claims(
         actions = _actions(span.text)
         # A payment/account sentence can also contain a distinct appropriation.
         # Suppress only payment-owned amounts, not the entire sentence.
-        if payment_sentence and not any(a.action != "limitation" for a in actions):
-            continue
         candidate_amounts = _amounts(span.text)
         # Ownership is an exact source range, independent of how the legacy
         # spending parser splits (or does not split) the surrounding sentence.
@@ -478,6 +476,19 @@ def extract_financial_claims(
             if (span.start_char + a.start, span.start_char + a.end)
             not in payment_offsets
         )
+        if payment_sentence and not any(a.action != "limitation" for a in actions):
+            # A remaining ceiling must belong directly to a spending verb, not
+            # to income eligibility or the fee itself. Match at the amount's
+            # boundary so unrelated budget language cannot confer ownership.
+            candidate_amounts = tuple(
+                a
+                for a in candidate_amounts
+                if re.search(
+                    r"\b(?:spend|expend|obligate)\s+(?:not\s+more\s+than|not\s+to\s+exceed|up\s+to)\s*$",
+                    span.text[: a.start],
+                    re.I,
+                )
+            )
         if not candidate_amounts:
             continue
         inherited = (

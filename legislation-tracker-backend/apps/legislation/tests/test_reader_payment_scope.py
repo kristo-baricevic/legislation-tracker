@@ -17,6 +17,42 @@ def output(text):
     )
 
 
+@pytest.mark.parametrize("verb", ["spend", "expend", "obligate"])
+def test_fee_does_not_hide_implicit_spending_cap(verb):
+    result, _ = output(
+        f"The Secretary shall require a fee of $100 and {verb} not more than $500 for processing."
+    )
+    assert [
+        (i["financial_action"], i["amount"])
+        for i in result.contract_json["financial_items"]
+    ] == [("fee", "100.00"), ("limitation", "500.00")]
+
+
+def test_fee_income_ceiling_is_not_a_spending_cap():
+    result, _ = output(
+        "The Secretary shall require a fee of $100 for applicants with income not more than $500."
+    )
+    assert [
+        (i["financial_action"], i["amount"])
+        for i in result.contract_json["financial_items"]
+    ] == [("fee", "100.00")]
+
+
+def test_but_coordination_keeps_separate_actors_and_shared_condition():
+    result, _ = output(
+        "If approved, applicants shall pay a fee of $100 but renewing applicants shall pay a fee of $50."
+    )
+    requirements = [
+        i["display_text"]
+        for i in result.contract_json["line_items"]
+        if i["kind"] == "requirement"
+    ]
+    assert len(requirements) == 2
+    assert "but renewing applicants" not in requirements[0]
+    assert "Requires renewing applicants" in requirements[1]
+    assert all("If approved" in text for text in requirements)
+
+
 @pytest.mark.parametrize(
     "date", ["May 1, 2028", "1 May 2028", "June 1, 2028", "May 2028", "May 1st, 2028"]
 )
@@ -109,10 +145,11 @@ def test_active_surcharge_is_separate_from_fee(modal, verb):
     ] == ["25.00"]
 
 
-def test_implicit_negative_coordination_is_complete_source_only():
-    text = (
-        "The Secretary shall require a fee of $100 and not impose a surcharge of $25."
-    )
+@pytest.mark.parametrize(
+    "tail", ["impose a surcharge of $25", "spend more than $500", "waive the fee"]
+)
+def test_implicit_negative_coordination_is_complete_source_only(tail):
+    text = f"The Secretary shall require a fee of $100 and not {tail}."
     result, _ = output(text)
     assert result.contract_json["financial_items"] == []
     assert [i["display_text"] for i in result.contract_json["line_items"]] == [

@@ -83,7 +83,7 @@ def test_backfill_contracts_previews_active_documents_in_stable_bounded_order():
     assert "sessions=119:1" in rendered
     assert "active=1 inactive=0" in rendered
     assert "target_schema=2.1-legal-nlp" in rendered
-    assert "target_extractor=federal-rules-2.1.11" in rendered
+    assert "target_extractor=federal-rules-2.1.12" in rendered
     assert "generation_reason=schema_backfill" in rendered
     assert "writer_enabled=false" in rendered
     assert "Preview only; pass --execute to enqueue." in rendered
@@ -202,7 +202,7 @@ def test_backfill_contracts_reextracts_pre_v2_xml_before_generating_contract(
         "document_id": document.id,
         "reextract_source": True,
         "generation_reason": "schema_backfill",
-        "extractor_version": "federal-rules-2.1.11",
+        "extractor_version": "federal-rules-2.1.12",
         "generation_occurrence": document.created_at.isoformat(),
     }
 

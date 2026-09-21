@@ -88,11 +88,16 @@ def _actor_and_conditions(
 
 
 def _explicit_actor_boundary(
-    sentence: SourceSpan, previous: re.Match[str], current: re.Match[str]
+    sentence: SourceSpan,
+    previous: re.Match[str],
+    current: re.Match[str],
+    *,
+    reader_mode=False,
 ) -> tuple[int, int] | None:
     between = sentence.text[previous.end() : current.start()]
+    connectors = "and|or|but" if reader_mode else "and|or"
     match = re.search(
-        r"(?P<connector>\s+(?:and|or)\s+)(?P<actor>\S(?:.*\S)?)\s*$",
+        rf"(?P<connector>\s+(?:{connectors})\s+)(?P<actor>\S(?:.*\S)?)\s*$",
         between,
         re.IGNORECASE,
     )
@@ -129,7 +134,9 @@ def _split_modal_clauses(
     active_conditions = conditions
     boundaries = [
         (
-            _explicit_actor_boundary(sentence, matches[index - 1], match)
+            _explicit_actor_boundary(
+                sentence, matches[index - 1], match, reader_mode=reader_mode
+            )
             if index > 0
             else None
         )

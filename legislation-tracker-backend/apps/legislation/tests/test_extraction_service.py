@@ -59,7 +59,7 @@ $5,000,000 in unobligated balances is hereby rescinded.
 
     assert result.schema_version == "2.1-legal-nlp"
     assert result.contract_json["extraction"]["extractor_version"] == (
-        "federal-rules-2.1.11"
+        "federal-rules-2.1.12"
     )
     assert result.contract_json["financial_items"][0]["financial_action"] == (
         "rescission"
