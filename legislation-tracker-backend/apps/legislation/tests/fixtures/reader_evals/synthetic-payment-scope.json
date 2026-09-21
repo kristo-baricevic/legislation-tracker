@@ -1,0 +1,139 @@
+{
+  "id": "synthetic-payment-scope",
+  "title": "Conditional application fees",
+  "source_version": "Synthetic correctness case",
+  "corpus_kind": "synthetic_regression",
+  "suites": [
+    "correctness"
+  ],
+  "text": "SEC. 1. Fees\nIf approved, applicants shall pay a fee of $100 for fiscal year 2027 and renewing applicants shall pay a fee of $50 for fiscal year 2028.",
+  "required_facts": [],
+  "expected_financial_count": 2,
+  "correctness": {
+    "nlp": {
+      "closed_categories": [
+        "financial"
+      ],
+      "facts": [
+        {
+          "id": "initial-fee",
+          "category": "financial",
+          "fields": {
+            "financial_action": "fee",
+            "amount": "100.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2027
+            ]
+          },
+          "patterns": [
+            "If approved",
+            "\\$100\\s+for fiscal year 2027"
+          ],
+          "evidence_contains": [
+            "If approved, applicants shall pay a fee of $100 for fiscal year 2027"
+          ]
+        },
+        {
+          "id": "renewal-fee",
+          "category": "financial",
+          "fields": {
+            "financial_action": "fee",
+            "amount": "50.00",
+            "amount_type": "specified",
+            "currency": "USD",
+            "fiscal_years": [
+              2028
+            ]
+          },
+          "patterns": [
+            "If approved",
+            "\\$50\\s+for fiscal year 2028"
+          ],
+          "evidence_contains": [
+            "If approved, applicants shall pay a fee of $100 for fiscal year 2027 and renewing applicants shall pay a fee of $50 for fiscal year 2028."
+          ]
+        },
+        {
+          "id": "initial-actor",
+          "category": "line_item",
+          "fields": {
+            "actor": "applicants",
+            "kind": "requirement",
+            "modality": "required",
+            "conditions": [
+              "If approved"
+            ]
+          },
+          "patterns": [
+            "Requires applicants",
+            "If approved",
+            "\\$100\\s+for fiscal year 2027"
+          ]
+        },
+        {
+          "id": "renewal-actor",
+          "category": "line_item",
+          "fields": {
+            "actor": "renewing applicants",
+            "kind": "requirement",
+            "modality": "required",
+            "conditions": [
+              "If approved"
+            ]
+          },
+          "patterns": [
+            "Requires renewing applicants",
+            "If approved",
+            "\\$50\\s+for fiscal year 2028"
+          ]
+        },
+        {
+          "id": "synopsis",
+          "category": "line_item",
+          "fields": {
+            "kind": "purpose"
+          },
+          "patterns": [
+            "fees"
+          ],
+          "forbidden_patterns": [
+            "appropriat",
+            "no fees",
+            "unconditional"
+          ]
+        }
+      ]
+    },
+    "ai": {
+      "facts": [
+        {
+          "id": "initial-fee",
+          "category": "financial",
+          "patterns": [
+            "\\$100\\b",
+            "2027",
+            "approv"
+          ],
+          "forbidden_patterns": [
+            "unconditional"
+          ]
+        },
+        {
+          "id": "renewal-fee",
+          "category": "financial",
+          "patterns": [
+            "\\$50\\b",
+            "2028",
+            "renew",
+            "approv"
+          ],
+          "forbidden_patterns": [
+            "unconditional"
+          ]
+        }
+      ]
+    }
+  }
+}

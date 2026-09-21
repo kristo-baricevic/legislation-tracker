@@ -5,28 +5,71 @@ They cannot be satisfied by unrelated words elsewhere in an explanation. Keep
 human semantic review separate from these reproducible proxy measurements.
 """
 
+import json
 import re
-from collections import Counter
+from collections import Counter, defaultdict
+
+from .correctness import score_correctness
 
 FRAGMENT = re.compile(
     r"\b(?:to|in|for|which|the following|set aside)\s*[.;]?$|\bAllows Providing\b", re.I
 )
 
 
-def nlp_items(contract):
+def nlp_items(contract, *, evidence=None, source_text=None):
+    by_path = defaultdict(list)
+    for span in evidence or ():
+        by_path[span.field_path].append(span)
     items = [
-        {"category": "line_item", "text": x["display_text"]}
+        {**x, "category": "line_item", "text": x["display_text"]}
         for x in contract.get("line_items", [])
         if x.get("kind") != "financial"
     ]
     items += [
-        {"category": "financial", "text": x["display_text"]}
+        {**x, "category": "financial", "text": x["display_text"]}
         for x in contract.get("financial_items", [])
     ]
     items += [
-        {"category": "definition", "text": x["display_text"], "term": x["term"]}
+        {**x, "category": "definition", "text": x["display_text"], "term": x["term"]}
         for x in contract.get("definitions", [])
     ]
+    requirements = {r["id"]: r for r in contract.get("requirements", [])}
+    orientation = contract.get("orientation", {})
+    for item in items:
+        if item.get("kind") == "purpose":
+            item["synopsis_consistent"] = item.get("id") == orientation.get(
+                "purpose_line_item_id"
+            ) and item["text"] == orientation.get("purpose_clause")
+        refs = item.get("claim_refs", [])
+        if len(refs) == 1 and refs[0] in requirements:
+            requirement = requirements[refs[0]]
+            item.update({k: requirement[k] for k in ("modality", "conditions")})
+        if evidence is not None:
+            paths = item.get("evidence_paths", [])
+            linked = [e for path in paths for e in by_path[path]]
+            item["evidence_quotes"] = list(dict.fromkeys(e.quoted_text for e in linked))
+            item["evidence_valid"] = (
+                bool(linked)
+                and source_text is not None
+                and all(
+                    0 <= e.start_char < e.end_char <= len(source_text)
+                    and source_text[e.start_char : e.end_char] == e.quoted_text
+                    for e in linked
+                )
+                and all(by_path[path] for path in paths)
+            )
+    if orientation.get("purpose_clause") is not None and not any(
+        i.get("kind") == "purpose"
+        and i.get("id") == orientation.get("purpose_line_item_id")
+        for i in items
+    ):
+        items.append(
+            {
+                "category": "synopsis",
+                "text": orientation["purpose_clause"],
+                "synopsis_consistent": False,
+            }
+        )
     return items
 
 
@@ -46,6 +89,7 @@ def ai_items(output):
             )
             result.append(
                 {
+                    **item,
                     "category": "financial"
                     if item.get("kind") == "funding"
                     else category,
@@ -64,6 +108,25 @@ def score_reader(
     case, items, *, sources=None, usage=None, elapsed_ms=None, rates=None, pipeline=None
 ):
     missing = []
+    if sources is not None:
+        by_ref = {s["source_ref"]: s for s in sources}
+        items = [dict(item) for item in items]
+        for item in items:
+            quotes, refs = item.get("source_quotes", []), item.get("source_refs", [])
+            item["evidence_quotes"] = [q.get("quote", "") for q in quotes]
+            item["evidence_valid"] = (
+                bool(quotes)
+                and all(
+                    q.get("source_ref") in refs
+                    and q.get("source_ref") in by_ref
+                    and bool(q.get("quote"))
+                    and q["quote"] in by_ref[q["source_ref"]]["quoted_text"]
+                    for q in quotes
+                )
+                if quotes
+                else None
+            )
+    correctness = score_correctness(case, items, pipeline or "ai")
     facts = case.get("required_facts", []) + (
         case.get("glossary_facts", []) if pipeline == "nlp" else []
     )
@@ -100,7 +163,30 @@ def score_reader(
     duplicates = sum(
         n - 1
         for n in Counter(
-            re.sub(r"\W+", " ", t.casefold()).strip() for t in texts
+            (
+                re.sub(r"\W+", " ", item["text"].casefold()).strip(),
+                json.dumps(
+                    {
+                        k: item[k]
+                        for k in (
+                            "financial_action",
+                            "amount",
+                            "amount_type",
+                            "currency",
+                            "fiscal_years",
+                            "direction",
+                            "purpose",
+                            "source_account",
+                            "destination_account",
+                        )
+                        if k in item
+                    },
+                    sort_keys=True,
+                )
+                if item.get("category") == "financial"
+                else "",
+            )
+            for item in items
         ).values()
     )
     fragments = sum(bool(FRAGMENT.search(t)) for t in texts)
@@ -157,7 +243,13 @@ def score_reader(
         if case.get("truncated")
         else 0
     )
-    failures = []
+    failures = list(correctness["failures"])
+    invalid_nlp_evidence = sum(item.get("evidence_valid") is False for item in items)
+    if invalid_nlp_evidence:
+        failures.append("invalid_item_evidence")
+    inconsistent_synopsis = any(i.get("synopsis_consistent") is False for i in items)
+    if inconsistent_synopsis:
+        failures.append("inconsistent_synopsis")
     if unexplained:
         failures.append("unexplained_definitions")
     if missing:
@@ -179,8 +271,46 @@ def score_reader(
         "failures": failures,
         "missing_facts": missing,
         "forbidden_matches": forbidden,
+        "correctness": correctness,
+        "dimensions": {
+            "correctness": {
+                "status": "fail"
+                if correctness["failures"]
+                or forbidden
+                or invalid_citations
+                or invalid_nlp_evidence
+                or absence_claims
+                or inconsistent_synopsis
+                else "pass"
+                if correctness["evaluated"]
+                else "not_evaluated"
+            },
+            "coverage": {
+                "status": "fail"
+                if missing or correctness["missing_fact_ids"] or not financial_count_ok
+                else "pass"
+                if facts
+                or correctness["expected_fact_count"]
+                or "expected_financial_count" in case
+                else "not_evaluated",
+                "fact_recall": correctness["fact_recall"],
+            },
+            "readability": {
+                "status": "fail" if fragments or duplicates or unexplained else "pass",
+                "scope": "heuristics_only",
+            },
+            "abstention": {
+                "status": "fail"
+                if correctness["missing_source_only_ids"]
+                or correctness["source_only_leak_indices"]
+                else "pass"
+                if correctness["expected_source_only_count"]
+                else "not_evaluated"
+            },
+        },
         "metrics": {
             "source_only_item_count": source_only,
+            "invalid_item_evidence_count": invalid_nlp_evidence,
             "source_only_item_fraction": source_only / len(texts) if texts else None,
             "unexplained_definition_count": unexplained,
             "unresolved_definition_count": unresolved,

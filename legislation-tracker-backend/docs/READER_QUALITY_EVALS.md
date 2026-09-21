@@ -5,6 +5,81 @@ items and usable source citations—not merely valid JSON.
 
 ## Free, offline runs
 
+### Factual correctness suite
+
+```sh
+rtk proxy .venv/bin/python manage.py evaluate_reader_quality --suite correctness --output /tmp/reader-correctness.json
+```
+
+This runs six annotated cases, including the complete H.R.9300 fixture, through
+the real extractor. It requires no provider call or running app. The pytest
+acceptance gate also runs 24 combinations of condition, clause order, conjunction,
+and line wrapping, plus deliberate output-corruption tests. These caught a
+line-wrapping defect in actor/condition splitting; extractor `federal-rules-2.1.14`
+corrects it without changing legacy v2.0 behavior. Stored analyses are unchanged.
+
+Reports retain the existing metrics and add `correctness` diagnostics and four
+separate `dimensions`: correctness, coverage, readability, and abstention. There
+is no blended score that lets fluent prose compensate for an incorrect fact.
+Unannotated correctness is `not_evaluated`, not a perfect score. Readability is
+explicitly heuristic; the optional word-limit flag still imposes a hard gate.
+
+Gold annotations are handwritten under `correctness.nlp` or `correctness.ai`:
+
+```json
+{
+  "facts": [{
+    "id": "conditional-fee",
+    "category": "financial",
+    "fields": {
+      "financial_action": "fee",
+      "amount": "100.00",
+      "amount_type": "specified",
+      "currency": "USD",
+      "fiscal_years": [2027]
+    },
+    "patterns": ["If approved", "\\$100\\b"],
+    "forbidden_patterns": ["unconditionally"],
+    "evidence_contains": ["If approved, applicants shall pay a fee of $100 for fiscal year 2027."]
+  }],
+  "closed_categories": ["financial"]
+}
+```
+
+- Every field and pattern must match **one item**. One output cannot satisfy two
+  expected facts. Matching is order-independent and normalizes whitespace, not
+  legal meaning. Amount, currency, year lists, actor, modality, and conditions
+  remain independently testable. Display text and structured fields are both
+  checked, so a correct sentence cannot hide an incorrect filterable value.
+- `closed_categories` means that the annotations enumerate *every* expected
+  item in those categories. Extra or duplicated claims fail. Use this only for
+  exhaustively annotated categories; arbitrary bill text is not assumed covered.
+- `source_only: [{"id": "ambiguous", "quote": "complete governing provision"}]`
+  requires an explicitly source-only item with the full passage in its linked
+  evidence. Missing text or an asserted interpretation of the same passage fails.
+  Source-only wording never satisfies a required simplified fact.
+- Evidence checks verify each item's links, original offsets, and exact quotes.
+  `evidence_contains` additionally requires the specified context in that item's
+  evidence. Existing AI replay uses actual selected quotations, not unrelated
+  text elsewhere in its source packet. Exact quotations alone are **not** proof
+  that an explanation is semantically supported.
+- The displayed synopsis must agree with its purpose line. Distinct financial
+  facts may share evidence wording without being mistaken for duplicate items.
+- Invalid annotations, empty oracles, duplicate oracle IDs, malformed regexes,
+  missing facts, invented claims, and incomplete fallback fail closed. JSON
+  reports are written before the evaluation command exits nonzero.
+
+Mutation tests change actors, modality, conditions, amounts, units, years,
+percentage bases, evidence links, and synopsis text; remove facts; add unsupported
+items; and shorten fallback evidence. A passing unmodified control is required
+before testing its corrupted copy. The same-item textual checks apply to saved AI
+results using separately annotated `ai` profiles, without making another call.
+
+This is a growing regression corpus, **not a general legal truth checker**.
+Correctness recall and closed-category precision apply only to annotated facts.
+The full default reader evaluation still includes known H.R.1589 readability
+failures; selecting this bounded suite does not declare those resolved.
+
 ### Reader acceptance gate
 
 Run from the backend directory:

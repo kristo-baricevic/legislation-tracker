@@ -1,0 +1,14 @@
+{
+  "id": "synthetic-uncertain-payment",
+  "title": "Ambiguous coordinated payments",
+  "source_version": "Synthetic correctness case",
+  "corpus_kind": "synthetic_regression",
+  "suites": ["correctness"],
+  "text": "SEC. 1. Fees\nThe Secretary shall require a fee of $100 and not impose a surcharge of $25.",
+  "required_facts": [],
+  "expected_financial_count": 0,
+  "correctness": {"nlp": {
+    "facts": [], "closed_categories": ["financial"],
+    "source_only": [{"id": "whole-negative-coordination", "quote": "The Secretary shall require a fee of $100 and not impose a surcharge of $25."}]
+  }}
+}

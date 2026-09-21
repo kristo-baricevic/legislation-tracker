@@ -1,0 +1,14 @@
+{
+  "id": "synthetic-active-waiver",
+  "title": "Waiver is not a payment mandate",
+  "source_version": "Synthetic correctness case",
+  "corpus_kind": "synthetic_regression",
+  "suites": ["correctness"],
+  "text": "SEC. 1. Fees\nThe Secretary may waive the requirement to pay a fee of $100.",
+  "required_facts": [],
+  "expected_financial_count": 0,
+  "correctness": {"nlp": {
+    "facts": [], "closed_categories": ["financial"],
+    "source_only": [{"id": "complete-waiver", "quote": "The Secretary may waive the requirement to pay a fee of $100."}]
+  }}
+}

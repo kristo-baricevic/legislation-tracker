@@ -1,5 +1,11 @@
 {
   "id": "synthetic-budget-actions",
+  "suites": ["correctness"],
+  "correctness": {"nlp": {"closed_categories": ["financial"], "facts": [
+    {"id": "appropriation", "category": "financial", "fields": {"financial_action": "appropriation", "amount": "2000000.00", "currency": "USD", "amount_type": "specified"}, "patterns": ["rural clinic grants"]},
+    {"id": "rescission", "category": "financial", "fields": {"financial_action": "rescission", "amount": "500000.00", "currency": "USD", "direction": "decrease"}},
+    {"id": "open-authorization", "category": "financial", "fields": {"financial_action": "authorization", "amount": null, "amount_type": "such_sums"}, "patterns": ["staff training"]}
+  ]}},
   "title": "synthetic-budget-actions",
   "source_version": "Synthetic test provision",
   "source_url": null,

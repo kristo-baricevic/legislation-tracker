@@ -1,4 +1,11 @@
 {
+  "suites": ["correctness"],
+  "correctness": {"nlp": {"closed_categories": ["financial"], "facts": [
+    {"id": "tribal-share", "category": "financial", "fields": {"financial_action": "set_aside", "amount": "2.00", "amount_type": "percentage", "currency": null}, "patterns": ["(?:tribal|Indian)", "grants"]},
+    {"id": "evidence-floor", "category": "financial", "fields": {"financial_action": "set_aside", "amount": "20.00", "amount_type": "percentage", "currency": null}, "patterns": ["(?:at least|not less than) 20 percent", "not reserved under section 4", "evidence"]},
+    {"id": "admin-cap", "category": "financial", "fields": {"financial_action": "limitation", "amount": "5.00", "amount_type": "ceiling", "currency": null}, "patterns": ["(?:not|no) more than 5 percent", "reporting", "subsection \\(d\\)"]},
+    {"id": "assistance-cap", "category": "financial", "fields": {"financial_action": "limitation", "amount": "2.00", "amount_type": "ceiling", "currency": null}, "patterns": ["(?:not|no) more than 2 percent", "technical assistance", "subsection \\(d\\)"]}
+  ]}},
   "id": "hr9300-119-ih",
   "source_url": "https://www.congress.gov/119/bills/hr9300/BILLS-119hr9300ih.xml",
   "source_version": "Introduced in House",

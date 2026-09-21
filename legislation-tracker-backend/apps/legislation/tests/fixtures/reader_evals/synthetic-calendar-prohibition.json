@@ -1,0 +1,12 @@
+{
+  "id": "synthetic-calendar-prohibition",
+  "title": "Deadline is not permission",
+  "source_version": "Synthetic correctness case",
+  "corpus_kind": "synthetic_regression",
+  "suites": ["correctness"],
+  "text": "SEC. 1. Fees\nNot later than May 1, 2028, the Secretary shall not require applicants to pay a fee of $100.",
+  "required_facts": [{"id": "prohibition-retained", "patterns": ["not", "pay", "\\$100"]}],
+  "forbidden_patterns": ["Allows", "bill includes.*fees", "Requires.*to require"],
+  "expected_financial_count": 0,
+  "correctness": {"nlp": {"facts": [], "closed_categories": ["financial"]}}
+}
