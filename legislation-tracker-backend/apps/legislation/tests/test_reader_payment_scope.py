@@ -54,6 +54,23 @@ def test_but_coordination_keeps_separate_actors_and_shared_condition():
 
 
 @pytest.mark.parametrize(
+    "action",
+    [
+        "exempt applicants from the requirement to pay a fee of $100",
+        "exempt applicants from a fee of $100",
+        "waive the requirement to pay a fee of $100",
+    ],
+)
+def test_active_exemption_keeps_source_instead_of_asserting_a_payment(action):
+    text = f"The Secretary may {action}."
+    result, _ = output(text)
+    assert result.contract_json["financial_items"] == []
+    assert [i["display_text"] for i in result.contract_json["line_items"]] == [
+        "Source text (not simplified): " + text
+    ]
+
+
+@pytest.mark.parametrize(
     "date", ["May 1, 2028", "1 May 2028", "June 1, 2028", "May 2028", "May 1st, 2028"]
 )
 @pytest.mark.parametrize("wrap", [" ", "\n"])

@@ -50,6 +50,14 @@ def _classify(section, span, parent=None):
     disposition = "operative"
     if parent and parent.disposition in {"prohibition", "discussion", "uncertain"}:
         disposition = parent.disposition
+    elif re.search(
+        r"\b(?:exempt|waive)\b.*\b(?:fees?|surcharges?|penalt(?:y|ies))\b",
+        action,
+        re.I | re.S,
+    ):
+        # Active relief is not a payment mandate. Until its scope is supported,
+        # preserve the complete provision rather than matching an embedded pay.
+        disposition = "uncertain"
     elif modal and (
         re.search(r"\b(?:who|which|that)\b", actor, re.I)
         and len(list(MODAL.finditer(text))) > 1

@@ -116,6 +116,8 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.13` retains unsupported active payment waivers and
+  exemptions as complete source-only provisions, never as payment mandates.
 - Extractor `federal-rules-2.1.12` additionally separates contrastive (`but`)
   clauses and retains directly governed spending caps alongside fees without
   promoting applicant income thresholds into spending limits.
