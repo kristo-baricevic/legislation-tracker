@@ -116,3 +116,19 @@ def test_nonoperative_grant_language_cannot_create_a_program(prefix):
         + " a program to award grants to eligible nonprofit organizations to assist eligible applicants."
     )
     assert not result.contract_json.get("orientation", {}).get("purpose_clause")
+
+
+def test_negative_subject_cannot_create_a_residence_path():
+    result = extract(
+        "SEC. 2. Permanent resident status on a conditional basis for certain long-term residents who entered the United States as children\n"
+        "No agency shall adjust to the status of an alien lawfully admitted for permanent residence an alien who does not meet these requirements."
+    )
+    assert result.contract_json["orientation"]["purpose_clause"] is None
+
+
+def test_wrapped_reporting_clause_cannot_create_a_grant_program():
+    result = extract(
+        "SEC. 1. Reports\nThe Secretary shall report whether the agency\n"
+        "shall establish a program to award grants to eligible nonprofit organizations to assist eligible applicants."
+    )
+    assert result.contract_json["orientation"]["purpose_clause"] is None

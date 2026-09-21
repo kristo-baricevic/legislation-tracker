@@ -174,6 +174,71 @@ def test_fee_inherits_fiscal_year_from_governing_parent():
     assert items[0]["fiscal_years"] == [2027, 2028, 2029]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "No agency shall require an applicant to pay a fee of $100.",
+        "The Secretary shall report whether applicants should pay a fee of $100.",
+        "The Secretary shall not require applicants to pay a fee of $100.",
+        "The Secretary shall report whether applicants\nshall pay a fee of $100.",
+    ],
+)
+def test_nonoperative_fees_are_not_financial_claims(text):
+    assert extract("SEC. 1. Fees\n" + text) == []
+
+
+@pytest.mark.parametrize(
+    "tail,action,amount",
+    [
+        ("a surcharge of $25 shall be imposed", "surcharge", "25.00"),
+        (
+            "any person who evades payment shall be fined not more than $1,000",
+            "penalty",
+            "1000.00",
+        ),
+    ],
+)
+def test_each_payment_in_a_mixed_sentence_is_extracted(tail, action, amount):
+    items = extract(
+        "SEC. 1. Fees\nAn applicant shall pay a fee of $100, and " + tail + "."
+    )
+    assert {(i["financial_action"], i["amount"]) for i in items} == {
+        ("fee", "100.00"),
+        (action, amount),
+    }
+
+
+@pytest.mark.parametrize(
+    "schedule",
+    [
+        "of $100 for an initial application and $50 for renewal.",
+        "of—\n(1) $100 for initial applications; and\n(2) $50 for renewals.",
+    ],
+)
+def test_fee_schedules_preserve_each_price(schedule):
+    items = extract("SEC. 1. Fees\nThe Secretary shall require a fee " + schedule)
+    assert [(i["financial_action"], i["amount"]) for i in items] == [
+        ("fee", "100.00"),
+        ("fee", "50.00"),
+    ]
+
+
+def test_must_not_exceed_is_a_cap_not_a_fixed_fee():
+    items = extract(
+        "SEC. 1. Fees\nThe Secretary shall require a fee that must not exceed $100."
+    )
+    assert [(i["amount"], i["amount_type"]) for i in items] == [("100.00", "ceiling")]
+
+
+def test_explicit_fee_exception_survives_a_general_prohibition():
+    items = extract(
+        "SEC. 1. Fees\nThe procedure shall not require applicants to pay a fee, "
+        "except that the Secretary may require an applicant to pay a fee of $100 for expedited processing."
+    )
+    assert [(i["financial_action"], i["amount"]) for i in items] == [("fee", "100.00")]
+    assert "except that" in items[0]["display_text"]
+
+
 def test_grant_purpose_resolves_this_section_without_duplicate_years():
     items = extract(
         "SEC. 1. Grant program to assist eligible applicants\n(a) Authorization.—There are authorized to be appropriated such sums as may be necessary for each of the fiscal years 2026 through 2036 to carry out this section."

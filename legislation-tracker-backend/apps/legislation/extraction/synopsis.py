@@ -7,6 +7,7 @@ Unsupported effects remain in the detailed reader, not guessed in the synopsis.
 import re
 
 from .federal_clauses import _quoted_block_ranges
+from .operative_context import has_nonoperative_prefix
 from .types import SourceSpan
 
 
@@ -66,10 +67,7 @@ def structured_synopsis(sections, claims, source_text):
             re.I,
         )
         if residence:
-            prefix = text[
-                text.rfind("\n", 0, residence.start()) + 1 : residence.start()
-            ]
-            if re.search(r"\b(report|study|recommend|whether)\b", prefix, re.I):
+            if has_nonoperative_prefix(text, residence.start()):
                 residence = None
         if (
             residence
@@ -105,10 +103,7 @@ def structured_synopsis(sections, claims, source_text):
             re.I,
         )
         if grant:
-            prefix = text[text.rfind("\n", 0, grant.start()) + 1 : grant.start()]
-            if re.search(
-                r"\b(?:no|not|neither|report|study|recommend|whether)\b", prefix, re.I
-            ):
+            if has_nonoperative_prefix(text, grant.start()):
                 continue
             add(
                 "application_grants",

@@ -76,6 +76,13 @@ available and percentage caps are not presented as dollars.
 
 ## Pipeline changes
 
+- Extractor `federal-rules-2.1.6` rejects negative and reporting payment/synopsis
+  contexts across wrapped lines, while retaining explicit payment exceptions.
+  It retains multiple payment categories and coordinated or enumerated fee
+  prices, and recognizes `must not exceed` caps. Regression tests exercise the
+  public contract output and exact source offsets. Existing stored contracts
+  require re-extraction; deploying code does not rewrite historical analyses.
+
 - Extractor `federal-rules-2.1.5` preserves appropriations alongside account
   availability rules, binds payment amounts to payment expressions (not income
   thresholds), retains percentage rates/caps and fiscal-year filters, and rejects

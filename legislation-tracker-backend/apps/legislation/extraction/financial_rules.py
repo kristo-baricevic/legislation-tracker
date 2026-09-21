@@ -10,6 +10,7 @@ from decimal import Decimal
 from .display_text import normalize_reader_fragment
 from .federal_clauses import _quoted_block_ranges, iter_operative_clauses
 from .federal_structure import sentence_spans
+from .operative_context import has_nonoperative_prefix
 from .types import ExtractedClaim, SourceSpan, StructuralSection
 
 _ACTION_RE = re.compile(
@@ -570,13 +571,25 @@ def extract_financial_claims(
 def _payment_amounts(text, action):
     noun = {"fee": r"fees?", "surcharge": r"surcharge", "penalty": r"fined"}[action]
     anchors = list(re.finditer(r"\b" + noun + r"\b", text, re.I))
+    owned = None
+    payment_nouns = list(re.finditer(r"\b(?:fees?|surcharge|fined)\b", text, re.I))
     for amount in _amounts(text):
         if amount.amount is None:
             continue
         before = [anchor for anchor in anchors if anchor.end() <= amount.start]
         bridge = text[before[-1].end() : amount.start] if before else None
+        preceding_payment = [m for m in payment_nouns if m.end() <= amount.start]
+        if preceding_payment and not re.fullmatch(
+            noun, preceding_payment[-1].group(), re.I
+        ):
+            owned = None
+            continue
+        if before and has_nonoperative_prefix(text, before[-1].start()):
+            owned = None
+            continue
         direct = bridge is not None and re.fullmatch(
-            r"\s*(?:(?:of|equal to|in (?:the|an) amount of)\s+)?"
+            r"\s*(?:(?:of|equal to|in (?:the|an) amount of)\s*)?"
+            r"(?:[—:–]\s*\([a-z0-9]+\)\s*)?"
             r"(?:(?:not more than|not less than|not to exceed|at least|up to)\s+)?",
             bridge,
             re.I,
@@ -599,7 +612,22 @@ def _payment_amounts(text, action):
         prefixed = action == "fee" and re.match(
             r"\s+(?:(?:application|processing)\s+)?fee\b", text[amount.end :], re.I
         )
-        if direct or cap or prefixed:
+        continuation = False
+        if owned is not None:
+            between = text[owned.end : amount.start]
+            # A coordinated price or the next enumerated price inherits the
+            # payment noun, but an income/eligibility threshold does not.
+            continuation = bool(
+                re.fullmatch(
+                    r"\s*(?:for\s+(?:(?!\b(?:if|income|assets|salary|earnings|when)\b).)+?)?"
+                    r"\s*(?:;?\s*(?:and|or)\s+|;?\s*(?:(?:and|or)\s*)?\n\s*\([a-z0-9]+\)\s*)"
+                    r"(?:(?:not more than|not less than|at least|up to)\s+)?",
+                    between,
+                    re.I | re.S,
+                )
+            )
+        if direct or cap or prefixed or continuation:
+            owned = amount
             yield amount
 
 
@@ -613,11 +641,11 @@ def _payment_claims(source, sections):
             ):
                 continue
             text = span.text
-            action = None
+            actions = []
             if re.search(
                 r"\b(?:may|shall|must) be exempted from paying\b.*\bfee\b", text, re.I
             ):
-                action = "fee_exemption"
+                actions.append("fee_exemption")
                 # An introductory exemption must include its complete eligibility list.
                 if text.rstrip().endswith(("—", ":")):
                     end = section.span.end_char
@@ -625,71 +653,93 @@ def _payment_claims(source, sections):
                         source[span.start_char : end], span.start_char, end
                     )
                     text = span.text
-            elif re.search(
+            if re.search(
                 r"\bsurcharge\b.*\b(?:shall|must) be (?:imposed|collected)\b",
                 text,
                 re.I,
             ):
-                action = "surcharge"
-            elif re.search(r"\b(?:shall|must|may) be fined\b", text, re.I):
-                action = "penalty"
-            elif re.search(r"\bfees?\b", text, re.I) and re.search(
-                r"\b(?:shall|may|must)\b.*\b(?:pay|require|include a requirement)\b.*\bfee\b",
-                text,
-                re.I,
+                actions.append("surcharge")
+            if re.search(r"\b(?:shall|must|may) be fined\b", text, re.I):
+                actions.append("penalty")
+            if (
+                "fee_exemption" not in actions
+                and re.search(r"\bfees?\b", text, re.I)
+                and re.search(
+                    r"\b(?:shall|may|must)\b.*\b(?:pay|require|include a requirement)\b.*\bfee\b",
+                    text,
+                    re.I,
+                )
             ):
-                action = "fee"
-            elif re.search(
+                actions.append("fee")
+                if text.rstrip().endswith(("—", ":", "–")):
+                    end = section.span.end_char
+                    span = SourceSpan(
+                        source[span.start_char : end], span.start_char, end
+                    )
+                    text = span.text
+            if re.search(
                 r"\b(?:fees|amounts|funds)\b.*\bshall (?:be deposited|remain available)\b",
                 text,
                 re.I,
             ):
-                action = "account_rule"
-            if action is None:
-                continue
-            amounts = (
-                tuple(_payment_amounts(text, action))
-                if action in {"fee", "surcharge", "penalty"}
-                else ()
+                actions.append("account_rule")
+            for action in actions:
+                yield from _payment_records(source, sections, section, span, action)
+
+
+def _payment_records(source, sections, section, span, action):
+    text = span.text
+    noun_pattern = {
+        "fee": r"fees?",
+        "fee_exemption": r"fees?",
+        "surcharge": r"surcharge",
+        "penalty": r"fined",
+        "account_rule": r"fees|funds|amounts",
+    }[action]
+    nouns = list(re.finditer(r"\b(?:" + noun_pattern + r")\b", text, re.I))
+    if nouns and all(has_nonoperative_prefix(text, noun.start()) for noun in nouns):
+        return
+    amounts = (
+        tuple(_payment_amounts(text, action))
+        if action in {"fee", "surcharge", "penalty"}
+        else ()
+    )
+    if not amounts:
+        amounts = (_AmountMatch(None, "unspecified", None, 0, 0),)
+    fiscal_years = _fiscal_years(text)
+    parent = _parent_section(section, sections)
+    while not fiscal_years and parent is not None:
+        # Only inherit an explicit list introduction governing this child.
+        introductions = sentence_spans(parent, source)
+        if introductions and introductions[-1].text.rstrip().endswith((":", "—", "–")):
+            fiscal_years = _fiscal_years(introductions[-1].text)
+        parent = _parent_section(parent, sections)
+    for amount in amounts:
+        ceiling = amount.amount is not None and bool(
+            re.search(
+                r"\b(?:does not exceed|not more than|not to exceed|shall not exceed|must not exceed|up to)\s*$",
+                text[: amount.start],
+                re.I,
             )
-            if not amounts:
-                amounts = (_AmountMatch(None, "unspecified", None, 0, 0),)
-            fiscal_years = _fiscal_years(text)
-            parent = _parent_section(section, sections)
-            while not fiscal_years and parent is not None:
-                # Only inherit an explicit list introduction governing this child.
-                introductions = sentence_spans(parent, source)
-                if introductions and introductions[-1].text.rstrip().endswith(
-                    (":", "—", "–")
-                ):
-                    fiscal_years = _fiscal_years(introductions[-1].text)
-                parent = _parent_section(parent, sections)
-            for amount in amounts:
-                ceiling = amount.amount is not None and bool(
-                    re.search(
-                        r"\b(?:does not exceed|not more than|not to exceed|shall not exceed|up to)\s*$",
-                        text[: amount.start],
-                        re.I,
-                    )
-                )
-                fields = {
-                    "financial_action": action,
-                    "direction": "not_applicable",
-                    "amount": amount.amount,
-                    "amount_type": "ceiling" if ceiling else amount.amount_type,
-                    "currency": amount.currency,
-                    "fiscal_years": list(fiscal_years),
-                    "purpose": None,
-                    "source_account": None,
-                    "destination_account": None,
-                }
-                yield ExtractedClaim(
-                    "financial_items",
-                    fields,
-                    section.label,
-                    (span,),
-                    f"financial.{action}.v1",
-                    section.source_id,
-                    section.source_id,
-                    section.path,
-                )
+        )
+        fields = {
+            "financial_action": action,
+            "direction": "not_applicable",
+            "amount": amount.amount,
+            "amount_type": "ceiling" if ceiling else amount.amount_type,
+            "currency": amount.currency,
+            "fiscal_years": list(fiscal_years),
+            "purpose": None,
+            "source_account": None,
+            "destination_account": None,
+        }
+        yield ExtractedClaim(
+            "financial_items",
+            fields,
+            section.label,
+            (span,),
+            f"financial.{action}.v1",
+            section.source_id,
+            section.source_id,
+            section.path,
+        )
