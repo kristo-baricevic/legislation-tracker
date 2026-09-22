@@ -9,7 +9,13 @@ import json
 import re
 from collections import Counter, defaultdict
 
-from .correctness import score_correctness
+from .correctness import (
+    faithful_source_display,
+    score_correctness,
+)
+from .correctness import (
+    source_only as is_source_only,
+)
 
 FRAGMENT = re.compile(
     r"\b(?:to|in|for|which|the following|set aside)\s*[.;]?$|\bAllows Providing\b", re.I
@@ -244,6 +250,13 @@ def score_reader(
         else 0
     )
     failures = list(correctness["failures"])
+    if any(
+        is_source_only(item)
+        and item.get("evidence_valid") is True
+        and not faithful_source_display(item)
+        for item in items
+    ):
+        failures.append("unfaithful_source_display")
     invalid_nlp_evidence = sum(item.get("evidence_valid") is False for item in items)
     if invalid_nlp_evidence:
         failures.append("invalid_item_evidence")
@@ -281,6 +294,7 @@ def score_reader(
                 or invalid_nlp_evidence
                 or absence_claims
                 or inconsistent_synopsis
+                or "unfaithful_source_display" in failures
                 else "pass"
                 if correctness["evaluated"]
                 else "not_evaluated"
@@ -303,6 +317,7 @@ def score_reader(
                 "status": "fail"
                 if correctness["missing_source_only_ids"]
                 or correctness["source_only_leak_indices"]
+                or "unfaithful_source_display" in failures
                 else "pass"
                 if correctness["expected_source_only_count"]
                 else "not_evaluated"

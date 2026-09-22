@@ -58,6 +58,11 @@ Gold annotations are handwritten under `correctness.nlp` or `correctness.ai`:
   requires an explicitly source-only item with the full passage in its linked
   evidence. Missing text or an asserted interpretation of the same passage fails.
   Source-only wording never satisfies a required simplified fact.
+  The displayed fallback must also reproduce its linked evidence, allowing only
+  whitespace normalization and the reader's explicit long-source preview. Keeping
+  valid evidence attached to fabricated display text does not pass. The calendar
+  prohibition oracle checks the operative prohibition, actor, and deadline rather
+  than accepting the unrelated word “Not” in “Not later than”.
 - Evidence checks verify each item's links, original offsets, and exact quotes.
   `evidence_contains` additionally requires the specified context in that item's
   evidence. Existing AI replay uses actual selected quotations, not unrelated

@@ -73,6 +73,16 @@ def normalized(text):
     return " ".join(text.split())
 
 
+def faithful_source_display(item):
+    """Check displayed fallback too, including the reader's explicit long-text preview."""
+    expected = "Source text (not simplified): " + " ".join(
+        item.get("evidence_quotes", [])
+    )
+    if len(expected) > 4000:
+        expected = expected[:3900] + "… Open the source for the complete wording."
+    return normalized(item.get("text", "")) == normalized(expected)
+
+
 def _value(value):
     if isinstance(value, str):
         return normalized(value)
@@ -193,6 +203,7 @@ def score_correctness(case, items, pipeline):
         quote = normalized(expected["quote"])
         if not any(
             source_only(item)
+            and faithful_source_display(item)
             and item.get("evidence_valid") is True
             and any(quote in normalized(q) for q in item.get("evidence_quotes", []))
             for item in items

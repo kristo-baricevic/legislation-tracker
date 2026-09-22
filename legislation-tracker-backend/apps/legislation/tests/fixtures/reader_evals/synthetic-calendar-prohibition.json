@@ -8,5 +8,11 @@
   "required_facts": [{"id": "prohibition-retained", "patterns": ["not", "pay", "\\$100"]}],
   "forbidden_patterns": ["Allows", "bill includes.*fees", "Requires.*to require"],
   "expected_financial_count": 0,
-  "correctness": {"nlp": {"facts": [], "closed_categories": ["financial"]}}
+  "correctness": {"nlp": {"facts": [{
+    "id": "secretary-cannot-require-fee-by-deadline",
+    "category": "line_item",
+    "fields": {"modality": "prohibited", "kind": "prohibition"},
+    "patterns": ["^Prohibits Not later than May 1, 2028, the Secretary from requiring applicants to pay a fee of \\$100\\.$"],
+    "evidence_contains": ["Not later than May 1, 2028, the Secretary shall not require applicants to pay a fee of $100."]
+  }], "closed_categories": ["financial", "line_item"]}}
 }

@@ -12,6 +12,91 @@ from apps.legislation.tests.test_reader_synopsis import extract
 SOURCE = "If approved, applicants shall pay a fee of $100 for fiscal year 2027."
 
 
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "Applicants must pay a fee of $900.",
+        "The Secretary may waive the requirement.",
+        "",
+    ],
+)
+def test_source_fallback_display_must_preserve_the_linked_source(replacement):
+    case = json.loads(
+        (
+            Path(__file__).parent / "fixtures/reader_evals/synthetic-active-waiver.json"
+        ).read_text()
+    )
+    result = extract(case["text"])
+    items = nlp_items(
+        result.contract_json, evidence=result.evidence, source_text=case["text"]
+    )
+    assert score_reader(case, items, pipeline="nlp")["passed"]
+    items[0]["text"] = "Source text (not simplified): " + replacement
+    assert not score_reader(case, items, pipeline="nlp")["passed"]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "Not later than May 1, 2028, the Secretary shall require applicants to pay a fee of $100.",
+        "Prohibits applicants from paying a fee of $100 by May 1, 2028.",
+        "Prohibits Not later than May 1, 2029, the Secretary from requiring applicants to pay a fee of $100.",
+    ],
+)
+def test_calendar_prohibition_rejects_polarity_actor_and_deadline_corruption(
+    replacement,
+):
+    case = json.loads(
+        (
+            Path(__file__).parent
+            / "fixtures/reader_evals/synthetic-calendar-prohibition.json"
+        ).read_text()
+    )
+    result = extract(case["text"])
+    items = nlp_items(
+        result.contract_json, evidence=result.evidence, source_text=case["text"]
+    )
+    assert score_reader(case, items, pipeline="nlp")["passed"]
+    items[0]["text"] = replacement
+    assert not score_reader(case, items, pipeline="nlp")["passed"]
+
+
+def test_unannotated_source_fallback_still_cannot_fabricate_display():
+    item = {
+        "category": "line_item",
+        "text": "Source text (not simplified): A fee of $900 is required.",
+        "evidence_quotes": [SOURCE],
+        "evidence_valid": True,
+    }
+    report = score_reader({}, [item], pipeline="nlp")
+    assert not report["passed"]
+    assert report["dimensions"]["correctness"]["status"] == "fail"
+    assert report["dimensions"]["abstention"]["status"] == "fail"
+
+
+@pytest.mark.parametrize("long", [False, True])
+def test_complete_and_explicitly_truncated_source_previews_remain_valid(long):
+    source = SOURCE if not long else SOURCE + " Additional conditions apply." * 180
+    display = "Source text (not simplified): " + source
+    if long:
+        display = display[:3900] + "… Open the source for the complete wording."
+    case = {
+        "text": source,
+        "correctness": {
+            "nlp": {"facts": [], "source_only": [{"id": "complete", "quote": source}]}
+        },
+    }
+    item = {
+        "category": "line_item",
+        "text": display,
+        "evidence_quotes": [source],
+        "evidence_valid": True,
+    }
+    assert score_reader(case, [item], pipeline="nlp")["passed"]
+    item["text"] += " No fee is required."
+    assert not score_reader(case, [item], pipeline="nlp")["passed"]
+
+
 def annotated_case():
     return {
         "text": SOURCE,
