@@ -77,7 +77,7 @@ def _actor_and_conditions(
         re.match(
             r"^(?P<condition>(?:if|when|unless|subject\s+to|for\s+fiscal\s+years?)\b.*),\s*(?P<actor>[^,]+)$",
             candidate,
-            re.I,
+            re.I | re.S,
         )
         if reader_mode
         else _LEADING_CONDITION_RE.match(candidate)
@@ -99,7 +99,7 @@ def _explicit_actor_boundary(
     match = re.search(
         rf"(?P<connector>\s+(?:{connectors})\s+)(?P<actor>\S(?:.*\S)?)\s*$",
         between,
-        re.IGNORECASE,
+        re.IGNORECASE | (re.DOTALL if reader_mode else 0),
     )
     if match is None:
         return None

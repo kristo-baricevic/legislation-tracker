@@ -24,6 +24,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--case", action="append", dest="cases")
         parser.add_argument(
+            "--suite",
+            choices=["correctness"],
+            help="Select the bounded correctness corpus",
+        )
+        parser.add_argument(
             "--replay", help="JSON artifact from evaluate_bill_enhancements"
         )
         parser.add_argument(
@@ -48,6 +53,12 @@ class Command(BaseCommand):
         chosen = options["cases"] or list(cases)
         if set(chosen) - cases.keys():
             raise CommandError("Unknown evaluation case.")
+        if options["suite"]:
+            chosen = [
+                c for c in chosen if options["suite"] in cases[c].get("suites", [])
+            ]
+        if not chosen:
+            raise CommandError("No evaluation cases selected.")
         rates = None
         price = [options["input_usd_per_million"], options["output_usd_per_million"]]
         if any(p is not None for p in price):
@@ -88,10 +99,12 @@ class Command(BaseCommand):
                     usage=row.get("usage"),
                     rates=rates,
                     elapsed_ms=row.get("latency_ms"),
+                    pipeline="ai",
                 )
                 if not output or row.get("status") == "failed":
                     quality["passed"] = False
                     quality["failures"].append("missing_or_failed_output")
+                    quality["dimensions"]["correctness"]["status"] = "fail"
                 quality["metrics"]["schema_valid"] = schema_valid
             else:
                 with override_settings(LEGAL_NLP_V21_WRITE_ENABLED=True):
@@ -106,7 +119,11 @@ class Command(BaseCommand):
                     )
                 quality = score_reader(
                     case,
-                    nlp_items(result.contract_json),
+                    nlp_items(
+                        result.contract_json,
+                        evidence=result.evidence,
+                        source_text=case["text"],
+                    ),
                     pipeline="nlp",
                     elapsed_ms=round((perf_counter() - start) * 1000, 2),
                 )
@@ -118,18 +135,22 @@ class Command(BaseCommand):
                 if not exact or result.fallback_reason:
                     quality["passed"] = False
                     quality["failures"].append("extraction_or_evidence_failure")
+                    quality["dimensions"]["correctness"]["status"] = "fail"
             if (
                 options["max_item_words"]
                 and quality["metrics"]["max_item_words"] > options["max_item_words"]
             ):
                 quality["passed"] = False
                 quality["failures"].append("readability_word_limit")
+                quality["dimensions"]["readability"]["status"] = "fail"
             results.append({"case_id": case_id, "quality": quality})
             self.stdout.write(
-                f"{case_id}: {'PASS' if quality['passed'] else 'FAIL'}; missing={quality['missing_facts']}; fragments={quality['metrics']['fragment_count']}; long_items={quality['metrics']['items_over_60_words']}"
+                f"{case_id}: {'PASS' if quality['passed'] else 'FAIL'}; failures={quality['failures']}; missing={quality['missing_facts'] + quality['correctness']['missing_fact_ids']}; fragments={quality['metrics']['fragment_count']}; long_items={quality['metrics']['items_over_60_words']}"
             )
         artifact = {
-            "corpus_version": "reader-1",
+            "corpus_version": "reader-2",
+            "evaluator_version": "reader-correctness-2",
+            "suite": options["suite"],
             "mode": "ai-replay" if replay is not None else "nlp",
             "cost_rates": rates,
             "results": results,
