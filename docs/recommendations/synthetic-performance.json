@@ -1,0 +1,39 @@
+{
+  "fixture": {
+    "bills": 10000,
+    "representatives": 500,
+    "topics": 30,
+    "topic_edges": 30000,
+    "cosponsors": 30000,
+    "votes": 100,
+    "vote_records": 40000
+  },
+  "cold_routing_and_initial_bills": {
+    "milliseconds": 505.06,
+    "data_queries": 7,
+    "control_queries": 3
+  },
+  "initial_bills": {
+    "milliseconds": 276.35,
+    "data_queries": 7,
+    "control_queries": 3
+  },
+  "continuation_bills": {
+    "milliseconds": 25.35,
+    "data_queries": 5,
+    "control_queries": 3
+  },
+  "cold_activity": {
+    "milliseconds": 1617.45,
+    "data_queries": 8,
+    "control_queries": 11
+  },
+  "cached_representatives": {
+    "milliseconds": 220.14,
+    "data_queries": 2,
+    "control_queries": 3
+  },
+  "catalog_json_bytes": 15130625,
+  "catalog_peak_python_bytes": 127017084,
+  "database": 160013
+}

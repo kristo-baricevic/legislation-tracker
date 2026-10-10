@@ -5,6 +5,9 @@ import React from "react";
 import { getBills, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
 import BillDeckModal from "./BillDeckModal";
 import IngestionTelemetryPreview from "./IngestionTelemetryPreview";
+import RecommendationsPreview from "./RecommendationsPreview";
+import { focusRecommendationFallback } from "@/lib/recommendation-focus";
+import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges } from "@/lib/api";
 import styles from "./bill-deck.module.css";
 
 const colors = ["#233f68", "#923e47", "#2f6b50", "#426c86", "#705786", "#357b78"];
@@ -34,23 +37,37 @@ export default function BillDeck() {
   const [status, setStatus] = React.useState("");
   const [layout, setLayout] = React.useState("grid");
   const [selected, setSelected] = React.useState<BillListItem | null>(null);
+  const [selectedFromRecommendations, setSelectedFromRecommendations] = React.useState(false);
+  const recommendationOwnsBill = React.useRef(false);
+  const dismissRecommendedBill = React.useCallback(() => {
+    if (recommendationOwnsBill.current) { recommendationOwnsBill.current = false; setSelected(null); }
+  }, []);
   const [pending, setPending] = React.useState<number | null>(null);
   const [followError, setFollowError] = React.useState("");
 
+  React.useEffect(() => subscribePersonalizedChanges(change => {
+    setTracking(null); setSignedIn(false); setReady(false); setError("");
+    if (change.kind === "session" || recommendationOwnsBill.current) setSelected(null);
+    setPending(null); setFollowError("");
+    setAttempt(value => value + 1);
+  }), []);
+
   React.useEffect(() => {
     let live = true;
+    const abort = new AbortController();
+    const scope = capturePersonalizedScope();
     void (async () => {
       try {
-        const session = await getSession();
-        if (!live) return;
+        const session = await getSession({ scope, signal: abort.signal });
+        if (!live || !isPersonalizedScopeCurrent(scope)) return;
         setSignedIn(Boolean(session));
-        if (session) { const result = await getMyTracking(); if (live) setTracking(result); }
+        if (session) { const result = await getMyTracking({ scope, signal: abort.signal }); if (live && isPersonalizedScopeCurrent(scope)) setTracking(result); }
         if (live) setError("");
-      } catch { if (live) setError("Your followed bills could not be loaded. Retry to reconnect."); }
-      finally { if (live) setReady(true); }
+      } catch { if (live && isPersonalizedScopeCurrent(scope)) setError("Your followed bills could not be loaded. Retry to reconnect."); }
+      finally { if (live && isPersonalizedScopeCurrent(scope)) setReady(true); }
     })();
     void getAllCurrentRepresentatives().then(result => { if (live) { setRepresentatives(result); setRepError(""); } }).catch(() => { if (live) setRepError("Sponsor state filters are unavailable until the representative directory reconnects."); });
-    return () => { live = false; };
+    return () => { live = false; abort.abort(); };
   }, [attempt]);
 
   async function loadPage() {
@@ -83,17 +100,18 @@ export default function BillDeck() {
   });
   async function toggleFollow(bill: BillListItem) {
     if (!tracking || pending !== null) return;
+    const scope = capturePersonalizedScope();
     setPending(bill.id); setFollowError("");
     try {
-      if (followed.has(bill.id)) { await untrackBill(bill.id); setTracking(previous => previous && ({ ...previous, bills: previous.bills.filter(item => item.bill.id !== bill.id) })); }
-      else { const item = await trackBill(bill.id); setTracking(previous => previous && ({ ...previous, bills: [...previous.bills, item] })); }
-    } catch { setFollowError("Your follow preference was not saved. Please try again."); }
-    finally { setPending(null); }
+      if (followed.has(bill.id)) await untrackBill(bill.id, { scope });
+      else await trackBill(bill.id, { scope });
+    } catch { if (isPersonalizedScopeCurrent(scope)) setFollowError("Your follow preference was not saved. Please try again."); }
+    finally { if (isPersonalizedScopeCurrent(scope)) setPending(null); }
   }
   const reset = () => { setQuery(""); setTopic(""); setSponsor(""); setState(""); setStatus(""); };
   return <div className={styles.deck}>
     <header className={styles.heading}>
-      <div><h1>Your legislation, in view.</h1><p>Follow the bills that matter to you. Read what’s happening, and what changed.</p></div>
+      <div><h1 data-dashboard-heading tabIndex={-1}>Your legislation, in view.</h1><p>Follow the bills that matter to you. Read what’s happening, and what changed.</p></div>
       <Link href="/topics" className={styles.link}>Manage followed topics</Link>
     </header>
     <div className={styles.toolbar}>
@@ -115,6 +133,7 @@ export default function BillDeck() {
     {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}
+    <RecommendationsPreview onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
     {!ready && !all && <p role="status" className={styles.empty}>Loading your followed bills…</p>}
     {ready && !all && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or explore all bills above.</p></div>}
     {ready && !error && (all || signedIn) && !visible.length && !loading && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : all ? "No bills are loaded yet" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : "Explore all bills and follow one to keep it here."}</p>{!all && !tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
@@ -124,7 +143,7 @@ export default function BillDeck() {
         <div className={styles.bar} style={{ background: topicColor(bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id))?.topic_id ?? bill.topics[0]?.topic_id ?? 0) }} />
         <div className={styles.cardBody}>
           <div className={styles.cardMeta}><span>{bill.bill_number} / {bill.session}</span><span>{readable(bill.status || "Status unavailable")}</span></div>
-          <h3><button onClick={() => setSelected(bill)}>{bill.title || "Untitled bill"}</button></h3>
+          <h3><button onClick={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(bill); }}>{bill.title || "Untitled bill"}</button></h3>
           <p className={styles.cardTopics}>{bill.topics.map(item => item.name).join(", ") || "Topic not recorded"}</p>
           <p className={styles.sponsor}>{bill.sponsor_name || "Sponsor not recorded"}{stateBySponsor.get(bill.sponsor_name ?? "") ? ` (${stateBySponsor.get(bill.sponsor_name!)})` : ""}</p>
           <div className={styles.cardFooter}><span>Last action<br /><time>{dateLabel(bill.last_action_at)}</time></span>{signedIn && tracking ? <button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}</div>
@@ -134,6 +153,6 @@ export default function BillDeck() {
     {catalogError && all && <p role="alert">{catalogError}</p>}
     {all && (more || catalogError) && <button className={styles.loadMore} disabled={loading} onClick={() => void loadPage()}>{loading ? "Loading bills…" : catalogError ? "Retry loading bills" : "Load more bills"}</button>}
     <IngestionTelemetryPreview isStaff={Boolean(tracking?.is_staff)} />
-    {selected && <BillDeckModal bill={selected} onClose={() => setSelected(null)} />}
+    {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}
   </div>;
 }

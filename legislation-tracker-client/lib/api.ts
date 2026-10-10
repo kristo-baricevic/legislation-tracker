@@ -26,6 +26,15 @@ import {
 } from "./contracts.ts";
 
 export type { EvidenceSpanItem } from "./contracts.ts";
+import {
+  announceTrackingChange, assertPersonalizedScope, assertSessionTransitionScope,
+  beginSessionTransition, capturePersonalizedScope, endSessionTransition,
+  isPersonalizedScopeCurrent, markSessionLost, noteAuthenticatedResponse,
+  observeSession, sessionTransitionInProgress, subscribePersonalizedChanges,
+  type PersonalizedRequestOptions, type PersonalizedScope,
+} from "./personalized-scope.ts";
+export { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges };
+export type { PersonalizedRequestOptions, PersonalizedScope };
 
 const getApiUrl = () =>
   typeof window !== "undefined"
@@ -37,8 +46,13 @@ export function getApiBase(): string {
 }
 
 let bootstrappedCsrfToken: string | null = null;
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: { scope: PersonalizedScope; promise: Promise<boolean>; controller: AbortController } | null = null;
 const AUTH_REFRESH_LOCK = "legislation-tracker-auth-refresh";
+subscribePersonalizedChanges(change => {
+  refreshInFlight?.controller.abort();
+  refreshInFlight = null;
+  if (change.kind !== "tracking") bootstrappedCsrfToken = null;
+});
 
 function getCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
@@ -58,19 +72,21 @@ function csrfHeaders(headers?: HeadersInit): Headers {
   return result;
 }
 
-async function bootstrapCsrf(): Promise<void> {
+async function bootstrapCsrf(options?: PersonalizedRequestOptions): Promise<void> {
   const base = getApiBase();
-  const res = await fetch(`${base}/api/auth/csrf/`, { credentials: "include" });
+  const res = await fetch(`${base}/api/auth/csrf/`, { credentials: "include", ...(options?.signal ? { signal: options.signal } : {}) });
+  if (options?.scope) assertPersonalizedScope(options.scope, options.signal);
   if (!res.ok) throw await responseError(res, "Failed to initialize sign-in security");
   const data = (await res.json()) as { csrf_token?: string };
+  if (options?.scope) assertPersonalizedScope(options.scope, options.signal);
   bootstrappedCsrfToken = data.csrf_token ?? getCsrfToken();
   if (!bootstrappedCsrfToken) {
     throw new ApiError("Failed to initialize sign-in security", res.status);
   }
 }
 
-async function ensureCsrf(): Promise<void> {
-  if (!getCsrfToken()) await bootstrapCsrf();
+async function ensureCsrf(options?: PersonalizedRequestOptions): Promise<void> {
+  if (!getCsrfToken()) await bootstrapCsrf(options);
 }
 
 export class ApiError extends Error {
@@ -100,18 +116,28 @@ export interface RegisterResponse {
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
+  const scope = beginSessionTransition();
+  const signal = AbortSignal.timeout(20_000);
+  try {
   const base = getApiBase();
-  await bootstrapCsrf();
+  await bootstrapCsrf({ signal });
+  assertSessionTransitionScope(scope);
   const res = await fetch(`${base}/api/auth/session/`, {
     method: "POST",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
     credentials: "include",
+    signal,
     body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
+  assertSessionTransitionScope(scope);
   if (!res.ok) {
     throw await responseError(res, "Login failed");
   }
-  return res.json();
+  const session = await res.json() as AuthSession;
+  assertSessionTransitionScope(scope);
+  endSessionTransition(session.user.email, scope);
+  return session;
+  } catch (error) { endSessionTransition(undefined, scope); throw error; }
 }
 
 export async function register(email: string, password: string): Promise<RegisterResponse> {
@@ -129,58 +155,100 @@ export async function register(email: string, password: string): Promise<Registe
   return res.json();
 }
 
-async function refreshSession(): Promise<boolean> {
-  try {
-    await ensureCsrf();
-  } catch {
-    return false;
-  }
+async function refreshSession(options: PersonalizedRequestOptions & { scope: PersonalizedScope }): Promise<boolean> {
+  assertPersonalizedScope(options.scope, options.signal);
+  await ensureCsrf(options);
+  assertPersonalizedScope(options.scope, options.signal);
   const base = getApiBase();
   const res = await fetch(`${base}/api/auth/session/refresh/`, {
     method: "POST",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
     credentials: "include",
+    ...(options.signal ? { signal: options.signal } : {}),
   });
+  assertPersonalizedScope(options.scope, options.signal);
   return res.ok;
 }
 
-async function tryRefreshSession(): Promise<boolean> {
-  if (refreshInFlight) return refreshInFlight;
+async function tryRefreshSession(options: PersonalizedRequestOptions & { scope: PersonalizedScope }): Promise<boolean> {
+  assertPersonalizedScope(options.scope, options.signal);
+  if (refreshInFlight && refreshInFlight.scope.sessionGeneration === options.scope.sessionGeneration && refreshInFlight.scope.interestGeneration === options.scope.interestGeneration) {
+    const value = await refreshInFlight.promise;
+    assertPersonalizedScope(options.scope, options.signal);
+    return value;
+  }
+  const controller = new AbortController();
+  // The shared refresh belongs to the captured generations, not one UI caller.
+  const sharedOptions = { scope: options.scope, signal: controller.signal };
   const refresh: Promise<boolean> =
     typeof navigator !== "undefined" && navigator.locks
       ? navigator.locks
-          .request<Promise<boolean>>(AUTH_REFRESH_LOCK, refreshSession)
+          .request<Promise<boolean>>(AUTH_REFRESH_LOCK, () => refreshSession(sharedOptions))
           .then((result) => result)
-      : refreshSession();
+      : refreshSession(sharedOptions);
+  const record = { scope: options.scope, promise: refresh, controller };
   const trackedRefresh = refresh.finally(() => {
-    refreshInFlight = null;
+    if (refreshInFlight === record) refreshInFlight = null;
   });
-  refreshInFlight = trackedRefresh;
-  return trackedRefresh;
+  record.promise = trackedRefresh;
+  refreshInFlight = record;
+  const result = await trackedRefresh;
+  assertPersonalizedScope(options.scope, options.signal);
+  return result;
 }
 
-export async function getSession(retried = false): Promise<AuthSession | null> {
+export async function getSession(retriedOrOptions: boolean | PersonalizedRequestOptions = false): Promise<AuthSession | null> {
+  if (sessionTransitionInProgress()) return null;
+  const options = typeof retriedOrOptions === "boolean" ? {} : retriedOrOptions;
+  const scope = options.scope ?? capturePersonalizedScope();
+  const retried = typeof retriedOrOptions === "boolean" && retriedOrOptions;
+  assertPersonalizedScope(scope, options.signal);
   const base = getApiBase();
   const res = await fetch(`${base}/api/auth/session/current/`, {
     credentials: "include",
+    ...(options.signal ? { signal: options.signal } : {}),
   });
-  if (res.status === 401 && !retried && (await tryRefreshSession())) {
-    return getSession(true);
+  assertPersonalizedScope(scope, options.signal);
+  if (res.status === 401 && !retried && (await tryRefreshSession({ ...options, scope }))) {
+    return getSessionResponse({ ...options, scope });
   }
-  if (res.status === 401 || res.status === 403) return null;
+  if (res.status === 401 || res.status === 403) { markSessionLost(); return null; }
   if (!res.ok) throw await responseError(res, "Failed to load session");
-  return res.json();
+  const result = await res.json() as AuthSession;
+  assertPersonalizedScope(scope, options.signal);
+  observeSession(result.user.email);
+  return result;
+}
+
+async function getSessionResponse(options: PersonalizedRequestOptions & { scope: PersonalizedScope }): Promise<AuthSession | null> {
+  assertPersonalizedScope(options.scope, options.signal);
+  const response = await fetch(`${getApiBase()}/api/auth/session/current/`, { credentials: "include", ...(options.signal ? { signal: options.signal } : {}) });
+  assertPersonalizedScope(options.scope, options.signal);
+  if (response.status === 401 || response.status === 403) { markSessionLost(); return null; }
+  if (!response.ok) throw await responseError(response, "Failed to load session");
+  const result = await response.json() as AuthSession;
+  assertPersonalizedScope(options.scope, options.signal);
+  observeSession(result.user.email);
+  return result;
 }
 
 export async function logout(): Promise<void> {
+  const scope = beginSessionTransition();
+  const signal = AbortSignal.timeout(20_000);
+  try {
   const base = getApiBase();
-  await ensureCsrf();
+  await ensureCsrf({ signal });
+  assertSessionTransitionScope(scope);
   const res = await fetch(`${base}/api/auth/session/logout/`, {
     method: "POST",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
     credentials: "include",
+    signal,
   });
+  assertSessionTransitionScope(scope);
   if (!res.ok) throw await responseError(res, "Logout failed");
+  endSessionTransition(null, scope);
+  } catch (error) { endSessionTransition(undefined, scope); throw error; }
 }
 
 export async function publicGet<T = unknown>(
@@ -198,76 +266,57 @@ export async function publicGet<T = unknown>(
   return res.json();
 }
 
-export async function authGet<T = unknown>(path: string, retried = false): Promise<T> {
-  const base = getApiBase();
-  const res = await fetch(`${base}${path}`, { credentials: "include" });
-  if (res.status === 401 && !retried) {
-    if (await tryRefreshSession()) return authGet<T>(path, true);
-  }
-  if (!res.ok) {
-    throw await responseError(res, `Request failed: ${res.status}`);
-  }
-  return res.json();
+export function authGet<T = unknown>(path: string, options: boolean | PersonalizedRequestOptions = false): Promise<T> {
+  return authRequest<T>("GET", path, undefined, options);
 }
 
-export async function authPost<T = unknown>(
+export function authPost<T = unknown>(
   path: string,
   body?: object,
-  retried = false,
+  options: boolean | PersonalizedRequestOptions = false,
 ): Promise<T> {
-  const base = getApiBase();
-  await ensureCsrf();
-  const res = await fetch(`${base}${path}`, {
-    method: "POST",
-    headers: csrfHeaders({ "Content-Type": "application/json" }),
-    credentials: "include",
-    body: body == null ? undefined : JSON.stringify(body),
-  });
-  if (res.status === 401 && !retried) {
-    if (await tryRefreshSession()) return authPost<T>(path, body, true);
-  }
-  if (!res.ok) {
-    throw await responseError(res, `Request failed: ${res.status}`);
-  }
-  return res.json();
+  return authRequest<T>("POST", path, body, options);
 }
 
-export async function authPut<T = unknown>(
+export function authPut<T = unknown>(
   path: string,
   body: object,
-  retried = false,
+  options: boolean | PersonalizedRequestOptions = false,
 ): Promise<T> {
-  const base = getApiBase();
-  await ensureCsrf();
-  const res = await fetch(`${base}${path}`, {
-    method: "PUT",
-    headers: csrfHeaders({ "Content-Type": "application/json" }),
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  if (res.status === 401 && !retried) {
-    if (await tryRefreshSession()) return authPut<T>(path, body, true);
-  }
-  if (!res.ok) {
-    throw await responseError(res, `Request failed: ${res.status}`);
-  }
-  return res.json();
+  return authRequest<T>("PUT", path, body, options);
 }
 
-export async function authDelete(path: string, retried = false): Promise<void> {
-  const base = getApiBase();
-  await ensureCsrf();
-  const res = await fetch(`${base}${path}`, {
-    method: "DELETE",
-    headers: csrfHeaders(),
-    credentials: "include",
+export function authDelete(path: string, options: boolean | PersonalizedRequestOptions = false): Promise<void> {
+  return authRequest<void>("DELETE", path, undefined, options);
+}
+
+async function authRequest<T>(method: string, path: string, body: object | undefined, options: boolean | PersonalizedRequestOptions, retry = false): Promise<T> {
+  const request = typeof options === "boolean" ? {} : options;
+  const scope = request.scope ?? capturePersonalizedScope();
+  assertPersonalizedScope(scope, request.signal);
+  if (method !== "GET") await ensureCsrf({ ...request, scope });
+  assertPersonalizedScope(scope, request.signal);
+  const response = await fetch(`${getApiBase()}${path}`, {
+    credentials: "include", ...(request.signal ? { signal: request.signal } : {}),
+    ...(method !== "GET" ? { method, headers: csrfHeaders(method === "DELETE" ? undefined : { "Content-Type": "application/json" }), ...(body === undefined ? {} : { body: JSON.stringify(body) }) } : {}),
   });
-  if (res.status === 401 && !retried) {
-    if (await tryRefreshSession()) return authDelete(path, true);
+  assertPersonalizedScope(scope, request.signal);
+  if (response.status === 401 && !retry && options !== true) {
+    if (await tryRefreshSession({ ...request, scope })) {
+      assertPersonalizedScope(scope, request.signal);
+      return authRequest<T>(method, path, body, { ...request, scope }, true);
+    }
   }
-  if (!res.ok) {
-    throw await responseError(res, `Request failed: ${res.status}`);
+  if (!response.ok) {
+    const error = await responseError(response, `Request failed: ${response.status}`);
+    assertPersonalizedScope(scope, request.signal);
+    if (response.status === 401 || response.status === 403) markSessionLost();
+    throw error;
   }
+  const value = method === "DELETE" ? undefined : await response.json();
+  assertPersonalizedScope(scope, request.signal);
+  noteAuthenticatedResponse();
+  return value as T;
 }
 
 export interface BillTopicItem {
@@ -1059,8 +1108,8 @@ export interface TrackingFeed {
   entries: TrackingFeedEntry[];
 }
 
-export function getMyTracking(): Promise<TrackingSummary> {
-  return authGet<TrackingSummary>("/api/tracking/");
+export function getMyTracking(options: PersonalizedRequestOptions = {}): Promise<TrackingSummary> {
+  return authGet<TrackingSummary>("/api/tracking/", options);
 }
 
 export interface SavedBillSearch {
@@ -1112,32 +1161,41 @@ export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFe
   return authGet<TrackingFeed>(`/api/tracking/feed/${q ? `?${q}` : ""}`);
 }
 
-export function trackBill(billId: number): Promise<TrackedBillItem> {
-  return authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId });
+async function trackingMutation<T>(request: Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
+  const scope = options.scope ?? capturePersonalizedScope();
+  const result = await request;
+  assertPersonalizedScope(scope, options.signal);
+  announceTrackingChange();
+  return result;
 }
 
-export function untrackBill(billId: number): Promise<void> {
-  return authDelete(`/api/tracking/bills/${billId}/`);
+export function trackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedBillItem> {
+  return trackingMutation(authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId }, options), options);
 }
 
-export function trackTopic(topicId: number): Promise<TrackedTopicItem> {
-  return authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId });
+export function untrackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+  return trackingMutation(authDelete(`/api/tracking/bills/${billId}/`, options), options);
 }
 
-export function untrackTopic(topicId: number): Promise<void> {
-  return authDelete(`/api/tracking/topics/${topicId}/`);
+export function trackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedTopicItem> {
+  return trackingMutation(authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId }, options), options);
+}
+
+export function untrackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+  return trackingMutation(authDelete(`/api/tracking/topics/${topicId}/`, options), options);
 }
 
 export function trackLegislator(
   representativeId: number,
+  options: PersonalizedRequestOptions = {},
 ): Promise<TrackedLegislatorItem> {
-  return authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
+  return trackingMutation(authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
     representative: representativeId,
-  });
+  }, options), options);
 }
 
-export function untrackLegislator(representativeId: number): Promise<void> {
-  return authDelete(`/api/tracking/legislators/${representativeId}/`);
+export function untrackLegislator(representativeId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+  return trackingMutation(authDelete(`/api/tracking/legislators/${representativeId}/`, options), options);
 }
 
 export interface IngestionTaskResponse {
