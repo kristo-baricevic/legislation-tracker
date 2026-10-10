@@ -88,8 +88,37 @@ test("approved live Wikipedia adapter is visible in the isolated local preview",
   const modal = page.getByRole("dialog", { name: "Bernie Sanders" });
   await expect(modal.getByRole("link", { name: "Wikipedia article", exact: true })).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Bernie_Sanders", { timeout: 25_000 });
   await expect(modal.getByText("Wikipedia contributors", { exact: false })).toBeVisible();
+  await modal.locator("summary", { hasText: "Biography source dates and revision limits" }).click();
   await expect(modal.getByRole("link", { name: "Article revision observed" })).toHaveAttribute("href", /https:\/\/en.wikipedia.org\/w\/index.php\?oldid=\d+/);
   await modal.evaluate(node => { node.scrollTop = 0; });
   await page.screenshot({ path: "test-results/profile-live-wikipedia.png" });
   await page.keyboard.press("Escape");
+});
+
+test("useful profile content precedes caveats and source disclosures work by keyboard on mobile", async ({page}) => {
+  await fixtures(page); await page.goto("/representatives");
+  await page.getByLabel("Enable legislator profiles").check();
+  await page.getByRole("link", {name: "Same Name", exact: true}).first().click();
+  const modal = page.getByRole("dialog", {name: "Same Name"});
+  const biographyHeading = modal.getByRole("heading", {name: "Biography", exact: true});
+  const electionHeading = modal.getByRole("heading", {name: "Elections", exact: true});
+  expect(await biographyHeading.evaluate((node, election) => Boolean(node.compareDocumentPosition(election as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await electionHeading.elementHandle())).toBe(true);
+  const disclosure = modal.locator("summary", {hasText: "Biography source dates and revision limits"});
+  await disclosure.focus(); await page.keyboard.press("Enter");
+  await expect(modal.getByRole("link", {name: "Article revision observed"})).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(modal.getByRole("link", {name: "Article revision observed"})).not.toBeVisible();
+  await expect(modal.getByText("Verified election dates and exact term starts are unavailable.")).toBeVisible();
+  await expect(modal.getByText("Verified campaign finance data is not connected.")).toBeVisible();
+  for (const [name,width] of [["desktop",1280],["mobile",390]] as const) {
+    await page.setViewportSize({width,height:850});
+    await modal.evaluate(node => {node.scrollTop=0;});
+    expect(await modal.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    expect(await biographyHeading.evaluate(node => node.getBoundingClientRect().bottom < window.innerHeight)).toBe(true);
+    await page.screenshot({path: `test-results/profile-prioritized-${name}.png`});
+  }
+  await disclosure.focus();
+  for (let i=0;i<35;i++) {await page.keyboard.press("Tab"); expect(await modal.evaluate(node => node.contains(document.activeElement))).toBe(true);}
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("link", {name:"Same Name",exact:true}).first()).toBeFocused();
 });

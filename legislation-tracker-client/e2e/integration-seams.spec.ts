@@ -97,5 +97,11 @@ test("real isolated API activity is rendered through the client profile wrapper"
   await expect(modal.getByText(/Rolling .*month window/)).toBeVisible();
   await expect(modal.getByText("Verified campaign finance data is not connected.")).toBeVisible();
   await page.screenshot({path: "test-results/integration-real-api-profile.png"});
+  for (const [name, width] of [["desktop", 1280], ["mobile", 390]] as const) {
+    await page.setViewportSize({width, height: 850});
+    await modal.evaluate(node => {node.scrollTop = 0;});
+    expect(await modal.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await page.screenshot({path: `test-results/profile-prioritized-real-api-${name}.png`});
+  }
   await page.keyboard.press("Escape");
 });

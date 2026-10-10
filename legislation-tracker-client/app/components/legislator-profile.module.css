@@ -3,7 +3,7 @@
 .dialog a { color: #245d40; text-decoration: underline; text-underline-offset: 3px; }
 .dialog button { border: 1px solid #a6b7aa; border-radius: 7px; padding: .4rem .8rem; background: #f4f5ee; cursor: pointer; }
 .dialog button:disabled { opacity: .55; cursor: default; }
-.dialog :is(a, button, input):focus-visible { outline: 3px solid #39745a; outline-offset: 3px; }
+.dialog :is(a, button, input, summary):focus-visible { outline: 3px solid #39745a; outline-offset: 3px; }
 .header { display: flex; align-items: center; gap: 1rem; padding-bottom: 1.3rem; }
 .header h2 { font-size: 1.65rem; font-weight: 650; margin: .2rem 0; }
 .header p { margin: 0; }
@@ -14,6 +14,11 @@
 .section h3 { font-size: 1.1rem; font-weight: 650; margin: 0 0 .5rem; }
 .section p { margin: .5rem 0; }
 .section ul { padding-left: 1.2rem; }
+.identity { padding: .65rem 0; }
+.identity h3 { font-size: .83rem; color: #59685d; margin-bottom: .2rem; }
+.evidence { margin-top: .6rem; font-size: .83rem; color: #59685d; }
+.dialog summary { cursor: pointer; font-weight: 600; }
+.dialog details[open] > summary { margin-bottom: .5rem; }
 .note, .header small { font-size: .83rem; color: #59685d; overflow-wrap: anywhere; }
 .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .facts dt { font-size: .82rem; color: #59685d; }

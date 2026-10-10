@@ -6,7 +6,12 @@ import { createPortal } from "react-dom";
 type Entry = { node: HTMLDialogElement; opener: HTMLElement | null; close: () => void; identity: string; fallbackFocus?: () => void };
 type Stack = { register: (entry: Entry) => () => void; isTop: (node: HTMLDialogElement) => boolean; contains: (identity: string) => boolean; canOpen: () => boolean; closeAll: () => void };
 const Context = React.createContext<Stack | null>(null);
-const controls = (node: HTMLElement) => [...node.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex='0']")].filter(control => !control.closest("[hidden], [inert], [aria-hidden='true']"));
+const controls = (node: HTMLElement) => {
+  const collapsed = [...node.querySelectorAll("details:not([open])")];
+  return [...node.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex='0']")].filter(control =>
+    !control.closest("[hidden], [inert], [aria-hidden='true']") &&
+    !collapsed.some(details => details.contains(control) && control !== details.querySelector(":scope > summary")));
+};
 
 export function ModalStackProvider({ children }: { children: React.ReactNode }) {
   const entries = React.useRef<Entry[]>([]);

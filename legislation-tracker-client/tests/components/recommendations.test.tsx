@@ -97,6 +97,8 @@ describe("recommendation rows", () => {
     render(<RepresentativeActivity scope={{ representativeId: 1, congress: 117, chamber: "senate" }} />);
     expect(await screen.findByText(/Rolling 24-month window/)).toHaveTextContent("independent of the selected Congress");
     expect(screen.getAllByText(/Insufficient history/)).toHaveLength(2);
+    expect(screen.getByText(/activity completeness and exact time in office are unknown/)).toBeVisible();
+    fireEvent.click(screen.getByText("Repeat-title groups and resolution coverage"));
     expect(screen.getByText(/Exact time in office is unavailable/)).toBeVisible();
   });
   it.each([{}, {...activity, representative: {...activity.representative, id: 2}}, {...activity, channels: {...activity.channels, sponsor: {...activity.channels.sponsor, raw_observation_count: {}}}}])("fails closed for malformed or wrong-person activity", async payload => {
