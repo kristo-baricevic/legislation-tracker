@@ -297,6 +297,7 @@ def test_catalog_busy_expiry_and_failure_do_not_publish_partial_data():
     ):
         with pytest.raises(RecommendationError):
             representative_activity_catalog()
+
     cache.clear()
     with patch("apps.congress.topic_activity._build_catalog", side_effect=TimeoutError):
         with pytest.raises(RecommendationError):
@@ -308,3 +309,32 @@ def test_catalog_busy_expiry_and_failure_do_not_publish_partial_data():
     ):
         with pytest.raises(RecommendationError):
             representative_activity_catalog()
+
+
+def test_catalog_recovers_after_cold_build_gate_is_released():
+    from zoneinfo import ZoneInfo
+
+    from django.utils import timezone
+
+    from apps.accounts.recommendation_support import RecommendationError
+    from apps.congress.topic_activity import (
+        DEFAULT_POLICY,
+        representative_activity_catalog,
+    )
+
+    cache.clear()
+    rep = representative()
+    capture = timezone.now()
+    day = capture.astimezone(ZoneInfo("America/New_York")).date()
+    key = f"representative-topic-activity:v1:{DEFAULT_POLICY.version}:{day}"
+    assert cache.add(key + ":gate", "synthetic-other-builder", timeout=30)
+    with pytest.raises(RecommendationError):
+        representative_activity_catalog(captured_at=capture)
+    assert cache.get(key) is None
+    cache.delete(key + ":gate")
+    recovered = representative_activity_catalog(captured_at=capture)
+    assert (
+        recovered["representatives"][str(rep.id)]["activity"]["representative"]["id"]
+        == rep.id
+    )
+    assert cache.get(key) == recovered

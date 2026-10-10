@@ -101,6 +101,21 @@ describe("recommendation rows", () => {
     fireEvent.click(screen.getByText("Repeat-title groups and resolution coverage"));
     expect(screen.getByText(/Exact time in office is unavailable/)).toBeVisible();
   });
+  it("recovers recorded activity after an unavailable response when Retry activity is clicked", async () => {
+    let available = false;
+    const fetch = vi.fn(async () => available
+      ? Response.json(activity)
+      : Response.json({ detail: "recommendations_unavailable" }, { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    render(<RepresentativeActivity scope={{ representativeId: 1, congress: 119 }} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Recorded topic activity could not be loaded.");
+    expect(screen.queryByRole("heading", { name: "Recorded topic activity" })).not.toBeInTheDocument();
+    available = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry activity" }));
+    expect(await screen.findByRole("heading", { name: "Recorded topic activity" })).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it.each([{}, {...activity, representative: {...activity.representative, id: 2}}, {...activity, channels: {...activity.channels, sponsor: {...activity.channels.sponsor, raw_observation_count: {}}}}])("fails closed for malformed or wrong-person activity", async payload => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(payload)));
     render(<RepresentativeActivity scope={{representativeId: 1, congress: 119}} />);
