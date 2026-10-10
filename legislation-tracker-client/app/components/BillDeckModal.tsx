@@ -4,9 +4,11 @@ import Link from "next/link";
 import React from "react";
 import { getBill, compareBillDocuments, type BillListItem, type BillDetail, type DocumentComparison } from "@/lib/api";
 import styles from "./bill-deck.module.css";
+import StackDialog from "./ModalStack";
+import LegislatorName from "./LegislatorName";
 
-export default function BillDeckModal({ bill, onClose }: { bill: BillListItem; onClose: () => void }) {
-  const dialog = React.useRef<HTMLDialogElement>(null);
+export default function BillDeckModal({ bill, onClose, fallbackFocus }: { bill: BillListItem; onClose: () => void; fallbackFocus?: () => void }) {
+  const titleId = React.useId();
   const [detail, setDetail] = React.useState<BillDetail | null>(null);
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
@@ -16,15 +18,9 @@ export default function BillDeckModal({ bill, onClose }: { bill: BillListItem; o
   const [comparisonPair, setComparisonPair] = React.useState("");
   const [comparing, setComparing] = React.useState(false);
   React.useEffect(() => {
-    const element = dialog.current!;
-    const previous = document.activeElement as HTMLElement | null;
-    const overflow = document.body.style.overflow;
-    element.showModal(); document.body.style.overflow = "hidden";
-    return () => { element.close(); document.body.style.overflow = overflow; previous?.focus(); };
-  }, []);
-  React.useEffect(() => {
     const controller = new AbortController();
     void getBill(bill.id, { signal: controller.signal }).then(value => {
+      if (controller.signal.aborted) return;
       setDetail(value); setError("");
       setSelected(value.documents.find(document => document.is_active_version)?.id ?? value.documents[0]?.id ?? null);
     }).catch(() => { if (!controller.signal.aborted) setError("Bill details could not be loaded. Please retry."); });
@@ -48,18 +44,11 @@ export default function BillDeckModal({ bill, onClose }: { bill: BillListItem; o
   const summaryMatches = version && detail?.summary_version_code && detail.summary_version_code.toLowerCase() === version.version_label.toLowerCase();
   // Official summaries can contain markup. Render plain text only, never injected HTML.
   const summary = detail?.summary?.replace(/<[^>]*>/g, " ") ?? "";
-  return <dialog ref={dialog} className={`${styles.deck} ${styles.dialog}`} aria-labelledby="bill-dialog-title" onKeyDown={event => {
-    if (event.key !== "Tab") return;
-    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex='0']")];
-    const first = controls[0]; const last = controls.at(-1);
-    if (!first || !last) { event.preventDefault(); return; }
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  }} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === dialog.current) { const rect = dialog.current.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}>
+  return <StackDialog identity={`bill:${bill.id}`} titleId={titleId} className={`${styles.deck} ${styles.dialog}`} onClose={onClose} fallbackFocus={fallbackFocus}>
     <div className={styles.modalHeader}><p>{bill.bill_number} / Congress {bill.session}</p><button autoFocus onClick={onClose} aria-label="Close bill details">Close ✕</button></div>
-    <h2 id="bill-dialog-title" className={styles.modalTitle}>{bill.title || "Untitled bill"}</h2>
+    <h2 id={titleId} className={styles.modalTitle}>{bill.title || "Untitled bill"}</h2>
     {error ? <p role="alert">{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></p> : !detail ? <p role="status">Loading bill details…</p> : <>
-      <dl className={styles.metadata}><div><dt>Status</dt><dd>{bill.status.replaceAll("_", " ") || "Not recorded"}</dd></div><div><dt>Sponsor</dt><dd>{bill.sponsor_name || "Not recorded"}</dd></div><div><dt>Jurisdiction</dt><dd>{bill.jurisdiction || "Not recorded"}</dd></div><div><dt>Introduced</dt><dd>{bill.introduced_at || "Not recorded"}</dd></div></dl>
+      <dl className={styles.metadata}><div><dt>Status</dt><dd>{bill.status.replaceAll("_", " ") || "Not recorded"}</dd></div><div><dt>Sponsor</dt><dd><LegislatorName id={detail.sponsor ?? null} name={detail.sponsor_name || "Not recorded"} congress={detail.session} /></dd></div><div><dt>Jurisdiction</dt><dd>{bill.jurisdiction || "Not recorded"}</dd></div><div><dt>Introduced</dt><dd>{bill.introduced_at || "Not recorded"}</dd></div></dl>
       <section className={styles.summary}><h3>Bill summary</h3><p>{summary || "No bill summary is available yet."}</p>{summary && <p className={styles.note}>Source: {detail.summary_source || "Stored bill summary"}. {detail.summary_version_code ? `Summary version: ${detail.summary_version_code}.` : "The source does not identify a summary version."}</p>}</section>
       <div className={styles.versionLayout}>
         <nav aria-label="Bill version history"><h3>Version history</h3>{!versions.length ? <p>No document versions are available yet.</p> : <ol className={styles.versions}>{versions.map(document => <li key={document.id}><button aria-pressed={selected === document.id} onClick={() => setSelected(document.id)}>{document.version_label || `Document ${document.id}`}{document.is_active_version ? " · Current" : ""}{document.source_order != null && <small>Source order {document.source_order}</small>}</button></li>)}</ol>}</nav>
@@ -82,5 +71,5 @@ export default function BillDeckModal({ bill, onClose }: { bill: BillListItem; o
       </div>
     </>}
     <footer className={styles.modalFooter}><Link href={`/bills/${bill.id}`}>Open full bill page</Link></footer>
-  </dialog>;
+  </StackDialog>;
 }

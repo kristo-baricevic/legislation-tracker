@@ -1,4 +1,5 @@
 "use client";
+import LegislatorName from "../components/LegislatorName";
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -743,7 +744,7 @@ function BillsTable() {
                         {bill.status}
                       </td>
                       <td className="truncate p-3" title={bill.sponsor_name ?? undefined}>
-                        {bill.sponsor_name ?? "—"}
+                        <LegislatorName id={bill.sponsor_id ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} />
                       </td>
                       <td className="p-3">
                         <Link

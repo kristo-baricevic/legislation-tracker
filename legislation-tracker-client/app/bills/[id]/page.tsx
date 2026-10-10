@@ -23,6 +23,7 @@ import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import BillChangeExperience from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
+import LegislatorName from "../../components/LegislatorName";
 
 function BillDetailInner({ routeId }: { routeId: string }) {
   const id = parseInt(routeId, 10);
@@ -283,7 +284,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
           <div>
             <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
-            <dd>{bill.sponsor_name ?? "—"}</dd>
+            <dd><LegislatorName id={bill.sponsor ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} /></dd>
           </div>
           {bill.introduced_at && (
             <div>

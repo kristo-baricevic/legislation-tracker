@@ -489,6 +489,11 @@ class BillListSerializer(serializers.ModelSerializer):
     """For list view: bill fields + sponsor name + topics."""
 
     sponsor_name = serializers.SerializerMethodField()
+    sponsor_id = serializers.IntegerField(read_only=True, allow_null=True)
+    sponsor_bioguide_id = serializers.CharField(
+        source="sponsor.bioguide_id", read_only=True, allow_null=True, default=None
+    )
+    congress_gov_url = serializers.SerializerMethodField()
     topics = BillTopicSerializer(source="bill_topics", many=True, read_only=True)
     search_rank = serializers.SerializerMethodField()
     highlights = serializers.SerializerMethodField()
@@ -503,6 +508,9 @@ class BillListSerializer(serializers.ModelSerializer):
             "title",
             "status",
             "sponsor_name",
+            "sponsor_id",
+            "sponsor_bioguide_id",
+            "congress_gov_url",
             "introduced_at",
             "last_action_at",
             "topics",
@@ -517,6 +525,11 @@ class BillListSerializer(serializers.ModelSerializer):
 
     def get_search_rank(self, obj):
         return self.context.get("search_ranks", {}).get(obj.id)
+
+    def get_congress_gov_url(self, obj):
+        from apps.congress.profile_sources import bill_source_url
+
+        return bill_source_url(obj)
 
     def get_highlights(self, obj):
         return self.context.get("search_highlights", {}).get(obj.id, [])

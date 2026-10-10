@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AuthNav from "./AuthNav";
 import ThemeToggle from "./ThemeToggle";
+import { ProfilePreference } from "./ProfileProvider";
 
 export default function SiteHeader() {
   return (
@@ -14,6 +15,7 @@ export default function SiteHeader() {
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <ThemeToggle />
+          <ProfilePreference />
           <AuthNav />
         </div>
       </div>

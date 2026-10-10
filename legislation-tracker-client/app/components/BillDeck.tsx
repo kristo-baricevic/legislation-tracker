@@ -8,6 +8,7 @@ import IngestionTelemetryPreview from "./IngestionTelemetryPreview";
 import RecommendationsPreview from "./RecommendationsPreview";
 import { focusRecommendationFallback } from "@/lib/recommendation-focus";
 import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges } from "@/lib/api";
+import LegislatorName from "./LegislatorName";
 import styles from "./bill-deck.module.css";
 
 const colors = ["#233f68", "#923e47", "#2f6b50", "#426c86", "#705786", "#357b78"];
@@ -86,11 +87,12 @@ export default function BillDeck() {
   const topics = new Map<number, string>();
   tracking?.topics.forEach(item => topics.set(item.topic.id, item.topic.name));
   source.forEach(bill => bill.topics.forEach(item => topics.set(item.topic_id, item.name)));
-  const sponsors = [...new Set(source.map(bill => bill.sponsor_name).filter((name): name is string => Boolean(name)))].sort();
+  const sponsorKey = (bill: BillListItem) => bill.sponsor_id ? `id:${bill.sponsor_id}` : `unidentified:${bill.sponsor_name ?? ""}`;
+  const sponsors = [...new Map(source.filter(bill => bill.sponsor_name).map(bill => [sponsorKey(bill), bill.sponsor_name!])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const statuses = [...new Set(source.map(bill => bill.status).filter(Boolean))].sort();
-  const stateBySponsor = new Map(representatives.map(rep => [rep.name, rep.state]));
-  const states = [...new Set(source.map(bill => stateBySponsor.get(bill.sponsor_name ?? "")).filter((value): value is string => Boolean(value)))].sort();
-  const visible = source.filter(bill => (!query || `${bill.bill_number} ${bill.title}`.toLowerCase().includes(query.toLowerCase())) && (!topic || bill.topics.some(item => String(item.topic_id) === topic)) && (!sponsor || bill.sponsor_name === sponsor) && (!state || stateBySponsor.get(bill.sponsor_name ?? "") === state) && (!status || bill.status === status));
+  const stateBySponsor = new Map(representatives.map(rep => [rep.id, rep.state]));
+  const states = [...new Set(source.map(bill => stateBySponsor.get(bill.sponsor_id ?? -1)).filter((value): value is string => Boolean(value)))].sort();
+  const visible = source.filter(bill => (!query || `${bill.bill_number} ${bill.title}`.toLowerCase().includes(query.toLowerCase())) && (!topic || bill.topics.some(item => String(item.topic_id) === topic)) && (!sponsor || sponsorKey(bill) === sponsor) && (!state || stateBySponsor.get(bill.sponsor_id ?? -1) === state) && (!status || bill.status === status));
   const groups = new Map<string, { id: number; bills: BillListItem[] }>();
   visible.forEach(bill => {
     const preferred = bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id)) ?? bill.topics[0];
@@ -124,12 +126,12 @@ export default function BillDeck() {
     <div className={styles.filters}>
       <label>Search bills<input type="search" placeholder="Title or bill number" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <label>Topic<select aria-label="Topic" value={topic} onChange={event => setTopic(event.target.value)}><option value="">All topics</option>{[...topics].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-      <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(name => <option key={name}>{name}</option>)}</select></label>
+      <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => { const representative = representatives.find(rep => key === `id:${rep.id}`); return <option key={key} value={key}>{name}{representative ? ` · ${representative.state} · ${representative.chamber}` : " · Affiliation unavailable"}</option>; })}</select></label>
       <label>Sponsor state<select aria-label="Sponsor state" disabled={Boolean(repError)} value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</select></label>
       <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map(value => <option key={value} value={value}>{readable(value)}</option>)}</select></label>
     </div>
     <div className={styles.resultLine}><p role="status">{visible.length} {visible.length === 1 ? "bill" : "bills"} in view{all ? ` · ${bills.length} of ${total} loaded` : ""}</p><button onClick={reset}>Clear filters</button></div>
-    {all && <p className={styles.note}>Filters apply to loaded bills. Load more to browse the full collection. State matches current sponsors in the representative directory; unlisted sponsors have no state metadata.</p>}
+    {all && <p className={styles.note}>Filters apply to loaded bills. Load more to browse the full collection. Sponsor state uses the latest stored affiliation by representative ID; historical state may differ and unlisted sponsors have no state metadata.</p>}
     {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}
@@ -145,7 +147,7 @@ export default function BillDeck() {
           <div className={styles.cardMeta}><span>{bill.bill_number} / {bill.session}</span><span>{readable(bill.status || "Status unavailable")}</span></div>
           <h3><button onClick={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(bill); }}>{bill.title || "Untitled bill"}</button></h3>
           <p className={styles.cardTopics}>{bill.topics.map(item => item.name).join(", ") || "Topic not recorded"}</p>
-          <p className={styles.sponsor}>{bill.sponsor_name || "Sponsor not recorded"}{stateBySponsor.get(bill.sponsor_name ?? "") ? ` (${stateBySponsor.get(bill.sponsor_name!)})` : ""}</p>
+          <p className={styles.sponsor}><LegislatorName id={bill.sponsor_id ?? null} name={bill.sponsor_name || "Sponsor not recorded"} congress={bill.session} />{stateBySponsor.get(bill.sponsor_id ?? -1) ? ` (${stateBySponsor.get(bill.sponsor_id!)}, latest stored state)` : ""}</p>
           <div className={styles.cardFooter}><span>Last action<br /><time>{dateLabel(bill.last_action_at)}</time></span>{signedIn && tracking ? <button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}</div>
         </div>
       </article>)}</div>

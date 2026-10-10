@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-const bill = { id: 1, bill_number: "H.R. 1589", session: 119, title: "To amend the Internal Revenue Code of 1986 to increase the limitation on the deduction for state and local taxes.", jurisdiction: "federal", status: "introduced", sponsor_name: "Test Representative", introduced_at: "2025-02-26", last_action_at: "2025-02-26", topics: [{ topic_id: 1, name: "Taxation", slug: "taxation", confidence_score: 1 }] };
+const bill = { id: 1, bill_number: "H.R. 1589", session: 119, title: "To amend the Internal Revenue Code of 1986 to increase the limitation on the deduction for state and local taxes.", jurisdiction: "federal", status: "introduced", sponsor_id: 1, sponsor_bioguide_id: "T000001", sponsor_name: "Test Representative", introduced_at: "2025-02-26", last_action_at: "2025-02-26", topics: [{ topic_id: 1, name: "Taxation", slug: "taxation", confidence_score: 1 }] };
 const other = { ...bill, id: 2, bill_number: "H.R. 619", title: "A second bill in the test collection", sponsor_name: null, topics: [], status: "passed_house" };
 const documents = [1, 2, 3].map(id => ({ id, source_order: id, version_label: ["Introduced", "Reported", "Engrossed"][id - 1], is_active_version: id === 3, content_type: "text/html", file_size_bytes: 400, source_url: null, downloaded_at: null, download_url: null, text_url: null }));
 
@@ -85,7 +85,7 @@ test("filters, collection, follow behavior, modal versions, keyboard and persist
   await page.getByLabel("Sponsor state").selectOption("NY"); await expect(title).toBeVisible();
   await page.getByLabel("Status", { exact: true }).selectOption("introduced");
   await page.getByLabel("Topic", { exact: true }).selectOption("1");
-  await page.getByLabel("Representative (sponsor)").selectOption("Test Representative");
+  await page.getByLabel("Representative (sponsor)").selectOption("id:1");
   await page.getByLabel("Search bills").fill("no match"); await expect(page.getByText("No bills match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await title.click(); const modal = page.getByRole("dialog"); await expect(modal).toBeVisible();

@@ -334,6 +334,9 @@ export interface BillListItem {
   title: string;
   status: string;
   sponsor_name: string | null;
+  sponsor_id?: number | null;
+  sponsor_bioguide_id?: string | null;
+  congress_gov_url?: string | null;
   introduced_at: string | null;
   last_action_at: string | null;
   topics: BillTopicItem[];
