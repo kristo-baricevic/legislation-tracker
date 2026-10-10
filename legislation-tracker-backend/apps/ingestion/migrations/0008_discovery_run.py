@@ -7,30 +7,44 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('ingestion', '0007_collapse_stale_pending_work'),
+        ("ingestion", "0007_collapse_stale_pending_work"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='IngestionRun',
+            name="IngestionRun",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('jurisdiction', models.CharField(default='federal', max_length=20)),
-                ('congress', models.PositiveIntegerField()),
-                ('request_key', models.CharField(max_length=128, unique=True)),
-                ('status', models.CharField(default='pending', max_length=20)),
-                ('task_id', models.CharField(blank=True, max_length=255)),
-                ('trigger', models.CharField(default='scheduled', max_length=20)),
-                ('started_at', models.DateTimeField(null=True)),
-                ('finished_at', models.DateTimeField(null=True)),
-                ('lease_expires_at', models.DateTimeField()),
-                ('discovered_count', models.PositiveIntegerField(null=True)),
-                ('created_count', models.PositiveIntegerField(null=True)),
-                ('error_code', models.CharField(blank=True, max_length=64)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("jurisdiction", models.CharField(default="federal", max_length=20)),
+                ("congress", models.PositiveIntegerField()),
+                ("request_key", models.CharField(max_length=128, unique=True)),
+                ("status", models.CharField(default="pending", max_length=20)),
+                ("task_id", models.CharField(blank=True, max_length=255)),
+                ("trigger", models.CharField(default="scheduled", max_length=20)),
+                ("started_at", models.DateTimeField(null=True)),
+                ("finished_at", models.DateTimeField(null=True)),
+                ("lease_expires_at", models.DateTimeField()),
+                ("discovered_count", models.PositiveIntegerField(null=True)),
+                ("created_count", models.PositiveIntegerField(null=True)),
+                ("error_code", models.CharField(blank=True, max_length=64)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'constraints': [models.UniqueConstraint(condition=models.Q(('status__in', ['pending', 'running'])), fields=('jurisdiction', 'congress'), name='ingestion_run_active_scope_uniq')],
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("status__in", ["pending", "running"])),
+                        fields=("jurisdiction", "congress"),
+                        name="ingestion_run_active_scope_uniq",
+                    )
+                ],
             },
         ),
     ]

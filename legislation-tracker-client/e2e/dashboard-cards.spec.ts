@@ -11,7 +11,7 @@ async function fixtures(page: Page, empty = false) {
     const url = new URL(route.request().url());
     const path = url.pathname;
     let response: unknown = {};
-    if (path === "/api/auth/session/") response = { authenticated: true, user: { email: "fixture@example.com" } };
+    if (path === "/api/auth/session/current/") response = { authenticated: true, user: { email: "fixture@example.com" } };
     else if (path === "/api/auth/csrf/") response = { csrf_token: "fixture" };
     else if (path === "/api/tracking/") response = { bills: following ? [{ id: 1, bill, created_at: "2025-01-01" }] : [], topics: empty ? [] : [{ id: 1, topic: { id: 1, name: "Taxation", slug: "taxation" }, created_at: "2025-01-01" }], legislators: [], is_staff: false };
     else if (path === "/api/tracking/bills/1/") { following = false; await route.fulfill({ status: 204 }); return; }

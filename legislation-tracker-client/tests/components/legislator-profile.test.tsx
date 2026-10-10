@@ -175,3 +175,23 @@ it("uses the current bill owner fallback after its row disappears", async () => 
   expect(finalFallback).toHaveBeenCalledOnce();
   expect(firstFallback).not.toHaveBeenCalled();
 });
+
+ it("removes profile and introduced-bill descendants when the owning root disappears", async () => {
+  localStorage.setItem(FLAG, "true");
+  const original = fetch;
+  vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => String(input).includes("/sponsored-bills/") ? Promise.resolve(new Response(JSON.stringify({ count: 1, next: null, previous: null, results: [{ ...bill, id: 11, title: "Different introduced bill" }] }))) : original(input, init)));
+  const fallback = vi.fn(() => document.getElementById("owner-heading")?.focus());
+  function Fixture({ show }: { show: boolean }) { return <ProfileProvider><h2 id="owner-heading" tabIndex={-1}>Owner heading</h2>{show && <BillDeckModal bill={bill} onClose={() => {}} fallbackFocus={fallback} />}</ProfileProvider>; }
+  const view = render(<Fixture show />); const user = userEvent.setup();
+  const root = await screen.findByRole("dialog", { name: "Introduced legislation" });
+  await user.click(await within(root).findByRole("link", { name: "First Member" }));
+  const profileDialog = await screen.findByRole("dialog", { name: "First Member" });
+  await user.click(await within(profileDialog).findByRole("link", { name: "Different introduced bill" }));
+  await screen.findByRole("dialog", { name: "Different introduced bill" });
+  view.rerender(<Fixture show={false} />);
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Owner heading" })).toHaveFocus());
+  expect(document.body.style.overflow).toBe("");
+  expect(fallback).toHaveBeenCalledOnce();
+  expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/representatives/")).every(([, options]) => options?.signal?.aborted)).toBe(true);
+ });

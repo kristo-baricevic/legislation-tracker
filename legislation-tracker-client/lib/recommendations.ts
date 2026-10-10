@@ -77,6 +77,28 @@ export function getBillRecommendations(params: { cursor?: string; pageSize?: num
 export function getRepresentativeRecommendations(options: PersonalizedRequestOptions = {}): Promise<RepresentativeRecommendationsResponse> {
   return authGet("/api/tracking/representative-recommendations/", options);
 }
-export function getRepresentativeTopicActivity(id: number, options: { signal?: AbortSignal } = {}): Promise<RepresentativeTopicActivity> {
-  return publicGet(`/api/representatives/${id}/topic-activity/`, options);
+export async function getRepresentativeTopicActivity(id: number, options: { signal?: AbortSignal } = {}): Promise<RepresentativeTopicActivity> {
+  const value = await publicGet<RepresentativeTopicActivity>(`/api/representatives/${id}/topic-activity/`, options);
+  const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  const share = (value: unknown) => value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1);
+  const channelValid = (channel: ActivityChannel | undefined) => channel &&
+    [channel.raw_observation_count, channel.grouped_observation_count, channel.missing_date_count, channel.unknown_session_count, channel.withdrawn_count].every(count) &&
+    (channel.raw_tag_coverage === null || (channel.raw_tag_coverage && share(channel.raw_tag_coverage.display))) &&
+    (channel.grouped_tag_coverage === null || (channel.grouped_tag_coverage && share(channel.grouped_tag_coverage.display))) &&
+    Array.isArray(channel.topics) && channel.topics.every(metric => metric &&
+      metric.topic && count(metric.topic.id) && typeof metric.topic.name === "string" &&
+      metric.raw && count(metric.raw.topic_observation_count) && share(metric.raw.share) &&
+      metric.grouped && count(metric.grouped.topic_observation_count) && share(metric.grouped.share) &&
+      Array.isArray(metric.examples) && metric.examples.every(example => example && count(example.bill_id) && count(example.session) && typeof example.bill_number === "string"));
+  if (!value || value.schema_version !== "representative-topic-activity-v1" || value.representative?.id !== id ||
+      !value.window || !count(value.window.months) || typeof value.window.start_date !== "string" || typeof value.captured_at !== "string" ||
+      !value.policy || !count(value.policy.minimum_observations) || !count(value.policy.minimum_topic_observations) ||
+      typeof value.policy.topic_share !== "string" || !share(Number(value.policy.topic_share)) ||
+      typeof value.policy.minimum_tag_coverage !== "string" || !share(Number(value.policy.minimum_tag_coverage)) ||
+      !value.passage_evidence || ![value.passage_evidence.yes, value.passage_evidence.no, value.passage_evidence.present, value.passage_evidence.not_voting, value.passage_evidence.other, value.passage_evidence.missing_or_uncertain].every(count) || !share(value.passage_evidence.yes_rate) ||
+      !value.resolutions || ![value.resolutions.joint_count, value.resolutions.concurrent_count, value.resolutions.simple_count].every(item => item === null || count(item)) ||
+      !channelValid(value.channels?.sponsor) || !channelValid(value.channels?.active_cosponsor)) {
+    throw new Error("Recorded topic activity response is invalid.");
+  }
+  return value;
 }

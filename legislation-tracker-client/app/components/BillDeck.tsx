@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
-import { getBills, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
+import { getBillFilterOptions, getBills, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
 import BillDeckModal from "./BillDeckModal";
 import IngestionTelemetryPreview from "./IngestionTelemetryPreview";
 import RecommendationsPreview from "./RecommendationsPreview";
@@ -30,6 +30,7 @@ export default function BillDeck() {
   const [loading, setLoading] = React.useState(false);
   const [catalogError, setCatalogError] = React.useState("");
   const [representatives, setRepresentatives] = React.useState<RepresentativeItem[]>([]);
+  const [currentCongress, setCurrentCongress] = React.useState<number | null>(null);
   const [repError, setRepError] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [topic, setTopic] = React.useState("");
@@ -46,9 +47,9 @@ export default function BillDeck() {
   const [pending, setPending] = React.useState<number | null>(null);
   const [followError, setFollowError] = React.useState("");
 
-  React.useEffect(() => subscribePersonalizedChanges(change => {
+  React.useEffect(() => subscribePersonalizedChanges(() => {
     setTracking(null); setSignedIn(false); setReady(false); setError("");
-    if (change.kind === "session" || recommendationOwnsBill.current) setSelected(null);
+    if (recommendationOwnsBill.current) setSelected(null);
     setPending(null); setFollowError("");
     setAttempt(value => value + 1);
   }), []);
@@ -67,6 +68,7 @@ export default function BillDeck() {
       } catch { if (live && isPersonalizedScopeCurrent(scope)) setError("Your followed bills could not be loaded. Retry to reconnect."); }
       finally { if (live && isPersonalizedScopeCurrent(scope)) setReady(true); }
     })();
+    void getBillFilterOptions().then(options => { if (live && Number.isInteger(options.current_congress) && options.current_congress > 0) setCurrentCongress(options.current_congress); }).catch(() => { if (live) setCurrentCongress(null); });
     void getAllCurrentRepresentatives().then(result => { if (live) { setRepresentatives(result); setRepError(""); } }).catch(() => { if (live) setRepError("Sponsor state filters are unavailable until the representative directory reconnects."); });
     return () => { live = false; abort.abort(); };
   }, [attempt]);
@@ -135,7 +137,7 @@ export default function BillDeck() {
     {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}
-    <RecommendationsPreview onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
+    <RecommendationsPreview renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
     {!ready && !all && <p role="status" className={styles.empty}>Loading your followed bills…</p>}
     {ready && !all && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or explore all bills above.</p></div>}
     {ready && !error && (all || signedIn) && !visible.length && !loading && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : all ? "No bills are loaded yet" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : "Explore all bills and follow one to keep it here."}</p>{!all && !tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}

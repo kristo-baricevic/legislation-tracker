@@ -139,9 +139,9 @@ class SourceReadinessView(APIView):
                 **snapshot,
                 "age_seconds": age,
                 "available": available,
-                "ready_to_start": snapshot.get("ready_to_start")
-                if discoverable_available
-                else None,
+                "ready_to_start": (
+                    snapshot.get("ready_to_start") if discoverable_available else None
+                ),
                 "incremental_discoverable_count_available": discoverable_available,
                 "missing_unqueued_metadata": (
                     snapshot.get("missing_unqueued_metadata") if available else None

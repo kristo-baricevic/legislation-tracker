@@ -18,13 +18,19 @@ export function ModalStackProvider({ children }: { children: React.ReactNode }) 
       if (!entries.current.length) { overflow.current = document.body.style.overflow; pageOpener.current = entry.opener; pageFallbackFocus.current = entry.fallbackFocus; document.body.style.overflow = "hidden"; }
       entries.current.push(entry);
       return () => {
-        const wasTop = entries.current.at(-1) === entry;
-        entries.current = entries.current.filter(item => item !== entry);
+        const index = entries.current.indexOf(entry);
+        if (index < 0) return;
+        const descendants = entries.current.slice(index + 1);
+        entries.current = entries.current.slice(0, index);
+        descendants.reverse().forEach(item => item.close());
         if (!entries.current.length) document.body.style.overflow = overflow.current;
-        if (wasTop) queueMicrotask(() => {
+        // Descendant close callbacks can schedule a second React commit. Restore
+        // focus after those dialogs finish unmounting so their removal cannot
+        // move focus back to the body.
+        setTimeout(() => {
           const top = entries.current.at(-1);
           const target = top ? (entry.opener?.isConnected && top.node.contains(entry.opener) ? entry.opener : controls(top.node)[0]) : pageOpener.current;
-          if (target?.isConnected && !target.closest("[hidden], [inert], [aria-hidden='true'], dialog:not([open])")) {
+          if (target?.isConnected && target !== document.body && !target.closest("[hidden], [inert], [aria-hidden='true'], dialog:not([open])")) {
             target.focus();
             if (document.activeElement === target) return;
           }

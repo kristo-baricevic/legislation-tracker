@@ -427,9 +427,11 @@ def test_historical_inventory_gap_does_not_claim_incremental_readiness(monkeypat
         source_inventory,
         "_request",
         lambda method, path, params: {
-            "bills": [{"congress": 119, "type": "HR", "number": "7", "updateDate": old}]
-            if path.endswith("hr")
-            else [],
+            "bills": (
+                [{"congress": 119, "type": "HR", "number": "7", "updateDate": old}]
+                if path.endswith("hr")
+                else []
+            ),
             "pagination": {"count": 1 if path.endswith("hr") else 0},
         },
     )

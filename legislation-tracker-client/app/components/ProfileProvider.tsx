@@ -32,8 +32,9 @@ function ProfileDialogs({ children, renderActivity }: { children: React.ReactNod
       setEnabled(value);
       if (!value) { stack.closeAll(); current.current = []; setEntries([]); }
     };
-    read(); window.addEventListener("storage", read); window.addEventListener(EVENT, read);
-    return () => { window.removeEventListener("storage", read); window.removeEventListener(EVENT, read); };
+    const storage = (event: StorageEvent) => { if (event.key === FLAG || event.key === null) read(); };
+    read(); window.addEventListener("storage", storage); window.addEventListener(EVENT, read);
+    return () => { window.removeEventListener("storage", storage); window.removeEventListener(EVENT, read); };
   }, [stack]);
   React.useEffect(() => {
     if (previousPath.current !== route) { stack.closeAll(); current.current = []; setEntries([]); previousPath.current = route; }

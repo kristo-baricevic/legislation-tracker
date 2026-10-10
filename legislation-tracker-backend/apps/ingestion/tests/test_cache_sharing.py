@@ -57,9 +57,7 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings.test'
 django.setup()
 settings.CACHES = {{'default': {{'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': '{location}', 'KEY_PREFIX': '{cache_prefix}'}}}}
 """
-    writer = (
-        prefix
-        + """
+    writer = prefix + """
 from django.core.management import call_command
 from django.utils import timezone
 import apps.ingestion.management.commands.check_ingestion_readiness as command
@@ -67,10 +65,7 @@ command.scan_inventory = lambda *args: {'complete': True, 'checked_completed_at'
 command.observe_discoverable = lambda *args, **kwargs: {'ready_to_start': None, 'incremental_discoverable_count_available': False}
 call_command('check_ingestion_readiness', congress=119)
 """
-    )
-    reader = (
-        prefix
-        + """
+    reader = prefix + """
 from types import SimpleNamespace
 from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.ingestion.telemetry_views import SourceReadinessView
@@ -85,7 +80,6 @@ assert response.data['ready_to_start'] is None
 assert not cache.add(snapshot_key('federal', 119) + ':scan', True, 180)
 print('Cross-process command snapshot and scan lock verified')
 """
-    )
     try:
         env = {**os.environ, "DJANGO_SETTINGS_MODULE": "config.settings.test"}
         subprocess.run(

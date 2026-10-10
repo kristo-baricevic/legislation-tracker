@@ -12,7 +12,7 @@ async function fixtures(page: Page) {
   await page.route("**/api/**", async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     let value: unknown = {};
-    if (path === "/api/auth/session/") value = { authenticated: false };
+    if (path === "/api/auth/session/current/") value = { authenticated: false };
     else if (path === "/api/tracking/") value = { bills: [], topics: [], legislators: [], is_staff: false };
     else if (path === "/api/representatives/") value = { count: 2, next: null, previous: null, results: [{ id: 1, bioguide_id: "S000033", name: "Same Name", state: "VT", chamber: "senate", party: "Independent", district: null }, { id: 2, bioguide_id: "I000002", name: "Same Name", state: "NY", chamber: "house", party: "Other", district: "1" }] };
     else if (path === "/api/bills/filter-options/") value = { jurisdictions: ["federal"], current_congress: 119 };
@@ -22,6 +22,7 @@ async function fixtures(page: Page) {
     else if (path.endsWith("/biography/")) value = bio;
     else if (path.endsWith("/sponsored-bills/")) value = { count: 2, previous: url.searchParams.get("page") === "2" ? "?page=1" : null, next: url.searchParams.get("page") === "2" ? null : "https://untrusted.invalid/?page=2", results: [url.searchParams.get("page") === "2" ? bill : second] };
     else if (path.endsWith("/voting-record/")) value = { count: 1, next: null, previous: null, results: [vote], coverage, pagination_mode: "live_pages", page_read_at: "2026-10-10T00:00:00Z" };
+    if (path.endsWith("/topic-activity/")) { await route.fulfill({status: 503, json: {detail: "fixture activity unavailable"}}); return; }
     await route.fulfill({ json: value });
   });
 }
