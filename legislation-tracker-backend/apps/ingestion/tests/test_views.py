@@ -978,6 +978,7 @@ def test_replayed_manual_bill_work_fulfills_the_original_tracking_request(monkey
             "url": "https://api.congress.gov/v3/bill/119/hr/42",
         },
     )
+    monkeypatch.setattr(ingestion_tasks, "bill_summaries", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         ingestion_tasks, "_queue_bill_stage", lambda *args, **kwargs: None
     )
