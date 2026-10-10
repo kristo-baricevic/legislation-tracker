@@ -38,6 +38,12 @@ from apps.ingestion.congress_client import (
     state_code,
     vote_detail,
 )
+from apps.ingestion.discovery_semantics import (
+    UNKNOWN_SOURCE_UPDATED_AT,
+    _ensure_utc_aware,
+    _parse_congress_update_datetime,
+    discovery_from_date_time,
+)
 from apps.ingestion.document_download import (
     DocumentValidationError,
     RetryableDocumentStorageError,
@@ -65,11 +71,11 @@ from apps.legislation.models import Bill, BillDocument, ProcessingStatus
 
 logger = logging.getLogger(__name__)
 
-CURSOR_OVERLAP = timedelta(minutes=5)
+
 TRACKED_REFRESH_INTERVAL = timedelta(minutes=5)
 WORK_LEASE_DURATION = timedelta(minutes=10)
 MAX_INGESTION_WORK_ATTEMPTS = 5
-UNKNOWN_SOURCE_UPDATED_AT = datetime(1970, 1, 1, tzinfo=UTC)
+
 DURABLE_WORK_SOFT_TIME_LIMIT_SECONDS = 60
 DURABLE_WORK_TIME_LIMIT_SECONDS = 75
 MAX_DISPATCHED_INGESTION_WORK = 100
@@ -222,36 +228,6 @@ def bill_to_bill_key(bill):
     if bill_type not in ("hr", "s"):
         return None
     return bill_key(bill.session, bill_type, parts[1])
-
-
-def _ensure_utc_aware(dt):
-    """Normalize DB or parsed datetimes so comparisons never mix naive vs aware."""
-    if dt is None:
-        return None
-    if timezone.is_naive(dt):
-        return timezone.make_aware(dt, UTC)
-    return dt
-
-
-def _parse_congress_update_datetime(value):
-    """Parse bill list updateDate (string or datetime); return UTC-aware or None."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        dt = value
-    elif isinstance(value, str):
-        s = value.strip()
-        if not s:
-            return None
-        try:
-            if s.endswith("Z"):
-                s = s[:-1] + "+00:00"
-            dt = datetime.fromisoformat(s)
-        except Exception:
-            return None
-    else:
-        return None
-    return _ensure_utc_aware(dt)
 
 
 class CRSPlainTextParser(HTMLParser):
@@ -777,7 +753,15 @@ def sync_committee_memberships(self, congress=None):
 
 
 @shared_task
-def poll_congress(jurisdiction="federal", congress=None):
+def poll_congress(jurisdiction="federal", congress=None, run_id=None):
+    from .run_tracking import execute_discovery
+
+    return execute_discovery(
+        _poll_congress_impl, jurisdiction, congress or current_congress(), run_id
+    )
+
+
+def _poll_congress_impl(jurisdiction="federal", congress=None, run_id=None):
     """
     Discover updated Congress bills and persist them before advancing the cursor.
 
@@ -796,9 +780,7 @@ def poll_congress(jurisdiction="federal", congress=None):
     )
     from_date_time = None
     if state.last_bill_update_seen_at:
-        from_date_time = (
-            _ensure_utc_aware(state.last_bill_update_seen_at) - CURSOR_OVERLAP
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        from_date_time = discovery_from_date_time(state.last_bill_update_seen_at)
         logger.info("poll_congress: incremental from_date_time=%s", from_date_time)
     else:
         logger.info("poll_congress: full fetch (no last_bill_update_seen_at)")
@@ -810,6 +792,10 @@ def poll_congress(jurisdiction="federal", congress=None):
         offset = 0
         previous_page_keys = None
         while True:
+            if run_id:
+                from .run_tracking import heartbeat
+
+                heartbeat(run_id)
             try:
                 items = bill_list(
                     congress,
@@ -863,6 +849,12 @@ def poll_congress(jurisdiction="federal", congress=None):
         # that safe while this lock prevents either poll from moving the cursor
         # backward after the other has committed its durable discoveries.
         state = IngestionState.objects.select_for_update().get(pk=state.pk)
+        if run_id:
+            from .models import IngestionRun
+
+            run = IngestionRun.objects.select_for_update().get(pk=run_id)
+            if run.status != "running" or run.lease_expires_at <= timezone.now():
+                raise RuntimeError("Discovery claim expired before persistence")
         for key, source_updated_at in discovered_bills.items():
             _, created = persist_ingestion_work(
                 kind="bill",

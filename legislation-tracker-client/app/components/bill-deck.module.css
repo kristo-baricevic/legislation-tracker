@@ -1,4 +1,31 @@
 .pageFrame { display: flow-root; }
+.telemetryArea { margin-top: 3rem; }
+.telemetryArea > label { font-size: .85rem; }
+.telemetry { margin-top: 1rem; border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; background: var(--paper); }
+.telemetry h2 { font-size: 1.8rem; font-weight: 650; letter-spacing: -.025em; }
+.telemetry h3, .telemetry h4 { font-weight: 650; }
+.telemetryScope { display: inline-flex; align-items: center; gap: .6rem; font-size: .9rem; }
+.telemetryScope input { width: 5rem; border: 1px solid var(--control-line); border-radius: 6px; background: var(--paper); color: var(--ink); padding: .4rem .6rem; }
+.telemetryBanner { display: flex; flex-wrap: wrap; gap: .5rem 2rem; padding: .8rem 1rem; background: var(--wash); border-left: 4px solid #233f68; border-radius: 5px; }
+.telemetryBanner span { color: var(--muted); font-size: .85rem; }
+.telemetryMetrics, .telemetryStages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.telemetryMetrics > div { padding: 1rem; background: var(--wash); border-radius: 8px; }
+.telemetryMetrics strong { display: block; font-size: 1.7rem; margin: .4rem 0; }
+.telemetryMetrics h3, .telemetryMetrics p, .telemetryStages p { font-size: .82rem; }
+.telemetryMetrics p, .telemetryStages p { color: var(--muted); }
+.telemetryFreshness, .telemetryBottom { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 1.5rem 0; }
+.telemetryStages { list-style: none; padding: 0; }
+.telemetryStages li { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.telemetryStages .bar { display: block; }
+.telemetryStages li > div { padding: 1rem; }
+.telemetryStages strong { display: block; font-size: .85rem; margin: .5rem 0; }
+.telemetryBottom { padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.telemetryBottom ul { list-style: none; padding: 0; }
+.telemetryBottom li { margin-top: .7rem; }
+.telemetryBottom li span { color: var(--muted); font-size: .78rem; }
+.telemetryBottom button { margin: .8rem 0; padding: .6rem 1rem; border: 1px solid var(--control-line); border-radius: 6px; background: var(--wash); }
+@media (max-width: 900px) { .telemetryMetrics, .telemetryStages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .telemetry { padding: 1rem; } .telemetryMetrics, .telemetryStages, .telemetryFreshness, .telemetryBottom { grid-template-columns: 1fr; gap: .8rem; } }
 :global(body):has(.pageFrame) > header { background: #fafaf7; border-color: #d5dbd1; color: #273b36; font-family: var(--font-geist-sans), Arial, sans-serif; }
 :global(body):has(.pageFrame) > header a { color: #273b36; font-family: inherit; }
 :global(body):has(.pageFrame) > header button { background: #ffffff; border-color: #7d8981; color: #273b36; font-family: inherit; }

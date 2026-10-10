@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 import { getBills, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
 import BillDeckModal from "./BillDeckModal";
+import IngestionTelemetryPreview from "./IngestionTelemetryPreview";
 import styles from "./bill-deck.module.css";
 
 const colors = ["#233f68", "#923e47", "#2f6b50", "#426c86", "#705786", "#357b78"];
@@ -132,6 +133,7 @@ export default function BillDeck() {
     </section>)}
     {catalogError && all && <p role="alert">{catalogError}</p>}
     {all && (more || catalogError) && <button className={styles.loadMore} disabled={loading} onClick={() => void loadPage()}>{loading ? "Loading bills…" : catalogError ? "Retry loading bills" : "Load more bills"}</button>}
+    <IngestionTelemetryPreview isStaff={Boolean(tracking?.is_staff)} />
     {selected && <BillDeckModal bill={selected} onClose={() => setSelected(null)} />}
   </div>;
 }

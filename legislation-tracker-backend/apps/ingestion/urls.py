@@ -11,7 +11,11 @@ from apps.ingestion.views import (
     SyncRepresentativesView,
 )
 
+from .telemetry_views import IngestionTelemetryView, SourceReadinessView
+
 urlpatterns = [
+    path("telemetry/", IngestionTelemetryView.as_view(), name="ingestion-telemetry"),
+    path("source-readiness/", SourceReadinessView.as_view(), name="source-readiness"),
     path("bills/", IngestBillView.as_view(), name="ingest-bill"),
     path(
         "work/<int:work_item_id>/",

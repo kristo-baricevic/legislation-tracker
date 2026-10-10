@@ -26,6 +26,58 @@ async function fixtures(page: Page, empty = false) {
   });
 }
 
+test("telemetry is explicitly sample-only, never writes and persists its own rollback", async ({ page }) => {
+  const writes: string[] = [];
+  const ingestionRequests: string[] = [];
+  page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method()) && request.url().includes("/api/")) writes.push(request.url()); });
+  page.on("request", request => { if (request.url().includes("/api/ingestion/")) ingestionRequests.push(request.url()); });
+  await fixtures(page); await page.goto("/");
+  const panel = page.getByRole("region", { name: "Legislation ingestion" });
+  await expect(panel.getByText("Preview — sample data", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Start ingestion" })).toBeDisabled();
+  await panel.scrollIntoViewIfNeeded();
+  await panel.screenshot({ path: "test-results/ingestion-telemetry-preview.png" });
+  await page.setViewportSize({ width: 390, height: 850 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await panel.screenshot({ path: "test-results/ingestion-telemetry-mobile.png" });
+  await panel.getByLabel("Show sample data").uncheck();
+  await expect(panel.getByText("24 sample")).toHaveCount(0);
+  await expect(panel.getByText("Preview — backend not connected")).toBeVisible();
+  await page.getByLabel("Show ingestion telemetry preview").uncheck();
+  await page.reload(); await expect(panel).toHaveCount(0);
+  await page.getByLabel("Show ingestion telemetry preview").check();
+  await expect(panel).toBeVisible();
+  await page.getByLabel("Use card dashboard").uncheck();
+  await expect(panel).toHaveCount(0);
+  expect(writes).toEqual([]);
+  expect(ingestionRequests).toEqual([]);
+});
+
+test("staff operational telemetry refresh is read-only and start is an explicit mocked action", async ({page})=>{
+  await fixtures(page);
+  await page.route("**/api/tracking/",route=>route.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:true}}));
+  let starts=0;const keys:string[]=[];
+  await page.route("**/api/ingestion/telemetry/**",route=>route.fulfill({json:{observed_at:"2026-10-09T18:00:00Z",last_discovery_completed_at:"2026-10-09T17:00:00Z",last_successful_work_item_at:"2026-10-09T17:15:00Z",counts_by_kind_and_status:[{kind:"bill",status:"pending",count:4},{kind:"bill_versions",status:"processing",count:2},{kind:"document_download",status:"blocked",count:1}],stale_leases:0,discovery_run:{id:starts ? "fixture-start" : "fixture-run",status:"succeeded",started_at:"2026-10-09T16:55:00Z",finished_at:"2026-10-09T17:00:00Z",discovered:6,created:4},recent_work_states:[{id:1,kind:"bill",status:"pending",updated_at:"2026-10-09T18:00:00Z"}]}}));
+  await page.route("**/api/ingestion/source-readiness/**",route=>route.fulfill({json:{available:false,ready_to_start:null,age_seconds:500,complete:true,reason:"Source check stale"}}));
+  await page.route("**/api/ingestion/poll-congress/",route=>{starts++;keys.push(route.request().postDataJSON().idempotency_key);return route.fulfill({json:{run_id:"fixture-start",status:"pending"}});});
+  await page.goto("/");
+  await page.getByLabel("Show sample data").uncheck();
+  const panel=page.getByRole("region",{name:"Legislation ingestion"});
+  await expect(panel.getByRole("button",{name:"Start discovery and ingestion",exact:true})).toBeDisabled();
+  await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  await expect(panel.getByText("Current pipeline backlog",{exact:true})).toBeVisible();
+  await expect(panel.getByText(/Stale — readiness is unavailable/)).toBeVisible();
+  expect(starts).toBe(0);
+  await panel.screenshot({path:"test-results/ingestion-telemetry-operational-fixture.png"});
+  const start=panel.getByRole("button",{name:"Start discovery and ingestion",exact:true});
+  await start.click();await expect(panel.getByRole("status")).toContainText("fixture-start");
+  await expect(panel.getByRole("button",{name:"Prepare a new discovery request"})).toBeDisabled();
+  await start.click();await expect.poll(()=>starts).toBe(2);expect(keys[0]).toBe(keys[1]);
+  await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  await panel.getByRole("button",{name:"Prepare a new discovery request"}).click();
+  await start.click();await expect.poll(()=>starts).toBe(3);expect(keys[2]).not.toBe(keys[0]);
+});
+
 test("filters, collection, follow behavior, modal versions, keyboard and persistent rollback", async ({ page }) => {
   await fixtures(page); await page.goto("/");
   const title = page.getByRole("button", { name: bill.title, exact: true });
@@ -120,4 +172,23 @@ test("absent summary and version order are honest; stale comparisons never repla
   await delayedResponse;
   await expect(modal.getByText("Delayed old comparison", { exact: false })).toHaveCount(0);
   await modal.getByRole("button", { name: /Introduced/ }).click(); await expect(modal.getByText(/source does not record version order/)).toBeVisible();
+});
+
+
+test("telemetry separates incremental readiness from historical inventory gaps", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/tracking/",route=>route.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:true}}));
+  await page.route("**/api/ingestion/telemetry/**",route=>route.fulfill({json:{observed_at:"2026-10-09T18:10:00Z",counts_by_kind_and_status:[],stale_leases:0,discovery_run:null,recent_work_states:[]}}));
+  let valid=true;
+  await page.route("**/api/ingestion/source-readiness/**",route=>route.fulfill({json:{available:true,age_seconds:1,complete:true,missing_unqueued_metadata:9,ready_to_start:valid?3:null,incremental_discoverable_count_available:valid,discovery_basis:{cursor_at:"2026-10-09T18:00:00Z",from_date_time:"2026-10-09T17:55:00Z"},discovery_checked_completed_at:"2026-10-09T18:10:00Z"}}));
+  await page.goto("/");await page.getByLabel("Show sample data").uncheck();
+  const panel=page.getByRole("region",{name:"Legislation ingestion"});
+  await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  const ready=panel.getByRole("heading",{name:"Ready for incremental discovery"}).locator("..");
+  const gaps=panel.getByRole("heading",{name:"Missing unqueued metadata"}).locator("..");
+  await expect(ready.locator("strong")).toHaveText("3");await expect(gaps.locator("strong")).toHaveText("9");
+  await expect(panel.getByText(/Discovery basis: cursor/)).toContainText("2026-10-09T17:55:00Z");
+  await panel.screenshot({path:"test-results/ingestion-telemetry-readiness-fixture.png"});
+  valid=false;await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  await expect(ready.locator("strong")).toHaveText("Unavailable");await expect(gaps.locator("strong")).toHaveText("9");
 });

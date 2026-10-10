@@ -1,5 +1,35 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
+
+
+class IngestionRun(models.Model):
+    """Discovery lifecycle only; downstream work is deliberately not run-correlated."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    jurisdiction = models.CharField(max_length=20, default="federal")
+    congress = models.PositiveIntegerField()
+    request_key = models.CharField(max_length=128, unique=True)
+    status = models.CharField(max_length=20, default="pending")
+    task_id = models.CharField(max_length=255, blank=True)
+    trigger = models.CharField(max_length=20, default="scheduled")
+    started_at = models.DateTimeField(null=True)
+    finished_at = models.DateTimeField(null=True)
+    lease_expires_at = models.DateTimeField()
+    discovered_count = models.PositiveIntegerField(null=True)
+    created_count = models.PositiveIntegerField(null=True)
+    error_code = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["jurisdiction", "congress"],
+                condition=models.Q(status__in=["pending", "running"]),
+                name="ingestion_run_active_scope_uniq",
+            )
+        ]
 
 
 class IngestionWorkStatus(models.TextChoices):

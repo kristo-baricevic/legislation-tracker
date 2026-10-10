@@ -16,6 +16,12 @@ localStorage.removeItem("legislation-tracker-dashboard-cards"); location.reload(
 
 The preference belongs to the browser origin, including port. There is no remote flag service.
 
+## Ingestion telemetry visual preview
+
+The separate `legislation-tracker-ingestion-telemetry` localStorage flag defaults to true and preserves explicit `"false"`. The Show ingestion telemetry preview checkbox saves this setting. Set the key to `"false"` and reload to hide the panel, or remove the key to reset its default. The panel mounts only within the new card dashboard, so the original dashboard remains unchanged.
+
+The operator-oriented sample preview is visible to dashboard viewers and is not a staff authorization mechanism. Sample data remains static and explicitly labeled; sample ingestion is disabled. Congress.gov API is the source represented by the samples. Nonstaff viewers unchecking Show sample data see unavailable values. Staff viewers instead see an operational panel: Refresh telemetry explicitly reads staff-only backend snapshots; it does not scan the source or start work. Start discovery and ingestion is a separate explicit action using the existing credentialed/CSRF API helper and a retained idempotency key. Prepare a new discovery request becomes available after a confirmed terminal discovery status. Source-ready counts expire after five minutes even without another fetch. No automatic ingestion requests or polling occur. Staff authorization is enforced by the backend, not by this UI flag. See backend TELEMETRY.md for migration and source-snapshot setup; an unconnected or unmigrated backend remains unavailable.
+
 ## Design and data
 
 Dream App's actual `EntryCard`, `DreamMain`, `MainHeader`, and `DreamCatcher` informed the color-coded collection, expanded details, and layout options. Existing Geist typography, a light off-white background, white cards, and navy, burgundy, green, blue, violet, and teal bars define the dashboard palette. The site header matches this palette only while the card dashboard is rendered; other pages and the legacy dashboard keep their existing header. The distinct top bars supplement written topic headings and card topic labels.
@@ -50,3 +56,7 @@ rtk proxy node node_modules/next/dist/bin/next build --webpack
 ```
 
 The separate Playwright config targets only this dashboard and local port; it does not start the default E2E backend or touch another browser profile. Installed dependencies are reused through a local ignored node_modules symlink so the original checkout is not modified or reinstalled.
+
+Inventory semantics: missing_unqueued_metadata is a full-source historical metadata gap count, not readiness for incremental Start. ready_to_start is the observed distinct bill-identity count that would create new bill work in the next incremental poll; incomplete, stale or changed-basis observations return null. Start retains the existing cursor and five-minute overlap; historical gaps may be omitted. No cursor reset or backfill was added. Malformed, naive or future source timestamps make all inventory counts unavailable. Prepare requires a terminal refreshed snapshot with the exact accepted run ID.
+
+Cache configuration: base settings use django.core.cache.backends.redis.RedisCache at REDIS_URL; dev and prod inherit it. Test/e2e explicitly override with LocMemCache and cannot prove cross-process sharing. Deployment must give the inventory command and HTTP workers the same Redis location/database and key configuration. No running deployment cache configuration is claimed here.
