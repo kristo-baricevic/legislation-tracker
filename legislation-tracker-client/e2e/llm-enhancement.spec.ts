@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const API_BASE = "http://127.0.0.1:18000";
+const API_BASE = process.env.E2E_API_URL ?? "http://127.0.0.1:18000";
 
 test("a user saves a key and completes a durable enhancement through the live API", async ({
   page,

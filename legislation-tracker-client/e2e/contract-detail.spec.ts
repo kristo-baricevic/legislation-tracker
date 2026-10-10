@@ -6,7 +6,7 @@ import {
   test,
 } from "@playwright/test";
 
-const API_BASE = "http://127.0.0.1:18000";
+const API_BASE = process.env.E2E_API_URL ?? "http://127.0.0.1:18000";
 
 async function billId(request: APIRequestContext, billNumber: string) {
   const response = await request.get(
@@ -154,10 +154,14 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
 
   const textLink = firstLine.getByRole("link", { name: "Read full text" });
   const downloadLink = firstLine.getByRole("link", { name: "Download document" });
-  await expect(textLink).toHaveAttribute("href", /\/api\/documents\/\d+\/text\/$/);
+  await expect(textLink).toHaveAttribute("href", /^\/documents\/\d+$/);
   await expect(downloadLink).toHaveAttribute("href", /\/api\/documents\/\d+\/download\/$/);
-  expect((await request.get(await textLink.getAttribute("href") as string)).status()).toBe(200);
   expect((await request.get(await downloadLink.getAttribute("href") as string)).status()).toBe(200);
+  const readerResponse = page.waitForResponse(response => response.url().includes("/text/") && response.request().method() === "GET");
+  await textLink.click();
+  expect((await readerResponse).status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Rural Hospital Grants Act", exact: true })).toBeVisible();
+  await expect(page.getByText("Full bill text, not a summary. Wording is preserved from the stored source.")).toBeVisible();
 });
 
 test("a visitor can inspect linked and paginated key terms", async ({ page, request }) => {
@@ -183,13 +187,13 @@ test("a visitor can inspect linked and paginated key terms", async ({ page, requ
   await clickForResponse(
     page,
     page.getByRole("button", { name: "Key terms (27)" }),
-    "definition-items/?page=1&page_size=25&unlinked=true",
+    "definition-items/?page=1&page_size=25",
   );
   await expect(page.getByText("reader term 2", { exact: true })).toBeVisible();
   await clickForResponse(
     page,
     page.getByRole("button", { name: "Show 25 more key terms" }),
-    "definition-items/?page=2&page_size=25&unlinked=true",
+    "definition-items/?page=2&page_size=25",
   );
   await expect(page.getByText("reader term 27", { exact: true })).toBeVisible();
 });

@@ -88,10 +88,22 @@ test("late private recommendation response cannot repopulate after account gener
   await release();
   await expect(page.getByText("Private stale owner A")).toHaveCount(0);
 });
-test("real isolated API activity is rendered through the client profile wrapper", async ({page}) => {
+test("real isolated API activity is rendered through the client profile wrapper", async ({page, request}) => {
+  const apiBase = process.env.E2E_API_URL ?? "http://127.0.0.1:18000";
+  const directory = await request.get(`${apiBase}/api/representatives/`);
+  expect(directory.status()).toBe(200);
+  const member = (await directory.json()).results.find((item: {name: string}) => item.name === "Synthetic Integration Member");
+  expect(member).toBeTruthy();
+  // Build the catalog once before React development-mode duplicate reads.
+  // Concurrent cold catalog requests deliberately return an honest 503.
+  const catalog = await request.get(`${apiBase}/api/representatives/${member.id}/topic-activity/`);
+  expect(catalog.status(), await catalog.text()).toBe(200);
   await page.goto("/representatives");
   await page.getByLabel("Enable legislator profiles").check();
+  const activityResponse = page.waitForResponse(response => response.url().includes("/topic-activity/") && response.request().method() === "GET");
   await page.getByRole("link", {name: "Synthetic Integration Member", exact: true}).click();
+  const response = await activityResponse;
+  expect(response.status(), await response.text()).toBe(200);
   const modal = page.getByRole("dialog", {name: "Synthetic Integration Member"});
   await expect(modal.getByRole("heading", {name: "Recorded topic activity"})).toBeVisible();
   await expect(modal.getByText(/Rolling .*month window/)).toBeVisible();
