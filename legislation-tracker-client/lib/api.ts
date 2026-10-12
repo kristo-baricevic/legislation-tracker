@@ -1164,41 +1164,60 @@ export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFe
   return authGet<TrackingFeed>(`/api/tracking/feed/${q ? `?${q}` : ""}`);
 }
 
-async function trackingMutation<T>(request: Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
-  const scope = options.scope ?? capturePersonalizedScope();
-  const result = await request;
-  assertPersonalizedScope(scope, options.signal);
-  announceTrackingChange();
-  return result;
+async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
+  const initial = options.scope ?? capturePersonalizedScope();
+  assertPersonalizedScope(initial, options.signal);
+  const scope = { ...initial };
+  const controller = new AbortController();
+  // Each accepted follow owns its request until completion. Recommendation
+  // read invalidation must still allow concurrent same-account writes to finish.
+  const unsubscribe = subscribePersonalizedChanges(change => {
+    if (change.scope.sessionGeneration !== scope.sessionGeneration) controller.abort();
+    else scope.interestGeneration = change.scope.interestGeneration;
+  });
+  const cancel = () => {
+    const current = capturePersonalizedScope();
+    if (current.sessionGeneration !== initial.sessionGeneration || current.interestGeneration === initial.interestGeneration) controller.abort();
+  };
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    const result = await request({ scope, signal: controller.signal });
+    assertPersonalizedScope(scope, controller.signal);
+    announceTrackingChange();
+    return result;
+  } finally {
+    unsubscribe();
+    options.signal?.removeEventListener("abort", cancel);
+  }
 }
 
 export function trackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedBillItem> {
-  return trackingMutation(authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId }, options), options);
+  return trackingMutation(request => authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId }, request), options);
 }
 
 export function untrackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
-  return trackingMutation(authDelete(`/api/tracking/bills/${billId}/`, options), options);
+  return trackingMutation(request => authDelete(`/api/tracking/bills/${billId}/`, request), options);
 }
 
 export function trackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedTopicItem> {
-  return trackingMutation(authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId }, options), options);
+  return trackingMutation(request => authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId }, request), options);
 }
 
 export function untrackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
-  return trackingMutation(authDelete(`/api/tracking/topics/${topicId}/`, options), options);
+  return trackingMutation(request => authDelete(`/api/tracking/topics/${topicId}/`, request), options);
 }
 
 export function trackLegislator(
   representativeId: number,
   options: PersonalizedRequestOptions = {},
 ): Promise<TrackedLegislatorItem> {
-  return trackingMutation(authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
+  return trackingMutation(request => authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
     representative: representativeId,
-  }, options), options);
+  }, request), options);
 }
 
 export function untrackLegislator(representativeId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
-  return trackingMutation(authDelete(`/api/tracking/legislators/${representativeId}/`, options), options);
+  return trackingMutation(request => authDelete(`/api/tracking/legislators/${representativeId}/`, request), options);
 }
 
 export interface IngestionTaskResponse {
