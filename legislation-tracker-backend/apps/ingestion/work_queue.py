@@ -9,6 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill
+from apps.ingestion.discovery_semantics import revision_creates_work
 from apps.ingestion.models import (
     BillTrackingRequest,
     BillTrackingRequestStatus,
@@ -107,7 +108,9 @@ def persist_ingestion_work(
             (item for item in existing if item.source_updated_at == source_updated_at),
             None,
         )
-        if exact is None:
+        if revision_creates_work(
+            latest.source_updated_at if latest else None, source_updated_at
+        ):
             work_item, created = IngestionWorkItem.objects.get_or_create(
                 kind=kind,
                 dedupe_key=dedupe_key,

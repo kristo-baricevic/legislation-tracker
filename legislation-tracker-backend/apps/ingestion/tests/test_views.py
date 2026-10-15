@@ -112,7 +112,7 @@ def test_ingestion_endpoints_reject_non_staff_users(monkeypatch, path, payload):
     assert response.status_code == 403
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_poll_congress_endpoint_enqueues_task_for_staff_user(monkeypatch):
     calls = []
     monkeypatch.setattr(
@@ -133,8 +133,17 @@ def test_poll_congress_endpoint_enqueues_task_for_staff_user(monkeypatch):
         "task_name": "poll_congress",
         "jurisdiction": "federal",
         "congress": 118,
+        "run_id": response.json()["run_id"],
+        "status": "pending",
+        "coalesced": False,
     }
-    assert calls == [{"jurisdiction": "federal", "congress": 118}]
+    assert calls == [
+        {
+            "jurisdiction": "federal",
+            "congress": 118,
+            "run_id": response.json()["run_id"],
+        }
+    ]
 
 
 @pytest.mark.django_db
@@ -935,6 +944,7 @@ def test_manual_ingestion_status_is_scoped_to_the_requesting_user(monkeypatch):
 
 @pytest.mark.django_db(transaction=True)
 def test_replayed_manual_bill_work_fulfills_the_original_tracking_request(monkeypatch):
+    monkeypatch.setattr(ingestion_tasks, "bill_summaries", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
     )
@@ -968,6 +978,7 @@ def test_replayed_manual_bill_work_fulfills_the_original_tracking_request(monkey
             "url": "https://api.congress.gov/v3/bill/119/hr/42",
         },
     )
+    monkeypatch.setattr(ingestion_tasks, "bill_summaries", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         ingestion_tasks, "_queue_bill_stage", lambda *args, **kwargs: None
     )

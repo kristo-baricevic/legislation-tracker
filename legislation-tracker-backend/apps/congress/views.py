@@ -1,5 +1,6 @@
 from dataclasses import asdict
 
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
@@ -8,8 +9,19 @@ from rest_framework.response import Response
 from apps.legislation.serializers import BillListSerializer
 from config.api import StrictQuerySerializer
 
+from .biography import (
+    BiographyThrottle,
+    representative_biography,
+    unavailable_biography,
+)
 from .insights import compare_representatives, representative_summary
 from .models import BillCosponsor, Committee, CommitteeMembership, Representative, Vote
+from .profile_api import (
+    ProfileQuerySerializer,
+    ProfileVoteQuerySerializer,
+    recorded_vote_data,
+)
+from .profiles import recorded_votes, representative_profile, vote_coverage
 from .serializers import (
     BillCosponsorSerializer,
     CommitteeMembershipSerializer,
@@ -45,6 +57,10 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             query_serializer = RepresentativeInsightQuerySerializer
         elif self.action == "compare":
             query_serializer = RepresentativeCompareQuerySerializer
+        elif self.action == "profile":
+            query_serializer = ProfileQuerySerializer
+        elif self.action == "voting_record":
+            query_serializer = ProfileVoteQuerySerializer
         else:
             query_serializer = StrictQuerySerializer
         query = query_serializer(data=self.request.query_params)
@@ -64,6 +80,58 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             qs = qs.filter(is_current=True)
         return qs
+
+    @action(detail=True, methods=["get"])
+    def profile(self, request, pk=None):
+        query = ProfileQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response(
+            representative_profile(self.get_object(), **query.validated_data)
+        )
+
+    @action(detail=True, methods=["get"], throttle_classes=[BiographyThrottle])
+    def biography(self, request, pk=None):
+        representative = self.get_object()
+        if getattr(request, "biography_cache_unavailable", False):
+            return Response(unavailable_biography("cache_unavailable"))
+        return Response(representative_biography(representative))
+
+    @action(detail=True, methods=["get"], url_path="topic-activity")
+    def topic_activity(self, request, pk=None):
+        representative = self.get_object()  # Strict no-query contract and 404 first.
+        try:
+            from .topic_activity import representative_topic_activity
+        except ModuleNotFoundError as error:
+            if error.name != "apps.congress.topic_activity":
+                raise
+            # Parent integrates the separately reviewed recommendation module.
+            return Response(
+                {"detail": "Topic activity is unavailable in this build."}, status=503
+            )
+        return Response(
+            representative_topic_activity(representative.id, captured_at=timezone.now())
+        )
+
+    @action(detail=True, methods=["get"], url_path="voting-record")
+    def voting_record(self, request, pk=None):
+        query = ProfileVoteQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        representative = self.get_object()
+        congress = query.validated_data["congress"]
+        chamber = query.validated_data.get("chamber")
+        rows = recorded_votes(representative, congress, chamber)
+        page = self.paginate_queryset(rows)
+        response = self.get_paginated_response(
+            [recorded_vote_data(row) for row in page]
+        )
+        response.data.update(
+            {
+                "page_read_at": timezone.now(),
+                "pagination_mode": "live_pages",
+                "coverage": vote_coverage(representative, congress, chamber),
+            }
+        )
+        return response
 
     @action(detail=True, methods=["get"])
     def insights(self, request, pk=None):
@@ -92,9 +160,7 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             .order_by("-last_activity_sequence", "-id")
         )
         page = self.paginate_queryset(bills)
-        return self.get_paginated_response(
-            BillListSerializer(page, many=True).data
-        )
+        return self.get_paginated_response(BillListSerializer(page, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="cosponsored-bills")
     def cosponsored_bills(self, request, pk=None):
@@ -124,10 +190,14 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
     def committees(self, request, pk=None):
         query = RepresentativeInsightQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
-        memberships = CommitteeMembership.objects.filter(
-            representative=self.get_object(),
-            congress=query.validated_data["congress"],
-        ).select_related("committee").order_by("committee__name", "id")
+        memberships = (
+            CommitteeMembership.objects.filter(
+                representative=self.get_object(),
+                congress=query.validated_data["congress"],
+            )
+            .select_related("committee")
+            .order_by("committee__name", "id")
+        )
         page = self.paginate_queryset(memberships)
         return self.get_paginated_response(
             CommitteeMembershipSerializer(page, many=True).data
@@ -140,7 +210,9 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         left_id, right_id = query.validated_data["ids"]
         representatives = {
             representative.id: representative
-            for representative in Representative.objects.filter(pk__in=[left_id, right_id])
+            for representative in Representative.objects.filter(
+                pk__in=[left_id, right_id]
+            )
         }
         if len(representatives) != 2:
             return Response({"detail": "Representative not found."}, status=404)

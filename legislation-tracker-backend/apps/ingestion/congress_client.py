@@ -90,10 +90,13 @@ STATE_CODES = {
 class CongressAPIError(Exception):
     """Raised when Congress API returns non-2xx. Celery can retry on this."""
 
-    def __init__(self, message, status_code=None, response_text=None):
+    def __init__(
+        self, message, status_code=None, response_text=None, retry_after_seconds=None
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.response_text = response_text
+        self.retry_after_seconds = retry_after_seconds
 
 
 @contextmanager
@@ -185,23 +188,44 @@ def _request(method, path, params=None):
                     )
             except requests.RequestException as exc:
                 logger.warning(
-                    "Congress API request failed: %s %s: %s", method, path, exc
+                    "Congress API request failed: %s %s (%s)",
+                    method,
+                    path,
+                    type(exc).__name__,
                 )
-                raise CongressAPIError(f"Congress API request failed: {exc}") from exc
+                raise CongressAPIError("Congress API request failed") from None
 
             if not resp.ok:
-                response_text = getattr(resp, "text", "") or ""
+                retry_after_seconds = None
+                if resp.status_code == 429:
+                    header = str(getattr(resp, "headers", {}).get("Retry-After", ""))
+                    if header.isdigit():
+                        retry_after_seconds = min(86400, int(header))
+                    else:
+                        from datetime import datetime
+                        from email.utils import parsedate_to_datetime
+
+                        try:
+                            until = parsedate_to_datetime(header)
+                            retry_after_seconds = min(
+                                86400,
+                                max(
+                                    0, int((until - datetime.now(UTC)).total_seconds())
+                                ),
+                            )
+                        except (TypeError, ValueError, OverflowError):
+                            pass
                 logger.error(
-                    "Congress API error: %s %s -> %s %s",
+                    "Congress API error: %s %s -> %s",
                     method,
                     path,
                     resp.status_code,
-                    response_text[:200],
                 )
                 raise CongressAPIError(
                     f"Congress API error: {resp.status_code}",
                     status_code=resp.status_code,
-                    response_text=response_text[:500],
+                    response_text="",
+                    retry_after_seconds=retry_after_seconds,
                 )
             if not hasattr(resp, "iter_content"):
                 return resp.json()
@@ -236,17 +260,7 @@ def _throttle():
     time.sleep(0.3)
 
 
-def bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
-    """
-    GET /bill/{congress}/{billType}?sort=updateDate+desc&limit=...&offset=...&fromDateTime=...
-    Returns list of items with congress, type, number, updateDate (for cursor).
-    """
-    bill_type = (bill_type or "hr").lower()
-    params = {"sort": "updateDate desc", "limit": limit, "offset": offset}
-    if from_date_time:
-        params["fromDateTime"] = from_date_time
-    data = _request("GET", f"bill/{congress}/{bill_type}", params=params)
-    _throttle()
+def normalize_bill_list(data, congress, bill_type):
     bills = data.get("bills") or []
     out = []
     for b in bills:
@@ -269,6 +283,22 @@ def bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
                 "updateDate": update_date,
             }
         )
+    return out
+
+
+def bill_list(congress, bill_type, from_date_time=None, limit=250, offset=0):
+    """
+    GET /bill/{congress}/{billType}?sort=updateDate+desc&limit=...&offset=...&fromDateTime=...
+    Returns list of items with congress, type, number, updateDate (for cursor).
+    """
+    bill_type = (bill_type or "hr").lower()
+    params = {"sort": "updateDate desc", "limit": limit, "offset": offset}
+    if from_date_time:
+        params["fromDateTime"] = from_date_time
+    data = _request("GET", f"bill/{congress}/{bill_type}", params=params)
+    _throttle()
+    bills = data.get("bills") or []
+    out = normalize_bill_list(data, congress, bill_type)
     logger.info(
         "bill_list: congress=%s bill_type=%s offset=%s from_date_time=%s -> %s bills (raw response had %s items)",
         congress,

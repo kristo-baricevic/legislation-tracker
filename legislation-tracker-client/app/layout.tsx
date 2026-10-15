@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
+import ProfileExperience from "./components/ProfileExperience";
 import { THEME_STORAGE_KEY } from "../lib/theme";
 import "./globals.css";
 
@@ -35,8 +36,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
       >
-        <SiteHeader />
-        {children}
+        <ProfileExperience><SiteHeader />{children}</ProfileExperience>
       </body>
     </html>
   );

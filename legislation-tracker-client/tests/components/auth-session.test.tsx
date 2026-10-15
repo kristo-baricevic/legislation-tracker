@@ -58,7 +58,9 @@ describe("cookie-backed web authentication", () => {
         request.init?.method === "POST",
     );
     expect(loginRequest?.init?.credentials).toBe("include");
-    expect(setItem).not.toHaveBeenCalled();
+    expect(setItem.mock.calls.every(([key, value]) =>
+      key === "legislation-tracker-session-epoch" && !String(value).includes("person@example.com")
+    )).toBe(true);
   });
 
   it("uses the server session to render and perform logout", async () => {

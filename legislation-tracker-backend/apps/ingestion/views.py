@@ -21,12 +21,12 @@ from apps.ingestion.tasks import (
     backfill_process_bill_versions_for_all_bills,
     dispatch_ingestion_work,
     download_document,
-    poll_congress,
     process_bill_versions,
     process_bill_votes,
     sync_committee_memberships,
     sync_representatives,
 )
+from apps.ingestion.tasks import poll_congress as poll_congress
 from apps.ingestion.work_queue import enqueue_manual_bill_request
 from apps.legislation.tasks import (
     backfill_update_topics,
@@ -156,25 +156,14 @@ class PollCongressView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request):
-        jurisdiction = str(request.data.get("jurisdiction") or "federal").strip()
-        congress, error_response = parse_int_param(
-            request.data.get("congress"),
-            "congress",
-            default=current_congress(),
+        from .telemetry_views import start_discovery
+
+        _, error_response = parse_int_param(
+            request.data.get("congress"), "congress", default=current_congress()
         )
         if error_response is not None:
             return error_response
-
-        result = poll_congress.delay(jurisdiction=jurisdiction, congress=congress)
-        return Response(
-            {
-                "task_id": result.id,
-                "task_name": "poll_congress",
-                "jurisdiction": jurisdiction,
-                "congress": congress,
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        return start_discovery(request)
 
 
 class SyncRepresentativesView(APIView):

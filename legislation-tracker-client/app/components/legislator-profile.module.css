@@ -1,0 +1,31 @@
+.dialog { color: #23372d; background: #fffefa; border: 1px solid #d6ddd5; border-radius: 14px; width: min(860px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); margin: auto; padding: 2rem; overflow-y: auto; line-height: 1.55; }
+.dialog::backdrop { background: rgb(28 40 33 / 65%); }
+.dialog a { color: #245d40; text-decoration: underline; text-underline-offset: 3px; }
+.dialog button { border: 1px solid #a6b7aa; border-radius: 7px; padding: .4rem .8rem; background: #f4f5ee; cursor: pointer; }
+.dialog button:disabled { opacity: .55; cursor: default; }
+.dialog :is(a, button, input, summary):focus-visible { outline: 3px solid #39745a; outline-offset: 3px; }
+.header { display: flex; align-items: center; gap: 1rem; padding-bottom: 1.3rem; }
+.header h2 { font-size: 1.65rem; font-weight: 650; margin: .2rem 0; }
+.header p { margin: 0; }
+.header button { margin-left: auto; align-self: flex-start; }
+.avatar { width: 3.5rem; height: 3.5rem; border-radius: 50%; padding: .6rem; background: #eaf0e7; flex-shrink: 0; }
+.avatar svg { width: 100%; height: 100%; }
+.section { border-top: 1px solid #d6ddd5; padding: 1.2rem 0; }
+.section h3 { font-size: 1.1rem; font-weight: 650; margin: 0 0 .5rem; }
+.section p { margin: .5rem 0; }
+.section ul { padding-left: 1.2rem; }
+.identity { padding: .65rem 0; }
+.identity h3 { font-size: .83rem; color: #59685d; margin-bottom: .2rem; }
+.evidence { margin-top: .6rem; font-size: .83rem; color: #59685d; }
+.dialog summary { cursor: pointer; font-weight: 600; }
+.dialog details[open] > summary { margin-bottom: .5rem; }
+.note, .header small { font-size: .83rem; color: #59685d; overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.facts dt { font-size: .82rem; color: #59685d; }
+.facts dd { margin: 0; }
+.records { list-style: none; padding: 0 !important; display: grid; gap: .8rem; }
+.records li { background: #f6f7f0; border-radius: 8px; padding: .8rem; display: grid; gap: .3rem; overflow-wrap: anywhere; }
+.records small { color: #59685d; }
+.pagination { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .8rem; font-size: .85rem; }
+.footer { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid #d6ddd5; }
+@media (max-width: 600px) { .dialog { padding: 1rem; } .header { flex-wrap: wrap; } .header h2 { font-size: 1.3rem; } .avatar { width: 2.7rem; height: 2.7rem; } .facts { grid-template-columns: 1fr; gap: .6rem; } }

@@ -168,7 +168,7 @@ describe("web session API helpers", () => {
     let request: { url: string; init?: RequestInit } | undefined;
     globalThis.fetch = async (url, init) => {
       request = { url: String(url), init };
-      return Response.json({ id: 1 });
+      return Response.json({ authenticated: true, user: { email: "person@example.com" } });
     };
 
     await api.authPost("/api/tracking/topics/", { topic: 4 });
@@ -194,7 +194,7 @@ describe("web session API helpers", () => {
       if (requests.length === 1) {
         return Response.json({ csrf_token: "cross-origin-csrf" });
       }
-      return Response.json({ id: 1 });
+      return Response.json({ authenticated: true, user: { email: "person@example.com" } });
     };
 
     await api.login("person@example.com", "secure-password");

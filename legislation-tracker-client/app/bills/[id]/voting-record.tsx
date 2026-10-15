@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import type { VoteDetailItem, VoteListItem, VoteRecordItem } from "@/lib/api";
+import LegislatorName from "../../components/LegislatorName";
 
 interface VotingRecordProps {
   votes: VoteListItem[];
@@ -202,7 +203,7 @@ export function VotingRecord({
                   <ul className="mt-2 divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
                     {records.map((record) => (
                       <li key={record.representative.id} className="flex flex-wrap justify-between gap-2 p-3 text-sm">
-                        <span className="font-medium text-slate-900 dark:text-green-100">{record.representative.name}</span>
+                        <span className="font-medium text-slate-900 dark:text-green-100">{selectedVote.congress == null ? record.representative.name : <LegislatorName id={record.representative.id} name={record.representative.name} congress={selectedVote.congress} chamber={selectedVote.chamber === "house" || selectedVote.chamber === "senate" ? selectedVote.chamber : undefined} />}</span>
                         <span className="text-slate-600 dark:text-green-600">{record.representative.party || "Party not reported"} · {record.representative.state || "State not reported"}{record.representative.district ? `-${record.representative.district}` : ""} · {record.position}</span>
                       </li>
                     ))}

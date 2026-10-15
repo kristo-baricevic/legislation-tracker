@@ -230,6 +230,7 @@ if AUTH_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
 # Congress.gov API (ingestion)
 CONGRESS_API_KEY = env("CONGRESS_API_KEY", default="")
 CURRENT_CONGRESS_OVERRIDE = env("CURRENT_CONGRESS_OVERRIDE", default="").strip()
+LEGISLATOR_WIKIPEDIA_ENABLED = env.bool("LEGISLATOR_WIKIPEDIA_ENABLED", default=False)
 
 # Official current-Congress committee roster sources. Both are deliberately
 # configurable: their publishers occasionally move feeds and an operator must

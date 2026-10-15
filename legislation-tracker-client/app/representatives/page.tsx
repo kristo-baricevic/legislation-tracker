@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
+import LegislatorName from "../components/LegislatorName";
 import {
   getMyTracking,
   getBillFilterOptions,
@@ -239,12 +240,7 @@ function RepresentativesTable() {
                       className="border-b border-slate-300 hover:bg-white/60 dark:border-green-900/50 dark:hover:bg-green-950/10"
                     >
                       <td className="truncate p-3 font-medium">
-                        <Link
-                          href={currentCongress === null ? `/representatives/${rep.id}` : `/representatives/${rep.id}?congress=${currentCongress}`}
-                          className="text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                        >
-                          {rep.name}
-                        </Link>
+                        {currentCongress === null ? <Link href={`/representatives/${rep.id}`}>{rep.name}</Link> : <LegislatorName id={rep.id} name={rep.name} congress={currentCongress} />}
                       </td>
                       <td className="truncate p-3">{rep.state}</td>
                       <td className="truncate p-3 capitalize">{rep.chamber}</td>

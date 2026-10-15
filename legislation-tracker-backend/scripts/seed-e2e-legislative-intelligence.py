@@ -213,6 +213,27 @@ def main() -> None:
     Topic.objects.get_or_create(name="Education", defaults={"slug": "education"})
     health, _ = Topic.objects.get_or_create(name="Health", defaults={"slug": "health"})
 
+    # The profile integration seam exercises the real API with explicitly
+    # synthetic data, independently of the reader/comparison fixtures below.
+    integration_member = Representative.objects.create(
+        bioguide_id="X000001",
+        name="Synthetic Integration Member",
+        chamber="house",
+        state="NY",
+        party="Independent",
+        district="1",
+    )
+    integration_bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR 991",
+        title="Synthetic integration bill",
+        status="Introduced",
+        sponsor=integration_member,
+        introduced_at=timezone.now().date(),
+    )
+    BillTopic.objects.create(bill=integration_bill, topic=health, confidence_score=0.99)
+
     alex = Representative.objects.create(
         bioguide_id="A000001",
         name="Alex Avery",

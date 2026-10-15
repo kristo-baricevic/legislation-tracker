@@ -1,5 +1,7 @@
 from django.urls import path
 
+from .recommendation_views import BillRecommendationView
+from .representative_recommendation_views import RepresentativeRecommendationView
 from .views import (
     TrackedBillDetailView,
     TrackedBillView,
@@ -12,6 +14,16 @@ from .views import (
 )
 
 urlpatterns = [
+    path(
+        "recommendations/",
+        BillRecommendationView.as_view(),
+        name="bill-recommendations",
+    ),
+    path(
+        "representative-recommendations/",
+        RepresentativeRecommendationView.as_view(),
+        name="representative-recommendations",
+    ),
     path("", TrackingSummaryView.as_view(), name="tracking-summary"),
     path("feed/", TrackingFeedView.as_view(), name="tracking-feed"),
     path("bills/", TrackedBillView.as_view(), name="track-bill"),
