@@ -65,7 +65,7 @@ function LegacyContractSection({ contract }: { contract: BillContractItem }) {
                 key={`${evidence.field_path}-${index}`}
                 className="border-l-2 border-slate-400 pl-3 dark:border-green-800"
               >
-                <div className="font-mono text-xs text-slate-600 dark:text-green-500">
+                <div className="font-sans text-xs text-slate-600 dark:text-green-500">
                   {evidence.field_path}
                 </div>
                 <div className="mt-1 line-clamp-4 break-words text-slate-700 [overflow-wrap:anywhere] dark:text-green-300/80">
@@ -106,7 +106,7 @@ function EvidenceDisclosure({
             className="border-l-2 border-emerald-600/60 pl-3 text-sm text-slate-700 dark:border-green-500/50 dark:text-green-200/80"
           >
             <p className="break-words [overflow-wrap:anywhere]">{span.quoted_text}</p>
-            <p className="mt-1 font-mono text-[11px] text-slate-500 dark:text-green-700">
+            <p className="mt-1 font-sans text-[11px] text-slate-500 dark:text-green-700">
               Characters {span.start_char}–{span.end_char}
               {span.page_number ? ` · Page ${span.page_number}` : ""}
             </p>
@@ -151,7 +151,7 @@ function ClaimGroup({
             className="rounded-r-md border-l-4 border-slate-300 bg-slate-50/80 px-4 py-3 dark:border-green-900 dark:bg-black/20"
           >
             {item.section_label && (
-              <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">
+              <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">
                 {item.section_label}
               </p>
             )}
@@ -206,7 +206,7 @@ function V2ContractSection({
   return (
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-3 dark:border-green-900 dark:bg-black/20">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">
+        <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">
           Structured legislative analysis · beta
         </p>
         <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-green-400">

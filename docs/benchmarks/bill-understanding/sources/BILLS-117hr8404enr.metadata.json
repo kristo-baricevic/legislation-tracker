@@ -1,0 +1,23 @@
+{
+  "package_id": "BILLS-117hr8404enr",
+  "source_url": "https://www.govinfo.gov/content/pkg/BILLS-117hr8404enr/html/BILLS-117hr8404enr.htm",
+  "retrieved_date": "2026-10-07",
+  "source_version": "enrolled",
+  "raw_file": "BILLS-117hr8404enr.htm",
+  "raw_sha256": "5d678aeec1217d57adeca28755de5dceb5cba8c77a6fc9e983e781eb1b5622c9",
+  "answer_file": "../answers/BILLS-117hr8404enr.md",
+  "method": "Independent manual full-text reading; no app-generated output; original source retained.",
+  "coverage": "Sections 1-8 complete; non-marital financial benefit preservation clause",
+  "financial_record_count": 2,
+  "quote_validation": {
+    "method": "Extract each Markdown blockquote; HTML-decode source pre text; collapse whitespace; assert each complete excerpt is a literal substring. No punctuation or hyphen normalization.",
+    "quote_count": 21,
+    "status": "passed"
+  },
+  "limitations": [
+    "Pinned enrolled text only; enactment date, implementation and present law not independently established.",
+    "Referenced external statutory rules and amounts unresolved unless reproduced.",
+    "No specified monetary amount does not establish zero fiscal cost.",
+    "Negative findings require full-text review; no individual excerpt proves absence."
+  ]
+}

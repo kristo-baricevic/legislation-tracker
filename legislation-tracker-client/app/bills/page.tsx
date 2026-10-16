@@ -1,5 +1,7 @@
 "use client";
-import LegislatorName from "../components/LegislatorName";
+import BillCard from "../components/BillCard";
+import BillDeckModal from "../components/BillDeckModal";
+import styles from "../components/bill-deck.module.css";
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -41,7 +43,9 @@ function sortFromParams(params: URLSearchParams): BillSort {
     : "relevance";
 }
 
-function BillsTable() {
+function BillsCatalog() {
+  const [layout, setLayout] = useState<"grid" | "list">("grid");
+  const [selectedBill, setSelectedBill] = useState<BillListItem | null>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
   const [page, setPage] = useState<BillsPage | null>(null);
@@ -460,55 +464,56 @@ function BillsTable() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <div className="tracker-page min-h-[calc(100vh-4rem)] font-sans">
+      {selectedBill && <BillDeckModal key={selectedBill.id} bill={selectedBill} onClose={() => setSelectedBill(null)} />}
       <div className="w-full">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-green-400">
+          <h1 className="tracker-heading text-ink">
             Ingested Bills
           </h1>
           <Link
             href="/"
-            className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+            className="cursor-pointer text-ink underline hover:text-ink"
           >
             ← Dashboard
           </Link>
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-400/70 bg-white/70 p-4 shadow-sm dark:border-green-900/60 dark:bg-green-950/10 dark:shadow-none">
-          <p className="mb-3 text-sm text-slate-600 dark:text-green-500">
+        <div className="mb-6 tracker-panel">
+          <p className="mb-3 text-sm text-muted">
             Search and filters apply automatically. Topic: use <strong>dropdown</strong> for
             an exact tag, or <strong>topic contains</strong> for a fuzzy match
             (not both).
           </p>
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Full-text search</span>
-              <input type="search" value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300" />
+              <span className="text-muted">Full-text search</span>
+              <input type="search" value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
             </label>
             <SelectField label="Sort" value={sort} options={[{ value: "recent_activity", label: "Recent activity" }, { value: "relevance", label: "Relevance" }]} onChange={(value) => { setPageNum(1); setSort(value === "relevance" && queryInput.trim() ? "relevance" : "recent_activity"); }} />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Bill ID</span>
+              <span className="text-muted">Bill ID</span>
               <input
                 type="text"
                 inputMode="numeric"
                 value={idFilter}
                 onChange={resetPageAndSet(setIdFilter)}
                 placeholder="e.g. 42"
-                className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Bill # (contains)</span>
+              <span className="text-muted">Bill # (contains)</span>
               <input
                 type="text"
                 value={billNumberFilter}
                 onChange={resetPageAndSet(setBillNumberFilter)}
                 placeholder="e.g. HR 123"
-                className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Session (Congress)</span>
+              <span className="text-muted">Session (Congress)</span>
               <input
                 type="text"
                 value={sessionFilter ?? ""}
@@ -517,7 +522,7 @@ function BillsTable() {
                   setSessionFilter(event.target.value);
                 }}
                 placeholder="Current Congress"
-                className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
             <SelectField
@@ -530,23 +535,23 @@ function BillsTable() {
               }}
             />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Status (contains)</span>
+              <span className="text-muted">Status (contains)</span>
               <input
                 type="text"
                 value={statusFilter}
                 onChange={resetPageAndSet(setStatusFilter)}
                 placeholder="e.g. House"
-                className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Sponsor</span>
+              <span className="text-muted">Sponsor</span>
               <input
                 type="text"
                 value={sponsorFilter}
                 onChange={resetPageAndSet(setSponsorFilter)}
                 placeholder="Name or numeric id"
-                className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
             <SelectField
@@ -560,29 +565,29 @@ function BillsTable() {
               }}
             />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-slate-600 dark:text-green-500">Topic contains (fuzzy)</span>
+              <span className="text-muted">Topic contains (fuzzy)</span>
               <input
                 type="text"
                 value={topicFuzzyFilter}
                 onChange={onTopicFuzzyChange}
                 placeholder="Matches topic name/slug"
                 disabled={Boolean(topicIdFilter)}
-                className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 disabled:opacity-40 dark:border-green-700 dark:bg-black dark:text-green-300"
+                className="rounded border border-control bg-paper px-2 py-1 text-ink disabled:opacity-40"
               />
             </label>
           </div>
-          <div className="mt-4 border-t border-slate-300 pt-3 text-sm dark:border-green-900/70">
+          <div className="mt-4 border-t border-line pt-3 text-sm">
             {hasAccount ? (
               selectedTopic ? (
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-slate-600 dark:text-green-500">
+                  <span className="text-muted">
                     {selectedTopic.name}
                   </span>
                   <button
                     type="button"
                     onClick={toggleSelectedTopicTracking}
                     disabled={trackingTopicId === selectedTopic.id}
-                    className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                    className="cursor-pointer border border-control px-3 py-1.5 font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {trackingTopicId === selectedTopic.id
                       ? "Saving..."
@@ -592,14 +597,14 @@ function BillsTable() {
                   </button>
                 </div>
               ) : (
-                <p className="text-slate-600 dark:text-green-500">
+                <p className="text-muted">
                   Select an exact topic to track it.
                 </p>
               )
             ) : (
               <Link
                 href="/login"
-                className="text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+                className="text-ink underline hover:text-ink"
               >
                 Log in to track topics
               </Link>
@@ -609,7 +614,7 @@ function BillsTable() {
             )}
           </div>
           {hasAccount && (
-            <div className="mt-4 border-t border-slate-300 pt-3 text-sm dark:border-green-900/70">
+            <div className="mt-4 border-t border-line pt-3 text-sm">
               <div className="flex flex-wrap items-center gap-3">
                 {isSaveSearchFormOpen ? (
                   <form
@@ -617,20 +622,20 @@ function BillsTable() {
                     className="flex flex-wrap items-center gap-2"
                   >
                     <label className="flex items-center gap-2">
-                      <span className="text-slate-600 dark:text-green-500">Name</span>
+                      <span className="text-muted">Name</span>
                       <input
                         type="text"
                         aria-label="Saved search name"
                         value={savedSearchName}
                         onChange={(event) => setSavedSearchName(event.target.value)}
                         autoFocus
-                        className="rounded border border-slate-400 bg-white px-2 py-1 text-slate-900 dark:border-green-700 dark:bg-black dark:text-green-300"
+                        className="rounded border border-control bg-paper px-2 py-1 text-ink"
                       />
                     </label>
                     <button
                       type="submit"
                       disabled={!savedSearchName.trim()}
-                      className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                      className="cursor-pointer border border-control px-3 py-1.5 font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Save search
                     </button>
@@ -640,7 +645,7 @@ function BillsTable() {
                         setSavedSearchName("");
                         setIsSaveSearchFormOpen(false);
                       }}
-                      className="cursor-pointer text-blue-900 underline dark:text-green-400"
+                      className="cursor-pointer text-ink underline"
                     >
                       Cancel
                     </button>
@@ -652,13 +657,13 @@ function BillsTable() {
                       setSavedSearchError(null);
                       setIsSaveSearchFormOpen(true);
                     }}
-                    className="cursor-pointer border border-slate-800 px-3 py-1.5 font-semibold text-slate-950 hover:bg-slate-200 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                    className="cursor-pointer border border-control px-3 py-1.5 font-semibold text-ink hover:bg-wash"
                   >
                     Save this search
                   </button>
                 )}
-                {savedSearches.length > 0 && <span className="text-slate-600 dark:text-green-500">Saved searches:</span>}
-                {savedSearches.map((search) => <button key={search.id} type="button" onClick={() => void openSavedSearch(search)} className="cursor-pointer text-blue-900 underline dark:text-green-400">{search.name}{search.new_result_count ? ` (${search.new_result_count} new)` : ""}</button>)}
+                {savedSearches.length > 0 && <span className="text-muted">Saved searches:</span>}
+                {savedSearches.map((search) => <button key={search.id} type="button" onClick={() => void openSavedSearch(search)} className="cursor-pointer text-ink underline">{search.name}{search.new_result_count ? ` (${search.new_result_count} new)` : ""}</button>)}
               </div>
               {savedSearchError && <p role="alert" className="mt-2 text-red-700 dark:text-red-300">{savedSearchError}</p>}
             </div>
@@ -703,68 +708,31 @@ function BillsTable() {
           </div>
         )}
 
-        {loading && <p className="text-slate-600 dark:text-green-500">Loading…</p>}
+        {loading && <p className="text-muted">Loading…</p>}
 
         {!loading && page && (
           <>
-            <p className="mb-4 text-slate-600 dark:text-green-500/80">
+            <p className="mb-4 text-muted">
               {page.count} bill{page.count !== 1 ? "s" : ""} (page {pageNum})
             </p>
-            <div className="overflow-hidden rounded-lg border border-slate-400 dark:border-green-800">
-              <table className="w-full table-fixed text-left">
-                <thead>
-                  <tr className="border-b border-slate-400 bg-slate-300/80 dark:border-green-800 dark:bg-green-950/20">
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">ID</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Bill #</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">
-                      Jurisdiction
-                    </th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Session</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Title</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Status</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Sponsor</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {page.results.map((bill: BillListItem) => (
-                    <tr
-                      key={bill.id}
-                      className="border-b border-slate-300 hover:bg-white/60 dark:border-green-900/50 dark:hover:bg-green-950/10"
-                    >
-                      <td className="truncate p-3 text-slate-600 dark:text-green-500">{bill.id}</td>
-                      <td className="truncate p-3 font-medium">{bill.bill_number}</td>
-                      <td className="truncate p-3">{bill.jurisdiction}</td>
-                      <td className="truncate p-3">{bill.session}</td>
-                      <td className="truncate p-3" title={bill.title}>
-                        {bill.title}
-                        {bill.highlights?.[0] && <p className="mt-1 text-xs text-slate-600 dark:text-green-600">{bill.highlights[0].segments.map((segment, index) => <span key={index} className={segment.matched ? "font-bold text-slate-900 dark:text-green-300" : ""}>{segment.text}</span>)}</p>}
-                      </td>
-                      <td className="truncate p-3" title={bill.status}>
-                        {bill.status}
-                      </td>
-                      <td className="truncate p-3" title={bill.sponsor_name ?? undefined}>
-                        <LegislatorName id={bill.sponsor_id ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} />
-                      </td>
-                      <td className="p-3">
-                        <Link
-                          href={`/bills/${bill.id}`}
-                          className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className={styles.deck}>
+              <div className={styles.toolbar}>
+                <div className={styles.segment} aria-label="Card layout">
+                  {(["grid", "list"] as const).map(value => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{value === "grid" ? "Grid" : "List"}</button>)}
+                </div>
+              </div>
+              {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
+                <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" tabIndex={0}>
+                  {page.results.map(bill => <BillCard key={bill.id} bill={bill} onOpen={() => setSelectedBill(bill)}
+                    footer={<Link href={`/bills/${bill.id}`}>Open full bill page</Link>} />)}
+                </div>}
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
               {pageNum > 1 && (
                 <button
                   type="button"
                   onClick={() => setPageNum((p) => p - 1)}
-                  className="cursor-pointer rounded border border-slate-400 px-3 py-1 text-slate-900 hover:bg-white/80 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
+                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
                 >
                   Previous
                 </button>
@@ -773,7 +741,7 @@ function BillsTable() {
                 <button
                   type="button"
                   onClick={() => setPageNum((p) => p + 1)}
-                  className="cursor-pointer rounded border border-slate-400 px-3 py-1 text-slate-900 hover:bg-white/80 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
+                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
                 >
                   Next
                 </button>
@@ -790,12 +758,12 @@ export default function BillsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[60vh] items-center justify-center font-mono text-slate-600 dark:text-green-500">
+        <div className="flex min-h-[60vh] items-center justify-center font-sans text-muted">
           Loading bills…
         </div>
       }
     >
-      <BillsTable />
+      <BillsCatalog />
     </Suspense>
   );
 }

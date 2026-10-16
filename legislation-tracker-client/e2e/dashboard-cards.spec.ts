@@ -21,35 +21,47 @@ async function fixtures(page: Page, empty = false) {
     else if (path === "/api/bills/1/") response = { ...bill, documents, summary: "This bill increases the limitation on the deduction for state and local taxes.", summary_source: "source_metadata", summary_version_code: "Introduced", latest_contract: null };
     else if (path === "/api/bills/1/comparisons/documents/") response = { before: Number(url.searchParams.get("before")), after: Number(url.searchParams.get("after")), sections: [{ section_key: `section-for-version-${url.searchParams.get("after")}`, operation: "modified" }], total_change_count: 1, returned_change_count: 1, truncated: false, fallback: false, truncation_reasons: [] };
     else if (path === "/api/bills/filter-options/") response = { jurisdictions: ["federal"], current_congress: 119 };
+    else if (path === "/api/topics/") response = [{ id: 1, name: "Taxation", slug: "taxation" }];
     else if (path === "/api/tracking/feed/") response = { entries: [] };
+    else if (path === "/api/saved-searches/") response = { count: 0, results: [] };
+    else if (path.includes("recommendations")) response = { algorithm: "fixture", generated_at: "2026-10-15T00:00:00Z", count: 0, results: [], next_cursor: null, candidate_pool_truncated: false, ranking_limit_reached: false, empty_reason: "no_candidates", unsupported_follow_types: [] };
     await route.fulfill({ json: response });
   });
 }
 
-test("telemetry is explicitly sample-only, never writes and persists its own rollback", async ({ page }) => {
+test("readers see the live panel without samples or automatic ingestion requests", async ({ page }) => {
   const writes: string[] = [];
   const ingestionRequests: string[] = [];
   page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method()) && request.url().includes("/api/")) writes.push(request.url()); });
   page.on("request", request => { if (request.url().includes("/api/ingestion/")) ingestionRequests.push(request.url()); });
+  await page.addInitScript(() => localStorage.setItem("legislation-tracker-ingestion-telemetry", "true"));
   await fixtures(page); await page.goto("/");
+  await expect(page.getByRole("button", { name: bill.title, exact: true })).toBeVisible();
   const panel = page.getByRole("region", { name: "Legislation ingestion" });
-  await expect(panel.getByText("Preview — sample data", { exact: true })).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Start ingestion" })).toBeDisabled();
-  await panel.scrollIntoViewIfNeeded();
-  await panel.screenshot({ path: "test-results/ingestion-telemetry-preview.png" });
-  await page.setViewportSize({ width: 390, height: 850 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await panel.screenshot({ path: "test-results/ingestion-telemetry-mobile.png" });
-  await panel.getByLabel("Show sample data").uncheck();
-  await expect(panel.getByText("24 sample")).toHaveCount(0);
-  await expect(panel.getByText("Preview — backend not connected")).toBeVisible();
-  await page.getByLabel("Show ingestion telemetry preview").uncheck();
-  await page.reload(); await expect(panel).toHaveCount(0);
-  await page.getByLabel("Show ingestion telemetry preview").check();
   await expect(panel).toBeVisible();
-  await page.getByLabel("Use card dashboard").uncheck();
-  await expect(panel).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
+  await expect(page.getByLabel("Show ingestion telemetry preview")).toHaveCount(0);
+  await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   expect(writes).toEqual([]);
+  expect(ingestionRequests).toEqual([]);
+});
+
+test("staff dashboard never exposes sample telemetry even with a legacy preference", async ({ page }) => {
+  const ingestionRequests: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/ingestion/")) ingestionRequests.push(request.url()); });
+  await page.addInitScript(() => localStorage.setItem("legislation-tracker-ingestion-telemetry", "true"));
+  await fixtures(page);
+  await page.route("**/api/tracking/", route => route.fulfill({ json: { bills: [], topics: [], legislators: [], is_staff: true } }));
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Refresh telemetry" })).toBeVisible();
+  const toggle = page.getByLabel("Show ingestion telemetry preview");
+  await expect(toggle).toHaveCount(0);
+  await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Show sample data")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Refresh telemetry" })).toBeVisible();
+  await expect(toggle).toHaveCount(0);
+  await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   expect(ingestionRequests).toEqual([]);
 });
 
@@ -61,11 +73,14 @@ test("staff operational telemetry refresh is read-only and start is an explicit 
   await page.route("**/api/ingestion/source-readiness/**",route=>route.fulfill({json:{available:false,ready_to_start:null,age_seconds:500,complete:true,reason:"Source check stale"}}));
   await page.route("**/api/ingestion/poll-congress/",route=>{starts++;keys.push(route.request().postDataJSON().idempotency_key);return route.fulfill({json:{run_id:"fixture-start",status:"pending"}});});
   await page.goto("/");
-  await page.getByLabel("Show sample data").uncheck();
+  await expect(page.getByLabel("Show ingestion telemetry preview")).toHaveCount(0);
+  await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   const panel=page.getByRole("region",{name:"Legislation ingestion"});
-  await expect(panel.getByRole("button",{name:"Start discovery and ingestion",exact:true})).toBeDisabled();
+  await expect(panel.getByRole("button",{name:"Start discovery and ingestion",exact:true})).toBeEnabled();
   await panel.getByRole("button",{name:"Refresh telemetry"}).click();
   await expect(panel.getByText("Current pipeline backlog",{exact:true})).toBeVisible();
+  await expect(panel.getByText("Source & technical details").locator("..")).not.toHaveAttribute("open", "");
+  await panel.getByText("Source & technical details", {exact:true}).click();
   await expect(panel.getByText(/Stale — readiness is unavailable/)).toBeVisible();
   expect(starts).toBe(0);
   await panel.screenshot({path:"test-results/ingestion-telemetry-operational-fixture.png"});
@@ -95,25 +110,23 @@ test("filters, collection, follow behavior, modal versions, keyboard and persist
   await modal.getByRole("button", { name: /Introduced/ }).click(); await expect(modal.getByText(/earliest recorded version/)).toBeVisible();
   for (let index = 0; index < 14; index++) { await page.keyboard.press("Tab"); expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true); }
   await page.keyboard.press("Escape"); await expect(modal).toHaveCount(0); await expect(title).toBeFocused();
-  await page.getByRole("button", { name: "View all bills" }).click(); await expect(page.getByRole("button", { name: other.title })).toBeVisible();
-  await page.getByRole("button", { name: "List", exact: true }).click(); await expect(page.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Unfollow", exact: true }).click(); await expect(page.getByRole("button", { name: "Follow", exact: true }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Following (0)" }).click(); await expect(page.getByText("Your collection starts with a bill")).toBeVisible();
-  await page.getByRole("button", { name: "View all bills" }).click(); await page.getByRole("article").filter({ has: title }).getByRole("button", { name: "Follow", exact: true }).click();
-  await page.getByRole("button", { name: "Following (1)" }).click(); await expect(title).toBeVisible();
+  await expect(page.getByRole("button", { name: "View all bills" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: other.title })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Use card dashboard" }).uncheck(); await expect(page.getByText("Legislation Tracker Operations")).toBeVisible();
   await page.screenshot({ path: "test-results/dashboard-legacy-rollback.png", fullPage: true });
   await page.reload(); await expect(page.getByText("Legislation Tracker Operations")).toBeVisible(); await expect(title).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Use card dashboard" }).check(); await expect(title).toBeVisible();
   await page.reload(); await expect(title).toBeVisible();
+  await page.getByRole("button", { name: "Unfollow", exact: true }).click();
+  await expect(page.getByText("Your collection starts with a bill")).toBeVisible();
+  await expect(title).toHaveCount(0);
 });
 
 test("responsive visual evidence and empty collection", async ({ page }) => {
   await fixtures(page); await page.goto("/"); await expect(page.getByRole("button", { name: bill.title })).toBeVisible();
   await page.screenshot({ path: "test-results/dashboard-desktop.png", fullPage: true });
-  await page.getByRole("button", { name: "View all bills" }).click(); await expect(page.getByRole("button", { name: other.title })).toBeVisible();
-  await page.screenshot({ path: "test-results/dashboard-all-bills.png", fullPage: true });
-  await page.getByRole("button", { name: "Following (1)" }).click();
+  await page.goto("/bills"); await expect(page.getByRole("button", { name: other.title })).toBeVisible();
+  await page.screenshot({ path: "test-results/bills-catalog.png", fullPage: true });
   await page.setViewportSize({ width: 1280, height: 1050 });
   await page.getByRole("button", { name: bill.title }).click();
   await expect(page.getByRole("dialog").getByText("section-for-version-3", { exact: false })).toBeVisible();
@@ -135,22 +148,43 @@ test("empty followed bills and topics", async ({ page }) => {
   await fixtures(page, true); await page.goto("/"); await expect(page.getByText("Your collection starts with a bill")).toBeVisible(); await expect(page.getByText("Follow topics to organize")).toBeVisible();
 });
 
-test("tracking and catalog errors remain actionable, pagination preserves cards", async ({ page }) => {
+test("catalog cards preserve server pagination and open the shared detail modal", async ({ page }) => {
+  await fixtures(page);
+  await page.route("**/api/bills/?**", async route => {
+    const params = new URL(route.request().url()).searchParams;
+    const second = params.get("page") === "2";
+    expect(params.get("session")).toBe("119");
+    const firstPage = [bill, ...Array.from({ length: 19 }, (_, index) => ({ ...bill, id: 100 + index, title: `Catalog bill ${index + 1}` }))];
+    await route.fulfill({ json: { count: 21, next: second ? null : "?page=2", previous: second ? "?page=1" : null, results: second ? [other] : firstPage } });
+  });
+  await page.goto("/bills?session=119");
+  const title = page.getByRole("button", { name: bill.title, exact: true });
+  await expect(title).toBeVisible();
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await title.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close bill details" }).click();
+  await expect(title).toBeFocused();
+  await page.getByRole("button", { name: "List", exact: true }).click();
+  await expect(page.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByRole("button", { name: other.title })).toBeVisible();
+  await expect(title).toHaveCount(0);
+  await expect(page).toHaveURL(/page=2/);
+  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await expect(title).toBeVisible();
+});
+
+test("dashboard tracking errors remain actionable without offering a catalog", async ({ page }) => {
   await fixtures(page);
   await page.route("**/api/tracking/", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
-  await page.route("**/api/bills/?**", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
-  await page.goto("/"); await expect(page.getByRole("alert").filter({ hasText: "followed bills could not be loaded" })).toBeVisible();
-  await page.getByRole("button", { name: "View all bills" }).click(); await expect(page.getByRole("button", { name: "Retry loading bills" })).toBeVisible();
-  await expect(page.getByText("Your followed bills could not be loaded", { exact: false })).toBeVisible();
-  await page.unroute("**/api/bills/?**");
-  await page.route("**/api/bills/?**", async route => {
-    const second = new URL(route.request().url()).searchParams.get("page") === "2";
-    await route.fulfill({ json: { count: 2, next: second ? null : "http://example.invalid/?page=2", previous: null, results: second ? [other] : [bill] } });
-  });
-  await page.getByRole("button", { name: "Retry loading bills" }).click(); await expect(page.getByRole("button", { name: bill.title })).toBeVisible();
-  await expect(page.getByText("Following unavailable")).toBeVisible();
-  await page.getByRole("button", { name: "Load more bills" }).click(); await expect(page.getByRole("button", { name: other.title })).toBeVisible();
-  await expect(page.getByRole("button", { name: bill.title })).toBeVisible(); await expect(page.getByText(/2 of 2 loaded/)).toBeVisible();
+  await page.goto("/");
+  const alert = page.getByRole("alert").filter({ hasText: "followed bills could not be loaded" });
+  await expect(alert).toBeVisible();
+  await expect(page.getByRole("button", { name: "View all bills" })).toHaveCount(0);
+  await page.unroute("**/api/tracking/");
+  await alert.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.getByRole("button", { name: bill.title })).toBeVisible();
 });
 
 test("absent summary and version order are honest; stale comparisons never replace a new selection", async ({ page }) => {
@@ -181,9 +215,10 @@ test("telemetry separates incremental readiness from historical inventory gaps",
   await page.route("**/api/ingestion/telemetry/**",route=>route.fulfill({json:{observed_at:"2026-10-09T18:10:00Z",counts_by_kind_and_status:[],stale_leases:0,discovery_run:null,recent_work_states:[]}}));
   let valid=true;
   await page.route("**/api/ingestion/source-readiness/**",route=>route.fulfill({json:{available:true,age_seconds:1,complete:true,missing_unqueued_metadata:9,ready_to_start:valid?3:null,incremental_discoverable_count_available:valid,discovery_basis:{cursor_at:"2026-10-09T18:00:00Z",from_date_time:"2026-10-09T17:55:00Z"},discovery_checked_completed_at:"2026-10-09T18:10:00Z"}}));
-  await page.goto("/");await page.getByLabel("Show sample data").uncheck();
+  await page.goto("/");
   const panel=page.getByRole("region",{name:"Legislation ingestion"});
   await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  await panel.getByText("Source & technical details", {exact:true}).click();
   const ready=panel.getByRole("heading",{name:"Ready for incremental discovery"}).locator("..");
   const gaps=panel.getByRole("heading",{name:"Missing unqueued metadata"}).locator("..");
   await expect(ready.locator("strong")).toHaveText("3");await expect(gaps.locator("strong")).toHaveText("9");

@@ -32,6 +32,7 @@ class OperativeClause:
     context: tuple[SourceSpan, ...] = ()
     evidence_context: tuple[SourceSpan, ...] = ()
     sentence: SourceSpan | None = None
+    preserve_group: bool = False
 
     @property
     def asserted(self):
@@ -132,6 +133,20 @@ def parse_operative_clauses(source, sections):
                 re.finditer(r"\bexcept that\s+", sentence.text, re.I)
             )
             whole = _classify(section, sentence, parent)
+            # A list of eligibility conditions is one rule. The legacy leaf
+            # renderer repeats the introduction for each child, turning A AND
+            # B into two independently sufficient conditions. Preserve the
+            # complete source until that renderer supports boolean groups.
+            if (
+                whole.modality
+                and re.search(r"\b(?:if|unless|provided that)\b", sentence.text, re.I)
+                # The payment grammar already preserves the complete exemption
+                # alternatives and their parent in one financial record.
+                and not re.match(r"be exempted from paying\b", whole.action, re.I)
+                and sentence.text.rstrip().endswith(("—", "–", "-", ":"))
+                and sentence.end_char < section.span.end_char
+            ):
+                whole = replace(whole, preserve_group=True)
             first_modal = MODAL.search(grammar_text(sentence.text))
             if whole.disposition == "discussion" and re.search(
                 r"[,;]\s*(?:and|but)\b.*\b(?:shall|must|may)\b",
@@ -141,11 +156,13 @@ def parse_operative_clauses(source, sections):
                 # Coordination after a discussion may be inside or outside its
                 # scope. Preserve the whole source rather than guessing.
                 whole = replace(whole, disposition="uncertain")
-            if whole.disposition == "uncertain" and (
-                not exception_parts or DISCUSSION.search(sentence.text)
+            if (
+                whole.preserve_group
+                or whole.disposition == "uncertain"
+                and (not exception_parts or DISCUSSION.search(sentence.text))
             ):
                 clauses.append(whole)
-                if sentence.text.rstrip().endswith(("—", "–", ":")):
+                if sentence.text.rstrip().endswith(("—", "–", "-", ":")):
                     introductions[section.source_id] = whole
                 continue
             separators = (
@@ -174,14 +191,14 @@ def parse_operative_clauses(source, sections):
                     # governing sentence for conditions, exceptions and evidence.
                     clause = replace(clause, sentence=sentence)
                 clauses.append(clause)
-                if span.text.rstrip().endswith(("—", "–", ":")):
+                if span.text.rstrip().endswith(("—", "–", "-", ":")):
                     introductions[section.source_id] = clause
     # If one list condition cannot be interpreted, abstain for the complete
     # governing provision. Never publish the remaining conditions independently.
     by_span = {c.span: c for c in clauses}
     groups = {}
     for clause in clauses:
-        if clause.disposition != "uncertain":
+        if clause.disposition != "uncertain" and not clause.preserve_group:
             continue
         root = by_span.get(clause.context[0], clause) if clause.context else clause
         descendants = [c for c in clauses if root.span in c.context]
@@ -190,7 +207,9 @@ def parse_operative_clauses(source, sections):
         end = max([governing.end_char, *(c.span.end_char for c in descendants)])
         groups[start] = replace(
             root,
-            disposition="uncertain",
+            disposition=(
+                "uncertain" if clause.disposition == "uncertain" else root.disposition
+            ),
             context=(),
             evidence_context=(),
             sentence=None,

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from django.conf import settings
 
+from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
 from .base import CredentialCheck, ProviderError, ProviderResult, ProviderUsage
@@ -74,6 +76,19 @@ def _mapped_error(error: Exception) -> ProviderError:
     return ProviderError("provider_unavailable", retry_allowed=True)
 
 
+def _wire_schema(value):
+    """Preserve local constraints while omitting unsupported API keywords."""
+    if isinstance(value, dict):
+        return {
+            key: _wire_schema(item)
+            for key, item in value.items()
+            if key != "uniqueItems"
+        }
+    if isinstance(value, list):
+        return [_wire_schema(item) for item in value]
+    return value
+
+
 class OpenAIEnhancementProvider:
     provider_name = "openai"
 
@@ -136,28 +151,215 @@ class OpenAIEnhancementProvider:
         request,
         timeout_seconds: int,
     ) -> ProviderResult:
-        client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
         input_payload = {
             "bill": request.request_envelope["bill"],
             "source_packet": request.request_envelope["source_packet"],
         }
+        schema = PROVIDER_OUTPUT_SCHEMA
+        if request.request_envelope.get("coverage_candidate_version") == "2":
+            from ..coverage_contract import response_schema
+
+            schema = response_schema(
+                input_payload["source_packet"]["coverage_checklist"]
+            )
+        elif request.request_envelope.get("coverage_candidate_version") == "3":
+            from ..coverage_contract import provision_schema
+
+            schema = provision_schema(
+                input_payload["source_packet"]["coverage_checklist"]
+            )
+        return self._generate(
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            input_payload=input_payload,
+            instructions=request.request_envelope["instructions"],
+            schema=schema,
+            schema_name="bill_enhancement_v1_1",
+        )
+
+    def repair_citations(self, *, api_key, request, payload, timeout_seconds):
+        envelope = dict(
+            input=payload, instructions=REPAIR_INSTRUCTIONS, schema=REPAIR_SCHEMA
+        )
+        size = len(json.dumps(envelope, ensure_ascii=False).encode())
+        if size > min(
+            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+        ):
+            raise ProviderError("request_too_large", usage=ProviderUsage(0, 0, 0))
+        return self._generate(
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            input_payload=payload,
+            instructions=REPAIR_INSTRUCTIONS,
+            schema=REPAIR_SCHEMA,
+            schema_name="citation_repair_v1",
+        )
+
+    def _source_first(self, *, api_key, request, timeout_seconds, stage):
+        from jsonschema import ValidationError
+
+        from ..source_first_prompts import PROVISION_INSTRUCTIONS, SYNOPSIS_INSTRUCTIONS
+        from ..source_first_prompts import REPAIR_INSTRUCTIONS as REPAIR
+        from ..source_first_transport import prepare_transport
+
+        instructions = {
+            "generation": PROVISION_INSTRUCTIONS,
+            "repair": REPAIR,
+            "synopsis": SYNOPSIS_INSTRUCTIONS,
+        }[stage]
+        transport = prepare_transport(
+            stage, request.request_envelope["source_first_payload"]
+        )
+        payload, schema = transport.payload, transport.schema
+        size = len(
+            json.dumps(
+                {"input": payload, "instructions": instructions, "schema": schema},
+                ensure_ascii=False,
+            ).encode()
+        )
+        if size > min(
+            120000,
+            100000,
+            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+        ):
+            raise ProviderError("request_too_large", usage=ProviderUsage(0, 0, 0))
+        result = self._generate(
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            input_payload=payload,
+            instructions=instructions,
+            schema=schema,
+            schema_name=f"source_first_{stage}",
+        )
+        try:
+            return replace(result, output=transport.decode(result.output))
+        except (ValidationError, KeyError, TypeError) as error:
+            # Only server-owned schema keys and validator names; never persist
+            # arbitrary exception messages or provider-supplied field names.
+            fields = {
+                "provisions",
+                "unit_id",
+                "status",
+                "summary",
+                "details",
+                "claims",
+                "unresolved_reason",
+                "actor",
+                "action",
+                "modality",
+                "money",
+                "conditions",
+                "exceptions",
+                "evidence_ids",
+                "amount",
+                "currency",
+                "measure",
+                "comparator",
+                "purpose",
+                "period",
+                "base",
+                "operator",
+                "children",
+                "text",
+                "condition_id",
+                "source_item_ids",
+                "explanations",
+                "unresolved_items",
+                "item_id",
+                "reason",
+                "explanation_ids",
+                "financial_patches",
+                "claim_index",
+            }
+            path = "/".join(
+                str(part) if type(part) is int or part in fields else "unknown"
+                for part in getattr(error, "absolute_path", ())
+            )
+            validator = getattr(error, "validator", None)
+            rule = (
+                validator
+                if isinstance(validator, str)
+                else (
+                    str(error)
+                    if str(error)
+                    in {
+                        "unrelated_source_item",
+                        "source_item_assignment",
+                        "condition_depth",
+                        "invalid_evidence_ids",
+                    }
+                    else "decode"
+                )
+            )
+            raise ProviderError(
+                "invalid_output",
+                validation_code="source_first_wire_schema",
+                validation_detail={"rule": rule, "path": path[:256]},
+                usage=result.usage,
+                response_id=result.response_id,
+                resolved_model=result.resolved_model,
+            ) from None
+
+    def generate_provisions(self, *, api_key, request, timeout_seconds):
+        return self._source_first(
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            stage="generation",
+        )
+
+    def repair_provisions(self, *, api_key, request, timeout_seconds):
+        return self._source_first(
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            stage="repair",
+        )
+
+    def generate_synopsis(self, *, api_key, request, timeout_seconds):
+        return self._source_first(
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            stage="synopsis",
+        )
+
+    def _generate(
+        self,
+        *,
+        api_key,
+        request,
+        timeout_seconds,
+        input_payload,
+        instructions,
+        schema,
+        schema_name,
+    ):
+        client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
         try:
             response = client.responses.create(
                 model=request.requested_model,
-                instructions=request.request_envelope["instructions"],
+                instructions=instructions,
                 input=json.dumps(
                     input_payload,
                     sort_keys=True,
                     separators=(",", ":"),
                     ensure_ascii=False,
                 ),
-                max_output_tokens=settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+                max_output_tokens=min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+                if schema_name.startswith("source_first_")
+                else settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
                 reasoning={"effort": request.reasoning_effort},
                 text={
                     "format": {
                         "type": "json_schema",
-                        "name": "bill_enhancement_v1_1",
-                        "schema": PROVIDER_OUTPUT_SCHEMA,
+                        "name": schema_name,
+                        "schema": _wire_schema(schema),
                         "strict": True,
                     }
                 },

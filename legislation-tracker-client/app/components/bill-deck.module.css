@@ -65,6 +65,7 @@
 .topicSection h2 span { width: 10px; height: 10px; border-radius: 50%; }
 .topicSection h2 small { color: var(--muted); font-weight: 400; font-size: .85rem; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; }
+.followedRow { display: grid; grid-auto-flow: column; grid-auto-columns: min(340px, 85vw); gap: 1.2rem; overflow-x: auto; padding-bottom: 1rem; }
 .list { display: grid; gap: .85rem; max-width: 900px; }
 .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
 .bar { height: 8px; flex-shrink: 0; }

@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 import React from "react";
-import { getBillFilterOptions, getBills, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
+import { getBillFilterOptions, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
 import BillDeckModal from "./BillDeckModal";
-import IngestionTelemetryPreview from "./IngestionTelemetryPreview";
+import IngestionTelemetryLive from "./IngestionTelemetryLive";
 import RecommendationsPreview from "./RecommendationsPreview";
 import { focusRecommendationFallback } from "@/lib/recommendation-focus";
 import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges } from "@/lib/api";
 import LegislatorName from "./LegislatorName";
 import styles from "./bill-deck.module.css";
 
-const colors = ["#233f68", "#923e47", "#2f6b50", "#426c86", "#705786", "#357b78"];
-export function topicColor(id: number) { return colors[Math.abs(id) % colors.length]; }
-export function readable(value: string) { return value.replaceAll("_", " "); }
-export function dateLabel(value: string | null) { if (!value) return "Not recorded"; const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value); return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
+import BillCard, { readable } from "./BillCard";
+export { topicColor, readable, dateLabel } from "./BillCard";
 
 export default function BillDeck() {
   const [tracking, setTracking] = React.useState<TrackingSummary | null>(null);
@@ -22,13 +20,6 @@ export default function BillDeck() {
   const [ready, setReady] = React.useState(false);
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
-  const [all, setAll] = React.useState(false);
-  const [bills, setBills] = React.useState<BillListItem[]>([]);
-  const [page, setPage] = React.useState(0);
-  const [total, setTotal] = React.useState(0);
-  const [more, setMore] = React.useState(true);
-  const [loading, setLoading] = React.useState(false);
-  const [catalogError, setCatalogError] = React.useState("");
   const [representatives, setRepresentatives] = React.useState<RepresentativeItem[]>([]);
   const [currentCongress, setCurrentCongress] = React.useState<number | null>(null);
   const [repError, setRepError] = React.useState("");
@@ -37,7 +28,7 @@ export default function BillDeck() {
   const [sponsor, setSponsor] = React.useState("");
   const [state, setState] = React.useState("");
   const [status, setStatus] = React.useState("");
-  const [layout, setLayout] = React.useState("grid");
+  const [sort, setSort] = React.useState("recent");
   const [selected, setSelected] = React.useState<BillListItem | null>(null);
   const [selectedFromRecommendations, setSelectedFromRecommendations] = React.useState(false);
   const recommendationOwnsBill = React.useRef(false);
@@ -73,19 +64,8 @@ export default function BillDeck() {
     return () => { live = false; abort.abort(); };
   }, [attempt]);
 
-  async function loadPage() {
-    if (loading) return;
-    setLoading(true); setCatalogError("");
-    try {
-      const result = await getBills({ page: page + 1, sort: "recent_activity" });
-      setBills(previous => [...new Map([...previous, ...result.results].map(bill => [bill.id, bill])).values()]);
-      setTotal(result.count); setMore(Boolean(result.next)); setPage(previous => previous + 1);
-    } catch { setCatalogError("The bill collection could not be loaded. Try again."); }
-    finally { setLoading(false); }
-  }
-
   const followed = new Set(tracking?.bills.map(item => item.bill.id));
-  const source = all ? bills : tracking?.bills.map(item => item.bill) ?? [];
+  const source = tracking?.bills.map(item => item.bill) ?? [];
   const topics = new Map<number, string>();
   tracking?.topics.forEach(item => topics.set(item.topic.id, item.topic.name));
   source.forEach(bill => bill.topics.forEach(item => topics.set(item.topic_id, item.name)));
@@ -95,12 +75,13 @@ export default function BillDeck() {
   const stateBySponsor = new Map(representatives.map(rep => [rep.id, rep.state]));
   const states = [...new Set(source.map(bill => stateBySponsor.get(bill.sponsor_id ?? -1)).filter((value): value is string => Boolean(value)))].sort();
   const visible = source.filter(bill => (!query || `${bill.bill_number} ${bill.title}`.toLowerCase().includes(query.toLowerCase())) && (!topic || bill.topics.some(item => String(item.topic_id) === topic)) && (!sponsor || sponsorKey(bill) === sponsor) && (!state || stateBySponsor.get(bill.sponsor_id ?? -1) === state) && (!status || bill.status === status));
-  const groups = new Map<string, { id: number; bills: BillListItem[] }>();
-  visible.forEach(bill => {
-    const preferred = bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id)) ?? bill.topics[0];
-    const name = all ? "All legislation" : preferred?.name ?? "Other legislation";
-    if (!groups.has(name)) groups.set(name, { id: preferred?.topic_id ?? 0, bills: [] });
-    groups.get(name)!.bills.push(bill);
+  visible.sort((a, b) => {
+    if (sort === "title") return a.title.localeCompare(b.title) || a.id - b.id;
+    if (sort === "number") return a.bill_number.localeCompare(b.bill_number, undefined, { numeric: true }) || b.session - a.session || a.id - b.id;
+    const dateA = Date.parse(a.last_action_at ?? ""), dateB = Date.parse(b.last_action_at ?? "");
+    if (!Number.isFinite(dateA)) return Number.isFinite(dateB) ? 1 : a.id - b.id;
+    if (!Number.isFinite(dateB)) return -1;
+    return (sort === "oldest" ? dateA - dateB : dateB - dateA) || a.id - b.id;
   });
   async function toggleFollow(bill: BillListItem) {
     if (!tracking || pending !== null) return;
@@ -118,45 +99,32 @@ export default function BillDeck() {
       <div><h1 data-dashboard-heading tabIndex={-1}>Your legislation, in view.</h1><p>Follow the bills that matter to you. Read what’s happening, and what changed.</p></div>
       <Link href="/topics" className={styles.link}>Manage followed topics</Link>
     </header>
-    <div className={styles.toolbar}>
-      <div className={styles.segment} aria-label="Bill collection">
-        <button aria-pressed={!all} onClick={() => { setAll(false); reset(); }}>Following {tracking ? `(${tracking.bills.length})` : ""}</button>
-        <button aria-pressed={all} onClick={() => { setAll(true); reset(); if (!page) void loadPage(); }}>View all bills</button>
-      </div>
-      <div className={styles.segment} aria-label="Card layout">{["grid", "list"].map(value => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{value === "grid" ? "Grid" : "List"}</button>)}</div>
-    </div>
     <div className={styles.filters}>
       <label>Search bills<input type="search" placeholder="Title or bill number" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <label>Topic<select aria-label="Topic" value={topic} onChange={event => setTopic(event.target.value)}><option value="">All topics</option>{[...topics].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
       <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => { const representative = representatives.find(rep => key === `id:${rep.id}`); return <option key={key} value={key}>{name}{representative ? ` · ${representative.state} · ${representative.chamber}` : " · Affiliation unavailable"}</option>; })}</select></label>
       <label>Sponsor state<select aria-label="Sponsor state" disabled={Boolean(repError)} value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</select></label>
       <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map(value => <option key={value} value={value}>{readable(value)}</option>)}</select></label>
+      <label>Sort bills<select value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></select></label>
     </div>
-    <div className={styles.resultLine}><p role="status">{visible.length} {visible.length === 1 ? "bill" : "bills"} in view{all ? ` · ${bills.length} of ${total} loaded` : ""}</p><button onClick={reset}>Clear filters</button></div>
-    {all && <p className={styles.note}>Filters apply to loaded bills. Load more to browse the full collection. Sponsor state uses the latest stored affiliation by representative ID; historical state may differ and unlisted sponsors have no state metadata.</p>}
+    <div className={styles.resultLine}><p role="status">{visible.length} {visible.length === 1 ? "bill" : "bills"} in view</p><button onClick={reset}>Clear filters</button></div>
     {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}
+    {!ready && <p role="status" className={styles.empty}>Loading your followed bills…</p>}
+    {ready && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or browse the <Link href="/bills">Bills page</Link>.</p></div>}
+    {ready && !error && signedIn && !visible.length && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : <>Browse the <Link href="/bills">Bills page</Link> and follow a bill to keep it here.</>}</p>{!tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
+    {visible.length > 0 && <section className={styles.topicSection}>
+      <h2>Following<small>{visible.length}</small></h2>
+      <div role="region" aria-label="Followed bills" tabIndex={0} className={styles.followedRow}>{visible.map(bill => <BillCard key={bill.id} bill={bill}
+        accentTopicId={bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id))?.topic_id}
+        sponsorState={stateBySponsor.get(bill.sponsor_id ?? -1)}
+        onOpen={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(bill); }}
+        footer={signedIn && tracking ? <button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}
+      />)}</div>
+    </section>}
     <RecommendationsPreview renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
-    {!ready && !all && <p role="status" className={styles.empty}>Loading your followed bills…</p>}
-    {ready && !all && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or explore all bills above.</p></div>}
-    {ready && !error && (all || signedIn) && !visible.length && !loading && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : all ? "No bills are loaded yet" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : "Explore all bills and follow one to keep it here."}</p>{!all && !tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
-    {[...groups].map(([name, group]) => <section key={name} className={styles.topicSection}>
-      <h2><span style={{ background: topicColor(group.id) }} aria-hidden="true" />{name}<small>{group.bills.length}</small></h2>
-      <div className={layout === "grid" ? styles.grid : styles.list}>{group.bills.map(bill => <article key={bill.id} className={styles.card}>
-        <div className={styles.bar} style={{ background: topicColor(bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id))?.topic_id ?? bill.topics[0]?.topic_id ?? 0) }} />
-        <div className={styles.cardBody}>
-          <div className={styles.cardMeta}><span>{bill.bill_number} / {bill.session}</span><span>{readable(bill.status || "Status unavailable")}</span></div>
-          <h3><button onClick={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(bill); }}>{bill.title || "Untitled bill"}</button></h3>
-          <p className={styles.cardTopics}>{bill.topics.map(item => item.name).join(", ") || "Topic not recorded"}</p>
-          <p className={styles.sponsor}><LegislatorName id={bill.sponsor_id ?? null} name={bill.sponsor_name || "Sponsor not recorded"} congress={bill.session} />{stateBySponsor.get(bill.sponsor_id ?? -1) ? ` (${stateBySponsor.get(bill.sponsor_id!)}, latest stored state)` : ""}</p>
-          <div className={styles.cardFooter}><span>Last action<br /><time>{dateLabel(bill.last_action_at)}</time></span>{signedIn && tracking ? <button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}</div>
-        </div>
-      </article>)}</div>
-    </section>)}
-    {catalogError && all && <p role="alert">{catalogError}</p>}
-    {all && (more || catalogError) && <button className={styles.loadMore} disabled={loading} onClick={() => void loadPage()}>{loading ? "Loading bills…" : catalogError ? "Retry loading bills" : "Load more bills"}</button>}
-    <IngestionTelemetryPreview isStaff={Boolean(tracking?.is_staff)} />
+    {ready && <IngestionTelemetryLive key={`${signedIn}:${Boolean(tracking?.is_staff)}`} />}
     {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}
   </div>;
 }

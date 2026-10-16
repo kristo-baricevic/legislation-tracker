@@ -21,6 +21,7 @@ from .service import (
     create_enhancement_attempt,
     credential_is_current,
     retry_enhancement_attempt,
+    reusable_publication,
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 
@@ -105,6 +106,9 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             .order_by("-created_at")
             .first()
         )
+        reused = reusable_publication(matching, credential) if matching else None
+        if reused:
+            preflight = build_enhancement_preflight(bill, reuse_result=reused)
         return Response(
             {
                 **base,
@@ -120,6 +124,9 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+                "aggregate_budget": preflight.source_manifest.get("budget"),
+                "source_coverage": preflight.source_manifest.get("coverage"),
+                "unresolved_unit_ids": preflight.source_manifest.get("unresolved_unit_ids", []),
                 "max_output_includes_reasoning": True,
                 "truncated": preflight.truncated,
                 "coverage_notice": (

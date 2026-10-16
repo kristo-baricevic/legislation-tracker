@@ -326,7 +326,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
   return (
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
       <div className="p-4 sm:p-5">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Reader brief · deterministic analysis</p>
+        <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Reader brief · deterministic analysis</p>
         <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">What this bill does</h2>
         {sourceLabel ? (
           <div className="mt-4">
@@ -372,7 +372,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
             {readerError && <div role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300"><p>{readerError}</p><button type="button" onClick={() => void loadReader(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill provisions</button></div>}
             {grouped.map((group) => {
               const section = supplements.get(group.items[0].section_id);
-              return <section key={group.key} className="mt-6 border-l-4 border-slate-300 pl-4 dark:border-green-800"><h4 className="font-mono text-sm font-semibold text-slate-700 dark:text-green-500">{pathLabel(group.path)}</h4>{section && (section.section_financial_count > 0 || section.section_timeline_count > 0) && <p className="mt-1 text-xs text-slate-500 dark:text-green-700">{section.section_financial_count > 0 ? `Money in this section: ${section.section_financial_count}` : ""}{section.section_financial_count > 0 && section.section_timeline_count > 0 ? " · " : ""}{section.section_timeline_count > 0 ? `Deadlines in this section: ${section.section_timeline_count}` : ""}</p>}<ol>{group.items.map((item) => <ReaderItem key={item.id} contractId={contract.id} item={item} document={document} onShowAllFinancial={onShowAllFinancial} />)}</ol></section>;
+              return <section key={group.key} className="mt-6 border-l-4 border-slate-300 pl-4 dark:border-green-800"><h4 className="font-sans text-sm font-semibold text-slate-700 dark:text-green-500">{pathLabel(group.path)}</h4>{section && (section.section_financial_count > 0 || section.section_timeline_count > 0) && <p className="mt-1 text-xs text-slate-500 dark:text-green-700">{section.section_financial_count > 0 ? `Money in this section: ${section.section_financial_count}` : ""}{section.section_financial_count > 0 && section.section_timeline_count > 0 ? " · " : ""}{section.section_timeline_count > 0 ? `Deadlines in this section: ${section.section_timeline_count}` : ""}</p>}<ol>{group.items.map((item) => <ReaderItem key={item.id} contractId={contract.id} item={item} document={document} onShowAllFinancial={onShowAllFinancial} />)}</ol></section>;
             })}
             {hasMore && !readerError && <button type="button" disabled={readerLoading} onClick={() => void loadReader(page + 1, true)} className="mt-5 border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50 dark:border-green-700 dark:text-green-300">{readerLoading ? "Loading provisions…" : "Show 25 more"}</button>}
           </div>}

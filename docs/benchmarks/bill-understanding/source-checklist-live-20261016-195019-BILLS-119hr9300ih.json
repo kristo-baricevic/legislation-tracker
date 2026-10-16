@@ -1,0 +1,4008 @@
+{
+  "plan_fingerprint": "fd23b28f3dbbab5744d8805f98d5a2b52f4fa9f528e5efa16525027b3ac68c37",
+  "model": "gpt-6-luna",
+  "limits": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "output_tokens": 8000,
+    "per_call_input": 100000
+  },
+  "document_fingerprint": "96e5550bcea4d1ac600c4a4d989c5c6ed2044346071530d505eb240a086ed6ae",
+  "mode": "fresh_generation",
+  "status": "completed",
+  "maximum_calls": 3,
+  "maximum_input": 232709,
+  "maximum_output": 24000,
+  "network_calls": 3,
+  "calls": [
+    {
+      "request_fingerprint": "87215b25b607819419b0500a6bf08b39f9b0f306607b8ba00e68f3fdac623e6d",
+      "stage": "generation",
+      "unit_ids": [
+        "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+        "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+        "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+        "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+        "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 7594,
+        "output_tokens": 5969,
+        "total_tokens": 13563
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+            "status": "explained",
+            "summary": "The Act’s short title is the “Postsecondary Student Success Act of 2026.”",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This Act",
+                "action": "may be cited as the Postsecondary Student Success Act of 2026",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e"
+                ]
+              }
+            ],
+            "coverage_items": [
+              {
+                "item_id": "d2210ea60e9356b08b1594db3ca00469cd17c81683b4fb5d8cc7ef7b5f2e5126",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  0
+                ],
+                "reason": null
+              }
+            ]
+          },
+          {
+            "unit_id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+            "status": "explained",
+            "summary": "The Act’s stated purpose is to support evidence-based participation, retention, and completion activities intended to ensure postsecondary success for high-need students.",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "The Act",
+                "action": "states its purpose is to support evidence-based activities for participation, retention, and completion, designed to ensure high-need students’ postsecondary success",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9"
+                ]
+              }
+            ],
+            "coverage_items": [
+              {
+                "item_id": "ea8c5d04423b17f30f98fc0ec68088a6602a50ce1ab160704e4030d1b9e7e653",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  0
+                ],
+                "reason": null
+              }
+            ]
+          },
+          {
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "explained",
+            "summary": "The Act defines completion rate, eligible entities and students, evidence tiers, and other terms. Several definitions incorporate meanings from other statutes, which are not supplied here.",
+            "details": [
+              "For a two-year institution, completion rate is the percentage of students in an initial cohort who graduate or transfer to a four-year institution. For a four-year institution in a State, it is the percentage of the initial cohort who graduate.",
+              "A dual or concurrent enrollment program and an early college high school have the meanings assigned in section 8101 of the Elementary and Secondary Education Act. Those meanings are not provided here.",
+              "An eligible entity is a public institution of higher education; a partnership between a nonprofit educational organization and an institution of higher education; or a consortium of institutions of higher education.",
+              "An eligible Indian entity is the entity responsible for the governance, operation, or control of a Tribal College or University.",
+              "Evidence-based has the meaning assigned in section 8101(21)(A) of the Elementary and Secondary Education Act. That meaning is not provided here.",
+              "Tier 1 means prior research suggests a reform or practice has promise to improve achievement or attainment for high-need students.",
+              "Tier 2 includes a tier 1 reform or a similar reform that measures impact and cost effectiveness and has been found successfully implemented through rigorous evaluation, including use of existing administrative data as applicable.",
+              "Tier 3 includes a tier 2 reform or a similar reform found to produce sizable, important student-success impacts, and concerns determining whether impacts can be reproduced and sustained and identifying when the reform is most effective.",
+              "First-generation college student has the meaning assigned in section 402A(h) of the Higher Education Act. The supplied text does not establish that meaning.",
+              "A high-need student is a student from a low-income background; a first-generation college student; a caregiver student; a student with a disability; a student who dropped out before completing; a reentering justice-impacted student; or a military-connected student.",
+              "Institution of higher education has the meaning assigned in section 101 of the Higher Education Act. That meaning is not provided here.",
+              "Secretary means the Secretary of Education. A Tribal College or University has the meaning assigned in section 316(b)(3) of the Higher Education Act; that meaning is not provided here."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This Act",
+                "action": "defines completion rate for students from an initial cohort enrolled at a two-year institution as the percentage who graduated or transferred to a four-year institution, or, for a four-year institution in the State, the percentage who graduated",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "uses the meanings assigned by section 8101 of the Elementary and Secondary Education Act for dual or concurrent enrollment program and early college high school",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines an eligible entity as a public institution of higher education, a partnership between a nonprofit educational organization and an institution of higher education, or a consortium of institutions of higher education",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines an eligible Indian entity as the entity responsible for governance, operation, or control of a Tribal College or University",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "uses the meaning assigned to evidence-based in section 8101(21)(A) of the Elementary and Secondary Education Act",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines tier 1 as a reform or practice that prior research suggests has promise to improve achievement or attainment for high-need students",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines tier 2 as a tier 1 or similar reform or practice that measures impact and cost effectiveness of student-success activities and has been found successfully implemented through rigorous evaluation, including use of existing administrative data as applicable",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines tier 3 as a tier 2 or similar reform or practice found to produce sizable, important student-success impacts, with attention to reproducibility and sustainability over time and conditions of greatest effectiveness",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "uses the meaning assigned to first-generation college student in section 402A(h) of the Higher Education Act",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines high-need student as a low-income-background student, first-generation college student, caregiver student, student with a disability, student who dropped out before completing, reentering justice-impacted student, or military-connected student",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "uses the meaning assigned to institution of higher education in section 101 of the Higher Education Act",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "This Act",
+                "action": "defines Secretary as the Secretary of Education and uses the meaning assigned to Tribal College or University in section 316(b)(3) of the Higher Education Act",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              }
+            ],
+            "coverage_items": [
+              {
+                "item_id": "1852fac0b8fe868c14e089a096d89887ee9d8ca32e5603d91067917a2e4319ef",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "1b41b05b732c3026db0180b984fb5924ce21958864b2051b9159deda128b6af9",
+                "status": "explained",
+                "claim_indexes": [
+                  1
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "ebe8906a964116c2204227962f18a63790984852261762bc6bfa0cfc00384cb2",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "35da701f7ae63f4072e254059d136f655fbfe26fa399d731c56d2343a9a46769",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "dc1c034ab3faf3d2ce60a4200db8184468e4bfaabc9145179d9d4d7b3ed83135",
+                "status": "explained",
+                "claim_indexes": [
+                  4
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "60bb050c6d4214bb414aa896032916703c4f393388de640bb599f35f1917ba7b",
+                "status": "explained",
+                "claim_indexes": [
+                  5,
+                  6,
+                  7
+                ],
+                "explanation_indexes": [
+                  6,
+                  7,
+                  8
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e6b599bf0ff2c8e2c2f5f914ce0620443f0cda02e3cdd5ce0cd15cc20b76e952",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  9
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "177c8ff8b65fdcac5a4dc3049c09607f07674afc726977dbe599deacbda2b766",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  9
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "2eacc1ebf92310a0b01581b1a92c5aa26f801b6d6ed781703d7ddfe3cf4b100e",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  10
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "cd636b7aa6bbc29d582149aea63b4ccfc1873c85a9e8cbbfd5dd3ee18b01b0c4",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "b5cc9de4f11311371ef0c537561629fe5611decf460ff441f1d03e99f4cd6e8b",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "6d2f75812cad24d7b5a61f030aceeb27f03327f390a933b4d2a80dd774137a67",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7ab950b0161dc74a6c7bae3b68d108dc6bd2b17cd347a20fd1ed6a8475f4711d",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "8a1b794d58ae3e0b67e3e692af996e4451adde45bf9dc3f59ee698f7b0912269",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "6013e6c857777a4eb9344facb2ea43022325989109810a7d7a79a26950424704",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "88488734cacc5f6212a9265847fc6afe6fe02667280c2edfcf9b886ae58500ad",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "15108de032f41b9be6609e3762f77abd661883dc0cef2c0a522c0dd0770a1b3c",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7a74f3b0c4a7259a6188b9239fdbd7fb1c51ca4d35dd1c7367011f60fad0bb26",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e67e40effd33d752235ee767f0359912ab9f52bd07677fd5d05bd490dd5288d5",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "ef19a77949189769e068dd1dfffdb7ce4817e69c399d4bc7a6a8da2fbad24d45",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "d1f74784a368cd7e02eaee35d29a1b1d84a48526632b85048dd748caf569fef5",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "563a374cdd44b1844acc051b508b031130cf34d430e51c6a13b8f3eab121c1d1",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "833fe6058a0181f53c2604b599ebad532b0d85ac9d0c93f388f67c9d970a5c5a",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "441a225e6f30e40c0e1f0e8b4a5cc2e68c144f8024bdbc8da6e02021ccb08133",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "8b4a5365f2c571f77209063336e4c8134407e2e561e58ba2b2e84f2d734f2d9e",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7bcb8b9fb31114136f67ba57ab7b564c6d4ac6a0e5bb481fe17ee4dc5b80fa01",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "0315ce0e2e04bb2e48f8f809f00526887276086251e7edff2e748e6b43af5b21",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "2305d457d83b6763f2cff73bdf93f6d67062adae6323234e34b74943b895f40e",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "1f2517509cdd878bc8bf878a44d97e551581c40ee54f45563ae39c7aa8727536",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "b234530ddadb7adcd8c884748f79fa79c14beb37f2cb3a4cf52cd568f689e393",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  12
+                ],
+                "reason": null
+              }
+            ]
+          },
+          {
+            "unit_id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+            "status": "explained",
+            "summary": "For each fiscal year, the Secretary must reserve 2 percent of the total amount appropriated to carry out the Act for grants to eligible Indian entities.",
+            "details": [
+              "The grants are to increase participation, retention, and completion rates of high-need students."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Secretary",
+                "action": "reserve funds from the total amount appropriated to carry out the Act for the fiscal year for grants to eligible Indian entities to increase participation, retention, and completion rates of high-need students",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": "2",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": null,
+                    "purpose": "grants to eligible Indian entities for increasing participation, retention, and completion rates of high-need students",
+                    "period": "each fiscal year",
+                    "base": "total amount appropriated to carry out this Act for that fiscal year"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825"
+                ]
+              }
+            ],
+            "coverage_items": [
+              {
+                "item_id": "0e1d80e23852dc6101cc7a136f3e95d46241641ba77046e59d33acb0da4fe70a",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  0,
+                  1
+                ],
+                "reason": null
+              }
+            ]
+          },
+          {
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "explained",
+            "summary": "The Act authorizes competitive grants, sets application requirements and uses, reserves portions of appropriations for specified grants, permits limited set-asides, requires evaluations and a report, and limits branch-campus entities to one funded campus at a time.",
+            "details": [
+              "For fiscal years 2027 through 2032, the Secretary must award competitive grants to eligible entities to provide student services that increase high-need students’ participation, retention, and completion.",
+              "An eligible entity or eligible Indian entity seeking a grant must apply to the Secretary at the time, in the manner, and with the information required by subsection (c).",
+              "Each application must include a plan to raise attainment and completion or graduation rates for all students enrolled at the eligible entity or Tribal College or University. The plan must describe the evidence-based reform and its tier, and focus particularly on serving high-need students through services and collaboration among two-year programs, four-year programs, and workforce systems.",
+              "Applications must include annual student-outcome benchmarks for the proposed reform, an evaluation plan, the rates of enrolled students who received a Federal Pell Grant, and enrolled-student demographics, including high-need students.",
+              "An application must describe how grant funds will implement one or more listed evidence-based reforms, directly or in collaboration with other higher-education institutions or nonprofit organizations. Options include comprehensive academic, career, and student services; accelerated learning opportunities; course-scheduling or credit-awarding reforms; and improved transfer pathways.",
+              "Applications must explain how the evidence-based reform or practice will be sustained after the grant expires.",
+              "Of the amount appropriated for a fiscal year and not reserved under section 4, the Secretary must reserve at least 20 percent for grants to eligible entities proposing at least one tier 3 reform or practice, with the rest being tier 1 or tier 2 reforms or practices.",
+              "A grant recipient that is an eligible entity or eligible Indian entity must use the funds to carry out its submitted plans and evidence-based reforms and practices to improve student participation, retention, and completion. The listed possible uses include retention and success services, such as counseling, real-time progress data, transfer-student support, and re-enrollment or on-track student-1",
+              "Grant funds may support direct student services comprising a combination of tutoring, academic supports, and enrichment services, and emergency financial assistance.",
+              "Grant funds may support career-preparation efforts, including coaching and counseling, lowering student-to-advisor ratios, networking and work-based learning, career pathways, and experiences needed for success in high-skill, high-wage, or in-demand sectors or occupations. The referenced Perkins Act provision is not supplied, so its meaning is not established here.",
+              "Grant funds may support efforts to recruit and retain faculty and other instructional staff.",
+              "From annual appropriations not reserved under section 4 or the evidence-based-program reservation, the Secretary may set aside up to 5 percent for administration, capacity building, research, evaluation, and reporting, and up to 2 percent for technical assistance to eligible entities and eligible Indian entities. These are separate caps and purposes; the text does not require either set-aside. The"
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Secretary",
+                "action": "award competitive grants to eligible entities to provide student services increasing high-need students’ participation, retention, and completion rates",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "For each of fiscal years 2027 through 2032",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An eligible entity or eligible Indian entity desiring a grant",
+                "action": "submit an application to the Secretary at the time and in the manner the Secretary specifies, containing the information required by subsection (c)",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "An eligible entity or eligible Indian entity desiring a grant under this Act",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An application submitted under this section",
+                "action": "include a plan to increase attainment and completion or graduation rates for all students enrolled at the eligible entity or Tribal College or University; describe the evidence-based reform or practice and its tier; and focus particularly on serving high-need students through student services and collaboration among two-year programs, four-year programs, and workforce systems",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An application submitted under this section",
+                "action": "include annual benchmarks for student outcomes for the proposed evidence-based reform or practice; a plan to evaluate it; the rates of enrolled students who received a Federal Pell Grant; and enrolled-student demographics, including high-need students",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An application submitted under this section",
+                "action": "describe how the eligible entity or eligible Indian entity will use grant funds, directly or in collaboration with other institutions of higher education or nonprofit organizations, to implement one or more listed evidence-based reforms and practices: comprehensive academic, career, and student services; accelerated learning opportunities; course-scheduling or credit-awarding policy reforms; or,",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An application submitted under this section",
+                "action": "describe how the evidence-based reform or practice will be sustained after the grant expires",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "reserve funds for grants to eligible entities whose applications propose at least one tier 3 reform or practice and whose remaining proposed reforms or practices are tier 1 or tier 2",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": "20",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": "not less than",
+                    "purpose": "grants to eligible entities proposing qualifying evidence-based reforms and practices",
+                    "period": "each fiscal year",
+                    "base": "total amount appropriated to carry out this Act for that fiscal year, less amounts reserved under section 4"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An eligible entity or eligible Indian entity that receives a grant",
+                "action": "use grant funds to carry out submitted plans and evidence-based reforms and practices to improve participation, retention, and completion rates; possible activities include student services for retention, completion, and success, such as faculty and peer counseling, real-time data on student progress, improving transfer-student success, and incentives to re-enroll or stay on track",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An eligible entity or eligible Indian entity that receives a grant",
+                "action": "use grant funds for direct student support services, including a combination of tutoring, academic supports, and enrichment services, and emergency financial assistance",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An eligible entity or eligible Indian entity that receives a grant",
+                "action": "use grant funds for career-preparation efforts, which may include career coaching, counseling and planning, lowering student-to-advisor ratios, networking and work-based learning, career pathways, and experiences needed to obtain and succeed in high-skill, high-wage, or in-demand sectors or occupations, as described in the referenced Perkins Act provision",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An eligible entity or eligible Indian entity that receives a grant",
+                "action": "use grant funds for efforts to recruit and retain faculty and other instructional staff",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "set aside funds for administration, capacity building, research, evaluation, and reporting",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "5",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": "not more than",
+                    "purpose": "administration, capacity building, research, evaluation, and reporting",
+                    "period": "each fiscal year",
+                    "base": "total amount appropriated to carry out this Act for that fiscal year, less amounts reserved under section 4 and subsection (d)"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "set aside funds for technical assistance to eligible entities and eligible Indian entities",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "2",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": "not more than",
+                    "purpose": "technical assistance to eligible entities and eligible Indian entities",
+                    "period": "each fiscal year",
+                    "base": "total amount appropriated to carry out this Act for that fiscal year, less amounts reserved under section 4 and subsection (d)"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "make grants to or enter into contracts with one or more organizations to evaluate the effectiveness of funded evidence-based reforms and practices and disseminate information on their impact on completion and retention activities and other appropriate measures",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "For the purpose of improving the effectiveness of the evidence-based reforms and practices carried out by eligible entities and eligible Indian entities pursuant to a grant under this Act",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Evaluations required under paragraph (1)",
+                "action": "measure whether the entity implemented its plans and activities described in subsection (c), and compare completion and retention rates of participating students with rates of students of similar backgrounds who did not participate",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "submit a final report to the Senate Committee on Health, Education, Labor, and Pensions and the House Committee on Education and Workforce",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "Not later than 18 months after the date of enactment of this Act",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "An eligible entity that has a branch campus",
+                "action": "receive a grant under the Act for one campus of the entity at a time",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ],
+                  "text": "only receive a grant under this Act for 1 campus of the entity at a \ntime."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              }
+            ],
+            "coverage_items": [
+              {
+                "item_id": "30a771468dfcd044f5dc1b7ab08b39de4897028ebe0245e5eec4eac213a4c61a",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  0
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "709d5716f951fbdec819d91a926b72bb75772dcb79ffb0a9dfcdb727dc397379",
+                "status": "explained",
+                "claim_indexes": [
+                  1
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7dc8bc80c10e389d0d326e146f86f2ae0ff3a0cbfe144c3450fe186dbf677923",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "203d2ea3f658569f059240312632a260a7ceae3f652795e1d162fc865eb752c7",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "287101370142aa2567d612c64d8e5d1c6678846c9cc439a5f62f2af3474e4cc9",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bb87c89a0cfe95aa823a029d9c5560d5a026904f2710600571c7c160e6fea31c",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "9878d917977e4954a798d440732489b60f2e1aa2a12f8f7dd814fabc5950a8ac",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "65f33f1dfd1b861f247ffe6764c8e463cedc16f703c228bfff2033effd3ec474",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "58a52537db4b7f1be84b89060700f3521a9c0513636e0f9caf46f687f5492b81",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "0a3f1f329f1f21d36fc5ed718e464e450acd32e5eb24ba7f4d3f82e17008b4aa",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "644a8842f95b2e28f2c729d2d1955330e7d7e9305341a51cc299a64050a11815",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "5a85b6dab4cb4efc0631edf779106b6a8d6b8cb447c6c310e9385eb8076a8f45",
+                "status": "explained",
+                "claim_indexes": [
+                  4
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "6e5f3bdb9e70fb001716f8f80258467873dfe30518fb25f63175ef68f85892e6",
+                "status": "explained",
+                "claim_indexes": [
+                  5
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "80e71ab6c69315b032696418d494fe32ec9a1e48f127f9ec8ec7e6613cc63258",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "aed11748715d2dee0266221e53313ef9deb5ab509ba94ccdc18ce2239e031585",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "babf6dafde1435fb288f3cbb7937f3086ac5b98ccd1ca1e5a80db3a0e73d2752",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bd9a412668ca8bb4f7a7a3c4b087e3db35f338ad721f5cedaad1a5a93b5e0085",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "f310f8142b0a145c86414fa6fe542179262c86d1f74cf879fbb95b68beded8eb",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "874b70eda21fc7b9476f3f2d6186993e66e18d9bcc6ae24c73546d09d204ed3a",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "94d5a226529060c77a200a976324b3913142523eaccb1647416157a0c18e44d6",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "38d8b6ea79c577439af27c9eef02696331e80635c7c8b51406a6a2cd2545fabc",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "6639c2d239b60174e683db30f6654bebc20d545732434b128f6bcc406bceb75b",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "fd3776321121a200f8c81c718af7e52099d8f383984ea768c4e5ffa2f0d26679",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "c2f8e86bbcdcb732df84ed125ce3c008b50556f69e551f23b50b88802c621bac",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "573f21140065561a1567d08a278b1773db5d88311af5214958ef2a69068186c3",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "a6334d22748df3f7b674d91e2e7d246c8b16ff8840ee46ebd5b12be24a24f827",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "dcbb49d2d490f3c63af95d5222544aa028a48c223938da15fb459303da1b596e",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "cef580539907126c1f4d60f7e86313016adc5dab48a5bead682d9dfe0b0008f3",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "5773d8c5e5e73c10b2a99b16248c8a50079dc685936becdf9bdf1b4139aaea94",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "dcd1c255956c3ae1c6db2925d0da1b5feec1a33219acee28b5cb4775c3aa5457",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  8
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "9c9dd52651ea9cad6762891d3d0f6b79a43de5a74dedf278beaf976bf1c22609",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  8
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "78199f8b5f92253c368bff848e3609fc7fb2978eb1526e2720f9cc86ba17b79c",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  8
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "85e7e34a263014c64a304227ca2a29e1a8852df136587b454bb5d94092e03011",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  8
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "3013a43711a064254abf59da84d6d26c076ed0bb2e935cdde7624958bbeb4ba3",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  9
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bf470e4bf30c74dca7b585fd452ead81a62838e7bb44620cbeff880d4cff6ba6",
+                "status": "unresolved",
+                "claim_indexes": [],
+                "explanation_indexes": [],
+                "reason": "The complete source wording of the referenced Perkins Act section is not supplied, so its meaning cannot be explained; the Act’s explicit reference is retained in the applicable claim."
+              },
+              {
+                "item_id": "90230b80796e37ec46848cc35bd178314ffeb4c6a3f675579b8a126ec603392a",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  10
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "ae508d4327b2a31f7c2c1dc26ce26a46315e547d0fdde23abf562d710328d443",
+                "status": "explained",
+                "claim_indexes": [
+                  11,
+                  12
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "39725c5318458337d81df0f685c70ab494fae4aac8922108e18b0fbed727c1b7",
+                "status": "explained",
+                "claim_indexes": [
+                  11,
+                  12
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e143f6427b0b372ca01f7c63ad4ae1a02d87765c4c079b53ef18aa5dec73855b",
+                "status": "explained",
+                "claim_indexes": [
+                  11,
+                  12
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e0ba76652eb3471905f07d8122fe1a3fefe109782dc02efbc055b46dac066acf",
+                "status": "explained",
+                "claim_indexes": [
+                  13
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "a14a9e4b1753b141884ffaaf30f79bcf457d6fd90132ff60d151f088a2af782e",
+                "status": "explained",
+                "claim_indexes": [
+                  13
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "fda5ca8948f38ca139f229365ac75e09ff7dd783f3a201414c9b16ba71431ce1",
+                "status": "explained",
+                "claim_indexes": [
+                  13
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "d9c025160c324e33dc0b5546fab65a0d17e1b9fd4790272402fb2f850f179f5e",
+                "status": "explained",
+                "claim_indexes": [
+                  14
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "583570a3fb252ff55c0219208a2c089b1cdea1ddce12b7313e91cb5fd7e39f5d",
+                "status": "explained",
+                "claim_indexes": [
+                  14
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7d5476aee1127008d66d86b8fdd2b34f5968a46d292131c3ce24585218d09b81",
+                "status": "explained",
+                "claim_indexes": [
+                  14
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "3fbe60922cb7b014a000e6909565e87c73e6c796d1f7883844ca4110de62fd74",
+                "status": "explained",
+                "claim_indexes": [
+                  15
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "454da3546bc97fcbc0452fa6376dec908da92c7c7eed52770e9037f903025012",
+                "status": "explained",
+                "claim_indexes": [
+                  16
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "39ceffd152b55b40268e4e659999513048b0e1a8671925ebeb76fdd3ee894aa1",
+      "response_id": "resp_0eabded79f9b0ccd016ad27ffe8dbc87d29057e554ca086d5c",
+      "resolved_model": "gpt-6-luna"
+    },
+    {
+      "request_fingerprint": "c27e38dd13dff27e3fcee3dab6684294ebf62b3c0c0ed9e98c9a0ba132b3f3c2",
+      "stage": "repair",
+      "unit_ids": [
+        "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 6298,
+        "output_tokens": 2990,
+        "total_tokens": 9288
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "explained",
+            "summary": "For fiscal years 2027–2032, the Secretary must competitively award grants to eligible entities for services that increase high-need students’ participation, retention, and completion. The section also sets application requirements, funding reservations and permissions, grant-use rules, evaluation duties, and a campus limit.",
+            "details": [
+              "Applicants must submit information required by subsection (c). Applications must include plans and specified data, benchmarks, an evaluation plan, and descriptions of proposed reforms and how they will be sustained.",
+              "Applications must describe one or more listed reforms, such as comprehensive student services, accelerated learning, course or credit policy changes, or improved transfer pathways. The application must focus particularly on serving high-need students through services and collaboration among 2-year programs, 4-year programs, and workforce systems.",
+              "From appropriated funds not reserved under section 4, the Secretary must reserve at least 20 percent for grants to entities proposing at least one tier 3 reform or practice, with the rest being tier 1 or tier 2 reforms or practices.",
+              "Grant recipients must use the funds to carry out their submitted plans and evidence-based reforms and practices to improve student participation, retention, and completion. The listed uses include student services, combined direct supports, career preparation, and recruitment and retention of instructional staff.",
+              "From appropriated funds not reserved under section 4 or subsection (d), the Secretary may set aside up to 5 percent for administration, capacity building, research, evaluation, and reporting, and up to 2 percent for technical assistance.",
+              "The Secretary must make grants to or contract with one or more organizations to evaluate funded reforms and practices and disseminate information about their impact. Evaluations must assess implementation of application plans and activities, and compare outcomes with those of students of similar backgrounds who did not participate.",
+              "The Secretary must submit a final report to the specified Senate and House committees no later than 18 months after enactment.",
+              "An entity with a branch campus may receive a grant for only one campus at a time. The section does not establish further details about the referenced Perkins Act career-sector description."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Secretary",
+                "action": "award competitive grants to eligible entities for student services to increase high-need students’ participation, retention, and completion rates in fiscal years 2027 through 2032",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": null,
+                    "currency": null,
+                    "measure": null,
+                    "comparator": null,
+                    "purpose": "competitive grants",
+                    "period": "each fiscal year 2027 through 2032",
+                    "base": null
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "eligible entity or eligible Indian entity seeking a grant",
+                "action": "submit an application to the Secretary at the time, in the manner, and with the information required under subsection (c)",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "application",
+                "action": "include a plan for all enrolled students’ attainment and completion or graduation rates, including the proposed evidence-based reform and tier and a particular focus on serving high-need students through services and collaboration among 2-year programs, 4-year programs, and workforce systems",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "application",
+                "action": "include annual benchmarks for student outcomes related to the proposed evidence-based reform or practice",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "application",
+                "action": "include a plan to evaluate the proposed evidence-based reform or practice",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "application",
+                "action": "include rates of enrolled students who received a Federal Pell Grant",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "application",
+                "action": "include enrolled-student demographics, including high-need students",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "application",
+                "action": "describe how the entity will use grant funds, directly or in collaboration with other institutions or nonprofit organizations, to implement one or more listed evidence-based reforms and practices",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "eligible entity or eligible Indian entity",
+                "action": "describe how the evidence-based reform or practice will be sustained after the grant expires",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "reserve appropriated funds not reserved under section 4 for grants to entities proposing at least one tier 3 reform or practice, with the remaining proposed reforms or practices being tier 1 or tier 2",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": "20",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": "not less than",
+                    "purpose": "grants for evidence-based student success programs",
+                    "period": "for a fiscal year",
+                    "base": "total amount appropriated to carry out the Act, less amounts reserved under section 4"
+                  }
+                ],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "at least 1 of which is an evidence tier 3 reform or practice; and (2) the rest of which are evidence tier 1 reforms or practices or evidence tier 2 reforms or practices.",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "eligible entity or eligible Indian entity receiving a grant",
+                "action": "use grant funds to carry out submitted plans and evidence-based reforms and practices for improving student participation, retention, and completion, which may include the listed student services, direct supports, career preparation, and recruitment or retention of instructional staff",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "set aside funds for administration, capacity building, research, evaluation, and reporting",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "5",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": "not more than",
+                    "purpose": "administration, capacity building, research, evaluation, and reporting",
+                    "period": "for a fiscal year",
+                    "base": "total amount appropriated to carry out the Act, less amounts reserved under section 4 or subsection (d)"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "set aside funds for technical assistance to eligible entities and eligible Indian entities",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "2",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": "not more than",
+                    "purpose": "technical assistance to eligible entities and eligible Indian entities",
+                    "period": "for a fiscal year",
+                    "base": "total amount appropriated to carry out the Act, less amounts reserved under section 4 or subsection (d)"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "make grants to or enter into contracts with one or more organizations to evaluate the effectiveness of funded reforms and practices and disseminate information on their impact",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": null,
+                    "currency": null,
+                    "measure": null,
+                    "comparator": null,
+                    "purpose": "evaluation and dissemination of information",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "evaluations required by the section",
+                "action": "measure whether entities implemented their plans and carried out activities described in subsection (c), and compare participating students’ completion and retention rates with those of students of similar backgrounds who did not participate",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "Secretary",
+                "action": "submit a final report to the specified Senate and House committees",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "Not later than 18 months after the date of enactment of this Act",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              },
+              {
+                "actor": "eligible entity with a branch campus",
+                "action": "receive a grant under the Act for more than one campus at a time",
+                "modality": "prohibited",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                  ],
+                  "text": "only receive a grant under this Act for 1 campus of the entity at a \ntime."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+                ]
+              }
+            ],
+            "coverage_items": [
+              {
+                "item_id": "30a771468dfcd044f5dc1b7ab08b39de4897028ebe0245e5eec4eac213a4c61a",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  0
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "709d5716f951fbdec819d91a926b72bb75772dcb79ffb0a9dfcdb727dc397379",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  0
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7dc8bc80c10e389d0d326e146f86f2ae0ff3a0cbfe144c3450fe186dbf677923",
+                "status": "explained",
+                "claim_indexes": [
+                  1
+                ],
+                "explanation_indexes": [
+                  0,
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "203d2ea3f658569f059240312632a260a7ceae3f652795e1d162fc865eb752c7",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "287101370142aa2567d612c64d8e5d1c6678846c9cc439a5f62f2af3474e4cc9",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bb87c89a0cfe95aa823a029d9c5560d5a026904f2710600571c7c160e6fea31c",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "9878d917977e4954a798d440732489b60f2e1aa2a12f8f7dd814fabc5950a8ac",
+                "status": "explained",
+                "claim_indexes": [
+                  2
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "65f33f1dfd1b861f247ffe6764c8e463cedc16f703c228bfff2033effd3ec474",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "58a52537db4b7f1be84b89060700f3521a9c0513636e0f9caf46f687f5492b81",
+                "status": "explained",
+                "claim_indexes": [
+                  4
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "0a3f1f329f1f21d36fc5ed718e464e450acd32e5eb24ba7f4d3f82e17008b4aa",
+                "status": "explained",
+                "claim_indexes": [
+                  5
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "644a8842f95b2e28f2c729d2d1955330e7d7e9305341a51cc299a64050a11815",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "5a85b6dab4cb4efc0631edf779106b6a8d6b8cb447c6c310e9385eb8076a8f45",
+                "status": "explained",
+                "claim_indexes": [
+                  7
+                ],
+                "explanation_indexes": [
+                  1,
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "6e5f3bdb9e70fb001716f8f80258467873dfe30518fb25f63175ef68f85892e6",
+                "status": "explained",
+                "claim_indexes": [
+                  8
+                ],
+                "explanation_indexes": [
+                  1
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "80e71ab6c69315b032696418d494fe32ec9a1e48f127f9ec8ec7e6613cc63258",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "aed11748715d2dee0266221e53313ef9deb5ab509ba94ccdc18ce2239e031585",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "babf6dafde1435fb288f3cbb7937f3086ac5b98ccd1ca1e5a80db3a0e73d2752",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bd9a412668ca8bb4f7a7a3c4b087e3db35f338ad721f5cedaad1a5a93b5e0085",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "f310f8142b0a145c86414fa6fe542179262c86d1f74cf879fbb95b68beded8eb",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "874b70eda21fc7b9476f3f2d6186993e66e18d9bcc6ae24c73546d09d204ed3a",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "94d5a226529060c77a200a976324b3913142523eaccb1647416157a0c18e44d6",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "38d8b6ea79c577439af27c9eef02696331e80635c7c8b51406a6a2cd2545fabc",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "6639c2d239b60174e683db30f6654bebc20d545732434b128f6bcc406bceb75b",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "fd3776321121a200f8c81c718af7e52099d8f383984ea768c4e5ffa2f0d26679",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "c2f8e86bbcdcb732df84ed125ce3c008b50556f69e551f23b50b88802c621bac",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "573f21140065561a1567d08a278b1773db5d88311af5214958ef2a69068186c3",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "a6334d22748df3f7b674d91e2e7d246c8b16ff8840ee46ebd5b12be24a24f827",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "dcbb49d2d490f3c63af95d5222544aa028a48c223938da15fb459303da1b596e",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "cef580539907126c1f4d60f7e86313016adc5dab48a5bead682d9dfe0b0008f3",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "5773d8c5e5e73c10b2a99b16248c8a50079dc685936becdf9bdf1b4139aaea94",
+                "status": "explained",
+                "claim_indexes": [
+                  10
+                ],
+                "explanation_indexes": [
+                  3
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "dcd1c255956c3ae1c6db2925d0da1b5feec1a33219acee28b5cb4775c3aa5457",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "9c9dd52651ea9cad6762891d3d0f6b79a43de5a74dedf278beaf976bf1c22609",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "78199f8b5f92253c368bff848e3609fc7fb2978eb1526e2720f9cc86ba17b79c",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "85e7e34a263014c64a304227ca2a29e1a8852df136587b454bb5d94092e03011",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "3013a43711a064254abf59da84d6d26c076ed0bb2e935cdde7624958bbeb4ba3",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bf470e4bf30c74dca7b585fd452ead81a62838e7bb44620cbeff880d4cff6ba6",
+                "status": "explained",
+                "claim_indexes": [
+                  11
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "90230b80796e37ec46848cc35bd178314ffeb4c6a3f675579b8a126ec603392a",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "ae508d4327b2a31f7c2c1dc26ce26a46315e547d0fdde23abf562d710328d443",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "39725c5318458337d81df0f685c70ab494fae4aac8922108e18b0fbed727c1b7",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e143f6427b0b372ca01f7c63ad4ae1a02d87765c4c079b53ef18aa5dec73855b",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e0ba76652eb3471905f07d8122fe1a3fefe109782dc02efbc055b46dac066acf",
+                "status": "explained",
+                "claim_indexes": [
+                  13
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "a14a9e4b1753b141884ffaaf30f79bcf457d6fd90132ff60d151f088a2af782e",
+                "status": "explained",
+                "claim_indexes": [
+                  13
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "fda5ca8948f38ca139f229365ac75e09ff7dd783f3a201414c9b16ba71431ce1",
+                "status": "explained",
+                "claim_indexes": [
+                  13
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "d9c025160c324e33dc0b5546fab65a0d17e1b9fd4790272402fb2f850f179f5e",
+                "status": "explained",
+                "claim_indexes": [
+                  14
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "583570a3fb252ff55c0219208a2c089b1cdea1ddce12b7313e91cb5fd7e39f5d",
+                "status": "explained",
+                "claim_indexes": [
+                  14
+                ],
+                "explanation_indexes": [
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7d5476aee1127008d66d86b8fdd2b34f5968a46d292131c3ce24585218d09b81",
+                "status": "explained",
+                "claim_indexes": [
+                  14
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "3fbe60922cb7b014a000e6909565e87c73e6c796d1f7883844ca4110de62fd74",
+                "status": "explained",
+                "claim_indexes": [
+                  15
+                ],
+                "explanation_indexes": [
+                  6
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "454da3546bc97fcbc0452fa6376dec908da92c7c7eed52770e9037f903025012",
+                "status": "explained",
+                "claim_indexes": [
+                  16
+                ],
+                "explanation_indexes": [
+                  7
+                ],
+                "reason": null
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "6af10829c05940bc24e01833bf4041f74317eb89ff3daa36ca20a1fa9350fbe2",
+      "response_id": "resp_071d8c816fd26734016ad28027b11887d2821a7983d67941fd",
+      "resolved_model": "gpt-6-luna"
+    },
+    {
+      "request_fingerprint": "6d179a0c8bed74c66cad05f67283eb794a0d65720100242a76abc60978e0d7c2",
+      "stage": "synopsis",
+      "unit_ids": [
+        "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+        "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+        "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+        "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 313,
+        "output_tokens": 139,
+        "total_tokens": 452
+      },
+      "response": {
+        "text": "The Act’s short title is the “Postsecondary Student Success Act of 2026.” The Act’s stated purpose is to support evidence-based participation, retention, and completion activities intended to ensure postsecondary success for high-need students. The Act defines completion rate, eligible entities and students, evidence tiers, and other terms. Several definitions incorporate meanings from other statutes, which are not supplied here. For each fiscal year, the Secretary must reserve 2 percent of the total amount appropriated to carry out the Act for grants to eligible Indian entities.",
+        "explanation_ids": [
+          "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda"
+        ]
+      },
+      "response_sha256": "f307cd0aeeec27b12a64f7a22b0d72998e3c0b654a8a7a07cb776045915366c3",
+      "response_id": "resp_0d89ff0f36483005016ad2803e179087d28d9eb808bb1e8a0c",
+      "resolved_model": "gpt-6-luna"
+    }
+  ],
+  "result": {
+    "output": {
+      "schema_version": "2.0-source-first",
+      "document_fingerprint": "96e5550bcea4d1ac600c4a4d989c5c6ed2044346071530d505eb240a086ed6ae",
+      "pipeline_version": "source-first-8",
+      "plan_fingerprint": "fd23b28f3dbbab5744d8805f98d5a2b52f4fa9f528e5efa16525027b3ac68c37",
+      "synopsis": {
+        "text": "The Act’s short title is the “Postsecondary Student Success Act of 2026.” The Act’s stated purpose is to support evidence-based participation, retention, and completion activities intended to ensure postsecondary success for high-need students. The Act defines completion rate, eligible entities and students, evidence tiers, and other terms. Several definitions incorporate meanings from other statutes, which are not supplied here. For each fiscal year, the Secretary must reserve 2 percent of the total amount appropriated to carry out the Act for grants to eligible Indian entities.",
+        "explanation_ids": [
+          "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda"
+        ],
+        "status": "partial"
+      },
+      "provisions": [
+        {
+          "unit_id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "status": "explained",
+          "summary": "The Act’s short title is the “Postsecondary Student Success Act of 2026.”",
+          "details": [],
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "This Act",
+              "action": "may be cited as the Postsecondary Student Success Act of 2026",
+              "modality": "permitted",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e"
+              ]
+            }
+          ],
+          "coverage_items": [
+            {
+              "item_id": "d2210ea60e9356b08b1594db3ca00469cd17c81683b4fb5d8cc7ef7b5f2e5126",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                0
+              ],
+              "reason": null
+            }
+          ],
+          "id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e",
+              "text": "SECTION 1. SHORT TITLE.\n\n    This Act may be cited as the ``Postsecondary Student Success Act of \n2026''.\n\n",
+              "start": 1302,
+              "end": 1409,
+              "text_sha256": "9d7772d539d9505a1bc12ac47eb95e0e4798d995f80c32e2ca4a83f48f86cf5e",
+              "section_label": "Section 1 · SHORT TITLE.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "status": "explained",
+          "summary": "The Act’s stated purpose is to support evidence-based participation, retention, and completion activities intended to ensure postsecondary success for high-need students.",
+          "details": [],
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "The Act",
+              "action": "states its purpose is to support evidence-based activities for participation, retention, and completion, designed to ensure high-need students’ postsecondary success",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9"
+              ]
+            }
+          ],
+          "coverage_items": [
+            {
+              "item_id": "ea8c5d04423b17f30f98fc0ec68088a6602a50ce1ab160704e4030d1b9e7e653",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                0
+              ],
+              "reason": null
+            }
+          ],
+          "id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9",
+              "text": "SEC. 2. PURPOSE.\n\n    It is the purpose of this Act to support evidence-based \nparticipation, retention, and completion activities designed to ensure \nthe postsecondary success of high-need students.\n\n",
+              "start": 1409,
+              "end": 1610,
+              "text_sha256": "ff7f39f72daf422a3477789bd668a3755a51674e5383dc667db009a97d117495",
+              "section_label": "Sec. 2 · PURPOSE.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "status": "explained",
+          "summary": "The Act defines completion rate, eligible entities and students, evidence tiers, and other terms. Several definitions incorporate meanings from other statutes, which are not supplied here.",
+          "details": [
+            "For a two-year institution, completion rate is the percentage of students in an initial cohort who graduate or transfer to a four-year institution. For a four-year institution in a State, it is the percentage of the initial cohort who graduate.",
+            "A dual or concurrent enrollment program and an early college high school have the meanings assigned in section 8101 of the Elementary and Secondary Education Act. Those meanings are not provided here.",
+            "An eligible entity is a public institution of higher education; a partnership between a nonprofit educational organization and an institution of higher education; or a consortium of institutions of higher education.",
+            "An eligible Indian entity is the entity responsible for the governance, operation, or control of a Tribal College or University.",
+            "Evidence-based has the meaning assigned in section 8101(21)(A) of the Elementary and Secondary Education Act. That meaning is not provided here.",
+            "Tier 1 means prior research suggests a reform or practice has promise to improve achievement or attainment for high-need students.",
+            "Tier 2 includes a tier 1 reform or a similar reform that measures impact and cost effectiveness and has been found successfully implemented through rigorous evaluation, including use of existing administrative data as applicable.",
+            "Tier 3 includes a tier 2 reform or a similar reform found to produce sizable, important student-success impacts, and concerns determining whether impacts can be reproduced and sustained and identifying when the reform is most effective.",
+            "First-generation college student has the meaning assigned in section 402A(h) of the Higher Education Act. The supplied text does not establish that meaning.",
+            "A high-need student is a student from a low-income background; a first-generation college student; a caregiver student; a student with a disability; a student who dropped out before completing; a reentering justice-impacted student; or a military-connected student.",
+            "Institution of higher education has the meaning assigned in section 101 of the Higher Education Act. That meaning is not provided here.",
+            "Secretary means the Secretary of Education. A Tribal College or University has the meaning assigned in section 316(b)(3) of the Higher Education Act; that meaning is not provided here."
+          ],
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "This Act",
+              "action": "defines completion rate for students from an initial cohort enrolled at a two-year institution as the percentage who graduated or transferred to a four-year institution, or, for a four-year institution in the State, the percentage who graduated",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "uses the meanings assigned by section 8101 of the Elementary and Secondary Education Act for dual or concurrent enrollment program and early college high school",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines an eligible entity as a public institution of higher education, a partnership between a nonprofit educational organization and an institution of higher education, or a consortium of institutions of higher education",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines an eligible Indian entity as the entity responsible for governance, operation, or control of a Tribal College or University",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "uses the meaning assigned to evidence-based in section 8101(21)(A) of the Elementary and Secondary Education Act",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines tier 1 as a reform or practice that prior research suggests has promise to improve achievement or attainment for high-need students",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines tier 2 as a tier 1 or similar reform or practice that measures impact and cost effectiveness of student-success activities and has been found successfully implemented through rigorous evaluation, including use of existing administrative data as applicable",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines tier 3 as a tier 2 or similar reform or practice found to produce sizable, important student-success impacts, with attention to reproducibility and sustainability over time and conditions of greatest effectiveness",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "uses the meaning assigned to first-generation college student in section 402A(h) of the Higher Education Act",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines high-need student as a low-income-background student, first-generation college student, caregiver student, student with a disability, student who dropped out before completing, reentering justice-impacted student, or military-connected student",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "uses the meaning assigned to institution of higher education in section 101 of the Higher Education Act",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            },
+            {
+              "actor": "This Act",
+              "action": "defines Secretary as the Secretary of Education and uses the meaning assigned to Tribal College or University in section 316(b)(3) of the Higher Education Act",
+              "modality": "unspecified",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+              ]
+            }
+          ],
+          "coverage_items": [
+            {
+              "item_id": "1852fac0b8fe868c14e089a096d89887ee9d8ca32e5603d91067917a2e4319ef",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "1b41b05b732c3026db0180b984fb5924ce21958864b2051b9159deda128b6af9",
+              "status": "explained",
+              "claim_indexes": [
+                1
+              ],
+              "explanation_indexes": [
+                2
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "ebe8906a964116c2204227962f18a63790984852261762bc6bfa0cfc00384cb2",
+              "status": "explained",
+              "claim_indexes": [
+                2
+              ],
+              "explanation_indexes": [
+                3
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "35da701f7ae63f4072e254059d136f655fbfe26fa399d731c56d2343a9a46769",
+              "status": "explained",
+              "claim_indexes": [
+                3
+              ],
+              "explanation_indexes": [
+                4
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "dc1c034ab3faf3d2ce60a4200db8184468e4bfaabc9145179d9d4d7b3ed83135",
+              "status": "explained",
+              "claim_indexes": [
+                4
+              ],
+              "explanation_indexes": [
+                5
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "60bb050c6d4214bb414aa896032916703c4f393388de640bb599f35f1917ba7b",
+              "status": "explained",
+              "claim_indexes": [
+                5,
+                6,
+                7
+              ],
+              "explanation_indexes": [
+                6,
+                7,
+                8
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "e6b599bf0ff2c8e2c2f5f914ce0620443f0cda02e3cdd5ce0cd15cc20b76e952",
+              "status": "explained",
+              "claim_indexes": [
+                8
+              ],
+              "explanation_indexes": [
+                9
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "177c8ff8b65fdcac5a4dc3049c09607f07674afc726977dbe599deacbda2b766",
+              "status": "explained",
+              "claim_indexes": [
+                8
+              ],
+              "explanation_indexes": [
+                9
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "2eacc1ebf92310a0b01581b1a92c5aa26f801b6d6ed781703d7ddfe3cf4b100e",
+              "status": "explained",
+              "claim_indexes": [
+                9
+              ],
+              "explanation_indexes": [
+                10
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "cd636b7aa6bbc29d582149aea63b4ccfc1873c85a9e8cbbfd5dd3ee18b01b0c4",
+              "status": "explained",
+              "claim_indexes": [
+                10
+              ],
+              "explanation_indexes": [
+                11
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "b5cc9de4f11311371ef0c537561629fe5611decf460ff441f1d03e99f4cd6e8b",
+              "status": "explained",
+              "claim_indexes": [
+                10
+              ],
+              "explanation_indexes": [
+                11
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "6d2f75812cad24d7b5a61f030aceeb27f03327f390a933b4d2a80dd774137a67",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "7ab950b0161dc74a6c7bae3b68d108dc6bd2b17cd347a20fd1ed6a8475f4711d",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "8a1b794d58ae3e0b67e3e692af996e4451adde45bf9dc3f59ee698f7b0912269",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "6013e6c857777a4eb9344facb2ea43022325989109810a7d7a79a26950424704",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "88488734cacc5f6212a9265847fc6afe6fe02667280c2edfcf9b886ae58500ad",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "15108de032f41b9be6609e3762f77abd661883dc0cef2c0a522c0dd0770a1b3c",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "7a74f3b0c4a7259a6188b9239fdbd7fb1c51ca4d35dd1c7367011f60fad0bb26",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "e67e40effd33d752235ee767f0359912ab9f52bd07677fd5d05bd490dd5288d5",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "ef19a77949189769e068dd1dfffdb7ce4817e69c399d4bc7a6a8da2fbad24d45",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "d1f74784a368cd7e02eaee35d29a1b1d84a48526632b85048dd748caf569fef5",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "563a374cdd44b1844acc051b508b031130cf34d430e51c6a13b8f3eab121c1d1",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "833fe6058a0181f53c2604b599ebad532b0d85ac9d0c93f388f67c9d970a5c5a",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "441a225e6f30e40c0e1f0e8b4a5cc2e68c144f8024bdbc8da6e02021ccb08133",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "8b4a5365f2c571f77209063336e4c8134407e2e561e58ba2b2e84f2d734f2d9e",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "7bcb8b9fb31114136f67ba57ab7b564c6d4ac6a0e5bb481fe17ee4dc5b80fa01",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "0315ce0e2e04bb2e48f8f809f00526887276086251e7edff2e748e6b43af5b21",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "2305d457d83b6763f2cff73bdf93f6d67062adae6323234e34b74943b895f40e",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "1f2517509cdd878bc8bf878a44d97e551581c40ee54f45563ae39c7aa8727536",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "b234530ddadb7adcd8c884748f79fa79c14beb37f2cb3a4cf52cd568f689e393",
+              "status": "explained",
+              "claim_indexes": [
+                11
+              ],
+              "explanation_indexes": [
+                12
+              ],
+              "reason": null
+            }
+          ],
+          "id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "source_limitations": [
+            "section 101 of the Higher Education Act of 1965 (20 ",
+            "section 316(b)(3) of the Higher Education Act of 1965 (20 ",
+            "section 402A(h) of the Higher Education Act of 1965 (20 U",
+            "section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U",
+            "section 8101 of the Elementary and Secondary Education ",
+            "section 8101(21)(A) of the Elementary "
+          ],
+          "evidence": [
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "status": "explained",
+          "summary": "For each fiscal year, the Secretary must reserve 2 percent of the total amount appropriated to carry out the Act for grants to eligible Indian entities.",
+          "details": [
+            "The grants are to increase participation, retention, and completion rates of high-need students."
+          ],
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "Secretary",
+              "action": "reserve funds from the total amount appropriated to carry out the Act for the fiscal year for grants to eligible Indian entities to increase participation, retention, and completion rates of high-need students",
+              "modality": "required",
+              "money": [
+                {
+                  "amount": "2",
+                  "currency": null,
+                  "measure": "percent",
+                  "comparator": null,
+                  "purpose": "grants to eligible Indian entities for increasing participation, retention, and completion rates of high-need students",
+                  "period": "each fiscal year",
+                  "base": "total amount appropriated to carry out this Act for that fiscal year"
+                }
+              ],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825"
+              ]
+            }
+          ],
+          "coverage_items": [
+            {
+              "item_id": "0e1d80e23852dc6101cc7a136f3e95d46241641ba77046e59d33acb0da4fe70a",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                0,
+                1
+              ],
+              "reason": null
+            }
+          ],
+          "id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825",
+              "text": "SEC. 4. RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.\n\n    From the total amount appropriated to carry out this Act for a \nfiscal year, the Secretary shall reserve 2 percent for grants to \neligible Indian entities to increase participation, retention, and \ncompletion rates of high-need students.\n\n",
+              "start": 6459,
+              "end": 6762,
+              "text_sha256": "09847af562e2440c1b8b9e42a3401b162567a579a372f04e1293ff057d0d83e1",
+              "section_label": "Sec. 4 · RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "source_item_money_missing",
+          "id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+          "source_limitations": [
+            "section \n                135(b)(3) of the Carl D"
+          ],
+          "evidence": [
+            {
+              "id": "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd",
+              "text": "SEC. 5. AUTHORIZATION OF POSTSECONDARY STUDENT SUCCESS COMPETITIVE \n              GRANTS.\n\n    (a) Grant Authorization.--For each of fiscal years 2027 through \n2032, the Secretary shall award, on a competitive basis, grants to \neligible entities to provide student services to increase \nparticipation, retention, and completion rates of high-need students.\n    (b) Notification and Application.--An eligible entity or eligible \nIndian entity desiring a grant under this Act shall submit an \napplication to the Secretary at such time, in such manner, and \ncontaining the information required under subsection (c).\n    (c) Content of Application.--An application submitted under this \nsection shall include the following:\n            (1) A plan to increase, with respect to all students \n        enrolled at the eligible entity or Tribal College or \n        University, attainment and completion rates or graduation \n        rates, including--\n                    (A) a description of the evidence-based reform or \n                practice that would be used and whether the reform or \n                practice would be an evidence tier 1 reform or \n                practice, evidence tier 2 reform or practice, or \n                evidence tier 3 reform or practice; and\n                    (B) a particular focus on serving high-need \n                students through student services and collaboration \n                among 2-year programs, 4-year programs, and workforce \n                systems.\n            (2) Annual benchmarks for student outcomes with respect to \n        the evidence-based reform or practice that would be used.\n            (3) A plan to evaluate the evidence-based reform or \n        practice that would be used.\n            (4) Rates of enrolled students who received a Federal Pell \n        Grant under subpart 1 of part A of title IV of the Higher \n        Education Act of 1965 (20 U.S.C. 1070a et seq.).\n            (5) Demographics of enrolled students, including high-need \n        students.\n            (6) A description of how the eligible entity or eligible \n        Indian entity will, directly or in collaboration with other \n        institutions of higher education or nonprofit organizations, \n        use the grant funds to implement one or more of the following \n        evidence-based reforms and practices:\n                    (A) Providing comprehensive academic, career, and \n                student services, which may include mentoring, \n                advising, or case management services.\n                    (B) Providing accelerated learning opportunities, \n                which may include dual or concurrent enrollment \n                programs and early college high school programs.\n                    (C) Reforming course scheduling, or credit-awarding \n                policies.\n                    (D) Improving transfer pathways between the \n                eligible entity, or Tribal College or University, and \n                other institutions of higher education.\n            (7) A description of how the evidence-based reform or \n        practice will be sustained once the grant expires.\n    (d) Evidence-Based Student Success Programs.--From the total amount \nappropriated to carry out this Act for a fiscal year and not reserved \nunder section 4, the Secretary shall reserve not less than 20 percent \nto award grants to eligible entities with applications that propose to \ninclude evidence-based reforms and practices--\n            (1) at least 1 of which is an evidence tier 3 reform or \n        practice; and\n            (2) the rest of which are evidence tier 1 reforms or \n        practices or evidence tier 2 reforms or practices.\n    (e) Required Uses of Funds.--An eligible entity or eligible Indian \nentity that receives a grant under this Act shall use the grant funds \nto carry out the plans submitted under subsection (c) and for evidence-\nbased reforms and practices for improving participation, retention, and \ncompletion rates of students that may include the following:\n            (1) Student services to support retention, completion, and \n        success, which may include--\n                    (A) faculty and peer counseling;\n                    (B) use of real-time data on student progress;\n                    (C) improving transfer student success; and\n                    (D) incentives for students to re-enroll or stay on \n                track.\n            (2) Direct student support services, including a \n        combination of--\n                    (A) tutoring, academic supports, and enrichment \n                services; and\n                    (B) emergency financial assistance.\n            (3) Efforts to prepare students for a career, which may \n        include--\n                    (A) career coaching, career counseling and planning \n                services, and efforts to lower student to advisor \n                ratios;\n                    (B) networking and work-based learning \n                opportunities to support the development of skills and \n                professional relationships;\n                    (C) utilizing career pathways; and\n                    (D) boosting experiences necessary to obtain and \n                succeed in high-skill, high-wage, or in-demand industry \n                sectors or occupations, as described in section \n                135(b)(3) of the Carl D. Perkins Career and Technical \n                Education Act of 2006 (20 U.S.C. 2355(b)(3)).\n            (4) Efforts to recruit and retain faculty and other \n        instructional staff.\n    (f) Permissive Use of Funds.--From the total amount appropriated to \ncarry out this Act for a fiscal year and not reserved under section 4 \nor subsection (d), the Secretary may set aside--\n            (1) not more than 5 percent for administration, capacity \n        building, research, evaluation, and reporting; and\n            (2) not more than 2 percent for technical assistance to \n        eligible entities and eligible Indian entities.\n    (g) Evaluations.--\n            (1) In general.--For the purpose of improving the \n        effectiveness of the evidence-based reforms and practices \n        carried out by eligible entities and eligible Indian entities \n        pursuant to a grant under this Act, the Secretary shall make \n        grants to or enter into contracts with 1 or more organizations \n        to--\n                    (A) evaluate the effectiveness of such evidence-\n                based reforms and practices; and\n                    (B) disseminate information on the impact of such \n                evidence-based reforms and practices in increasing \n                completion and retention activities of students, as \n                well as other appropriate measures.\n            (2) Issues to be evaluated.--The evaluations required under \n        paragraph (1) shall measure the effectiveness of the evidence-\n        based reforms and practices carried out by eligible entities \n        and eligible Indian entities pursuant to a grant under this \n        subsection in--\n                    (A) whether such entity implemented the plans, and \n                carried out the activities, described in subsection \n                (c); and\n                    (B) comparing the completion and retention rates of \n                students who participated in such reforms and practices \n                with the rates of students of similar backgrounds who \n                did not participate in such reforms and practices.\n            (3) Results.--Not later than 18 months after the date of \n        enactment of this Act, the Secretary shall submit a final \n        report to the Committee on Health, Education, Labor, and \n        Pensions of the Senate and the Committee on Education and \n        Workforce of the House of Representatives.\n    (h) Grant Limit.--An eligible entity that has a branch campus may \nonly receive a grant under this Act for 1 campus of the entity at a \ntime.\n                                 <all>\n",
+              "start": 6762,
+              "end": 14836,
+              "text_sha256": "3cdbb454225972a2aae1c5cf6344201c7effca6c375233e0be504486edbd3455",
+              "section_label": "Sec. 5 · AUTHORIZATION OF POSTSECONDARY STUDENT SUCCESS COMPETITIVE",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "b9dba40e8c68fac6b80645a3b85395836932ca5f70af8ccf7547c597870a39c5",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\n",
+              "start": 0,
+              "end": 1302,
+              "text_sha256": "fa7de346513c0009dedd6676aa89afbce3c54e9c5bbb49022b642ff9b0cca4ca",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825",
+              "text": "SEC. 4. RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.\n\n    From the total amount appropriated to carry out this Act for a \nfiscal year, the Secretary shall reserve 2 percent for grants to \neligible Indian entities to increase participation, retention, and \ncompletion rates of high-need students.\n\n",
+              "start": 6459,
+              "end": 6762,
+              "text_sha256": "09847af562e2440c1b8b9e42a3401b162567a579a372f04e1293ff057d0d83e1",
+              "section_label": "Sec. 4 · RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        }
+      ],
+      "coverage": {
+        "unit_ids": [
+          "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+        ],
+        "inventory_complete": false,
+        "omitted_source_ranges": [],
+        "normalization_version": "raw-decoded-v1",
+        "source_items": [
+          {
+            "id": "d2210ea60e9356b08b1594db3ca00469cd17c81683b4fb5d8cc7ef7b5f2e5126",
+            "start": 1302,
+            "end": 1409,
+            "evidence_ids": [
+              "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "ea8c5d04423b17f30f98fc0ec68088a6602a50ce1ab160704e4030d1b9e7e653",
+            "start": 1409,
+            "end": 1610,
+            "evidence_ids": [
+              "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9"
+            ],
+            "kinds": [],
+            "unit_id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "1852fac0b8fe868c14e089a096d89887ee9d8ca32e5603d91067917a2e4319ef",
+            "start": 1610,
+            "end": 1649,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "1b41b05b732c3026db0180b984fb5924ce21958864b2051b9159deda128b6af9",
+            "start": 1649,
+            "end": 1720,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "ebe8906a964116c2204227962f18a63790984852261762bc6bfa0cfc00384cb2",
+            "start": 1720,
+            "end": 2016,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "35da701f7ae63f4072e254059d136f655fbfe26fa399d731c56d2343a9a46769",
+            "start": 2016,
+            "end": 2246,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "dc1c034ab3faf3d2ce60a4200db8184468e4bfaabc9145179d9d4d7b3ed83135",
+            "start": 2246,
+            "end": 2499,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "60bb050c6d4214bb414aa896032916703c4f393388de640bb599f35f1917ba7b",
+            "start": 2499,
+            "end": 2728,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "e6b599bf0ff2c8e2c2f5f914ce0620443f0cda02e3cdd5ce0cd15cc20b76e952",
+            "start": 2728,
+            "end": 2799,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [
+              "condition"
+            ],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "177c8ff8b65fdcac5a4dc3049c09607f07674afc726977dbe599deacbda2b766",
+            "start": 2799,
+            "end": 2865,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "2eacc1ebf92310a0b01581b1a92c5aa26f801b6d6ed781703d7ddfe3cf4b100e",
+            "start": 2865,
+            "end": 3008,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "cd636b7aa6bbc29d582149aea63b4ccfc1873c85a9e8cbbfd5dd3ee18b01b0c4",
+            "start": 3008,
+            "end": 3099,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "b5cc9de4f11311371ef0c537561629fe5611decf460ff441f1d03e99f4cd6e8b",
+            "start": 3099,
+            "end": 3300,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [
+              "condition"
+            ],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "6d2f75812cad24d7b5a61f030aceeb27f03327f390a933b4d2a80dd774137a67",
+            "start": 3300,
+            "end": 3512,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "7ab950b0161dc74a6c7bae3b68d108dc6bd2b17cd347a20fd1ed6a8475f4711d",
+            "start": 3512,
+            "end": 3546,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "8a1b794d58ae3e0b67e3e692af996e4451adde45bf9dc3f59ee698f7b0912269",
+            "start": 3546,
+            "end": 3891,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "6013e6c857777a4eb9344facb2ea43022325989109810a7d7a79a26950424704",
+            "start": 3891,
+            "end": 4479,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "88488734cacc5f6212a9265847fc6afe6fe02667280c2edfcf9b886ae58500ad",
+            "start": 4479,
+            "end": 4868,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "15108de032f41b9be6609e3762f77abd661883dc0cef2c0a522c0dd0770a1b3c",
+            "start": 4868,
+            "end": 5043,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "7a74f3b0c4a7259a6188b9239fdbd7fb1c51ca4d35dd1c7367011f60fad0bb26",
+            "start": 5043,
+            "end": 5180,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "e67e40effd33d752235ee767f0359912ab9f52bd07677fd5d05bd490dd5288d5",
+            "start": 5180,
+            "end": 5415,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "ef19a77949189769e068dd1dfffdb7ce4817e69c399d4bc7a6a8da2fbad24d45",
+            "start": 5415,
+            "end": 5499,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "d1f74784a368cd7e02eaee35d29a1b1d84a48526632b85048dd748caf569fef5",
+            "start": 5499,
+            "end": 5563,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "563a374cdd44b1844acc051b508b031130cf34d430e51c6a13b8f3eab121c1d1",
+            "start": 5563,
+            "end": 5623,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "833fe6058a0181f53c2604b599ebad532b0d85ac9d0c93f388f67c9d970a5c5a",
+            "start": 5623,
+            "end": 5668,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "441a225e6f30e40c0e1f0e8b4a5cc2e68c144f8024bdbc8da6e02021ccb08133",
+            "start": 5668,
+            "end": 5721,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "8b4a5365f2c571f77209063336e4c8134407e2e561e58ba2b2e84f2d734f2d9e",
+            "start": 5721,
+            "end": 5790,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "7bcb8b9fb31114136f67ba57ab7b564c6d4ac6a0e5bb481fe17ee4dc5b80fa01",
+            "start": 5790,
+            "end": 5856,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "0315ce0e2e04bb2e48f8f809f00526887276086251e7edff2e748e6b43af5b21",
+            "start": 5856,
+            "end": 5910,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "2305d457d83b6763f2cff73bdf93f6d67062adae6323234e34b74943b895f40e",
+            "start": 5910,
+            "end": 6133,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "1f2517509cdd878bc8bf878a44d97e551581c40ee54f45563ae39c7aa8727536",
+            "start": 6133,
+            "end": 6228,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "b234530ddadb7adcd8c884748f79fa79c14beb37f2cb3a4cf52cd568f689e393",
+            "start": 6228,
+            "end": 6459,
+            "evidence_ids": [
+              "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+            ],
+            "kinds": [],
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "0e1d80e23852dc6101cc7a136f3e95d46241641ba77046e59d33acb0da4fe70a",
+            "start": 6459,
+            "end": 6762,
+            "evidence_ids": [
+              "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "30a771468dfcd044f5dc1b7ab08b39de4897028ebe0245e5eec4eac213a4c61a",
+            "start": 6762,
+            "end": 6853,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "709d5716f951fbdec819d91a926b72bb75772dcb79ffb0a9dfcdb727dc397379",
+            "start": 6853,
+            "end": 7119,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "7dc8bc80c10e389d0d326e146f86f2ae0ff3a0cbfe144c3450fe186dbf677923",
+            "start": 7119,
+            "end": 7375,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "203d2ea3f658569f059240312632a260a7ceae3f652795e1d162fc865eb752c7",
+            "start": 7375,
+            "end": 7482,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "287101370142aa2567d612c64d8e5d1c6678846c9cc439a5f62f2af3474e4cc9",
+            "start": 7482,
+            "end": 7704,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "bb87c89a0cfe95aa823a029d9c5560d5a026904f2710600571c7c160e6fea31c",
+            "start": 7704,
+            "end": 8032,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "9878d917977e4954a798d440732489b60f2e1aa2a12f8f7dd814fabc5950a8ac",
+            "start": 8032,
+            "end": 8262,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "65f33f1dfd1b861f247ffe6764c8e463cedc16f703c228bfff2033effd3ec474",
+            "start": 8262,
+            "end": 8400,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "58a52537db4b7f1be84b89060700f3521a9c0513636e0f9caf46f687f5492b81",
+            "start": 8400,
+            "end": 8502,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "0a3f1f329f1f21d36fc5ed718e464e450acd32e5eb24ba7f4d3f82e17008b4aa",
+            "start": 8502,
+            "end": 8698,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "644a8842f95b2e28f2c729d2d1955330e7d7e9305341a51cc299a64050a11815",
+            "start": 8698,
+            "end": 8788,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "5a85b6dab4cb4efc0631edf779106b6a8d6b8cb447c6c310e9385eb8076a8f45",
+            "start": 8788,
+            "end": 9114,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "6e5f3bdb9e70fb001716f8f80258467873dfe30518fb25f63175ef68f85892e6",
+            "start": 9114,
+            "end": 9304,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "80e71ab6c69315b032696418d494fe32ec9a1e48f127f9ec8ec7e6613cc63258",
+            "start": 9304,
+            "end": 9505,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "aed11748715d2dee0266221e53313ef9deb5ab509ba94ccdc18ce2239e031585",
+            "start": 9505,
+            "end": 9604,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "babf6dafde1435fb288f3cbb7937f3086ac5b98ccd1ca1e5a80db3a0e73d2752",
+            "start": 9604,
+            "end": 9796,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "bd9a412668ca8bb4f7a7a3c4b087e3db35f338ad721f5cedaad1a5a93b5e0085",
+            "start": 9796,
+            "end": 9922,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "f310f8142b0a145c86414fa6fe542179262c86d1f74cf879fbb95b68beded8eb",
+            "start": 9922,
+            "end": 10256,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "874b70eda21fc7b9476f3f2d6186993e66e18d9bcc6ae24c73546d09d204ed3a",
+            "start": 10256,
+            "end": 10347,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "94d5a226529060c77a200a976324b3913142523eaccb1647416157a0c18e44d6",
+            "start": 10347,
+            "end": 10472,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "38d8b6ea79c577439af27c9eef02696331e80635c7c8b51406a6a2cd2545fabc",
+            "start": 10472,
+            "end": 10821,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "6639c2d239b60174e683db30f6654bebc20d545732434b128f6bcc406bceb75b",
+            "start": 10821,
+            "end": 10930,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "fd3776321121a200f8c81c718af7e52099d8f383984ea768c4e5ffa2f0d26679",
+            "start": 10930,
+            "end": 10983,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "c2f8e86bbcdcb732df84ed125ce3c008b50556f69e551f23b50b88802c621bac",
+            "start": 10983,
+            "end": 11050,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "573f21140065561a1567d08a278b1773db5d88311af5214958ef2a69068186c3",
+            "start": 11050,
+            "end": 11114,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "a6334d22748df3f7b674d91e2e7d246c8b16ff8840ee46ebd5b12be24a24f827",
+            "start": 11114,
+            "end": 11210,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "dcbb49d2d490f3c63af95d5222544aa028a48c223938da15fb459303da1b596e",
+            "start": 11210,
+            "end": 11297,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "cef580539907126c1f4d60f7e86313016adc5dab48a5bead682d9dfe0b0008f3",
+            "start": 11297,
+            "end": 11396,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "5773d8c5e5e73c10b2a99b16248c8a50079dc685936becdf9bdf1b4139aaea94",
+            "start": 11396,
+            "end": 11452,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "dcd1c255956c3ae1c6db2925d0da1b5feec1a33219acee28b5cb4775c3aa5457",
+            "start": 11452,
+            "end": 11539,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "9c9dd52651ea9cad6762891d3d0f6b79a43de5a74dedf278beaf976bf1c22609",
+            "start": 11539,
+            "end": 11703,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "78199f8b5f92253c368bff848e3609fc7fb2978eb1526e2720f9cc86ba17b79c",
+            "start": 11703,
+            "end": 11879,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "85e7e34a263014c64a304227ca2a29e1a8852df136587b454bb5d94092e03011",
+            "start": 11879,
+            "end": 11934,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "3013a43711a064254abf59da84d6d26c076ed0bb2e935cdde7624958bbeb4ba3",
+            "start": 11934,
+            "end": 12275,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "bf470e4bf30c74dca7b585fd452ead81a62838e7bb44620cbeff880d4cff6ba6",
+            "start": 12275,
+            "end": 12369,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "90230b80796e37ec46848cc35bd178314ffeb4c6a3f675579b8a126ec603392a",
+            "start": 12369,
+            "end": 12562,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "ae508d4327b2a31f7c2c1dc26ce26a46315e547d0fdde23abf562d710328d443",
+            "start": 12562,
+            "end": 12691,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "39725c5318458337d81df0f685c70ab494fae4aac8922108e18b0fbed727c1b7",
+            "start": 12691,
+            "end": 12816,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "e143f6427b0b372ca01f7c63ad4ae1a02d87765c4c079b53ef18aa5dec73855b",
+            "start": 12816,
+            "end": 12839,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "e0ba76652eb3471905f07d8122fe1a3fefe109782dc02efbc055b46dac066acf",
+            "start": 12839,
+            "end": 13195,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "a14a9e4b1753b141884ffaaf30f79bcf457d6fd90132ff60d151f088a2af782e",
+            "start": 13195,
+            "end": 13313,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "fda5ca8948f38ca139f229365ac75e09ff7dd783f3a201414c9b16ba71431ce1",
+            "start": 13313,
+            "end": 13573,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "d9c025160c324e33dc0b5546fab65a0d17e1b9fd4790272402fb2f850f179f5e",
+            "start": 13573,
+            "end": 13880,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "583570a3fb252ff55c0219208a2c089b1cdea1ddce12b7313e91cb5fd7e39f5d",
+            "start": 13880,
+            "end": 14046,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "7d5476aee1127008d66d86b8fdd2b34f5968a46d292131c3ce24585218d09b81",
+            "start": 14046,
+            "end": 14330,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "3fbe60922cb7b014a000e6909565e87c73e6c796d1f7883844ca4110de62fd74",
+            "start": 14330,
+            "end": 14651,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          },
+          {
+            "id": "454da3546bc97fcbc0452fa6376dec908da92c7c7eed52770e9037f903025012",
+            "start": 14651,
+            "end": 14836,
+            "evidence_ids": [
+              "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "unresolved"
+          }
+        ],
+        "unresolved_unit_ids": [
+          "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+        ],
+        "context_limited_unit_ids": [
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+        ]
+      },
+      "quality": {
+        "mechanical_status": "partial",
+        "semantic_review_status": "unreviewed"
+      }
+    },
+    "completeness": "partial",
+    "call_count": 3,
+    "findings": [
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+        "path": "coverage_items",
+        "evidence_ids": [
+          "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+        ],
+        "outcome": "unresolved",
+        "message": "source item money missing"
+      },
+      {
+        "code": "reader_prose_incomplete",
+        "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+        "path": "explanations/8",
+        "evidence_ids": [
+          "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+        ],
+        "outcome": "repairable",
+        "message": "Return complete sentences; split long prose into separate details instead of cutting it off."
+      },
+      {
+        "code": "reader_prose_incomplete",
+        "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+        "path": "explanations/12",
+        "evidence_ids": [
+          "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+        ],
+        "outcome": "repairable",
+        "message": "Return complete sentences; split long prose into separate details instead of cutting it off."
+      },
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+        "path": "coverage_items",
+        "evidence_ids": [
+          "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd"
+        ],
+        "outcome": "unresolved",
+        "message": "source item money missing"
+      }
+    ]
+  }
+}

@@ -62,6 +62,22 @@ def test_no_follows_is_private_cold_start():
     assert response["Cache-Control"] == "private, no-store"
 
 
+def test_initial_page_reuses_ranking_until_follow_change_or_expiry():
+    from apps.accounts.recommendations import build_ranking
+    from apps.accounts.recommendation_views import snapshot_key
+    api, user = client()
+    with patch("apps.accounts.recommendation_views.build_ranking", wraps=build_ranking) as rank:
+        assert api.get(PATH).status_code == 200
+        assert api.get(PATH).status_code == 200
+        assert rank.call_count == 1
+        TrackedTopic.objects.create(user=user, topic=topic())
+        assert api.get(PATH).status_code == 200
+        assert rank.call_count == 2
+        cache.delete(snapshot_key(user.pk))
+        assert api.get(PATH).status_code == 200
+        assert rank.call_count == 3
+
+
 def test_database_failure_is_private_and_has_retry_hint():
     from django.db import OperationalError
 
@@ -312,6 +328,10 @@ def test_cold_start_sparse_and_no_match_states():
     TrackedTopic.objects.create(user=user, topic=health)
     assert api.get(PATH).json()["empty_reason"] == "no_matches"
     target = bill(2, topics=(health,))
+    # New corpus entries become visible after the five-minute result cache expires.
+    assert api.get(PATH).json()["results"] == []
+    from apps.accounts.recommendation_views import snapshot_key
+    cache.delete(snapshot_key(user.pk))
     assert api.get(PATH).json()["results"][0]["bill"]["id"] == target.id
     TrackedTopic.objects.filter(user=user).delete()
     assert api.get(PATH).json()["results"] == []

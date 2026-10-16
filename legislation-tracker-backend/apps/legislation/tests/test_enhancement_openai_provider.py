@@ -26,6 +26,173 @@ class FakeResponses:
         return self.result
 
 
+def test_source_first_failure_reports_safe_schema_location():
+    response = _completed_response()
+    response.output_text = json.dumps(
+        {
+            "provisions": [
+                {
+                    "unit_id": "u1",
+                    "status": "unresolved",
+                    "summary": "x" * 401,
+                    "details": [],
+                    "claims": [],
+                    "unresolved_reason": "missing",
+                }
+            ]
+        }
+    )
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
+    request = _request()
+    request.request_envelope["source_first_payload"] = {
+        "units": [{"id": "unit"}],
+        "passages": {"passage": {"text": "Source."}},
+    }
+    with pytest.raises(ProviderError) as caught:
+        provider.generate_provisions(
+            api_key="test", request=request, timeout_seconds=30
+        )
+    assert caught.value.validation_detail == {
+        "rule": "maxLength",
+        "path": "provisions/0/summary",
+    }
+    assert "x" * 20 not in str(caught.value.validation_detail)
+
+
+def test_source_first_decode_error_diagnostics_are_json_serializable(monkeypatch):
+    from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.source_first_transport import Transport
+
+    def reject(self, output):
+        raise ValidationError("unrelated_source_item")
+
+    monkeypatch.setattr(Transport, "decode", reject)
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=_completed_response()))
+    )
+    request = _request()
+    request.request_envelope["source_first_payload"] = {
+        "units": [{"id": "unit"}],
+        "passages": {"passage": {"text": "Source."}},
+    }
+    with pytest.raises(ProviderError) as caught:
+        provider.generate_provisions(
+            api_key="test", request=request, timeout_seconds=30
+        )
+    assert (
+        json.loads(json.dumps(caught.value.validation_detail))["rule"]
+        == "unrelated_source_item"
+    )
+
+
+@pytest.mark.parametrize(
+    "method", ["generate_provisions", "repair_provisions", "generate_synopsis"]
+)
+def test_source_first_transport_uses_server_schema(method):
+    response = _completed_response()
+    response.output_text = json.dumps(
+        {"text": "A rule.", "explanation_ids": ["u1"]}
+        if method == "generate_synopsis"
+        else {
+            "provisions": [
+                {
+                    "unit_id": "u1",
+                    "status": "unresolved",
+                    "summary": "",
+                    "details": [],
+                    "claims": [],
+                    "unresolved_reason": "Not enough context",
+                }
+            ]
+        }
+    )
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    request = _request()
+    request.request_envelope["source_first_payload"] = {
+        "units": [{"id": "pinned-unit"}],
+        "passages": {"pinned-passage": {"text": "exact source"}},
+    }
+    if method == "generate_synopsis":
+        request.request_envelope["source_first_payload"] = {
+            "explanations": [{"unit_id": "pinned-unit", "summary": "A rule."}]
+        }
+    result = getattr(provider, method)(
+        api_key="test", request=request, timeout_seconds=30
+    )
+    call = responses.calls[0]
+    if method != "generate_synopsis":
+        assert json.loads(call["input"])["passages"]["p1"]["text"] == "exact source"
+        assert result.output["provisions"][0]["unit_id"] == "pinned-unit"
+    else:
+        assert result.output["explanation_ids"] == ["pinned-unit"]
+    assert call["text"]["format"]["name"].startswith("source_first_")
+    assert call["store"] is False and call["tools"] == []
+    assert call["max_output_tokens"] <= 8000
+    # OpenAI rejects this keyword even though our local JSON Schema validator
+    # supports it. Keep uniqueness enforcement local, not in the wire schema.
+    assert '"uniqueItems"' not in json.dumps(call["text"]["format"]["schema"])
+    from jsonschema import Draft202012Validator
+
+    from apps.legislation.enhancements.source_first_schema import IDS
+
+    assert not Draft202012Validator(IDS).is_valid(["same", "same"])
+
+
+def test_source_first_caps_output_even_if_deployment_limit_is_higher(settings):
+    settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = 16000
+    response = _completed_response()
+    response.output_text = json.dumps({"provisions": []})
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    request = _request()
+    request.request_envelope["source_first_payload"] = {"units": [], "passages": {}}
+    provider.generate_provisions(api_key="test", request=request, timeout_seconds=30)
+    assert responses.calls[0]["max_output_tokens"] == 8000
+
+
+@pytest.mark.parametrize("output_limit", [4000, 8000])
+def test_citation_repair_is_targeted_bounded_and_nonpersistent(settings, output_limit):
+    settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = output_limit
+    response = _completed_response()
+    response.output_text = json.dumps({"repairs": []})
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    payload = {
+        "citations": [
+            {"id": "overview/0/0", "claim": {"text": "Funding"}, "candidates": []}
+        ]
+    }
+    result = provider.repair_citations(
+        api_key="test", request=_request(), payload=payload, timeout_seconds=30
+    )
+    assert result.output == {"repairs": []}
+    assert result.usage.total_tokens == 165
+    call = responses.calls[0]
+    assert json.loads(call["input"]) == payload
+    assert call["store"] is False
+    assert call["tools"] == []
+    assert call["max_output_tokens"] == output_limit
+    assert call["text"]["format"]["schema"]["properties"]["repairs"]
+
+
+def test_citation_repair_rejects_oversize_before_network():
+    responses = FakeResponses(result=_completed_response())
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    with pytest.raises(ProviderError) as error:
+        provider.repair_citations(
+            api_key="test",
+            request=_request(),
+            payload={"citations": ["x" * 120001]},
+            timeout_seconds=30,
+        )
+    assert error.value.category == "request_too_large"
+    assert responses.calls == []
+
+
 class FakeClientFactory:
     def __init__(self, responses):
         self.responses = responses

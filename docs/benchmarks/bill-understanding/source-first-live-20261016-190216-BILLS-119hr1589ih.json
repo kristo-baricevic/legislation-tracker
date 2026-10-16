@@ -1,0 +1,690 @@
+{
+  "plan_fingerprint": "84790e688a7163e8b54d0a273cb09a9f33555a3888f78d303b506b64bf8e6c3d",
+  "model": "gpt-6-luna",
+  "limits": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "output_tokens": 8000,
+    "per_call_input": 100000
+  },
+  "document_fingerprint": "70323ed93e1e9940dc9a4e7c4e82c749dde0236b1584bd0ab92198671aaa1573",
+  "mode": "fresh_generation",
+  "status": "failed",
+  "maximum_calls": 5,
+  "maximum_input": 433763,
+  "maximum_output": 40000,
+  "network_calls": 1,
+  "calls": [
+    {
+      "request_fingerprint": "7a264a4ccf42aaf70d646b429ebff61ad8102cdf71f532e987509dddbaf9842e",
+      "stage": "generation",
+      "unit_ids": [
+        "bfeacae80016801c4b991890b89b568cc8722093038c9e40f5098bb9a09a7046",
+        "fdb228681c2ca5ccd745897e6094d64409291d2c68ae65bbc66b3a0770ffcb86",
+        "8d3089babc5845ee49777b67bfc2e9532844e1ae67fe8855a22fd58136f4f1d8",
+        "5a7fbb1cc54d4ef7675820184f807e8edd44b985f081c6e26685a5776cc5aa2f",
+        "5fd7c66396cb0bd67152522e086f50b4c837afec0890421608656cfd9dd84d73",
+        "92d69ce9a089300c421bcb2e5bee524b2d0d11ee030d0c1c0b23d1df4cf34940",
+        "81431a7aebd983157c4712c5894ea978ef1c658dde64a712e503413e58156629",
+        "dba1a401b63f78c85e2c0809baf081b8decfd43aad67e1ca6ffafc8de1b63ec2"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 20788,
+        "output_tokens": 6479,
+        "total_tokens": 27267
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "bfeacae80016801c4b991890b89b568cc8722093038c9e40f5098bb9a09a7046",
+            "status": "explained",
+            "summary": "The Act may be cited as the American Dream and Promise Act of 2025. The accompanying contents list the Act’s titles and sections.",
+            "details": [
+              "The table of contents lists the DREAM Act of 2025, the American Promise Act of 2025, and general provisions, with their section headings."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This Act",
+                "action": "may be cited as the “American Dream and Promise Act of 2025”",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "0bd7f6223acc3f73e501eaf6d883e59c7adc788cb7164c1d2d55aaf47c87cff0"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "fdb228681c2ca5ccd745897e6094d64409291d2c68ae65bbc66b3a0770ffcb86",
+            "status": "explained",
+            "summary": "This title may be cited as the Dream Act of 2025.",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This title",
+                "action": "may be cited as the “Dream Act of 2025”",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "74b6c484a5c0ba31020069c6b85bee639c658598185472dcc8e16e41674eb2df"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "8d3089babc5845ee49777b67bfc2e9532844e1ae67fe8855a22fd58136f4f1d8",
+            "status": "unresolved",
+            "summary": "",
+            "details": [],
+            "unresolved_reason": "The section depends on absent immigration-law provisions for eligibility, inadmissibility, crime-related bars and waivers, and other referenced qualifications; their meaning cannot be established from the supplied text.",
+            "claims": []
+          },
+          {
+            "unit_id": "5a7fbb1cc54d4ef7675820184f807e8edd44b985f081c6e26685a5776cc5aa2f",
+            "status": "explained",
+            "summary": "Conditional permanent resident status lasts 10 years unless the Secretary extends it. The Secretary must give notice of the title’s provisions and status-removal requirements when status is granted.",
+            "details": [
+              "The Secretary may revoke status only after determining that the alien no longer meets the requirements referenced in section 102(b)(1)(C), and after giving notice and an opportunity for a hearing.",
+              "An alien whose conditional status expires or is revoked returns to the immigration status held immediately before receiving conditional status."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Conditional permanent resident status",
+                "action": "is valid for a period of 10 years unless the Secretary extends the period",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "provide the alien notice of the provisions of this title and the requirements for removal of the conditional basis",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "revoke conditional permanent resident status only if the alien ceases to meet the requirements under section 102(b)(1)(C), and the alien has received advance notice and an opportunity for a hearing to provide evidence or contest the proposed revocation",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "determines that the alien ceases to meet the requirements under section 102(b)(1)(C)",
+                      "evidence_ids": [
+                        "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "prior to the revocation, provides the alien--\n                    (A) notice of the proposed revocation; and\n                    (B) the opportunity for a hearing to provide \n                evidence that the alien meets such requirements or \n                otherwise to contest the proposed revocation.",
+                      "evidence_ids": [
+                        "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                ]
+              },
+              {
+                "actor": "An alien whose conditional status expires or is revoked",
+                "action": "return to the immigration status held immediately before obtaining conditional permanent resident status",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "any",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "expires under subsection (a)(1)",
+                      "evidence_ids": [
+                        "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "is revoked under subsection (c)",
+                      "evidence_ids": [
+                        "10162f2a607cb55200791f40fd21847d4c3f7f95cc1474fa1bae6e52a3a5c605"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "10162f2a607cb55200791f40fd21847d4c7f95cc1474fa1bae6e52a3a5c605"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "5fd7c66396cb0bd67152522e086f50b4c837afec0890421608656cfd9dd84d73",
+            "status": "explained",
+            "summary": "The Secretary generally must remove conditional status and grant lawful permanent residence when specified eligibility requirements are met. The referenced sections include qualifications whose full meanings are not supplied.",
+            "details": [
+              "The ordinary route requires the alien to meet the referenced section 102(b)(1)(C), not to have abandoned U.S. residence while conditionally resident, and to meet at least one education, service, or earned-income route.",
+              "The education route is a higher-education degree, at least two years in good standing in a qualifying postsecondary program, or a recognized postsecondary credential from a qualifying school.",
+              "The service route requires at least two years in the Uniformed Services and, if discharged, an honorable discharge.",
+              "The income route requires earned income for periods totaling at least three years and at least 75% of the time the alien had valid employment authorization. For specified education enrollment, reduce the three-year total by those enrollment periods.",
+              "A hardship route requires the referenced requirements in (a)(1)(A) and (B), compelling circumstances preventing completion of (a)(1)(C), and disability, full-time caregiving, or specified removal hardship.",
+              "Unless the disability exception applies, conditional status cannot be removed unless the alien demonstrates satisfaction of the requirements referenced in INA section 312(a).",
+              "The Secretary may require a reasonable processing-cost fee for removal applications, subject to the section 303(c) exemption. No dollar amount is stated here.",
+              "The Secretary may not remove conditional status until section 302 requirements are satisfied. Applicants may apply for removal at any time after meeting subsection (a)’s eligibility requirements.",
+              "For naturalization purposes, conditional residents are treated as admitted and present as lawful permanent residents, but may not apply for naturalization while conditional status continues.",
+              "In specified initial applications, the Secretary or Attorney General shall adjust an eligible applicant directly to permanent resident status without conditional status, subject to stated hardship, disability, background-check, and fee provisions."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "The Secretary",
+                "action": "remove conditional status and grant lawful permanent residence if the alien meets section 102(b)(1)(C), has not abandoned U.S. residence during conditional status, and meets at least one of the specified education, service, or earned-income routes",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "is described in section 102(b)(1)(C)",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "has not abandoned the alien's residence in the United States during the period in which the alien has permanent resident status on a conditional basis",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    },
+                    {
+                      "operator": "any",
+                      "children": [
+                        {
+                          "operator": "leaf",
+                          "text": "has obtained a degree from an institution of higher education, or has completed at least 2 years, in good standing, of a program in the United States leading to a bachelor's degree or higher degree or a recognized postsecondary credential from an area career and technical education school providing education at the postsecondary level",
+                          "evidence_ids": [
+                            "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "has served in the Uniformed Services for at least 2 years and, if discharged, received an honorable discharge",
+                          "evidence_ids": [
+                            "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "demonstrates earned income for periods totaling at least 3 years and at least 75 percent of the time that the alien has had a valid employment authorization, except that, in the case of an alien who was enrolled in an institution of higher education, an area career and technical education school to obtain a recognized postsecondary credential, or an education program described in section 102(b)(1)(D)(iii), the Secretary shall reduce such total 3-year requirement by the total of such periods of enrollment",
+                          "evidence_ids": [
+                            "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "remove conditional status and grant lawful permanent residence under the hardship exception if the alien meets section 102(b)(1)(C) and the non-abandonment requirement, demonstrates compelling circumstances preventing the ordinary education, service, or income requirements, and demonstrates disability, full-time caregiving, or specified removal hardship",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "satisfies the requirements under subparagraphs (A) and (B) of paragraph (1)",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "demonstrates compelling circumstances for the inability to satisfy the requirements under subparagraph (C) of such paragraph",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    },
+                    {
+                      "operator": "any",
+                      "children": [
+                        {
+                          "operator": "leaf",
+                          "text": "the alien has a disability",
+                          "evidence_ids": [
+                            "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "the alien is a full-time caregiver",
+                          "evidence_ids": [
+                            "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "the removal of the alien from the United States would result in hardship to the alien or the alien's spouse, parent, or child who is a national of the United States or is lawfully admitted for permanent residence",
+                          "evidence_ids": [
+                            "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "Conditional permanent resident status",
+                "action": "not be removed unless the alien demonstrates satisfaction of the requirements under INA section 312(a)",
+                "modality": "prohibited",
+                "money": [],
+                "conditions": {
+                  "operator": "any",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "Except as provided in subparagraph (B)",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "the alien demonstrates that the alien satisfies the requirements under section 312(a) of the Immigration and Nationality Act (8 U.S.C. 1423(a))",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [
+                  {
+                    "operator": "leaf",
+                    "text": "Subparagraph (A) shall not apply to an alien who is unable to meet the requirements under such section 312(a) due to disability.",
+                    "evidence_ids": [
+                      "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                    ]
+                  }
+                ],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "may require a reasonable fee commensurate with application-processing cost for an application to remove conditional status, subject to the section 303(c) exemption",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": null,
+                    "currency": null,
+                    "measure": null,
+                    "comparator": null,
+                    "purpose": "processing the application",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [
+                  {
+                    "operator": "leaf",
+                    "text": "subject to an exemption under section 303(c)",
+                    "evidence_ids": [
+                      "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                    ]
+                  }
+                ],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "not remove conditional status until the requirements of section 302 are satisfied",
+                "modality": "prohibited",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "An alien granted conditional permanent resident status",
+                "action": "apply to remove the conditional basis at any time after meeting subsection (a)'s eligibility requirements",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "at any time after such alien has met the eligibility requirements set forth in subsection (a)",
+                  "evidence_ids": [
+                    "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "An alien in conditional permanent resident status",
+                "action": "not apply for naturalization while that status continues",
+                "modality": "prohibited",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              },
+              {
+                "actor": "The Secretary or the Attorney General",
+                "action": "adjust an eligible alien to permanent resident status without conditional status in a qualifying initial application, subject to the stated background-check and fee requirements",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": null,
+                    "currency": null,
+                    "measure": null,
+                    "comparator": null,
+                    "purpose": "application fee under subsection (a)(4)",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "demonstrates eligibility for lawful permanent residence status on a conditional basis under section 102(b)",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "subject to the exceptions described in subsections (a)(2) and (a)(3)(B) of this section, already has fulfilled the requirements of paragraphs (1) and (3) of subsection (a) of this section at the time such alien first submits an application for benefits under this title",
+                      "evidence_ids": [
+                        "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [
+                  {
+                    "operator": "leaf",
+                    "text": "the alien shall pay the fee required under subsection (a)(4), subject to the exemption allowed under section 303(c), but shall not be required to pay the application fee under section 102(b)(3)",
+                    "evidence_ids": [
+                      "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                    ]
+                  }
+                ],
+                "evidence_ids": [
+                  "466c14313b722f2e1349d1cd4cd60de9dfd91dfec32aaa24756a9cbe99155385"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "92d69ce9a089300c421bcb2e5bee524b2d0d11ee030d0c1c0b23d1df4cf34940",
+            "status": "explained",
+            "summary": "Section 105 repeals section 505 of the Illegal Immigration Reform and Immigrant Responsibility Act of 1996. The repeal takes effect as if included in that law’s original enactment.",
+            "details": [
+              "The source identifies the repealed provision as 8 U.S.C. 1623 and gives the original enactment citation as division C of Public Law 104-208; 110 Stat. 3009-546.",
+              "The supplied text does not describe the substantive effect of the repealed provision, so no effect on state residency rules is inferred."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Section 505 of the Illegal Immigration Reform and Immigrant Responsibility Act of 1996",
+                "action": "is repealed",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "030a8bb419f60ea0d2b73cb6f547f9f9dfd0a85f176ab2888e40aee3960c7092"
+                ]
+              },
+              {
+                "actor": "The repeal under subsection (a)",
+                "action": "takes effect as if included in the original enactment of the Illegal Immigration Reform and Immigrant Responsibility Act of 1996",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "030a8bb419f60ea0d2b73cb6f547f9f9dfd0a85f176ab2888e40aee3960c7092"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "81431a7aebd983157c4712c5894ea978ef1c658dde64a712e503413e58156629",
+            "status": "explained",
+            "summary": "This title may be cited as the American Promise Act of 2025.",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This title",
+                "action": "may be cited as the “American Promise Act of 2025”",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "a401110474c324ba0531f308ab84c3f00467246798a47cd7d4e2c7c76b85c3ac"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "dba1a401b63f78c85e2c0809baf081b8decfd43aad67e1ca6ffafc8de1b63ec2",
+            "status": "explained",
+            "summary": "Eligible nationals covered by this section must apply within three years after enactment, meet its physical-presence and admissibility requirements, and fit one of two specified protected-status or deferred-enforced-departure categories. The Secretary must charge a processing fee capped at $1,140, subject to exemption.",
+            "details": [
+              "Category one covers specified nationals or stateless people associated with a country designated for TPS on January 1, 2017, who then had or were otherwise eligible for TPS and have not since engaged in conduct that would make them ineligible under the referenced INA provision.",
+              "Category two covers people eligible for Deferred Enforced Departure as of January 20, 2021, who have not since engaged in conduct that would make them ineligible for that status.",
+              "The applicant must apply, including required section 307 documents, within three years after enactment; have at least three years of continuous physical presence in the United States; and, subject to subsection (c), not be inadmissible under the listed INA grounds.",
+              "The Secretary may waive specified inadmissibility grounds for humanitarian purposes, family unity, or the public interest. The waiver authority has an exception for convictions that would otherwise make the alien ineligible under the referenced INA provision.",
+              "The Secretary must require a reasonable fee commensurate with processing cost, no more than $1,140, subject to the section 303(c) exemption.",
+              "The Secretary may not grant permanent resident status on a conditional basis under this section until section 302 requirements are satisfied. The section describes adjustment to lawful permanent residence; it does not establish that status is conditional.",
+              "On request to withdraw, the Secretary must stop processing and close the case. Withdrawal does not prejudice a future application for an immigration benefit under this title or the Immigration and Nationality Act."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "The Secretary or the Attorney General",
+                "action": "adjust an eligible alien to lawful permanent resident status",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "applies for such adjustment, including submitting any required documents under section 307, not later than 3 years after the date of the enactment of this Act",
+                      "evidence_ids": [
+                        "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "has been continuously physically present in the United States for a period of not less than 3 years",
+                      "evidence_ids": [
+                        "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "subject to subsection (c), is not inadmissible under paragraph (1), (2), (3), (6)(D), (6)(E), (6)(F), (6)(G), (8), or (10) of section 212(a) of the Immigration and Nationality Act (8 U.S.C. 1182(a))",
+                      "evidence_ids": [
+                        "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                      ]
+                    },
+                    {
+                      "operator": "any",
+                      "children": [
+                        {
+                          "operator": "leaf",
+                          "text": "is a national of a foreign state (or part thereof) (or in the case of an alien having no nationality, is a person who last habitually resided in such state) with a designation under subsection (b) of section 244 of the Immigration and Nationality Act (8 U.S.C. 1254a(b)) on January 1, 2017, who had or was otherwise eligible for temporary protected status on such date notwithstanding subsections (c)(1)(A)(iv) and (c)(3)(C) of such section; and has not engaged in conduct since such date that would render the alien ineligible for temporary protected status under section 244(c)(2) of the Immigration and Nationality Act (8 U.S.C. 1245a(c)(2))",
+                          "evidence_ids": [
+                            "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "was eligible for Deferred Enforced Departure as of January 20, 2021, and has not engaged in conduct since that date that would render the alien ineligible for Deferred Enforced Departure",
+                          "evidence_ids": [
+                            "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "waive specified inadmissibility grounds for an immigration benefit under this title",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "for humanitarian purposes, for family unity, or because the waiver is otherwise in the public interest",
+                      "evidence_ids": [
+                        "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "Except as provided in paragraph (2), with respect to any benefit under this title, and in addition to any waivers that are otherwise available, the Secretary may waive the grounds of inadmissibility under paragraph (1), subparagraphs (A), (C), and (D) of paragraph (2), subparagraphs (D) through (G) of paragraph (6), or paragraph (10)(D) of section 212(a) of the Immigration and Nationality Act (8 U.S.C. 1182(a))",
+                      "evidence_ids": [
+                        "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [
+                  {
+                    "operator": "leaf",
+                    "text": "The Secretary may not waive a ground described in paragraph (1) if such inadmissibility is based on a conviction or convictions, and such conviction or convictions would otherwise render the alien ineligible under section 244(c)(2)(B) of the Immigration and Nationality Act (8 U.S.C. 1254a(c)(2)(B)).",
+                    "evidence_ids": [
+                      "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                    ]
+                  }
+                ],
+                "evidence_ids": [
+                  "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "require an applicant to pay a reasonable fee commensurate with processing cost, capped at $1,140, subject to the section 303(c) exemption",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": "$1,140",
+                    "currency": "USD",
+                    "measure": "fee cap",
+                    "comparator": "does not exceed",
+                    "purpose": "processing the application",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [
+                  {
+                    "operator": "leaf",
+                    "text": "subject to an exemption under section 303(c)",
+                    "evidence_ids": [
+                      "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                    ]
+                  }
+                ],
+                "evidence_ids": [
+                  "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                ]
+              },
+              {
+                "actor": "The Secretary",
+                "action": "not grant the specified permanent resident status on a conditional basis until section 302 requirements are satisfied",
+                "modality": "prohibited",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                ]
+              },
+              {
+                "actor": "The Secretary of Homeland Security",
+                "action": "stop processing and close the case upon receiving an applicant's request to withdraw; withdrawal does not prejudice a future application for an immigration benefit under this title or the Immigration and Nationality Act",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "upon receipt of a request to withdraw an application for adjustment of status under this section",
+                  "evidence_ids": [
+                    "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "a141c47fc1fdcf4637cf2dcc7613dd748d636f50a98d1ae3b45b6709b12ec441"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "a1f9001d3a250d324b94b0e2012907eecb0187f17ea5b86aa8ee9ba7683a5d82",
+      "response_id": "resp_05af862f0ef740ba016ad274fc55e487d2ba61d8f8960901df",
+      "resolved_model": "gpt-6-luna"
+    }
+  ]
+}

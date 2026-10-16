@@ -257,7 +257,9 @@ def _fiscal_years(text: str) -> tuple[int, ...]:
 def _accounts(text: str, action: str) -> tuple[str | None, str | None]:
     # Percentage bases often precede the operative verb and include exclusions.
     base = re.match(
-        r"\s*From\s+(.+?),\s+(?:the\s+)?\w+\s+(?:shall|may|must)\b", text, re.I | re.S
+        r"\s*(?:[^\n]{1,160}?\.[—–-]+)?\s*From\s+(.+?),\s+(?:the\s+)?\w+\s+(?:shall|may|must)\b",
+        text,
+        re.I | re.S,
     )
     if base and action != "transfer":
         return _strip(base.group(1)), None
@@ -844,11 +846,13 @@ def _payment_records(
             "destination_account": None,
             "_payment_span": (span.start_char, owned_end or span.end_char),
             "_amount_span": (
-                span.start_char + amount.start,
-                span.start_char + amount.end,
-            )
-            if amount.amount is not None
-            else None,
+                (
+                    span.start_char + amount.start,
+                    span.start_char + amount.end,
+                )
+                if amount.amount is not None
+                else None
+            ),
         }
         yield ExtractedClaim(
             "financial_items",

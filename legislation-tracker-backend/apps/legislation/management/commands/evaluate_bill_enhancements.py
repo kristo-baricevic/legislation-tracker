@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from jsonschema import ValidationError
 
+from apps.legislation.enhancements.citations import resolve_citations
 from apps.legislation.enhancements.prompts import PROMPT_VERSION, SOURCE_PACKET_VERSION
 from apps.legislation.enhancements.provider_registry import get_provider
 from apps.legislation.enhancements.providers.base import ProviderError
@@ -99,6 +100,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--execute", action="store_true")
+        parser.add_argument(
+            "--repair-citations",
+            action="store_true",
+            help="Authorize at most one additional citation-only call per case; the same per-call token caps apply.",
+        )
         parser.add_argument("--case-limit", type=int, required=True)
         parser.add_argument("--max-input-tokens", type=int, required=True)
         parser.add_argument("--max-output-tokens", type=int, required=True)
@@ -178,7 +184,8 @@ class Command(BaseCommand):
             "Evaluation budget: "
             f"cases={case_limit} max_input_tokens={max_input_tokens} "
             f"max_output_tokens={max_output_tokens} "
-            f"maximum_total_output_tokens={case_limit * max_output_tokens} "
+            f"maximum_provider_calls={case_limit * (2 if options['repair_citations'] else 1)} "
+            f"maximum_total_output_tokens={case_limit * max_output_tokens * (2 if options['repair_citations'] else 1)} "
             f"model={settings.LLM_ENHANCEMENT_MODEL} "
             f"reasoning={settings.LLM_ENHANCEMENT_REASONING_EFFORT}"
         )
@@ -203,11 +210,34 @@ class Command(BaseCommand):
                     )
             for case, preflight in prepared:
                 started = perf_counter()
+                provider_result = None
+                raw_output = None
                 try:
                     provider_result = provider.enhance_bill(
                         api_key=api_key,
                         request=preflight,
                         timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
+                    )
+                    raw_output = provider_result.output
+                    repair_method = getattr(provider, "repair_citations", None)
+                    provider_result = resolve_citations(
+                        provider_result,
+                        preflight.source_snapshot,
+                        repair=(
+                            lambda payload, repair_method=repair_method, preflight=preflight: (
+                                repair_method(
+                                    api_key=api_key,
+                                    request=preflight,
+                                    payload=payload,
+                                    timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
+                                )
+                            )
+                        )
+                        if options["repair_citations"] and repair_method
+                        else None,
+                        max_request_bytes=min(
+                            max_input_tokens, settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
+                        ),
                     )
                     validated = validate_enhancement_output(
                         provider_result.output,
@@ -222,6 +252,8 @@ class Command(BaseCommand):
                             "source_snapshot": preflight.source_snapshot,
                             "truncated": preflight.truncated,
                             "output": validated,
+                            "original_output": raw_output,
+                            "citation_resolution": provider_result.citation_resolution,
                             "usage": {
                                 "input_tokens": provider_result.usage.input_tokens,
                                 "output_tokens": provider_result.usage.output_tokens,
@@ -257,6 +289,19 @@ class Command(BaseCommand):
                             "review_labels": case["review_labels"],
                             "status": "failed",
                             "failure_category": failure_category,
+                            **(
+                                {
+                                    "citation_resolution": exc.citation_resolution
+                                    if isinstance(exc, ProviderError)
+                                    else provider_result.citation_resolution
+                                }
+                                if (
+                                    exc.citation_resolution
+                                    if isinstance(exc, ProviderError)
+                                    else provider_result.citation_resolution
+                                )
+                                else {}
+                            ),
                             "usage": {
                                 "input_tokens": usage.input_tokens,
                                 "output_tokens": usage.output_tokens,

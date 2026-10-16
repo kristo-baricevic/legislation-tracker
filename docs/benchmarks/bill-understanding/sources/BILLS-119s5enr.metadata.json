@@ -1,0 +1,23 @@
+{
+  "package_id": "BILLS-119s5enr",
+  "source_url": "https://www.govinfo.gov/content/pkg/BILLS-119s5enr/html/BILLS-119s5enr.htm",
+  "retrieved_date": "2026-10-07",
+  "source_version": "enrolled",
+  "raw_file": "BILLS-119s5enr.htm",
+  "raw_sha256": "de9463e4930703b755492bbe0e8d9cd24365f33d906c1120bfab5afba9bf23eb",
+  "answer_file": "../answers/BILLS-119s5enr.md",
+  "method": "Independent manual full-text reading; no app-generated output; original source retained.",
+  "coverage": "Sections 1-3 complete; all five distinct $100 harm-threshold occurrences",
+  "financial_record_count": 6,
+  "quote_validation": {
+    "method": "Extract each Markdown blockquote; HTML-decode source pre text; collapse whitespace; assert each complete excerpt is a literal substring. No punctuation or hyphen normalization.",
+    "quote_count": 28,
+    "status": "passed"
+  },
+  "limitations": [
+    "Pinned enrolled text only; enactment date, implementation and present law not independently established.",
+    "Referenced external statutory rules and amounts unresolved unless reproduced.",
+    "No specified monetary amount does not establish zero fiscal cost.",
+    "Negative findings require full-text review; no individual excerpt proves absence."
+  ]
+}

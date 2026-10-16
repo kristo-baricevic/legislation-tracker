@@ -4,18 +4,37 @@
 @custom-variant dark (.dark &);
 
 :root {
-  --background: #e2e8f0;
-  --foreground: #0f172a;
+  --background: #fafaf7;
+  --foreground: #273b36;
+  --paper: #ffffff;
+  --muted: #5b6862;
+  --line: #d5dbd1;
+  --wash: #eeefe8;
+  --control-line: #7d8981;
+  --focus: #35665a;
 }
 
 html.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #18221e;
+  --foreground: #edf0e8;
+  --paper: #202d26;
+  --muted: #bac6bc;
+  --line: #48594c;
+  --wash: #2b3930;
+  --control-line: #84978a;
+  --focus: #a9c9b4;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ink: var(--foreground);
+  --color-paper: var(--paper);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-wash: var(--wash);
+  --color-control: var(--control-line);
+  --color-focus: var(--focus);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -33,14 +52,19 @@ body {
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+
+/* Source passages and technical labels use the same reader typeface. */
+pre,
+code,
+kbd,
+samp {
+  font-family: inherit;
 }
 
 body > header,
-body > header > div,
-body > header + div,
-body > header + div > div,
-body > header + div > main {
+body > header > div {
   width: 100%;
   max-width: none;
   margin-left: 0;
@@ -108,4 +132,55 @@ textarea:disabled,
 
 .responsive-card-grid {
   gap: 1rem;
+}
+
+/* Shared dashboard language; semantic tokens adapt to both themes. */
+@layer components {
+  .tracker-page {
+    width: 100%;
+    max-width: 1440px;
+    margin-inline: auto;
+    padding: 2.5rem 1rem;
+    color: var(--foreground);
+    line-height: 1.55;
+  }
+
+  .tracker-heading {
+    font-size: clamp(1.8rem, 3vw, 2.6rem);
+    font-weight: 650;
+    letter-spacing: -.035em;
+    line-height: 1.2;
+  }
+
+  .tracker-panel {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    padding: 1.3rem;
+  }
+
+  .tracker-table {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+  }
+
+  .tracker-table table { min-width: 52rem; }
+  .tracker-table th { font-size: .82rem; }
+  .tracker-table td { font-size: .9rem; }
+  .tracker-table tbody tr:last-child { border-bottom: 0; }
+
+  .tracker-page :is(input, select, button) { border-radius: 6px; }
+  .tracker-page input { min-height: 2.5rem; }
+  .tracker-page input::placeholder { color: var(--muted); opacity: 1; }
+  .tracker-page a { text-underline-offset: 3px; }
+
+  @media (min-width: 640px) { .tracker-page { padding-inline: 1.5rem; } }
+  @media (min-width: 1024px) { .tracker-page { padding-inline: 2rem; } }
+}
+
+:is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
 }

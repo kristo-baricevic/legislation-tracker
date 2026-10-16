@@ -36,19 +36,19 @@ export default function AuthNav() {
   };
 
   return (
-    <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-sm text-slate-800 dark:text-green-400">
-      <Link href="/" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
+    <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 font-sans text-sm text-ink">
+      <Link href="/" className="cursor-pointer hover:text-ink">
         Home
       </Link>
-      <Link href="/bills" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
+      <Link href="/bills" className="cursor-pointer hover:text-ink">
         Bills
       </Link>
-      <Link href="/topics" className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300">
+      <Link href="/topics" className="cursor-pointer hover:text-ink">
         Topics
       </Link>
       <Link
         href="/representatives"
-        className="cursor-pointer hover:text-blue-900 dark:hover:text-green-300"
+        className="cursor-pointer hover:text-ink"
       >
         Representatives
       </Link>
@@ -56,14 +56,14 @@ export default function AuthNav() {
         <>
           <Link
             href="/settings"
-            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+            className="cursor-pointer hover:text-ink hover:underline"
           >
             Settings
           </Link>
           <button
             type="button"
             onClick={handleLogout}
-            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+            className="cursor-pointer hover:text-ink hover:underline"
           >
             Log out
           </button>
@@ -72,13 +72,13 @@ export default function AuthNav() {
         <>
           <Link
             href="/login"
-            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+            className="cursor-pointer hover:text-ink hover:underline"
           >
             Log in
           </Link>
           <Link
             href="/signup"
-            className="cursor-pointer hover:text-blue-900 hover:underline dark:hover:text-green-300"
+            className="cursor-pointer hover:text-ink hover:underline"
           >
             Sign up
           </Link>

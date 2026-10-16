@@ -1,0 +1,685 @@
+{
+  "plan_fingerprint": "22489813f1ad38d00afdc6002e82bb1a17da225fc180c64b5a08ca0979c86e45",
+  "model": "gpt-6-luna",
+  "limits": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "output_tokens": 8000,
+    "per_call_input": 100000
+  },
+  "document_fingerprint": "96e5550bcea4d1ac600c4a4d989c5c6ed2044346071530d505eb240a086ed6ae",
+  "mode": "fresh_generation",
+  "status": "completed",
+  "maximum_calls": 3,
+  "maximum_input": 222924,
+  "maximum_output": 24000,
+  "network_calls": 2,
+  "calls": [
+    {
+      "request_fingerprint": "a43f5075c9a9bd4cb5bad0658febb00c61c7183b0eb0f7c88c40684c37631e45",
+      "stage": "generation",
+      "unit_ids": [
+        "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+        "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+        "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+        "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+        "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 4682,
+        "output_tokens": 1983,
+        "total_tokens": 6665
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+            "status": "explained",
+            "summary": "This Act may be cited as the “Postsecondary Student Success Act of 2026.”",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": null,
+                "action": "cite this Act as the “Postsecondary Student Success Act of 2026”",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+            "status": "explained",
+            "summary": "The Act’s purpose is to support evidence-based participation, retention, and completion activities designed to ensure the postsecondary success of high-need students.",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": null,
+                "action": "support evidence-based participation, retention, and completion activities designed to ensure the postsecondary success of high-need students",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "explained",
+            "summary": "The Act defines terms including completion rate, eligible entities, evidence tiers, and high-need student. Several other terms take their meanings from provisions of other laws; those meanings are not supplied here.",
+            "details": [
+              "A 2-year institution’s completion rate is the percentage of students in an initial cohort who graduate or transfer to a 4-year institution. For a 4-year institution in a State, it is the percentage of the initial cohort who graduate.",
+              "An eligible entity is a public institution of higher education; a partnership between a nonprofit educational organization and an institution of higher education; or a consortium of institutions of higher education.",
+              "An eligible Indian entity is the entity responsible for the governance, operation, or control of a Tribal College or University. The definition of Tribal College or University is incorporated from another Act.",
+              "Tier 1 is a reform or practice prior research suggests has promise to improve achievement or attainment for high-need students. Tier 2 includes tier 1 or similar practices that measure impact and cost effectiveness and have been found successfully implemented through rigorous evaluation.",
+              "Tier 3 includes tier 2 or similar practices found to produce sizable, important student-success impacts, and addresses whether those impacts can be reproduced and sustained over time and the conditions in which the practice is most effective.",
+              "A high-need student is a student from a low-income background, a first-generation college student, a caregiver student, a student with a disability, a student who dropped out before completing, a reentering justice-impacted student, or a military-connected student.",
+              "The definitions of dual or concurrent enrollment program, early college high school, evidence-based, first-generation college student, institution of higher education, and Tribal College or University refer to specified provisions of other laws. Those incorporated definitions are not provided here.",
+              "“Secretary” means the Secretary of Education."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": null,
+                "action": "define “completion rate” for a 2-year institution as the percentage of students from an initial cohort enrolled at the entity who graduated from the institution or transferred to a 4-year institution of higher education; for a 4-year institution in a State, as the percentage of students from an initial cohort enrolled at the entity who graduated from the institution",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “dual or concurrent enrollment program” by reference to section 8101 of the Elementary and Secondary Education Act of 1965 (20 U.S.C. 7801); its incorporated meaning is not supplied",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “early college high school” by reference to section 8101 of the Elementary and Secondary Education Act of 1965 (20 U.S.C. 7801); its incorporated meaning is not supplied",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “eligible entity” as a public institution of higher education, a partnership between a nonprofit educational organization and an institution of higher education, or a consortium of institutions of higher education",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “eligible Indian entity” as the entity responsible for the governance, operation, or control of a Tribal College or University",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “evidence-based” by reference to section 8101(21)(A) of the Elementary and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)); its incorporated meaning is not supplied",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define evidence tier 1, tier 2, and tier 3 reforms or practices using the criteria stated in the Act",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “first generation college student” by reference to section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. 1070a-11(h)); its incorporated meaning is not supplied",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “high-need student” to include a student from a low-income background, a first generation college student, a caregiver student, a student with a disability, a student who dropped out before completing, a reentering justice-impacted student, or a military-connected student",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “institution of higher education” by reference to section 101 of the Higher Education Act of 1965 (20 U.S.C. 1001); its incorporated meaning is not supplied",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “Secretary” as the Secretary of Education",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": null,
+                "action": "define “Tribal College or University” by reference to section 316(b)(3) of the Higher Education Act of 1965 (20 U.S.C. 1059c(b)(3)); its incorporated meaning is not supplied",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+            "status": "explained",
+            "summary": "For each fiscal year, the Secretary must reserve 2 percent of the total amount appropriated to carry out the Act for grants to eligible Indian entities to increase high-need students’ participation, retention, and completion rates.",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Secretary",
+                "action": "reserve funds from the total amount appropriated to carry out the Act for a fiscal year for grants to eligible Indian entities to increase participation, retention, and completion rates of high-need students",
+                "modality": "required",
+                "money": [
+                  {
+                    "amount": "2",
+                    "currency": null,
+                    "measure": "percent",
+                    "comparator": null,
+                    "purpose": "grants to eligible Indian entities to increase participation, retention, and completion rates of high-need students",
+                    "period": "a fiscal year",
+                    "base": "total amount appropriated to carry out this Act for that fiscal year"
+                  }
+                ],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+            "status": "explained",
+            "summary": "For fiscal years 2027–2032, the Secretary must competitively award grants for student services to increase high-need students’ participation, retention, and completion. The Act also sets application, fund-use, evaluation, and reporting rules.",
+            "details": [
+              "Applicants must submit applications at the time, in the manner, and with the information required by subsection (c). Applications must include the specified student-outcome plan, annual benchmarks, evaluation plan, Pell Grant receipt rates, student demographics, proposed reforms, and sustainability plan.",
+              "The plan covers attainment and completion or graduation rates for all students enrolled at the eligible entity or Tribal College or University. It describes the evidence-based reform and its evidence tier, focuses particularly on serving high-need students, and addresses collaboration among 2-year programs, 4-year programs, and workforce systems.",
+              "Applicants must describe how grant funds will implement one or more listed evidence-based reforms, directly or in collaboration with other institutions of higher education or nonprofit organizations. Listed options include comprehensive student services, accelerated learning, course or credit-policy reform, and improved transfer pathways.",
+              "Recipients must use grant funds to carry out submitted plans and evidence-based reforms and practices to improve student participation, retention, and completion. Listed uses may include student services, direct support services including a combination of tutoring, academic supports, and enrichment services and emergency financial assistance, career preparation efforts, and recruiting and keeping,",
+              "unresolved_reason",
+              "claims"
+            ],
+            "unresolved_reason": "Output could not be safely completed: the required structured claims and financial provisions for u5 are incomplete.",
+            "claims": []
+          }
+        ]
+      },
+      "response_sha256": "733a4963af7086f04fcac6bbf9724666d9bae47696af17a116d4e67fe58060cc",
+      "response_id": "resp_0dd1fc89c60f2c6c016ad27979918c87d2985e7ec29a0a0b72",
+      "resolved_model": "gpt-6-luna"
+    },
+    {
+      "request_fingerprint": "2c53c553e63cad0c475bfdd9985c43c20c53f67fca6ac3f488df530360b2ec9d",
+      "stage": "repair",
+      "unit_ids": [
+        "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+        "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+        "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+        "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+        "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 4737,
+        "output_tokens": 1031,
+        "total_tokens": 5768
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+            "status": "explained",
+            "summary": "The Act may be cited as the “Postsecondary Student Success Act of 2026.”",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This Act",
+                "action": "may be cited as the “Postsecondary Student Success Act of 2026”",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+            "status": "explained",
+            "summary": "The Act’s purpose is to support evidence-based activities for participation, retention, and completion, designed to ensure high-need students’ postsecondary success.",
+            "details": [],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This Act",
+                "action": "support evidence-based participation, retention, and completion activities designed to ensure the postsecondary success of high-need students",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+            "status": "explained",
+            "summary": "The Act defines completion rates, eligible entities, high-need students, evidence tiers, and other terms. Several terms take their meanings from specified provisions of other Acts; those meanings are not supplied here.",
+            "details": [
+              "For a 2-year institution, a completion rate is the percentage of an initial cohort that graduates or transfers to a 4-year institution. For a 4-year institution in a State, it is the percentage of an initial cohort that graduates.",
+              "An eligible entity is a public institution of higher education, a partnership between a nonprofit educational organization and an institution of higher education, or a consortium of institutions of higher education. An eligible Indian entity is the entity responsible for governance, operation, or control of a Tribal College or University.",
+              "Evidence tier 1 means prior research suggests a reform or practice has promise to improve achievement or attainment for high-need students. Tier 2 includes tier 1 or similar practices that measure impact and cost effectiveness and have been found successfully implemented through rigorous evaluation.",
+              "Tier 3 includes tier 2 or similar practices found to produce sizable, important impacts on student success, and concerns determining whether impacts can be reproduced and sustained and identifying the conditions in which the practice is most effective.",
+              "A high-need student is a student from a low-income background; a first-generation college student; a caregiver student; a student with a disability; a student who dropped out before completing; a reentering justice-impacted student; or a military-connected student.",
+              "“Dual or concurrent enrollment program,” “early college high school,” “evidence-based,” “first generation college student,” “institution of higher education,” and “Tribal College or University” are defined by the cited provisions of other Acts. This excerpt does not establish those definitions.",
+              "“Secretary” means the Secretary of Education."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "The Act",
+                "action": "defines completion rate for an initial cohort enrolled at a 2-year institution as the percentage who graduated from that institution or transferred to a 4-year institution of higher education, or for an initial cohort enrolled at a 4-year institution in the State as the percentage who graduated from that institution",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "The Act",
+                "action": "defines eligible entity as a public institution of higher education, a partnership between a nonprofit educational organization and an institution of higher education, or a consortium of institutions of higher education",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "The Act",
+                "action": "defines eligible Indian entity as the entity responsible for the governance, operation, or control of a Tribal College or University",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "The Act",
+                "action": "defines evidence tiers 1, 2, and 3 as described in the provision",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "The Act",
+                "action": "defines high-need student to include a student from a low-income background; a first generation college student; a caregiver student; a student with a disability; a student who dropped out before completing; a reentering justice-impacted student; or a military-connected student",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "The Act",
+                "action": "gives specified terms the meanings provided in cited provisions of other Acts",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              },
+              {
+                "actor": "The Act",
+                "action": "defines Secretary as the Secretary of Education",
+                "modality": "unspecified",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "792b6f39be5ebe2d659ae1a34622f5fadbdfaac49a3c418af91a83f420247096",
+      "response_id": "resp_0233545cbe3519a2016ad279874c6887d2929cc2c084d236f8",
+      "resolved_model": "gpt-6-luna"
+    }
+  ],
+  "result": {
+    "output": {
+      "schema_version": "2.0-source-first",
+      "document_fingerprint": "96e5550bcea4d1ac600c4a4d989c5c6ed2044346071530d505eb240a086ed6ae",
+      "pipeline_version": "source-first-5",
+      "plan_fingerprint": "22489813f1ad38d00afdc6002e82bb1a17da225fc180c64b5a08ca0979c86e45",
+      "synopsis": {
+        "text": "",
+        "explanation_ids": [],
+        "status": "unavailable"
+      },
+      "provisions": [
+        {
+          "unit_id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "invalid_structure",
+          "id": "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "16e29bef55999ec659193647e9c7583474aa9a752b639dafc7bb6316f50ae97e",
+              "text": "SECTION 1. SHORT TITLE.\n\n    This Act may be cited as the ``Postsecondary Student Success Act of \n2026''.\n\n",
+              "start": 1302,
+              "end": 1409,
+              "text_sha256": "9d7772d539d9505a1bc12ac47eb95e0e4798d995f80c32e2ca4a83f48f86cf5e",
+              "section_label": "Section 1 · SHORT TITLE.",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "b9dba40e8c68fac6b80645a3b85395836932ca5f70af8ccf7547c597870a39c5",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\n",
+              "start": 0,
+              "end": 1302,
+              "text_sha256": "fa7de346513c0009dedd6676aa89afbce3c54e9c5bbb49022b642ff9b0cca4ca",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "invalid_structure",
+          "id": "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "22016a2338c02451a2e4799aad2af3788ae036b90f5c9d928f63dc6666e234f9",
+              "text": "SEC. 2. PURPOSE.\n\n    It is the purpose of this Act to support evidence-based \nparticipation, retention, and completion activities designed to ensure \nthe postsecondary success of high-need students.\n\n",
+              "start": 1409,
+              "end": 1610,
+              "text_sha256": "ff7f39f72daf422a3477789bd668a3755a51674e5383dc667db009a97d117495",
+              "section_label": "Sec. 2 · PURPOSE.",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "b9dba40e8c68fac6b80645a3b85395836932ca5f70af8ccf7547c597870a39c5",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\n",
+              "start": 0,
+              "end": 1302,
+              "text_sha256": "fa7de346513c0009dedd6676aa89afbce3c54e9c5bbb49022b642ff9b0cca4ca",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "invalid_structure",
+          "id": "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "source_limitations": [
+            "section 101 of the Higher Education Act of 1965 (20 ",
+            "section 316(b)(3) of the Higher Education Act of 1965 (20 ",
+            "section 402A(h) of the Higher Education Act of 1965 (20 U",
+            "section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U",
+            "section 8101 of the Elementary and Secondary Education ",
+            "section 8101(21)(A) of the Elementary "
+          ],
+          "evidence": [
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "b9dba40e8c68fac6b80645a3b85395836932ca5f70af8ccf7547c597870a39c5",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\n",
+              "start": 0,
+              "end": 1302,
+              "text_sha256": "fa7de346513c0009dedd6676aa89afbce3c54e9c5bbb49022b642ff9b0cca4ca",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "invalid_structure",
+          "id": "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825",
+              "text": "SEC. 4. RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.\n\n    From the total amount appropriated to carry out this Act for a \nfiscal year, the Secretary shall reserve 2 percent for grants to \neligible Indian entities to increase participation, retention, and \ncompletion rates of high-need students.\n\n",
+              "start": 6459,
+              "end": 6762,
+              "text_sha256": "09847af562e2440c1b8b9e42a3401b162567a579a372f04e1293ff057d0d83e1",
+              "section_label": "Sec. 4 · RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "b9dba40e8c68fac6b80645a3b85395836932ca5f70af8ccf7547c597870a39c5",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\n",
+              "start": 0,
+              "end": 1302,
+              "text_sha256": "fa7de346513c0009dedd6676aa89afbce3c54e9c5bbb49022b642ff9b0cca4ca",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        },
+        {
+          "unit_id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "invalid_structure",
+          "id": "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029",
+          "source_limitations": [
+            "section \n                135(b)(3) of the Carl D"
+          ],
+          "evidence": [
+            {
+              "id": "3f0087eeba4b2b3de105bc7d772a7e24ed61bb27086743b801bdd15eaa6e30bd",
+              "text": "SEC. 5. AUTHORIZATION OF POSTSECONDARY STUDENT SUCCESS COMPETITIVE \n              GRANTS.\n\n    (a) Grant Authorization.--For each of fiscal years 2027 through \n2032, the Secretary shall award, on a competitive basis, grants to \neligible entities to provide student services to increase \nparticipation, retention, and completion rates of high-need students.\n    (b) Notification and Application.--An eligible entity or eligible \nIndian entity desiring a grant under this Act shall submit an \napplication to the Secretary at such time, in such manner, and \ncontaining the information required under subsection (c).\n    (c) Content of Application.--An application submitted under this \nsection shall include the following:\n            (1) A plan to increase, with respect to all students \n        enrolled at the eligible entity or Tribal College or \n        University, attainment and completion rates or graduation \n        rates, including--\n                    (A) a description of the evidence-based reform or \n                practice that would be used and whether the reform or \n                practice would be an evidence tier 1 reform or \n                practice, evidence tier 2 reform or practice, or \n                evidence tier 3 reform or practice; and\n                    (B) a particular focus on serving high-need \n                students through student services and collaboration \n                among 2-year programs, 4-year programs, and workforce \n                systems.\n            (2) Annual benchmarks for student outcomes with respect to \n        the evidence-based reform or practice that would be used.\n            (3) A plan to evaluate the evidence-based reform or \n        practice that would be used.\n            (4) Rates of enrolled students who received a Federal Pell \n        Grant under subpart 1 of part A of title IV of the Higher \n        Education Act of 1965 (20 U.S.C. 1070a et seq.).\n            (5) Demographics of enrolled students, including high-need \n        students.\n            (6) A description of how the eligible entity or eligible \n        Indian entity will, directly or in collaboration with other \n        institutions of higher education or nonprofit organizations, \n        use the grant funds to implement one or more of the following \n        evidence-based reforms and practices:\n                    (A) Providing comprehensive academic, career, and \n                student services, which may include mentoring, \n                advising, or case management services.\n                    (B) Providing accelerated learning opportunities, \n                which may include dual or concurrent enrollment \n                programs and early college high school programs.\n                    (C) Reforming course scheduling, or credit-awarding \n                policies.\n                    (D) Improving transfer pathways between the \n                eligible entity, or Tribal College or University, and \n                other institutions of higher education.\n            (7) A description of how the evidence-based reform or \n        practice will be sustained once the grant expires.\n    (d) Evidence-Based Student Success Programs.--From the total amount \nappropriated to carry out this Act for a fiscal year and not reserved \nunder section 4, the Secretary shall reserve not less than 20 percent \nto award grants to eligible entities with applications that propose to \ninclude evidence-based reforms and practices--\n            (1) at least 1 of which is an evidence tier 3 reform or \n        practice; and\n            (2) the rest of which are evidence tier 1 reforms or \n        practices or evidence tier 2 reforms or practices.\n    (e) Required Uses of Funds.--An eligible entity or eligible Indian \nentity that receives a grant under this Act shall use the grant funds \nto carry out the plans submitted under subsection (c) and for evidence-\nbased reforms and practices for improving participation, retention, and \ncompletion rates of students that may include the following:\n            (1) Student services to support retention, completion, and \n        success, which may include--\n                    (A) faculty and peer counseling;\n                    (B) use of real-time data on student progress;\n                    (C) improving transfer student success; and\n                    (D) incentives for students to re-enroll or stay on \n                track.\n            (2) Direct student support services, including a \n        combination of--\n                    (A) tutoring, academic supports, and enrichment \n                services; and\n                    (B) emergency financial assistance.\n            (3) Efforts to prepare students for a career, which may \n        include--\n                    (A) career coaching, career counseling and planning \n                services, and efforts to lower student to advisor \n                ratios;\n                    (B) networking and work-based learning \n                opportunities to support the development of skills and \n                professional relationships;\n                    (C) utilizing career pathways; and\n                    (D) boosting experiences necessary to obtain and \n                succeed in high-skill, high-wage, or in-demand industry \n                sectors or occupations, as described in section \n                135(b)(3) of the Carl D. Perkins Career and Technical \n                Education Act of 2006 (20 U.S.C. 2355(b)(3)).\n            (4) Efforts to recruit and retain faculty and other \n        instructional staff.\n    (f) Permissive Use of Funds.--From the total amount appropriated to \ncarry out this Act for a fiscal year and not reserved under section 4 \nor subsection (d), the Secretary may set aside--\n            (1) not more than 5 percent for administration, capacity \n        building, research, evaluation, and reporting; and\n            (2) not more than 2 percent for technical assistance to \n        eligible entities and eligible Indian entities.\n    (g) Evaluations.--\n            (1) In general.--For the purpose of improving the \n        effectiveness of the evidence-based reforms and practices \n        carried out by eligible entities and eligible Indian entities \n        pursuant to a grant under this Act, the Secretary shall make \n        grants to or enter into contracts with 1 or more organizations \n        to--\n                    (A) evaluate the effectiveness of such evidence-\n                based reforms and practices; and\n                    (B) disseminate information on the impact of such \n                evidence-based reforms and practices in increasing \n                completion and retention activities of students, as \n                well as other appropriate measures.\n            (2) Issues to be evaluated.--The evaluations required under \n        paragraph (1) shall measure the effectiveness of the evidence-\n        based reforms and practices carried out by eligible entities \n        and eligible Indian entities pursuant to a grant under this \n        subsection in--\n                    (A) whether such entity implemented the plans, and \n                carried out the activities, described in subsection \n                (c); and\n                    (B) comparing the completion and retention rates of \n                students who participated in such reforms and practices \n                with the rates of students of similar backgrounds who \n                did not participate in such reforms and practices.\n            (3) Results.--Not later than 18 months after the date of \n        enactment of this Act, the Secretary shall submit a final \n        report to the Committee on Health, Education, Labor, and \n        Pensions of the Senate and the Committee on Education and \n        Workforce of the House of Representatives.\n    (h) Grant Limit.--An eligible entity that has a branch campus may \nonly receive a grant under this Act for 1 campus of the entity at a \ntime.\n                                 <all>\n",
+              "start": 6762,
+              "end": 14836,
+              "text_sha256": "3cdbb454225972a2aae1c5cf6344201c7effca6c375233e0be504486edbd3455",
+              "section_label": "Sec. 5 · AUTHORIZATION OF POSTSECONDARY STUDENT SUCCESS COMPETITIVE",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "b9dba40e8c68fac6b80645a3b85395836932ca5f70af8ccf7547c597870a39c5",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\n",
+              "start": 0,
+              "end": 1302,
+              "text_sha256": "fa7de346513c0009dedd6676aa89afbce3c54e9c5bbb49022b642ff9b0cca4ca",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "36385d48a0d87db3d970b7a53bf7261d74c01fc68fe474cb83534f48707bc205",
+              "text": "SEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term \n                ``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\n",
+              "start": 1610,
+              "end": 6459,
+              "text_sha256": "121fc83c110658227096bde9bb19c444e6b62007a41fd9537ef6f89393e5148a",
+              "section_label": "Sec. 3 · DEFINITIONS.",
+              "url": "/documents/BILLS-119hr9300ih"
+            },
+            {
+              "id": "2fbda000fdfb0ba9ab27ba4d76e7e55a354f6bc7bb17f1edbd79752a69c4a825",
+              "text": "SEC. 4. RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.\n\n    From the total amount appropriated to carry out this Act for a \nfiscal year, the Secretary shall reserve 2 percent for grants to \neligible Indian entities to increase participation, retention, and \ncompletion rates of high-need students.\n\n",
+              "start": 6459,
+              "end": 6762,
+              "text_sha256": "09847af562e2440c1b8b9e42a3401b162567a579a372f04e1293ff057d0d83e1",
+              "section_label": "Sec. 4 · RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.",
+              "url": "/documents/BILLS-119hr9300ih"
+            }
+          ]
+        }
+      ],
+      "coverage": {
+        "unit_ids": [
+          "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+        ],
+        "inventory_complete": false,
+        "omitted_source_ranges": [],
+        "normalization_version": "raw-decoded-v1",
+        "unresolved_unit_ids": [
+          "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+          "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+          "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+        ],
+        "context_limited_unit_ids": [
+          "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+          "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+        ]
+      },
+      "quality": {
+        "mechanical_status": "partial",
+        "semantic_review_status": "unreviewed"
+      }
+    },
+    "completeness": "partial",
+    "call_count": 2,
+    "findings": []
+  }
+}

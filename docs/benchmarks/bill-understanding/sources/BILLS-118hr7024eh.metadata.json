@@ -1,0 +1,25 @@
+{
+  "package_id": "BILLS-118hr7024eh",
+  "title": "Tax Relief for American Families and Workers Act of 2024",
+  "version": "House-engrossed (EH), passed House January 31, 2024; not an enacted-law fixture",
+  "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118hr7024eh/html/BILLS-118hr7024eh.htm",
+  "retrieved_date": "2026-10-07",
+  "source_html_sha256": "f90908403d04a29c79125ed6c556928d0eaaad27f9e0ce422861e20851ba3865",
+  "source_text_sha256": "ec73e94b813de4ecdaffb6ca28ee8f59a15eb7667ce74a41e59498ef6aa72cac",
+  "source_text_derivation": "Strip html/body/pre wrapper and decode &lt; &gt; &amp;; retain original line breaks. No application output used.",
+  "source_path": "sources/BILLS-118hr7024eh.htm",
+  "text_path": "sources/BILLS-118hr7024eh.txt",
+  "answer_path": "answers/BILLS-118hr7024eh.md",
+  "review_status": "full_source_read; section_and_explicit_financial_inventory_complete; incorporated_law_unresolved",
+  "claimed_exhaustive_complete_law": false,
+  "fact_count": 30,
+  "financial_group_count": 23,
+  "section_evidence_count": 30,
+  "exact_blockquote_count": 32,
+  "quote_validation": {
+    "algorithm": "whitespace-normalized exact substring of decoded pinned source",
+    "passed": 32,
+    "failed": 0
+  },
+  "unresolved": "See answer-key unresolved boundaries. Preexisting cross-referenced law and actual balances are not fabricated."
+}

@@ -40,44 +40,15 @@ const sample: SampleTelemetry = {
 export default function IngestionTelemetryPreview({ isStaff = false }: {
     isStaff?: boolean;
 }) {
-    const [enabled, setEnabled] = React.useState<boolean | null>(null);
+    // Samples require explicit opt-in on each visit, including browsers with the legacy flag enabled.
+    const [enabled, setEnabled] = React.useState(false);
     const [sampleMode, setSampleMode] = React.useState(true);
-    const [notice, setNotice] = React.useState("");
-    React.useEffect(() => {
-        const sync = () => {
-            try {
-                const value = localStorage.getItem(TELEMETRY_FLAG_KEY);
-                setEnabled(value !== "false");
-                if (value === null)
-                    localStorage.setItem(TELEMETRY_FLAG_KEY, "true");
-            }
-            catch {
-                setEnabled(true);
-                setNotice("Browser storage is unavailable; the preview preference will reset on reload.");
-            }
-        };
-        sync();
-        const storage = (event: StorageEvent) => { if (event.key === TELEMETRY_FLAG_KEY || event.key === null)
-            sync(); };
-        window.addEventListener("storage", storage);
-        return () => window.removeEventListener("storage", storage);
-    }, []);
-    if (enabled === null)
-        return null;
     const value = (count: number) => sampleMode ? `${count} sample` : "Unavailable";
     return <div className={styles.telemetryArea}>
     <label><input type="checkbox" checked={enabled} onChange={event => {
             const next = event.target.checked;
             setEnabled(next);
-            try {
-                localStorage.setItem(TELEMETRY_FLAG_KEY, String(next));
-                setNotice("");
-            }
-            catch {
-                setNotice("Browser storage is unavailable; the preview preference will reset on reload.");
-            }
         }}/> Show ingestion telemetry preview</label>
-    {notice && <p role="status">{notice}</p>}
     {enabled && (!sampleMode && isStaff ? <><label><input type="checkbox" checked={sampleMode} onChange={event => setSampleMode(event.target.checked)}/> Show sample data</label><IngestionTelemetryLive /></> : <section aria-labelledby="telemetry-title" className={styles.telemetry}>
       <div className={styles.telemetryBanner}><strong>{sampleMode ? "Preview — sample data" : "Preview — backend not connected"}</strong><span>Operator view · visual evaluation only</span></div>
       <div className={styles.heading}><div><h2 id="telemetry-title">Legislation ingestion</h2><p>From Congress.gov API to readable bill history.</p></div><label><input type="checkbox" checked={sampleMode} onChange={event => setSampleMode(event.target.checked)}/> Show sample data</label></div>

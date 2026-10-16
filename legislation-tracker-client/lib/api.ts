@@ -1366,6 +1366,27 @@ export interface EnhancementResult {
   uncertain_language: EnhancementUncertainLanguage[];
 }
 
+export type AnalysisCondition = { operator: "leaf"; text: string; evidence_ids: string[] }
+  | { operator: "all" | "any"; children: AnalysisCondition[] };
+export interface SourceFirstResult {
+  schema_version: "2.0-source-first";
+  document_fingerprint: string;
+  pipeline_version: string;
+  synopsis: { text: string; explanation_ids: string[]; status: "complete" | "partial" | "unavailable" };
+  coverage: { unit_ids: string[]; unresolved_unit_ids: string[]; context_limited_unit_ids?: string[]; omitted_source_ranges: unknown[]; inventory_complete: false };
+  quality: { mechanical_status: string; semantic_review_status: string };
+  provisions: Array<{
+    id: string; unit_id: string; status: "explained" | "unresolved";
+    summary: string; details: string[]; unresolved_reason: string | null;
+    source_limitations?: string[];
+    claims: Array<{ actor: string | null; action: string; modality: string;
+      money: Array<{ amount: string | null; currency: string | null; measure: string | null;
+        comparator: string | null; purpose: string | null; period: string | null; base: string | null }>;
+      conditions: AnalysisCondition | null; exceptions: AnalysisCondition[]; evidence_ids: string[] }>;
+    evidence: Array<{ id: string; text: string; section_label: string; url: string; start: number; end: number; text_sha256: string }>;
+  }>;
+}
+
 export interface EnhancementAttempt {
   id: number;
   sequence: number;
@@ -1410,7 +1431,9 @@ export interface BillEnhancement {
   updated_at: string;
   completed_at: string | null;
   latest_attempt: EnhancementAttempt | null;
-  result?: EnhancementResult | null;
+  result?: EnhancementResult | SourceFirstResult | null;
+  published_attempt_id?: number | null;
+  result_completeness?: "complete" | "partial" | "none";
   attempts?: EnhancementAttempt[];
   poll_after_seconds?: number | null;
   stale?: boolean;
@@ -1432,6 +1455,7 @@ export interface BillEnhancementEstimate {
   serialized_request_bytes?: number;
   estimated_input_tokens?: number;
   max_output_tokens?: number;
+  aggregate_budget?: { maximum_calls: number; maximum_input: number; maximum_output: number } | null;
   max_output_includes_reasoning?: boolean;
   truncated?: boolean;
   coverage_notice?: string | null;

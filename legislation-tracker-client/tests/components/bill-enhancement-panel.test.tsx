@@ -190,6 +190,7 @@ describe("BillEnhancementPanel", () => {
     expect(dialog).toHaveTextContent("600 estimated input tokens");
     expect(dialog).toHaveTextContent("4,000 maximum output tokens");
     expect(dialog).toHaveTextContent(/provider may charge your account/i);
+    expect(dialog).toHaveTextContent(/one additional citation-repair request/i);
     await user.click(screen.getByRole("button", { name: "Confirm and enhance" }));
 
     await waitFor(() =>

@@ -13,6 +13,72 @@ CORPUS_PATH = (
 )
 
 
+@pytest.mark.parametrize("authorize_repair", [False, True])
+def test_evaluation_repair_requires_opt_in_and_reports_combined_usage(
+    monkeypatch, tmp_path, capsys, authorize_repair
+):
+    from .test_citation_resolution import result
+
+    corpus = json.loads(CORPUS_PATH.read_text())
+    corpus["cases"][0]["sources"] = [
+        dict(
+            section_label="Test",
+            quoted_text="Schools: Funds shall be provided. Roads: Funds shall be provided.",
+        )
+    ]
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(corpus))
+    calls = []
+
+    class Provider:
+        def enhance_bill(self, **kwargs):
+            return result()
+
+        def repair_citations(self, **kwargs):
+            calls.append(kwargs)
+            return ProviderResult(
+                {
+                    "repairs": [
+                        dict(
+                            id="overview/0/0",
+                            candidate_id="candidate_0001",
+                        )
+                    ]
+                },
+                ProviderUsage(4, 3, 7),
+                "repair",
+                "test",
+            )
+
+    monkeypatch.setattr(
+        "apps.legislation.management.commands.evaluate_bill_enhancements.CORPUS_PATH",
+        path,
+    )
+    monkeypatch.setattr(
+        "apps.legislation.management.commands.evaluate_bill_enhancements.get_provider",
+        lambda _: Provider(),
+    )
+    output = tmp_path / "result.json"
+    with override_settings(LLM_ENHANCEMENT_EVALUATION_API_KEY="test"):
+        call_command(
+            "evaluate_bill_enhancements",
+            execute=True,
+            case_limit=1,
+            max_input_tokens=12000,
+            max_output_tokens=200,
+            repair_citations=authorize_repair,
+            output=str(output),
+        )
+    row = json.loads(output.read_text())["results"][0]
+    assert len(calls) == int(authorize_repair)
+    assert row["status"] == ("succeeded" if authorize_repair else "failed")
+    assert row["usage"]["total_tokens"] == (22 if authorize_repair else 15)
+    assert (
+        f"maximum_provider_calls={2 if authorize_repair else 1}"
+        in capsys.readouterr().out
+    )
+
+
 def test_evaluation_corpus_has_25_versioned_representative_federal_cases():
     corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
 
@@ -230,14 +296,14 @@ def test_reader_case_evaluation_records_quality_not_just_schema(monkeypatch, tmp
     output = tmp_path / "report.json"
     with override_settings(
         LLM_ENHANCEMENT_EVALUATION_API_KEY="test",
-        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=20000,
+        LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=30000,
     ):
         with pytest.raises(CommandError, match="quality"):
             call_command(
                 "evaluate_bill_enhancements",
                 execute=True,
                 case_limit=1,
-                max_input_tokens=20000,
+                max_input_tokens=30000,
                 max_output_tokens=200,
                 reader_case="hr9300-119-ih",
                 fail_on_quality=True,

@@ -127,7 +127,7 @@ export function SourceEvidence(props: SourceEvidenceProps) {
           {chunks.length > 0 && (
             <blockquote
               data-testid="source-evidence-text"
-              className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-slate-800 [overflow-wrap:anywhere] dark:text-green-200"
+              className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-800 [overflow-wrap:anywhere] dark:text-green-200"
             >
               {chunks.map((chunk) => chunk.quoted_text).join("")}
             </blockquote>

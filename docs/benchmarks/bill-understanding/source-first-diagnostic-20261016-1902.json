@@ -1,0 +1,41 @@
+{
+  "plan_fingerprint": "33ddec91b1108471c95a3d3e13cd932a9adca9f3bf0ba9625e0d438cb4c51b14",
+  "model": "gpt-6-luna",
+  "limits": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "output_tokens": 8000,
+    "per_call_input": 100000
+  },
+  "document_fingerprint": "96e5550bcea4d1ac600c4a4d989c5c6ed2044346071530d505eb240a086ed6ae",
+  "mode": "fresh_generation",
+  "status": "failed",
+  "maximum_calls": 3,
+  "maximum_input": 224193,
+  "maximum_output": 24000,
+  "network_calls": 1,
+  "calls": [
+    {
+      "request_fingerprint": "d421f96629f2890a1d9d14d404bc71e416b0df811a0b92ea3bf0e67d9da42b92",
+      "stage": "generation",
+      "unit_ids": [
+        "d454749cbff5987fc196eb56f0a11236b8544a8906e82c528211121cc0abb225",
+        "0b1b59d043d6772bcf7ea7c598b240f67c83c1f307b3b25585d92fc8cb9b112b",
+        "c80d7e80bb2b8474d5fb95b9d41c80db3618cbe50bd0d79fd01eb99e1d3cb577",
+        "7f48a03f89ba0130ef1191b5835fa71a06f78eea8121fdf275f3364388176cda",
+        "3723620cef9afd7dcd841bb505f1f43c2d5ac7e534c95f21869fd800ec9a9029"
+      ],
+      "status": "failed",
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "error": {
+        "category": "provider_request_rejected",
+        "validation_code": "",
+        "outcome_unknown": false
+      }
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 """Neutral top-five discovery from explicit follows and public topic activity."""
 
 from fractions import Fraction
+import hashlib
+import json
 
 from django.utils import timezone
 from rest_framework.response import Response
@@ -18,6 +20,8 @@ from .recommendation_support import (
     RecommendationThrottle,
     read_snapshot,
     strict_parameters,
+    cache_call,
+    bounded_json,
 )
 
 
@@ -213,6 +217,11 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             for item in topics
             if item["topic__slug"] != FALLBACK_TOPIC
         }
+        fingerprint = hashlib.sha256(json.dumps([topics, reps], sort_keys=True).encode()).hexdigest()
+        key = f"representative-recommendations:v1:user:{request.user.pk}"
+        cached = cache_call("get", key)
+        if cached and cached["fingerprint"] == fingerprint:
+            return Response(cached["data"])
         unsupported = (
             ["general_legislation"]
             if any(item["topic__slug"] == FALLBACK_TOPIC for item in topics)
@@ -225,7 +234,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         else:
             catalog = representative_activity_catalog()
             results, empty = ranking(catalog, followed_topics, reps)
-        return Response(
+        response = Response(
             {
                 "algorithm": "explicit-representative-topics-mmr-v1",
                 "policy_version": catalog["policy_version"] if catalog else None,
@@ -243,3 +252,5 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
                 "results": results,
             }
         )
+        cache_call("set", key, bounded_json({"fingerprint": fingerprint, "data": response.data}, 3 * 1024 * 1024), timeout=300)
+        return response

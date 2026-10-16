@@ -60,6 +60,8 @@ def credential_is_current(credential: LLMCredential | None) -> bool:
 def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
     if attempt is None:
         return False
+    if attempt.status == BillEnhancementAttempt.Status.SUCCEEDED and attempt.enhancement.output_schema_version == "2.0-source-first":
+        return attempt.enhancement.result_completeness == "partial"
     if attempt.status == BillEnhancementAttempt.Status.OUTCOME_UNKNOWN:
         return True
     if attempt.status != BillEnhancementAttempt.Status.FAILED:
@@ -73,6 +75,16 @@ def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
             and credential.validated_at > attempt.completed_at
         )
     return attempt.failure_category in USER_RETRYABLE_FAILURES
+
+
+def reusable_publication(enhancement, credential):
+    published = enhancement.published_attempt
+    if (enhancement.output_schema_version == "2.0-source-first"
+        and enhancement.result_completeness == "partial" and published
+        and published.credential_id == credential.pk
+        and published.credential_revision == credential.revision):
+        return enhancement.result_json
+    return None
 
 
 def _validate_confirmation(preflight, credential, confirmed) -> None:
@@ -125,10 +137,12 @@ def _new_enhancement(*, user, bill, preflight) -> BillEnhancement:
     )
 
 
-def _create_attempt(*, enhancement, credential, estimated_input_tokens, sequence):
+def _create_attempt(*, enhancement, credential, estimated_input_tokens, sequence, approved_request_fingerprint="", reused_result=None):
     attempt = BillEnhancementAttempt.objects.create(
         enhancement=enhancement,
         sequence=sequence,
+        approved_request_fingerprint=approved_request_fingerprint,
+        reused_result_json=reused_result,
         credential=credential,
         credential_revision=credential.revision,
         status=BillEnhancementAttempt.Status.PENDING,
@@ -219,9 +233,13 @@ def retry_enhancement_attempt(
         if enhancement is None:
             raise EnhancementServiceError("not_found", http_status=404)
         credential = _locked_credential(user)
+        base_fingerprint = preflight.request_fingerprint
+        reused_result = reusable_publication(enhancement, credential)
+        if reused_result:
+            preflight = build_enhancement_preflight(locked_bill, reuse_result=reused_result)
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
-        if enhancement.request_fingerprint != preflight.request_fingerprint:
+        if enhancement.request_fingerprint != base_fingerprint:
             raise EnhancementServiceError("preflight_changed")
 
         latest = enhancement.attempts.order_by("-sequence").first()
@@ -235,6 +253,8 @@ def retry_enhancement_attempt(
             credential=credential,
             estimated_input_tokens=preflight.estimated_input_tokens,
             sequence=latest.sequence + 1,
+            approved_request_fingerprint=preflight.request_fingerprint,
+            reused_result=reused_result,
         )
         enhancement.status = BillEnhancement.Status.PENDING
         enhancement.completed_at = None
