@@ -145,27 +145,27 @@ function RepresentativesTable() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <div className="tracker-page min-h-[calc(100vh-4rem)] font-sans">
       <div className="w-full">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-green-400">
+          <h1 className="tracker-heading text-ink">
             Representatives
           </h1>
           <Link
             href="/"
-            className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+            className="cursor-pointer text-ink underline hover:text-ink"
           >
             ← Dashboard
           </Link>
           <Link
             href="/representatives/compare"
-            className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+            className="cursor-pointer text-ink underline hover:text-ink"
           >
             Compare two representatives
           </Link>
         </div>
 
-        <div className="mb-4 rounded-lg border border-slate-400/70 bg-white/70 p-4 shadow-sm dark:border-green-900/60 dark:bg-green-950/10 dark:shadow-none">
+        <div className="mb-4 tracker-panel">
           <div className="responsive-field-grid">
             <SelectField
               label="State"
@@ -189,10 +189,10 @@ function RepresentativesTable() {
         </div>
 
         {!hasAccount && (
-          <p className="mb-4 text-sm text-slate-600 dark:text-green-500">
+          <p className="mb-4 text-sm text-muted">
             <Link
               href="/login"
-              className="text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+              className="text-ink underline hover:text-ink"
             >
               Log in
             </Link>{" "}
@@ -212,24 +212,24 @@ function RepresentativesTable() {
           </div>
         )}
 
-        {loading && <p className="text-slate-600 dark:text-green-500">Loading…</p>}
+        {loading && <p className="text-muted">Loading…</p>}
 
         {!loading && page && (
           <>
-            <p className="mb-4 text-slate-600 dark:text-green-500/80">
+            <p className="mb-4 text-muted">
               {page.count} representative{page.count !== 1 ? "s" : ""} (ingested from bills/votes)
             </p>
-            <div className="overflow-hidden rounded-lg border border-slate-400 dark:border-green-800">
+            <div className="tracker-table" role="region" aria-label="Representative results" tabIndex={0}>
               <table className="w-full table-fixed text-left">
                 <thead>
-                  <tr className="border-b border-slate-400 bg-slate-300/80 dark:border-green-800 dark:bg-green-950/20">
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Name</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">State</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Chamber</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Party</th>
-                    <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">District</th>
+                  <tr className="border-b border-line bg-wash">
+                    <th className="truncate p-3 font-semibold text-ink">Name</th>
+                    <th className="truncate p-3 font-semibold text-ink">State</th>
+                    <th className="truncate p-3 font-semibold text-ink">Chamber</th>
+                    <th className="truncate p-3 font-semibold text-ink">Party</th>
+                    <th className="truncate p-3 font-semibold text-ink">District</th>
                     {hasAccount && (
-                      <th className="truncate p-3 font-semibold text-slate-900 dark:text-green-400">Tracking</th>
+                      <th className="truncate p-3 font-semibold text-ink">Tracking</th>
                     )}
                   </tr>
                 </thead>
@@ -237,7 +237,7 @@ function RepresentativesTable() {
                   {page.results.map((rep) => (
                     <tr
                       key={rep.id}
-                      className="border-b border-slate-300 hover:bg-white/60 dark:border-green-900/50 dark:hover:bg-green-950/10"
+                      className="border-b border-line hover:bg-wash"
                     >
                       <td className="truncate p-3 font-medium">
                         {currentCongress === null ? <Link href={`/representatives/${rep.id}`}>{rep.name}</Link> : <LegislatorName id={rep.id} name={rep.name} congress={currentCongress} />}
@@ -252,7 +252,7 @@ function RepresentativesTable() {
                             type="button"
                             onClick={() => toggleLegislatorTracking(rep.id)}
                             disabled={trackingLegislatorId === rep.id}
-                            className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                            className="cursor-pointer border border-control px-3 py-1.5 text-sm font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {trackingLegislatorId === rep.id
                               ? "Saving..."
@@ -272,7 +272,7 @@ function RepresentativesTable() {
                 <button
                   type="button"
                   onClick={() => setPageNum((p) => p - 1)}
-                  className="cursor-pointer rounded border border-slate-400 px-3 py-1 text-slate-900 hover:bg-white/80 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
+                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
                 >
                   Previous
                 </button>
@@ -281,7 +281,7 @@ function RepresentativesTable() {
                 <button
                   type="button"
                   onClick={() => setPageNum((p) => p + 1)}
-                  className="cursor-pointer rounded border border-slate-400 px-3 py-1 text-slate-900 hover:bg-white/80 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
+                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
                 >
                   Next
                 </button>

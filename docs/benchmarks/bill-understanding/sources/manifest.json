@@ -1,0 +1,92 @@
+[
+  {
+    "package_id": "BILLS-117hr8404enr",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-117hr8404enr/html/BILLS-117hr8404enr.htm",
+    "raw_file": "sources/BILLS-117hr8404enr.htm",
+    "sha256": "5d678aeec1217d57adeca28755de5dceb5cba8c77a6fc9e983e781eb1b5622c9",
+    "decoded_text_file": "sources/BILLS-117hr8404enr.txt",
+    "decoded_text_characters": 6843
+  },
+  {
+    "package_id": "BILLS-118hr3746enr",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118hr3746enr/html/BILLS-118hr3746enr.htm",
+    "raw_file": "sources/BILLS-118hr3746enr.htm",
+    "sha256": "089729556e357c923e95b2e7a34cbd0446173e1aed0356e8f9ef0b9499c9a4d7",
+    "decoded_text_file": "sources/BILLS-118hr3746enr.txt",
+    "decoded_text_characters": 119726
+  },
+  {
+    "package_id": "BILLS-118hr4366enr",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118hr4366enr/html/BILLS-118hr4366enr.htm",
+    "raw_file": "sources/BILLS-118hr4366enr.htm",
+    "sha256": "411e67b2e51e380922be05bf6c1af48d9540542220e8235f2917c739485b4c58",
+    "decoded_text_file": "sources/BILLS-118hr4366enr.txt",
+    "decoded_text_characters": 1342321
+  },
+  {
+    "package_id": "BILLS-118hr7024eh",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118hr7024eh/html/BILLS-118hr7024eh.htm",
+    "raw_file": "sources/BILLS-118hr7024eh.htm",
+    "sha256": "f90908403d04a29c79125ed6c556928d0eaaad27f9e0ce422861e20851ba3865",
+    "decoded_text_file": "sources/BILLS-118hr7024eh.txt",
+    "decoded_text_characters": 110068
+  },
+  {
+    "package_id": "BILLS-118s619enr",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118s619enr/html/BILLS-118s619enr.htm",
+    "raw_file": "sources/BILLS-118s619enr.htm",
+    "sha256": "67a29082eac193528f797eafe21408c20a6f69724ce733dc8fd197384c3f55b4",
+    "decoded_text_file": "sources/BILLS-118s619enr.txt",
+    "decoded_text_characters": 3661
+  },
+  {
+    "package_id": "BILLS-118s777enr",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118s777enr/html/BILLS-118s777enr.htm",
+    "raw_file": "sources/BILLS-118s777enr.htm",
+    "sha256": "69edd98e0e5a9d15a97e1bfc55f2b7dc4a6ad72fe460e5242d37c8a5e30d1be4",
+    "decoded_text_file": "sources/BILLS-118s777enr.txt",
+    "decoded_text_characters": 3630
+  },
+  {
+    "package_id": "BILLS-119hr1589ih",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr1589ih/html/BILLS-119hr1589ih.htm",
+    "raw_file": "sources/BILLS-119hr1589ih.htm",
+    "sha256": "e1dd71260514f04f00703d2b4e71d5ed915a7d5249809c4f154e6a1ac0b928a4",
+    "decoded_text_file": "sources/BILLS-119hr1589ih.txt",
+    "decoded_text_characters": 75221
+  },
+  {
+    "package_id": "BILLS-119hr9300ih",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-119hr9300ih/html/BILLS-119hr9300ih.htm",
+    "raw_file": "sources/BILLS-119hr9300ih.htm",
+    "sha256": "4516438e21dad475baa59cfc8af0d8a1b5057974ecf82a99a2d6e96c2cdb0aa3",
+    "decoded_text_file": "sources/BILLS-119hr9300ih.txt",
+    "decoded_text_characters": 14836
+  },
+  {
+    "package_id": "BILLS-119s5enr",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/BILLS-119s5enr/html/BILLS-119s5enr.htm",
+    "raw_file": "sources/BILLS-119s5enr.htm",
+    "sha256": "de9463e4930703b755492bbe0e8d9cd24365f33d906c1120bfab5afba9bf23eb",
+    "decoded_text_file": "sources/BILLS-119s5enr.txt",
+    "decoded_text_characters": 9055
+  },
+  {
+    "package_id": "PLAW-119publ21",
+    "retrieved_on": "2026-10-07",
+    "source_url": "https://www.govinfo.gov/content/pkg/PLAW-119publ21/html/PLAW-119publ21.htm",
+    "raw_file": "sources/PLAW-119publ21.htm",
+    "sha256": "84000b07c382db50ead04ce65b70983e2dcd699a931d80cd3d2edac584e9004d",
+    "decoded_text_file": "sources/PLAW-119publ21.txt",
+    "decoded_text_characters": 1208841
+  }
+]

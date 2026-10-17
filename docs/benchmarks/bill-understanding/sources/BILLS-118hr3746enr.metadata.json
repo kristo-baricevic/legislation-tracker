@@ -1,0 +1,25 @@
+{
+  "package_id": "BILLS-118hr3746enr",
+  "title": "Fiscal Responsibility Act of 2023",
+  "version": "Enrolled bill (ENR); this key addresses the pinned enrolled text, not later amended law",
+  "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118hr3746enr/html/BILLS-118hr3746enr.htm",
+  "retrieved_date": "2026-10-07",
+  "source_html_sha256": "089729556e357c923e95b2e7a34cbd0446173e1aed0356e8f9ef0b9499c9a4d7",
+  "source_text_sha256": "876cf1f7d31b3b50a0d2ec7c0a3c6915f794f03bf90fb04aa6b51fe668da04c6",
+  "source_text_derivation": "Strip html/body/pre wrapper and decode &lt; &gt; &amp;; retain original line breaks. No application output used.",
+  "source_path": "sources/BILLS-118hr3746enr.htm",
+  "text_path": "sources/BILLS-118hr3746enr.txt",
+  "answer_path": "answers/BILLS-118hr3746enr.md",
+  "review_status": "full_source_read; section_and_explicit_financial_inventory_complete; incorporated_law_unresolved",
+  "claimed_exhaustive_complete_law": false,
+  "fact_count": 37,
+  "financial_group_count": 23,
+  "section_evidence_count": 117,
+  "exact_blockquote_count": 232,
+  "quote_validation": {
+    "algorithm": "whitespace-normalized exact substring of decoded pinned source",
+    "passed": 232,
+    "failed": 0
+  },
+  "unresolved": "See answer-key unresolved boundaries. Preexisting cross-referenced law and actual balances are not fabricated."
+}

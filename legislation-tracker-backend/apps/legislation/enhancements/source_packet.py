@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import OrderedDict, deque
 from typing import Any
 
 from django.conf import settings
 
 from apps.legislation.models import BillDocument
 
+from .citations import compact_source_text
 from .prompts import DEVELOPER_INSTRUCTIONS, PROMPT_VERSION, SOURCE_PACKET_VERSION
 from .schema import OUTPUT_SCHEMA_VERSION, PROVIDER_OUTPUT_SCHEMA
 from .types import EnhancementPreflight
@@ -42,110 +42,6 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _field_category(field_path: str) -> str:
-    return field_path.split("[", 1)[0].split(".", 1)[0]
-
-
-def _contract_value(contract_json: dict[str, Any], field_path: str) -> Any:
-    current: Any = contract_json
-    for raw_segment in field_path.split("."):
-        if "[" in raw_segment and raw_segment.endswith("]"):
-            key, raw_index = raw_segment[:-1].split("[", 1)
-            if not isinstance(current, dict) or key not in current:
-                return None
-            current = current[key]
-            if not isinstance(current, list):
-                return None
-            try:
-                current = current[int(raw_index)]
-            except (IndexError, ValueError):
-                return None
-        else:
-            if not isinstance(current, dict) or raw_segment not in current:
-                return None
-            current = current[raw_segment]
-    return current
-
-
-def _evidence_candidates(
-    bill, *, active_document: BillDocument | None
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    contract = bill.latest_contract
-    if contract is None or (
-        active_document is not None and contract.document_id != active_document.id
-    ):
-        return [], {}
-    spans = list(
-        contract.evidence_spans.select_related("document").order_by(
-            "start_char",
-            "end_char",
-            "id",
-        )
-    )
-    unique: list[Any] = []
-    seen: set[tuple[int, int, str]] = set()
-    for span in spans:
-        quote = span.quoted_text or ""
-        identity = (span.start_char, span.end_char, quote)
-        document_text = ""
-        if span.document_id:
-            document_text = span.document.extracted_text or span.document.raw_text or ""
-        exact_source_match = (
-            span.end_char > span.start_char
-            and span.end_char <= len(document_text)
-            and document_text[span.start_char : span.end_char] == quote
-        )
-        if (
-            not quote.strip()
-            or len(quote) > MAX_SOURCE_TEXT_LENGTH
-            or identity in seen
-            or not exact_source_match
-        ):
-            continue
-        seen.add(identity)
-        unique.append(span)
-
-    groups: OrderedDict[str, deque[Any]] = OrderedDict()
-    for span in unique:
-        groups.setdefault(_field_category(span.field_path), deque()).append(span)
-
-    balanced: list[Any] = []
-    while groups:
-        empty = []
-        for category, spans_for_category in groups.items():
-            balanced.append(spans_for_category.popleft())
-            if not spans_for_category:
-                empty.append(category)
-        for category in empty:
-            groups.pop(category)
-
-    candidates = []
-    contract_json = (
-        contract.contract_json if isinstance(contract.contract_json, dict) else {}
-    )
-    for span in balanced:
-        candidates.append(
-            {
-                "kind": "contract_evidence",
-                "field_path": span.field_path,
-                "section_label": (
-                    span.document.version_label if span.document_id else None
-                ),
-                "quoted_text": span.quoted_text,
-                "start_char": span.start_char,
-                "end_char": span.end_char,
-                "text_sha256": _text_hash(span.quoted_text),
-                "contract_value": _contract_value(contract_json, span.field_path),
-            }
-        )
-    return candidates, {
-        "contract_id": contract.id,
-        "contract_hash": contract.contract_hash,
-        "contract_schema_version": contract.schema_version,
-        "document_id": contract.document_id,
-    }
-
-
 def _marked_active_document(bill) -> BillDocument | None:
     return (
         bill.documents.filter(is_active_version=True)
@@ -167,49 +63,6 @@ def _stored_document(bill) -> BillDocument | None:
     )
 
 
-def _document_candidates(
-    bill, *, active_document: BillDocument | None
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    document = active_document or _stored_document(bill)
-    if document is None:
-        return [], {}
-    text = document.extracted_text or document.raw_text or ""
-    if not text.strip():
-        return [], {}
-    candidates = []
-    start = 0
-    while start < len(text):
-        hard_end = min(start + MAX_SOURCE_TEXT_LENGTH, len(text))
-        end = hard_end
-        if hard_end < len(text):
-            boundary = max(
-                text.rfind("\n", start, hard_end), text.rfind(". ", start, hard_end)
-            )
-            if boundary > start + (MAX_SOURCE_TEXT_LENGTH // 2):
-                end = boundary + 1
-        chunk = text[start:end].strip()
-        if chunk:
-            actual_start = text.find(chunk, start, end)
-            candidates.append(
-                {
-                    "kind": "document_chunk",
-                    "field_path": None,
-                    "section_label": document.version_label,
-                    "quoted_text": chunk,
-                    "start_char": actual_start,
-                    "end_char": actual_start + len(chunk),
-                    "text_sha256": _text_hash(chunk),
-                    "contract_value": None,
-                }
-            )
-        start = max(end, start + 1)
-    return candidates, {
-        "document_id": document.id,
-        "document_content_hash": document.content_hash,
-        "document_version_label": document.version_label,
-    }
-
-
 def _numbered_sources(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {"source_ref": f"src_{index:04d}", **candidate}
@@ -222,7 +75,7 @@ def _snapshot(source: dict[str, Any]) -> dict[str, Any]:
 
 
 def _request_envelope(
-    bill, sources: list[dict[str, Any]], *, truncated: bool
+    bill, sources: list[dict[str, Any]], *, truncated: bool, coverage=None
 ) -> dict[str, Any]:
     return {
         "provider": settings.LLM_ENHANCEMENT_PROVIDER,
@@ -232,6 +85,7 @@ def _request_envelope(
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
         "source_packet_version": SOURCE_PACKET_VERSION,
         "max_output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+        "citation_resolution": {"version": 2, "max_repair_calls": 1},
         "instructions": DEVELOPER_INSTRUCTIONS,
         "bill": {
             "id": bill.id,
@@ -246,7 +100,13 @@ def _request_envelope(
         },
         "source_packet": {
             "truncated": truncated,
-            "sources": sources,
+            # Snapshots remain verbatim; only provider input is compacted.
+            "quote_layout": "whitespace_compacted_offsets_refer_to_original",
+            "sources": [
+                {**source, "quoted_text": compact_source_text(source["quoted_text"])}
+                for source in sources
+            ],
+            **({"coverage": coverage} if coverage is not None else {}),
         },
         "output_schema": PROVIDER_OUTPUT_SCHEMA,
     }
@@ -260,7 +120,67 @@ def _within_limits(request_bytes: bytes) -> bool:
     )
 
 
-def build_enhancement_preflight(bill) -> EnhancementPreflight:
+def select_document_sources(bill, text: str, version_label: str):
+    """Select complete sections, never a prefix of an operative condition group."""
+    from .source_sections import document_groups, section_coverage
+
+    if not text.strip():
+        raise PreflightUnavailable("No stored source text is available for this bill")
+    if not _within_limits(
+        canonical_json_bytes(_request_envelope(bill, [], truncated=True))
+    ):
+        raise PreflightUnavailable(
+            "The fixed request overhead exceeds configured limits",
+            reason="request_too_large",
+        )
+    groups = document_groups(text, version_label)
+
+    def envelope_for(indices):
+        selected = set(indices)
+        sources = _numbered_sources(
+            [
+                source
+                for index, group in enumerate(groups)
+                if index in selected
+                for source in group["sources"]
+            ]
+        )
+        coverage = section_coverage(groups, selected, sources)
+        envelope = _request_envelope(
+            bill, sources, truncated=len(selected) != len(groups), coverage=coverage
+        )
+        return sources, envelope, canonical_json_bytes(envelope)
+
+    full = envelope_for(range(len(groups)))
+    if _within_limits(full[2]):
+        return full
+    selected = []
+    current = envelope_for(selected)
+    for index, group in enumerate(groups):
+        # Raw bytes are a lower bound; avoid serializing obviously oversized groups.
+        raw_size = sum(
+            len(compact_source_text(s["quoted_text"]).encode("utf-8"))
+            for s in group["sources"]
+        )
+        limit = min(
+            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+        )
+        if len(current[2]) + raw_size > limit:
+            continue
+        candidate = envelope_for([*selected, index])
+        if _within_limits(candidate[2]):
+            selected.append(index)
+            current = candidate
+    if not selected:
+        raise PreflightUnavailable(
+            "No complete source section can fit the configured request limits",
+            reason="request_too_large",
+        )
+    return current
+
+
+def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPreflight:
     if str(bill.jurisdiction or "").strip().lower() != "federal":
         raise PreflightUnavailable(
             "LLM enhancements are currently available only for federal bills",
@@ -268,65 +188,23 @@ def build_enhancement_preflight(bill) -> EnhancementPreflight:
         )
 
     active_document = _marked_active_document(bill)
-    document_candidates, document_identity = _document_candidates(
-        bill, active_document=active_document,
-    )
-    candidates, source_identity = _evidence_candidates(
-        bill,
-        active_document=active_document,
-    )
-    source_kind = "contract_evidence"
-    # Keep definitions and surrounding clauses together when the complete text
-    # fits. For oversized bills retain the balanced evidence selection.
-    if document_candidates and _within_limits(canonical_json_bytes(
-        _request_envelope(bill, _numbered_sources(document_candidates), truncated=False)
-    )):
-        candidates, source_identity = document_candidates, document_identity
-        source_kind = "document_chunk"
-    if not candidates:
-        candidates, source_identity = document_candidates, document_identity
-        source_kind = "document_chunk"
-    if not candidates:
+    document = active_document or _stored_document(bill)
+    if document is None:
         raise PreflightUnavailable("No stored source text is available for this bill")
-
-    fixed_envelope = _request_envelope(bill, [], truncated=True)
-    if not _within_limits(canonical_json_bytes(fixed_envelope)):
-        raise PreflightUnavailable(
-            "The fixed request overhead exceeds configured limits",
-            reason="request_too_large",
-        )
-
-    numbered = None
-    request_envelope = None
-    request_bytes = None
-    selected_count = 0
-    low = 1
-    high = len(candidates)
-    while low <= high:
-        candidate_count = (low + high) // 2
-        candidate_sources = _numbered_sources(candidates[:candidate_count])
-        candidate_truncated = candidate_count < len(candidates)
-        candidate_envelope = _request_envelope(
-            bill,
-            candidate_sources,
-            truncated=candidate_truncated,
-        )
-        candidate_bytes = canonical_json_bytes(candidate_envelope)
-        if _within_limits(candidate_bytes):
-            numbered = candidate_sources
-            request_envelope = candidate_envelope
-            request_bytes = candidate_bytes
-            selected_count = candidate_count
-            low = candidate_count + 1
-        else:
-            high = candidate_count - 1
-
-    if numbered is None or request_envelope is None or request_bytes is None:
-        raise PreflightUnavailable(
-            "No source packet can fit the configured request limits",
-            reason="request_too_large",
-        )
-    truncated = selected_count < len(candidates)
+    text = document.extracted_text or document.raw_text or ""
+    if getattr(settings, "LLM_SOURCE_FIRST_ENABLED", False):
+        from .source_first_preflight import build_source_first_preflight
+        return build_source_first_preflight(document, text, reuse_result=reuse_result)
+    numbered, request_envelope, request_bytes = select_document_sources(
+        bill, text, document.version_label
+    )
+    source_identity = {
+        "document_id": document.id,
+        "document_content_hash": _text_hash(text),
+        "document_version_label": document.version_label,
+    }
+    coverage = request_envelope["source_packet"]["coverage"]
+    truncated = request_envelope["source_packet"]["truncated"]
 
     source_snapshot = [_snapshot(source) for source in numbered]
     source_fingerprint = hashlib.sha256(
@@ -341,9 +219,10 @@ def build_enhancement_preflight(bill) -> EnhancementPreflight:
     request_fingerprint = hashlib.sha256(request_bytes).hexdigest()
     manifest = {
         **source_identity,
-        "source_kind": source_kind,
-        "total_candidates": len(candidates),
-        "selected_count": selected_count,
+        "source_kind": "document_chunk",
+        "total_candidates": coverage["total_chunks"],
+        "selected_count": len(numbered),
+        "coverage": coverage,
         "truncated": truncated,
     }
     return EnhancementPreflight(

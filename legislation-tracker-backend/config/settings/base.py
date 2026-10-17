@@ -122,7 +122,7 @@ LLM_CREDENTIAL_ACTIVE_KEY_ID = env(
 LLM_ENHANCEMENT_PROVIDER = (
     env("LLM_ENHANCEMENT_PROVIDER", default="openai").strip().lower()
 )
-LLM_ENHANCEMENT_MODEL = env("LLM_ENHANCEMENT_MODEL", default="gpt-5.6-luna").strip()
+LLM_ENHANCEMENT_MODEL = env("LLM_ENHANCEMENT_MODEL", default="gpt-6-luna").strip()
 LLM_ENHANCEMENT_REASONING_EFFORT = (
     env(
         "LLM_ENHANCEMENT_REASONING_EFFORT",
@@ -137,11 +137,11 @@ LLM_ENHANCEMENT_MAX_REQUEST_BYTES = env.int(
 )
 LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = env.int(
     "LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS",
-    default=60000,
+    default=100000,
 )
 LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
     "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS",
-    default=4000,
+    default=8000,
 )
 LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS = env.int(
     "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS",
@@ -351,3 +351,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom user (must be before first migration that touches auth)
 AUTH_USER_MODEL = "accounts.User"
+LLM_SOURCE_FIRST_ENABLED = env.bool("LLM_SOURCE_FIRST_ENABLED", default=False)

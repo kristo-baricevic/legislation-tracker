@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import SourceFirstAnalysis from "./source-first-analysis";
 
 import {
   ApiError,
@@ -45,6 +46,7 @@ function CitedSources({ sources }: { sources: EnhancementCitedSource[] }) {
 function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
   const result = enhancement.result;
   if (!result) return null;
+  if (result.schema_version === "2.0-source-first") return <SourceFirstAnalysis result={result} />;
   return (
     <div className="mt-5 max-w-3xl space-y-6 font-sans leading-relaxed text-slate-900 dark:text-green-200">
       {enhancement.coverage_notice && <p className="text-sm text-amber-900 dark:text-amber-300">{enhancement.coverage_notice}</p>}
@@ -412,7 +414,7 @@ export default function BillEnhancementPanel({
         </button>
       )}
       {isActive && <p role="status" className="mt-4 text-sm text-slate-700 dark:text-green-500">The confirmed request is {enhancement.status}. This panel will update automatically.</p>}
-      {enhancement?.status === "succeeded" && (
+      {enhancement?.result && (
         <>
           {enhancement.stale && <p className="mt-4 border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-300">This result is for an older bill source or execution version.</p>}
           <EnhancementResult enhancement={enhancement} />
@@ -445,12 +447,13 @@ export default function BillEnhancementPanel({
           {confirming === "retry" && enhancement?.status === "outcome_unknown" && <p className="mt-2 font-semibold text-amber-900 dark:text-amber-300">The previous request may have completed and another request may duplicate provider usage.</p>}
           <ul className="mt-3 space-y-1">
             <li>{(estimate.estimated_input_tokens ?? 0).toLocaleString()} estimated input tokens</li>
-            <li>{(estimate.max_output_tokens ?? 0).toLocaleString()} maximum output tokens, including reasoning</li>
+            <li>{(estimate.aggregate_budget?.maximum_output ?? estimate.max_output_tokens ?? 0).toLocaleString()} maximum output tokens, including reasoning</li>
+            {estimate.aggregate_budget && <li>Up to {estimate.aggregate_budget.maximum_calls} calls, including any repair and overview</li>}
             <li>{estimate.provider} · {estimate.requested_model} · reasoning {estimate.reasoning_effort}</li>
             <li>Credential revision {estimate.credential_revision}</li>
           </ul>
           {estimate.coverage_notice && <p className="mt-3">{estimate.coverage_notice}</p>}
-          <p className="mt-3 font-semibold text-amber-900 dark:text-amber-300">Your provider may charge your account for this request.</p>
+          <p className="mt-3 font-semibold text-amber-900 dark:text-amber-300">{estimate.aggregate_budget ? "Your provider may charge your account. These are total limits across all generation, repair, and overview calls; unused calls are not sent." : "Your provider may charge your account for this request and up to one additional citation-repair request. The token limits above apply to each call; usage includes both calls."}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={submitEnhancement} disabled={submitting} className="bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50 dark:bg-green-500 dark:text-black">
               {submitting ? "Starting…" : "Confirm and enhance"}

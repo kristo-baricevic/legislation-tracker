@@ -51,7 +51,7 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-8 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-8 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="flex min-h-[calc(100vh-8rem)] w-full flex-col items-center justify-center">
         <div className="w-full max-w-md rounded border border-slate-400/80 bg-white/90 p-6 shadow-sm dark:border-green-800 dark:bg-green-950/20 dark:shadow-none sm:p-8">
           <h1 className="mb-6 text-xl font-semibold">Sign up</h1>

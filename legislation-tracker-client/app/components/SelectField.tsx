@@ -58,7 +58,7 @@ export default function SelectField({
     <div ref={rootRef} className={`relative min-w-0 ${className}`}>
       <label
         id={`${id}-label`}
-        className="mb-1 block text-sm text-slate-600 dark:text-green-500"
+        className="mb-1 block text-sm text-muted"
       >
         {label}
       </label>
@@ -75,7 +75,7 @@ export default function SelectField({
             setOpen(true);
           }
         }}
-        className="flex min-h-9 w-full items-center justify-between gap-2 rounded border border-slate-400 bg-white px-2 py-1 text-left text-slate-900 outline-none hover:border-slate-600 focus:border-blue-800 dark:border-green-700 dark:bg-black dark:text-green-300 dark:hover:border-green-500 dark:focus:border-green-500"
+        className="flex min-h-10 w-full items-center justify-between gap-2 rounded border border-control bg-paper px-2 py-1 text-left text-ink outline-none hover:border-focus focus:border-focus"
       >
         <span className="truncate">{selected?.label ?? ""}</span>
         <span aria-hidden="true" className="shrink-0 text-xs">
@@ -86,7 +86,7 @@ export default function SelectField({
         <div
           role="listbox"
           aria-labelledby={`${id}-label`}
-          className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-50 max-h-64 overflow-y-auto rounded border border-slate-400 bg-white py-1 text-sm shadow-lg dark:border-green-700 dark:bg-black"
+          className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-50 max-h-64 overflow-y-auto rounded border border-line bg-paper py-1 text-sm shadow-lg"
         >
           {options.map((option) => {
             const isSelected = option.value === value;
@@ -97,10 +97,10 @@ export default function SelectField({
                 role="option"
                 aria-selected={isSelected}
                 onClick={() => selectOption(option.value)}
-                className={`block w-full px-3 py-2 text-left hover:bg-slate-200 dark:hover:bg-green-950/50 ${
+                className={`block w-full px-3 py-2 text-left hover:bg-wash  ${
                   isSelected
-                    ? "bg-slate-200 font-semibold text-slate-950 dark:bg-green-950/60 dark:text-green-300"
-                    : "text-slate-800 dark:text-green-400"
+                    ? "bg-wash font-semibold text-ink  "
+                    : "text-ink "
                 }`}
               >
                 {option.label}

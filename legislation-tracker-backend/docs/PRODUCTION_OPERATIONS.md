@@ -84,7 +84,7 @@ LLM_ENHANCEMENTS_ENABLED=True
 LLM_CREDENTIAL_ENCRYPTION_KEYS=primary:<fernet-key>
 LLM_CREDENTIAL_ACTIVE_KEY_ID=primary
 LLM_ENHANCEMENT_PROVIDER=openai
-LLM_ENHANCEMENT_MODEL=gpt-5.6-luna
+LLM_ENHANCEMENT_MODEL=gpt-6-luna
 LLM_ENHANCEMENT_REASONING_EFFORT=none
 LLM_ENHANCEMENT_MAX_REQUEST_BYTES=120000
 LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=60000
@@ -414,3 +414,9 @@ Expected production behavior:
 - Celery workers process those tasks and write shared bill/changelog updates.
 - User dashboards read tracking summaries and persistent feed entries from the API.
 - Staff can manually enqueue ingestion when needed; normal users cannot.
+## Source-first AI analysis
+
+See [SOURCE_FIRST_ANALYSIS.md](SOURCE_FIRST_ANALYSIS.md) for migrations 0016/0017,
+the disabled-by-default rollout flag, per-step unknown-outcome policy, bounded
+cost confirmation, replay requirements and rollback precautions. Do not enable
+it merely because automated tests pass; the three-bill semantic gate is separate.

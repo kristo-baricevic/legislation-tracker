@@ -80,7 +80,9 @@ def test_complete_request_prefers_full_text_over_fragments_when_it_fits():
     second = build_enhancement_preflight(Bill.objects.get(pk=bill.pk))
 
     assert first.source_snapshot[0]["kind"] == "document_chunk"
-    assert first.source_snapshot[0]["quoted_text"] == bill.documents.get().extracted_text
+    assert (
+        first.source_snapshot[0]["quoted_text"] == bill.documents.get().extracted_text
+    )
     assert first.estimated_input_tokens == len(first.request_bytes)
     assert first.request_fingerprint == hashlib.sha256(first.request_bytes).hexdigest()
     assert first.request_bytes == second.request_bytes
@@ -207,7 +209,7 @@ def test_source_selection_shrinks_until_the_complete_request_fits():
     contract = bill.latest_contract
     source_text = document.extracted_text
     for index in range(8):
-        quote = f"Additional provision {index}. " + ("x" * 900)
+        quote = f"SEC. {index + 10}. ADDITIONAL PROVISION\n" + ("x" * 900)
         start = len(source_text)
         source_text += "\n" + quote
         EvidenceSpan.objects.create(
@@ -223,9 +225,11 @@ def test_source_selection_shrinks_until_the_complete_request_fits():
     document.save(update_fields=["extracted_text"])
 
     # Leave a small source budget after the current instructions and schema.
-    overhead = len(source_packet.canonical_json_bytes(
-        source_packet._request_envelope(bill, [], truncated=True)
-    ))
+    overhead = len(
+        source_packet.canonical_json_bytes(
+            source_packet._request_envelope(bill, [], truncated=True)
+        )
+    )
     byte_limit = overhead + 2500
     with override_settings(
         LLM_ENHANCEMENT_MAX_REQUEST_BYTES=byte_limit,
@@ -240,7 +244,7 @@ def test_source_selection_shrinks_until_the_complete_request_fits():
 
 
 @pytest.mark.django_db
-def test_large_document_finds_bounded_prefix_without_linear_reserialization(
+def test_oversized_unstructured_document_is_not_cut_into_partial_rules(
     monkeypatch,
 ):
     bill = Bill.objects.create(
@@ -268,10 +272,8 @@ def test_large_document_finds_bounded_prefix_without_linear_reserialization(
 
     monkeypatch.setattr(source_packet, "canonical_json_bytes", counted_serializer)
 
-    preflight = build_enhancement_preflight(bill)
-
-    assert preflight.truncated is True
-    assert 0 < len(preflight.source_snapshot) < chunk_count
+    with pytest.raises(PreflightUnavailable, match="complete source section"):
+        build_enhancement_preflight(bill)
     assert serialization_calls <= 20
 
 

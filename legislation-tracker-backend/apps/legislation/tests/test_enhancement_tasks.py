@@ -64,6 +64,75 @@ def _valid_output(source_ref):
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "mode", ["success", "invalid", "timeout", "revoked", "lease_lost"]
+)
+def test_worker_citation_repair_is_bounded_audited_and_accounts_for_usage(
+    enhancement_owner, source_bill, enhancement_settings, monkeypatch, mode
+):
+    calls = []
+
+    class Provider:
+        def enhance_bill(self, **kwargs):
+            if mode == "revoked":
+                LLMCredential.objects.filter(pk=attempt.credential_id).update(
+                    enabled=False
+                )
+            if mode == "lease_lost":
+                BillEnhancementAttempt.objects.filter(pk=attempt.pk).update(
+                    status="outcome_unknown"
+                )
+            return ProviderResult(
+                _valid_output("src_0001"), ProviderUsage(10, 5, 15), "initial", "test"
+            )
+
+        def repair_citations(self, **kwargs):
+            calls.append(kwargs)
+            # Initial usage is durable before the second paid call begins.
+            attempt.refresh_from_db()
+            assert attempt.total_tokens == 15
+            assert attempt.citation_resolution_json["repair"]["status"] == "requested"
+            if mode == "timeout":
+                raise ProviderError("outcome_unknown", outcome_unknown=True)
+            candidate_id = "candidate_0001" if mode == "success" else "invented"
+            return ProviderResult(
+                {"repairs": [dict(id="overview/0/0", candidate_id=candidate_id)]},
+                ProviderUsage(4, 3, 7),
+                "repair",
+                "test",
+            )
+
+    with enhancement_settings:
+        document = source_bill.documents.first()
+        document.extracted_text += (
+            " SEC. 3. The Secretary shall publish a report within 90 days."
+        )
+        document.save()
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
+        outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+        attempt.refresh_from_db()
+        attempt.enhancement.refresh_from_db()
+    assert len(calls) == (0 if mode in {"revoked", "lease_lost"} else 1)
+    if mode == "success":
+        assert outcome["status"] == "succeeded"
+        assert attempt.total_tokens == attempt.enhancement.total_tokens == 22
+        assert (
+            attempt.citation_resolution_json["corrections"][0]["method"]
+            == "provider_repair"
+        )
+    else:
+        assert outcome["status"] != "succeeded"
+        assert attempt.result_json is None
+    if mode == "invalid":
+        assert attempt.total_tokens == 22
+    if mode == "timeout":
+        assert outcome["status"] == "outcome_unknown"
+        assert attempt.total_tokens is None
+        assert attempt.citation_resolution_json["initial_usage"]["total_tokens"] == 15
+
+
+@pytest.mark.django_db(transaction=True)
 def test_dispatch_publishes_only_id_and_token_and_recovers_publish_failure(
     enhancement_owner,
     source_bill,
@@ -507,3 +576,26 @@ def test_recovery_marks_expired_run_unknown_without_provider_or_dispatch(
     assert attempt.failure_category == "outcome_unknown"
     assert attempt.enhancement.status == BillEnhancement.Status.OUTCOME_UNKNOWN
     assert calls == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recovery_during_repair_does_not_report_initial_usage_as_complete(
+    enhancement_owner, source_bill, enhancement_settings
+):
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        attempt.status = "running"
+        attempt.total_tokens = 15
+        attempt.citation_resolution_json = {
+            "initial_usage": {"total_tokens": 15},
+            "repair": {"status": "requested"},
+        }
+        attempt.lease_expires_at = timezone.now() - timedelta(seconds=1)
+        attempt.save()
+        recover_stale_bill_enhancement_attempts()
+        attempt.refresh_from_db()
+        attempt.enhancement.refresh_from_db()
+    assert attempt.total_tokens is None
+    assert attempt.enhancement.total_tokens is None
+    assert attempt.citation_resolution_json["initial_usage"]["total_tokens"] == 15
+    assert attempt.citation_resolution_json["repair"]["status"] == "outcome_unknown"

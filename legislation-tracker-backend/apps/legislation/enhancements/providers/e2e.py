@@ -11,6 +11,72 @@ from .base import CredentialCheck, ProviderResult, ProviderUsage
 class E2EEnhancementProvider:
     provider_name = "e2e"
 
+    def generate_provisions(self, *, api_key, request, timeout_seconds):
+        time.sleep(0.5)
+        rows = []
+        for unit in request.request_envelope["source_first_payload"]["units"]:
+            rows.append(
+                {
+                    "unit_id": unit["id"],
+                    "status": "explained",
+                    "summary": "The Secretary must award $100 in grants to rural hospitals.",
+                    "details": [],
+                    "unresolved_reason": None,
+                    "coverage_items": [
+                        {
+                            "item_id": item["id"],
+                            "status": "explained",
+                            "claim_indexes": [0],
+                            "explanation_indexes": [0],
+                            "reason": None,
+                        }
+                        for item in unit["source_checklist"]
+                    ],
+                    "claims": [
+                        {
+                            "actor": "The Secretary",
+                            "action": "award grants to rural hospitals",
+                            "modality": "required",
+                            "money": [
+                                {
+                                    "amount": "100",
+                                    "currency": "USD",
+                                    "measure": "grant",
+                                    "comparator": "exact",
+                                    "purpose": "Grants to rural hospitals",
+                                    "period": None,
+                                    "base": None,
+                                }
+                            ],
+                            "conditions": None,
+                            "exceptions": [],
+                            "evidence_ids": unit["own_passage_ids"],
+                        }
+                    ],
+                }
+            )
+        return ProviderResult(
+            {"provisions": rows},
+            ProviderUsage(10, 10, 20),
+            "e2e-source-first",
+            "e2e-model",
+        )
+
+    def repair_provisions(self, **kwargs):
+        return self.generate_provisions(**kwargs)
+
+    def generate_synopsis(self, *, api_key, request, timeout_seconds):
+        rows = request.request_envelope["source_first_payload"]["explanations"]
+        return ProviderResult(
+            {
+                "text": " ".join(r["summary"] for r in rows),
+                "explanation_ids": [r["unit_id"] for r in rows],
+            },
+            ProviderUsage(5, 5, 10),
+            "e2e-synopsis",
+            "e2e-model",
+        )
+
     def validate_credential(
         self,
         *,

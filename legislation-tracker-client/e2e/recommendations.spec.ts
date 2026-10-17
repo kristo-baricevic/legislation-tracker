@@ -24,14 +24,12 @@ async function fixtures(page: Page) {
     await route.fulfill({ json: response });
   });
 }
-test("opt-in row, shared bill modal, persisted follow, responsive scrolling and rollback", async ({ page }) => {
+test("always-on row, shared bill modal, persisted follow and responsive scrolling", async ({ page }) => {
   await fixtures(page);
   await page.goto("/");
   const preview = page.getByLabel("Show recommendations on this browser");
-  await expect(preview).not.toBeChecked();
+  await expect(preview).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Your legislation, in view." })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Recommended bills" })).toHaveCount(0);
-  await preview.check();
   const row = page.getByRole("region", { name: "Recommended bills" });
   const opener = row.getByRole("link", { name: bill.title });
   await expect(opener).toBeVisible();
@@ -46,11 +44,11 @@ test("opt-in row, shared bill modal, persisted follow, responsive scrolling and 
   expect((await request).postDataJSON()).toEqual({ bill: 1 });
   await expect(row.getByRole("link", { name: second.title })).toBeVisible();
   await expect(row.getByRole("link", { name: bill.title })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Following (1)" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Followed bills" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bills to discover" })).toBeFocused();
   await page.reload();
-  await expect(preview).toBeChecked();
-  await expect(page.getByRole("button", { name: "Following (1)" })).toBeVisible();
+  await expect(preview).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Followed bills" })).toBeVisible();
   for (const [name, width] of [["desktop", 1280], ["tablet", 768], ["mobile", 390]] as const) {
     await page.setViewportSize({ width, height: 850 });
     await expect(row.getByRole("link", { name: second.title })).toBeVisible();
@@ -58,11 +56,10 @@ test("opt-in row, shared bill modal, persisted follow, responsive scrolling and 
     if (name === "mobile") expect(await row.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/recommendations-${name}.png`, fullPage: true });
   }
-  await preview.uncheck();
   await expect(page.getByRole("heading", { name: "Your legislation, in view." })).toBeVisible();
-  await expect(row).toHaveCount(0);
+  await expect(row).toBeVisible();
   await page.reload();
-  await expect(preview).not.toBeChecked();
+  await expect(preview).toHaveCount(0);
   await page.getByLabel("Use card dashboard on this browser").uncheck();
   await expect(page.getByRole("heading", { name: "Legislation Tracker Operations" })).toBeVisible();
 });
@@ -70,7 +67,6 @@ test("error, retry, no-match and logout clear private cards", async ({ page }) =
   await fixtures(page);
   await page.route("**/api/tracking/recommendations/**", route => route.fulfill({ status: 503, json: { detail: "unavailable" } }));
   await page.goto("/");
-  await page.getByLabel("Show recommendations on this browser").check();
   const bills = page.getByRole("region", { name: "Recommended bills" });
   await expect(page.getByRole("alert").filter({ hasText: "Recommendations could not" })).toBeVisible();
   await page.unroute("**/api/tracking/recommendations/**");

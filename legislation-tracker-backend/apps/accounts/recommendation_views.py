@@ -82,6 +82,14 @@ class BillRecommendationView(PrivateRecommendationView):
         offset = cursor["offset"] if cursor else 0
         with read_snapshot():
             profile = load_profile(request.user.pk)
+            cached = cache_call("get", key) if not cursor else None
+            reuse = bool(cached and cached.get("algorithm") == ALGORITHM
+                         and cached["expires_at"] > now.timestamp()
+                         and cached["fingerprint"] == profile.fingerprint
+                         and cached["page_size"] == size)
+            if reuse:
+                ids = [item["bill"]["id"] for item in cached["results"][:size]]
+                reuse = set(candidate_query(profile).filter(pk__in=ids).values_list("id", flat=True)) == set(ids)
             if cursor:
                 snapshot = cache_call("get", key)
                 if snapshot is None or snapshot["expires_at"] <= now.timestamp():
@@ -104,6 +112,8 @@ class BillRecommendationView(PrivateRecommendationView):
                 )
                 if eligible != set(ids):
                     raise RecommendationError("recommendations_changed", 409)
+            elif reuse:
+                snapshot = cached
             else:
                 ranking = build_ranking(profile)
                 snapshot = bounded_json(
@@ -119,12 +129,12 @@ class BillRecommendationView(PrivateRecommendationView):
                     },
                     SNAPSHOT_BYTES,
                 )
-        if not cursor:
+        if not cursor and not reuse:
             remaining = int(snapshot["expires_at"] - timezone.now().timestamp())
             if remaining <= 0:
                 raise RecommendationError()
             cache_call("set", key, snapshot, timeout=remaining)
-        else:
+        elif cursor:
             current = cache_call("get", key)
             if current is None:
                 raise RecommendationError("recommendations_expired", 410)

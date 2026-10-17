@@ -192,7 +192,7 @@ function RepresentativeDetailContent() {
   );
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <main className="min-h-[calc(100vh-4rem)] bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <Link href={congress === null ? "/representatives" : `/representatives?congress=${congress}`} className="text-blue-900 underline dark:text-green-400">← Representatives</Link>
         {loading && <p className="text-slate-600 dark:text-green-600">Loading representative evidence…</p>}
@@ -229,7 +229,7 @@ export default function RepresentativeDetailPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[60vh] items-center justify-center font-mono text-slate-600 dark:text-green-500">
+        <div className="flex min-h-[60vh] items-center justify-center font-sans text-slate-600 dark:text-green-500">
           Loading representative…
         </div>
       }

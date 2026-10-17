@@ -8,15 +8,13 @@ import BillDeckModal from "./BillDeckModal";
 import LegislatorProfileModal from "./LegislatorProfileModal";
 import { ModalStackProvider, useModalStack } from "./ModalStack";
 
-const FLAG = "legislation-tracker-legislator-profiles";
-const EVENT = "legislator-profile-preference";
 type ProfileContext = { enabled: boolean; open: (scope: ProfileScope) => boolean };
 const Context = React.createContext<ProfileContext | null>(null);
 export const useProfileDialogs = () => React.useContext(Context);
 type Entry = { key: number; kind: "profile"; scope: ProfileScope } | { key: number; kind: "bill"; bill: BillListItem };
 
 function ProfileDialogs({ children, renderActivity }: { children: React.ReactNode; renderActivity?: (scope: ProfileScope) => React.ReactNode }) {
-  const [enabled, setEnabled] = React.useState(false);
+  const enabled = true;
   const [entries, setEntries] = React.useState<Entry[]>([]);
   const current = React.useRef<Entry[]>([]);
   const sequence = React.useRef(0);
@@ -25,17 +23,6 @@ function ProfileDialogs({ children, renderActivity }: { children: React.ReactNod
   const query = useSearchParams()?.toString() ?? "";
   const route = `${pathname}?${query}`;
   const previousPath = React.useRef(route);
-  React.useEffect(() => {
-    const read = () => {
-      let value = false;
-      try { value = localStorage.getItem(FLAG) === "true"; } catch { /* Storage denial keeps the reversible feature off. */ }
-      setEnabled(value);
-      if (!value) { stack.closeAll(); current.current = []; setEntries([]); }
-    };
-    const storage = (event: StorageEvent) => { if (event.key === FLAG || event.key === null) read(); };
-    read(); window.addEventListener("storage", storage); window.addEventListener(EVENT, read);
-    return () => { window.removeEventListener("storage", storage); window.removeEventListener(EVENT, read); };
-  }, [stack]);
   React.useEffect(() => {
     if (previousPath.current !== route) { stack.closeAll(); current.current = []; setEntries([]); previousPath.current = route; }
   }, [route, stack]);
@@ -59,13 +46,3 @@ function ProfileDialogs({ children, renderActivity }: { children: React.ReactNod
 }
 
 export default function ProfileProvider(props: React.ComponentProps<typeof ProfileDialogs>) { return <ModalStackProvider><React.Suspense fallback={props.children}><ProfileDialogs {...props} /></React.Suspense></ModalStackProvider>; }
-
-export function ProfilePreference() {
-  const context = useProfileDialogs();
-  const [error, setError] = React.useState("");
-  if (!context) return null;
-  return <label><input type="checkbox" checked={context.enabled} onChange={event => {
-    try { localStorage.setItem(FLAG, String(event.target.checked)); window.dispatchEvent(new Event(EVENT)); setError(""); }
-    catch { setError("This browser could not save the profile preference."); }
-  }} /> Enable legislator profiles{error && <span role="status"> {error}</span>}</label>;
-}

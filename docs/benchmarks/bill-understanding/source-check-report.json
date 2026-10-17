@@ -1,0 +1,48 @@
+{
+  "sources": 10,
+  "answer_quote_checks": [
+    {
+      "answer": "BILLS-117hr8404enr.md",
+      "quote_blocks": 21
+    },
+    {
+      "answer": "BILLS-118hr3746enr.md",
+      "quote_blocks": 232
+    },
+    {
+      "answer": "BILLS-118hr4366enr.md",
+      "quote_blocks": 15
+    },
+    {
+      "answer": "BILLS-118hr7024eh.md",
+      "quote_blocks": 32
+    },
+    {
+      "answer": "BILLS-118s619enr.md",
+      "quote_blocks": 14
+    },
+    {
+      "answer": "BILLS-118s777enr.md",
+      "quote_blocks": 11
+    },
+    {
+      "answer": "BILLS-119hr1589ih.md",
+      "quote_blocks": 22
+    },
+    {
+      "answer": "BILLS-119hr9300ih.md",
+      "quote_blocks": 5
+    },
+    {
+      "answer": "BILLS-119s5enr.md",
+      "quote_blocks": 28
+    },
+    {
+      "answer": "PLAW-119publ21.md",
+      "quote_blocks": 23
+    }
+  ],
+  "total_quote_blocks": 403,
+  "quote_mismatches": [],
+  "scope": "Whitespace-normalized quote containment only; not semantic accuracy, section-location validation, completeness, or human approval."
+}

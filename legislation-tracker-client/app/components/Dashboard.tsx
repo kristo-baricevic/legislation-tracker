@@ -113,7 +113,7 @@ export default function Dashboard() {
   const sessionIsValid = Number.isInteger(parseInt(documentSession, 10));
 
   return (
-    <div className="w-full font-mono text-slate-900 dark:text-green-300">
+    <div className="w-full font-sans text-slate-900 dark:text-green-300">
       <div className="mb-8 border-b border-slate-400 pb-4 dark:border-green-900/70">
         <h1 className="text-2xl font-semibold text-slate-950 dark:text-green-400">
           Legislation Tracker Operations

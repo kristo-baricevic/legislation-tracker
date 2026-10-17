@@ -16,6 +16,7 @@ async function fixtures(page: Page) {
     else if (path === "/api/tracking/") value = { bills: [], topics: [], legislators: [], is_staff: false };
     else if (path === "/api/representatives/") value = { count: 2, next: null, previous: null, results: [{ id: 1, bioguide_id: "S000033", name: "Same Name", state: "VT", chamber: "senate", party: "Independent", district: null }, { id: 2, bioguide_id: "I000002", name: "Same Name", state: "NY", chamber: "house", party: "Other", district: "1" }] };
     else if (path === "/api/bills/filter-options/") value = { jurisdictions: ["federal"], current_congress: 119 };
+    else if (path === "/api/topics/") value = [];
     else if (path === "/api/bills/") value = { count: 1, next: null, previous: null, results: [bill] };
     else if (/\/api\/bills\/1[01]\/$/.test(path)) value = { ...(path.includes("/11/") ? second : bill), sponsor: 1, summary: "Stored official summary", documents: [], latest_contract: null };
     else if (path.endsWith("/profile/")) value = path.includes("/2/") ? { ...profile, identity: { ...profile.identity, id: 2, bioguide_id: "I000002" } } : profile;
@@ -29,8 +30,8 @@ async function fixtures(page: Page) {
 
 test("real native bill→profile→bill nesting, focus, Escape, Tab and rollback", async ({ page }) => {
   await fixtures(page); await page.goto("/");
-  await page.getByRole("checkbox", { name: "Enable legislator profiles" }).check();
-  await page.getByRole("button", { name: "View all bills" }).click();
+  await expect(page.getByRole("checkbox", { name: "Enable legislator profiles" })).toHaveCount(0);
+  await page.goto("/bills");
   const opener = page.getByRole("button", { name: "Original bill", exact: true });
   await opener.click();
   const original = page.locator("dialog").filter({ has: page.getByRole("heading", { name: "Original bill" }) });
@@ -50,13 +51,13 @@ test("real native bill→profile→bill nesting, focus, Escape, Tab and rollback
   await page.keyboard.press("Escape"); await expect(member).toHaveCount(0); await expect(original.getByRole("link", { name: "Same Name" })).toBeFocused();
   await page.keyboard.press("Escape"); await expect(page.locator("dialog")).toHaveCount(0); await expect(opener).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
-  await page.getByRole("checkbox", { name: "Enable legislator profiles" }).uncheck(); await page.reload();
-  await expect(page.getByRole("checkbox", { name: "Enable legislator profiles" })).not.toBeChecked();
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "Enable legislator profiles" })).toHaveCount(0);
 });
 
 test("same names stay separate, live pages replace rows, votes and responsive evidence", async ({ page }) => {
   await fixtures(page); await page.goto("/representatives");
-  await page.getByRole("checkbox", { name: "Enable legislator profiles" }).check();
+  await expect(page.getByRole("checkbox", { name: "Enable legislator profiles" })).toHaveCount(0);
   await page.getByRole("link", { name: "Same Name", exact: true }).nth(1).click();
   await expect(page.getByRole("dialog").getByText("Bioguide ID: I000002")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -83,7 +84,7 @@ test("same names stay separate, live pages replace rows, votes and responsive ev
 test("approved live Wikipedia adapter is visible in the isolated local preview", async ({ page }) => {
   test.skip(process.env.PROFILE_LIVE_PREVIEW !== "true", "Opt-in public-source QA requires isolated preview API18011/database15441.");
   await page.goto("/representatives");
-  await page.getByRole("checkbox", { name: "Enable legislator profiles" }).check();
+  await expect(page.getByRole("checkbox", { name: "Enable legislator profiles" })).toHaveCount(0);
   await page.getByRole("link", { name: "Bernie Sanders", exact: true }).click();
   const modal = page.getByRole("dialog", { name: "Bernie Sanders" });
   await expect(modal.getByRole("link", { name: "Wikipedia article", exact: true })).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Bernie_Sanders", { timeout: 25_000 });
@@ -97,7 +98,7 @@ test("approved live Wikipedia adapter is visible in the isolated local preview",
 
 test("useful profile content precedes caveats and source disclosures work by keyboard on mobile", async ({page}) => {
   await fixtures(page); await page.goto("/representatives");
-  await page.getByLabel("Enable legislator profiles").check();
+  await expect(page.getByLabel("Enable legislator profiles")).toHaveCount(0);
   await page.getByRole("link", {name: "Same Name", exact: true}).first().click();
   const modal = page.getByRole("dialog", {name: "Same Name"});
   const biographyHeading = modal.getByRole("heading", {name: "Biography", exact: true});

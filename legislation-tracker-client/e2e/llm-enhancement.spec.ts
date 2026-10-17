@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const API_BASE = process.env.E2E_API_URL ?? "http://127.0.0.1:18000";
+const sourceFirst = process.env.LLM_SOURCE_FIRST_ENABLED === "True";
 
 test("a user saves a key and completes a durable enhancement through the live API", async ({
   page,
@@ -50,7 +51,7 @@ test("a user saves a key and completes a durable enhancement through the live AP
   );
 
   const response = await request.get(
-    `${API_BASE}/api/bills/?bill_number=${encodeURIComponent("HR E2E")}`,
+    `${API_BASE}/api/bills/?bill_number=${encodeURIComponent(sourceFirst ? "HR SOURCE E2E" : "HR E2E")}`,
   );
   expect(response.status()).toBe(200);
   const body = (await response.json()) as { results: Array<{ id: number }> };
@@ -67,9 +68,24 @@ test("a user saves a key and completes a durable enhancement through the live AP
   const confirmation = page.getByRole("dialog", { name: "Confirm AI enhancement" });
   await expect(confirmation).toContainText("estimated input tokens");
   await expect(confirmation).toContainText("provider may charge your account");
+  if (sourceFirst) await expect(confirmation).toContainText(/Up to \d+ calls/);
   await page.getByRole("button", { name: "Confirm and enhance" }).click();
 
   await expect(page.getByRole("status")).toContainText(/pending|running/);
+  if (sourceFirst) {
+    await expect(page.getByText("The Secretary must award $100 in grants to rural hospitals.", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByText("Source text", { exact: true }).first().click();
+    await expect(page.getByRole("link", { name: "Read source" }).first()).toHaveAttribute("href", /\/documents\/\d+/);
+    const latest = await request.get(`${API_BASE}/api/bills/${billId}/enhancements/latest/`, { headers });
+    expect(latest.status()).toBe(200);
+    const persisted = await latest.json();
+    expect(persisted.result.schema_version).toBe("2.0-source-first");
+    expect(persisted.published_attempt_id).toBeTruthy();
+    expect(persisted.result.quality.semantic_review_status).toBe("unreviewed");
+    await page.reload();
+    await expect(page.getByText("The Secretary must award $100 in grants to rural hospitals.", { exact: true }).first()).toBeVisible();
+    return;
+  }
   await expect(
     page.getByText("The bill directs the Secretary to award grants to rural hospitals."),
   ).toBeVisible({ timeout: 15_000 });

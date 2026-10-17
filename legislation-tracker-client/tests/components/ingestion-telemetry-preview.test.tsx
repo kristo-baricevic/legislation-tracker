@@ -8,26 +8,25 @@ afterEach(cleanup);
 it("labels samples, disables ingestion and renders unknown operational values honestly", async () => {
     const user = userEvent.setup();
     render(<IngestionTelemetryPreview />);
+    expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Show ingestion telemetry preview"));
     expect(await screen.findByText("Preview — sample data")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start ingestion" })).toBeDisabled();
-    expect(localStorage.getItem(TELEMETRY_FLAG_KEY)).toBe("true");
     await user.click(screen.getByLabelText("Show sample data"));
     expect(screen.getByText("Preview — backend not connected")).toBeInTheDocument();
     expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
     expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(4);
     expect(screen.queryByText(/Oct 9, 2026/)).not.toBeInTheDocument();
 });
-it("preserves explicit false across remounts and supports restoring the preview", async () => {
-    localStorage.setItem(TELEMETRY_FLAG_KEY, "false");
+it("requires a fresh opt-in even with a legacy enabled preference or after remount", async () => {
+    localStorage.setItem(TELEMETRY_FLAG_KEY, "true");
     const user = userEvent.setup();
     const view = render(<IngestionTelemetryPreview />);
     expect(await screen.findByLabelText("Show ingestion telemetry preview")).not.toBeChecked();
     expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
     await user.click(screen.getByLabelText("Show ingestion telemetry preview"));
-    expect(localStorage.getItem(TELEMETRY_FLAG_KEY)).toBe("true");
-    await user.click(screen.getByLabelText("Show ingestion telemetry preview"));
     view.unmount();
     render(<IngestionTelemetryPreview />);
     expect(await screen.findByLabelText("Show ingestion telemetry preview")).not.toBeChecked();
-    expect(localStorage.getItem(TELEMETRY_FLAG_KEY)).toBe("false");
+    expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
 });

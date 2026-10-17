@@ -145,7 +145,7 @@ export function VotingRecord({
   return (
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none" aria-labelledby="voting-record-heading">
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-4 dark:border-green-900 dark:bg-black/20">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Congressional record</p>
+        <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Congressional record</p>
         <h2 id="voting-record-heading" className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">Voting record</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">Select a roll call to see every returned member record. Positions are reported as received; filters only change what is displayed.</p>
       </header>

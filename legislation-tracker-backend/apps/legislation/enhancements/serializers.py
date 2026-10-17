@@ -8,6 +8,7 @@ from apps.legislation.models import BillEnhancement, BillEnhancementAttempt
 
 from .prompts import LEGAL_INFORMATION_DISCLAIMER, TRUNCATED_COVERAGE_NOTICE
 from .service import retry_allowed
+from .citations import citation_spans
 
 
 class EnhancementConfirmationSerializer(serializers.Serializer):
@@ -42,6 +43,8 @@ def _expanded_result(enhancement: BillEnhancement):
     if enhancement.result_json is None:
         return None
     result = copy.deepcopy(enhancement.result_json)
+    if result.get("schema_version") == "2.0-source-first":
+        return result
     sources = {
         source["source_ref"]: source for source in enhancement.source_snapshot_json
     }
@@ -59,19 +62,20 @@ def _expanded_result(enhancement: BillEnhancement):
                     source = sources.get(quote["source_ref"])
                     if not source:
                         continue
-                    local_start = source["quoted_text"].find(quote["quote"])
-                    if local_start < 0:
+                    matches = citation_spans(source["quoted_text"], quote["quote"])
+                    if len(matches) != 1:
                         continue
+                    local_start, local_end = matches[0]
                     offset = source.get("start_char")
                     start = offset + local_start if offset is not None else None
                     item["cited_sources"].append(
                         {
                             "source_ref": quote["source_ref"],
                             "label": "Cited source",
-                            "quoted_text": quote["quote"],
+                            "quoted_text": source["quoted_text"][local_start:local_end],
                             "section_label": source.get("section_label"),
                             "start_char": start,
-                            "end_char": start + len(quote["quote"])
+                            "end_char": offset + local_end
                             if start is not None
                             else None,
                         }
@@ -100,6 +104,8 @@ def enhancement_payload(enhancement: BillEnhancement, *, detail: bool) -> dict:
         "id": enhancement.pk,
         "bill_id": enhancement.bill_id,
         "status": enhancement.status,
+        "published_attempt_id": enhancement.published_attempt_id,
+        "result_completeness": enhancement.result_completeness,
         "provider": enhancement.provider,
         "requested_model": enhancement.requested_model,
         "reasoning_effort": enhancement.reasoning_effort,

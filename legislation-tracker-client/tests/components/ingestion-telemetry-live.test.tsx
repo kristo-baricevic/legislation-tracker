@@ -11,11 +11,31 @@ it("makes no automatic requests, keeps unknown counts unavailable and never star
     render(<IngestionTelemetryLive />);
     expect(authGet).not.toHaveBeenCalled();
     expect(authPost).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
     vi.mocked(authGet).mockRejectedValue(new Error("offline"));
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Telemetry unavailable");
     expect(authPost).not.toHaveBeenCalled();
+    vi.mocked(authPost).mockResolvedValue({ run_id: "direct-start", status: "pending" });
+    await user.click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
+    expect(authPost).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent("direct-start");
+});
+it("starts discovery without first requesting telemetry", async () => {
+    vi.mocked(authPost).mockResolvedValue({ run_id: "first-start", status: "pending" });
+    render(<IngestionTelemetryLive />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
+    expect(authGet).not.toHaveBeenCalled();
+    expect(authPost).toHaveBeenCalledWith("/api/ingestion/poll-congress/", expect.objectContaining({ congress: 119, jurisdiction: "federal", idempotency_key: expect.any(String) }));
+    expect(screen.getByRole("status")).toHaveTextContent("first-start");
+});
+it("shows a compact pipeline table with diagnostics collapsed", async () => {
+    vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-15T12:00:00Z", counts_by_kind_and_status: [{ kind: "bill_versions", status: "pending", count: 8 }, { kind: "bill_versions", status: "processing", count: 2 }], recent_work_states: [], discovery_run: null });
+    render(<IngestionTelemetryLive />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Refresh telemetry" }));
+    expect(screen.getByRole("table", { name: "Pipeline work items" })).toHaveTextContent("Bill text versions");
+    expect(screen.getByText("Source & technical details").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("Recent activity").closest("details")).not.toHaveAttribute("open");
 });
 it("expires ready counts locally without making another network request", async () => {
     vi.useFakeTimers();
