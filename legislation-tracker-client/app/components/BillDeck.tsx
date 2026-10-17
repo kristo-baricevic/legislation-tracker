@@ -12,6 +12,7 @@ import LegislatorName from "./LegislatorName";
 import styles from "./bill-deck.module.css";
 
 import BillCard, { readable } from "./BillCard";
+import { STAGES, stageFor } from "@/lib/bill-stage";
 export { topicColor, readable, dateLabel } from "./BillCard";
 
 export default function BillDeck() {
@@ -71,10 +72,12 @@ export default function BillDeck() {
   source.forEach(bill => bill.topics.forEach(item => topics.set(item.topic_id, item.name)));
   const sponsorKey = (bill: BillListItem) => bill.sponsor_id ? `id:${bill.sponsor_id}` : `unidentified:${bill.sponsor_name ?? ""}`;
   const sponsors = [...new Map(source.filter(bill => bill.sponsor_name).map(bill => [sponsorKey(bill), bill.sponsor_name!])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  const statuses = [...new Set(source.map(bill => bill.status).filter(Boolean))].sort();
+  const presentStages = new Set(source.map(bill => stageFor(bill.status)?.key));
+  const stageOptions = STAGES.filter(item => presentStages.has(item.key));
+  const statuses = [...new Set(source.map(bill => bill.status).filter(value => value && !stageFor(value)))].sort();
   const stateBySponsor = new Map(representatives.map(rep => [rep.id, rep.state]));
   const states = [...new Set(source.map(bill => stateBySponsor.get(bill.sponsor_id ?? -1)).filter((value): value is string => Boolean(value)))].sort();
-  const visible = source.filter(bill => (!query || `${bill.bill_number} ${bill.title}`.toLowerCase().includes(query.toLowerCase())) && (!topic || bill.topics.some(item => String(item.topic_id) === topic)) && (!sponsor || sponsorKey(bill) === sponsor) && (!state || stateBySponsor.get(bill.sponsor_id ?? -1) === state) && (!status || bill.status === status));
+  const visible = source.filter(bill => (!query || `${bill.bill_number} ${bill.title}`.toLowerCase().includes(query.toLowerCase())) && (!topic || bill.topics.some(item => String(item.topic_id) === topic)) && (!sponsor || sponsorKey(bill) === sponsor) && (!state || stateBySponsor.get(bill.sponsor_id ?? -1) === state) && (!status || (stageFor(bill.status)?.key ?? `raw:${bill.status}`) === status));
   visible.sort((a, b) => {
     if (sort === "title") return a.title.localeCompare(b.title) || a.id - b.id;
     if (sort === "number") return a.bill_number.localeCompare(b.bill_number, undefined, { numeric: true }) || b.session - a.session || a.id - b.id;
@@ -104,10 +107,11 @@ export default function BillDeck() {
       <label>Topic<select aria-label="Topic" value={topic} onChange={event => setTopic(event.target.value)}><option value="">All topics</option>{[...topics].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
       <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => { const representative = representatives.find(rep => key === `id:${rep.id}`); return <option key={key} value={key}>{name}{representative ? ` · ${representative.state} · ${representative.chamber}` : " · Affiliation unavailable"}</option>; })}</select></label>
       <label>Sponsor state<select aria-label="Sponsor state" disabled={Boolean(repError)} value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</select></label>
-      <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map(value => <option key={value} value={value}>{readable(value)}</option>)}</select></label>
+      <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{stageOptions.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}{statuses.map(value => <option key={value} value={`raw:${value}`}>{readable(value)}</option>)}</select></label>
       <label>Sort bills<select value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></select></label>
     </div>
     <div className={styles.resultLine}><p role="status">{visible.length} {visible.length === 1 ? "bill" : "bills"} in view</p><button onClick={reset}>Clear filters</button></div>
+    <details className={styles.about}><summary>About this data</summary><p>Sponsor state comes from each representative’s latest stored record, so it can differ from the state they represented when a bill was introduced. Sponsors without a stored record have no state.</p></details>
     {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}

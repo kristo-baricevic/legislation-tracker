@@ -5,6 +5,10 @@ import { ApiError, capturePersonalizedScope, isPersonalizedScopeCurrent, trackBi
 import { getBillRecommendations, type BillRecommendationReason } from "@/lib/recommendations";
 import { useRecommendations } from "./useRecommendations";
 import { RecommendationState } from "./RecommendationState";
+import StageTrack from "./StageTrack";
+import { dateLabel, readable } from "@/lib/bill-format";
+import { stageFor } from "@/lib/bill-stage";
+import { topicColor } from "@/lib/bill-format";
 import styles from "./recommendations.module.css";
 
 function reasonText(reason: BillRecommendationReason) {
@@ -12,11 +16,6 @@ function reasonText(reason: BillRecommendationReason) {
   if (reason.kind === "followed_bill_topic") return <>Shares the recorded topic {reason.name} with <Link href={`/bills/${reason.seed_bill_id}`}>{reason.seed_bill_number} / {reason.seed_session}</Link>, a bill you follow.</>;
   if (reason.kind === "followed_bill_sponsor") return <>Sponsored by {reason.name}, who also sponsored <Link href={`/bills/${reason.seed_bill_id}`}>{reason.seed_bill_number} / {reason.seed_session}</Link>, a bill you follow.</>;
   return <>{reason.relation === "cosponsor" ? "Actively cosponsored" : "Sponsored"} by <Link href={`/representatives/${reason.representative_id}`}>{reason.name}</Link>, a representative you follow.</>;
-}
-function dateLabel(value: string | null) {
-  if (!value) return "Not recorded";
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 export default function BillRecommendations({ onOpenBill, onDismissBill }: { onOpenBill: (bill: BillListItem) => boolean | void; onDismissBill?: () => void }) {
   const heading = React.useRef<HTMLHeadingElement>(null);
@@ -63,10 +62,11 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
     <div className={styles.heading}><h2 ref={heading} tabIndex={-1} id="bill-recommendations-title">Bills to discover</h2><button className={styles.action} disabled={state.loading} onClick={state.retry}>Refresh bill recommendations</button></div>
     <p className={styles.note}>Based on topics, representatives and bills you explicitly follow. Search filters do not change your followed interests.</p>
     {state.data?.results.length ? <>
-      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <article className={styles.card} key={item.bill.id}>
+      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <article className={styles.card} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
         <div className={styles.bar} aria-hidden="true" /><div className={styles.body}>
-          <p className={styles.meta}>{item.bill.bill_number} / {item.bill.session} · {item.bill.status.replaceAll("_", " ") || "Status unavailable"}</p>
+          <p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p>
           <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(item.bill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
+          {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <ul className={styles.reasons} aria-label="Why recommended">{item.reasons.map((reason, index) => <li key={index}>{reasonText(reason)}</li>)}</ul>
           <div className={styles.footer}><span>Last action<br /><time>{dateLabel(item.bill.last_action_at)}</time></span>
             <button className={styles.action} aria-label={`Follow bill ${item.bill.bill_number} / ${item.bill.session}`} disabled={pending?.generation === generation} onClick={() => void follow(item.bill.id)}>{pending && pending.generation === generation && pending.id === item.bill.id ? "Saving…" : "Follow bill"}</button>
