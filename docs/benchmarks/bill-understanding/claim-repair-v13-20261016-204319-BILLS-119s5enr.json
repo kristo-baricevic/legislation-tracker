@@ -1,0 +1,2524 @@
+{
+  "plan_fingerprint": "af41c90c04468409e61ffdba82ade3e346c6a89e744a1b880d977d62a8a08370",
+  "model": "gpt-6-luna",
+  "limits": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "output_tokens": 8000,
+    "per_call_input": 100000
+  },
+  "document_fingerprint": "eaa02cc1082477559284709de65b2c0abec2e108bd0f2860573249ab4929ea6d",
+  "mode": "saved_generation_live_retry",
+  "generation_recording_sha256": "f248e188d6db5da4b10a79bf6a98838fa18c55d421f28da5487bc4036b235f0d",
+  "status": "completed",
+  "maximum_calls": 3,
+  "maximum_input": 222048,
+  "maximum_output": 24000,
+  "network_calls": 2,
+  "calls": [
+    {
+      "request_fingerprint": "c41422e69cc8e1602eb1b85d838780356ff884f626f5e408fe12134d5b80b077",
+      "stage": "generation",
+      "unit_ids": [
+        "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+      ],
+      "status": "succeeded",
+      "origin": "recorded_generation",
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "explained",
+            "summary": "Section 3 adds State enforcement provisions to several INA sections and makes related amendments. State officials may seek injunctive relief for specified violations that harm the State or its residents; the court must expedite these actions as practicable.",
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Congress",
+                "action": "Redesignate paragraph (3) of INA section 235(b) as paragraph (4), and insert a new paragraph (3) after paragraph (2).",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "A State attorney general or other authorized State officer",
+                "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief concerning alleged violations of INA section 235(b)(1) or (2) detention and removal requirements that harm the State or its residents.",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ],
+                  "text": "if the State or its residents experience harm, \n    including financial harm in excess of $100."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "Amend INA section 236(e) by striking “or release” and replacing “grant, revocation, or denial” with “revocation or denial.”",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "A State attorney general or other authorized State officer",
+                "action": "Bring an action against the Attorney General or Secretary of Homeland Security for appropriate injunctive relief concerning an alleged action or decision under INA section 236 to release an alien or grant bond or parole to an alien, when it harms the State or its residents.",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ],
+                  "text": "if the State or its residents experience harm, including \nfinancial harm in excess of $100."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "Add a new subsection (e) to INA section 243.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "A State attorney general or other authorized State officer",
+                "action": "Bring an action against the Secretary of State for appropriate injunctive relief concerning an alleged violation of the subsection (d) requirement to discontinue granting visas to the specified citizens, subjects, nationals, and residents, when it harms the State or its residents.",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ],
+                  "text": "if the State or its residents experience harm, \nincluding financial harm in excess of $100."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "In INA section 212(d)(5), replace each occurrence of “Attorney General” with “Secretary of Homeland Security,” and add a new subparagraph at the end.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "A State attorney general or other authorized State officer",
+                "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief concerning an alleged violation of the limitation in subparagraph (A) on parole, when it harms the State or its residents.",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ],
+                  "text": "if the State or its residents experience \nharm, including financial harm in excess of $100."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "Amend INA section 241(a)(2) by redesignating its existing removal-period text as subparagraph (A) and adding a new subparagraph (B).",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "A State attorney general or other authorized State officer",
+                "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief concerning an alleged violation of the detention requirement in INA section 241(a)(2)(A), when it harms the State or its residents.",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ],
+                  "text": "if the State \n        or its residents experience harm, including financial harm in \n        excess of $100."
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "Add a rule to INA section 242(f) providing that paragraph (1) does not apply to actions brought under the listed provisions.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              }
+            ],
+            "details": [
+              "Section 3 amends INA section 235(b) by redesignating paragraph (3) as paragraph (4).",
+              "It inserts a new paragraph (3) after paragraph (2).",
+              "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+              "The alleged violation must harm the State or its residents; harm includes financial harm exceeding $100.",
+              "The court must advance and expedite the action as much as practicable.",
+              "The amendment removes the words “or release” from subsection (e).",
+              "It changes the listed matters from “grant, revocation, or denial” to “revocation or denial,” then adds a new subsection (f).",
+              "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+              "The alleged release, bond, or parole action or decision must harm the State or its residents; harm includes financial harm exceeding $100.",
+              "The court must advance and expedite the action as much as practicable.",
+              "The amendment adds a new subsection (e) to INA section 243.",
+              "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+              "The alleged violation must harm the State or its residents; harm includes financial harm exceeding $100.",
+              "The court must advance and expedite the action as much as practicable.",
+              "The amendment substitutes “Secretary of Homeland Security” for “Attorney General” each place the latter term appears in INA section 212(d)(5).",
+              "It also adds a new subparagraph at the end.",
+              "The alleged violation concerns the limitation that parole be granted solely case by case and solely for urgent humanitarian reasons or significant public benefit.",
+              "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court if the alleged violation harms them; harm includes financial harm exceeding $100.",
+              "The court must advance and expedite the action as much as practicable.",
+              "The amendment places the existing words “During the removal period” under a new subparagraph (A), labeled “In general.”",
+              "It adds a new subparagraph (B).",
+              "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+              "The alleged violation must harm the State or its residents; harm includes financial harm exceeding $100.",
+              "The court must advance and expedite the action as much as practicable.",
+              "The amendment adds paragraph (3) to INA section 242(f).",
+              "Paragraph (1) does not apply to actions brought under INA section 235(b)(3), section 236(e) or (f), or section 241(a)(2)(B).",
+              "The supplied text does not establish the broader scope or effect of INA section 242(f)(1)."
+            ],
+            "coverage_items": [
+              {
+                "item_id": "935d0cbb95fa43afe888a10f1159c1598f7e26e87506ef976696bde4be4ac55d",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  1,
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bbd0990d564412c2cc6df6ba7126800c96a476c5712e4ea18e1448d3ad5acab9",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  1,
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "e9c02518780fcbce627ea17745bebbbfcb21b8304628ecd2609962b271719e54",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  1,
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "4b5a3d2b992b022caab7a4a9689dee1e3398621d09d97d9e11450696f0f8e144",
+                "status": "explained",
+                "claim_indexes": [
+                  0
+                ],
+                "explanation_indexes": [
+                  1,
+                  2
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "d83a3f518d06070aca4c0ae019313a9767f49ade04063409d98b464524ae2d4d",
+                "status": "explained",
+                "claim_indexes": [
+                  1
+                ],
+                "explanation_indexes": [
+                  3,
+                  4
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7ea0c5abbf1fa6544041a013de86fad82acfbf9df261be6cd36f5ee292828d20",
+                "status": "explained",
+                "claim_indexes": [
+                  1,
+                  2
+                ],
+                "explanation_indexes": [
+                  3,
+                  4,
+                  5
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "10955e75232f71fef5ee2308364f5c34e4dcf23cce230a4f6855764cf24293d6",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  6,
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "2c874c69a15c952c6ad2c157aec646dae739bcddf0b509744b8a38c142f4b7d2",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  6,
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "510772569028a4a929d52810455759e2a5e26ff8fdf462c29e5ba94c6d78479d",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  6,
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "326561f18787f20d006c8a51b5d699bd64998a8bf905da90cbe157e96016070e",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  6,
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "12d6aea0afb9bb858d98651566d420538efab73016a3931f064f74c4026caba9",
+                "status": "explained",
+                "claim_indexes": [
+                  3
+                ],
+                "explanation_indexes": [
+                  6,
+                  7
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "559dd837c5f6ef566f764b70a1d3812e5cf430779881a076a3126f926a590c70",
+                "status": "explained",
+                "claim_indexes": [
+                  4,
+                  5
+                ],
+                "explanation_indexes": [
+                  8,
+                  9,
+                  10
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "638cb3b23b79346fbb4621c805ea782a8c7938d3723746bd44d3c11699fe3c4f",
+                "status": "explained",
+                "claim_indexes": [
+                  6
+                ],
+                "explanation_indexes": [
+                  11
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "36f12e6bc49b650a21431722cbfd6a6f929c0de40225957deaf46bfc0a851c5c",
+                "status": "explained",
+                "claim_indexes": [
+                  7,
+                  8
+                ],
+                "explanation_indexes": [
+                  12,
+                  13,
+                  14
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "2e8c721ace1059ef9e39c30adbc256ce8339f17575b39b9bd5896cd13bcb8788",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  15,
+                  16
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "7af8a96eb9b3bc3ea52f875643ad24c90ed94d0afcaa41cbb02fdacc7f0642af",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  15,
+                  16
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "fd44690aee5f140435fa7cdfa8844b9859ca6db7cd98c6ce24b389b3ccee8428",
+                "status": "explained",
+                "claim_indexes": [
+                  9
+                ],
+                "explanation_indexes": [
+                  15,
+                  16
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "63c9faf0dbe5322f1f02be60af867513132006666adbf0daf5afe47c98db7050",
+                "status": "explained",
+                "claim_indexes": [
+                  10,
+                  11
+                ],
+                "explanation_indexes": [
+                  17,
+                  18,
+                  19
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "bdf58f67742a2b0df826aba0c2c4282d61b4e5108bd6e79db5fb6ca9bdb39915",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  20,
+                  21
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "ff1d3b4b9e4cc7366b0c85fcde4e434c3c8c6b437166eee57122735b3516d225",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  20,
+                  21
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "b8d1c46b41f21da1cab577f46dec4000f491afb11d64b8acfcd5b46fb3c26f82",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  20,
+                  21
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "b44572dfc4017b638c464038cceaec4ed9f3cb6fed30467730dcb25683398344",
+                "status": "explained",
+                "claim_indexes": [
+                  12
+                ],
+                "explanation_indexes": [
+                  20,
+                  21
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "d40655a3284ba2b25a35f883b642cb557018766c26973b04253c00b262be9f8e",
+                "status": "explained",
+                "claim_indexes": [
+                  13,
+                  14
+                ],
+                "explanation_indexes": [
+                  22,
+                  23,
+                  24
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "b8c1f776624bcb0484eb8644f2c03110f8195606f75eaff682451af0e4e9c733",
+                "status": "explained",
+                "claim_indexes": [
+                  15
+                ],
+                "explanation_indexes": [
+                  25,
+                  26,
+                  27
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "16ec876441b5d5114e9d36e46660df056978a43f3cae868379205426e81c0a5a",
+                "status": "explained",
+                "claim_indexes": [
+                  15
+                ],
+                "explanation_indexes": [
+                  25,
+                  26,
+                  27
+                ],
+                "reason": null
+              },
+              {
+                "item_id": "14db925ecc2a436158f797773fd217865bdb87909b3187fe013e446644c7ed92",
+                "status": "explained",
+                "claim_indexes": [
+                  15
+                ],
+                "explanation_indexes": [
+                  25,
+                  26,
+                  27
+                ],
+                "reason": null
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "9bd717b3b44fcc3c2bc75b989cb98e00c0c7dd584e0042bbdde140297610dfe0",
+      "response_id": "",
+      "resolved_model": ""
+    },
+    {
+      "request_fingerprint": "f5c42597987c6f0326b35ccebcdf527ea34cd313aad718812e6be7f22a87f229",
+      "stage": "repair",
+      "unit_ids": [
+        "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+      ],
+      "status": "succeeded",
+      "origin": "provider",
+      "usage": {
+        "input_tokens": 6057,
+        "output_tokens": 351,
+        "total_tokens": 6408
+      },
+      "response": {
+        "financial_patches": [
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "claim_index": 1,
+            "money": [
+              {
+                "amount": "100",
+                "currency": "USD",
+                "measure": "financial harm threshold",
+                "comparator": "more than",
+                "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of detention and removal requirements",
+                "period": null,
+                "base": null
+              }
+            ]
+          },
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "claim_index": 4,
+            "money": [
+              {
+                "amount": "100",
+                "currency": "USD",
+                "measure": "financial harm threshold",
+                "comparator": "more than",
+                "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged release, bond, or parole actions or decisions",
+                "period": null,
+                "base": null
+              }
+            ]
+          },
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "claim_index": 7,
+            "money": [
+              {
+                "amount": "100",
+                "currency": "USD",
+                "measure": "financial harm threshold",
+                "comparator": "more than",
+                "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of the requirement to discontinue granting specified visas",
+                "period": null,
+                "base": null
+              }
+            ]
+          },
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "claim_index": 10,
+            "money": [
+              {
+                "amount": "100",
+                "currency": "USD",
+                "measure": "financial harm threshold",
+                "comparator": "more than",
+                "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of the parole limitation",
+                "period": null,
+                "base": null
+              }
+            ]
+          },
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "claim_index": 13,
+            "money": [
+              {
+                "amount": "100",
+                "currency": "USD",
+                "measure": "financial harm threshold",
+                "comparator": "more than",
+                "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of the detention requirement",
+                "period": null,
+                "base": null
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "3e864b5e073ef000bdb57dd0cfc1706312457ddcc190834131c34ce004682d95",
+      "response_id": "resp_0f6299dd71b59163016ad28c7b10c087d2996c6f0c5a64b20b",
+      "resolved_model": "gpt-6-luna"
+    },
+    {
+      "request_fingerprint": "4b204cd8c7afd57e680c07a8de3cf699296d1812c4ba079454c1f7dfe289cb9a",
+      "stage": "synopsis",
+      "unit_ids": [
+        "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+        "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+        "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+      ],
+      "status": "succeeded",
+      "origin": "provider",
+      "usage": {
+        "input_tokens": 284,
+        "output_tokens": 118,
+        "total_tokens": 402
+      },
+      "response": {
+        "text": "The Act may be cited as the “Laken Riley Act.” The amendment expands the specified mandatory-detention category and requires a detainer for covered aliens. It also defines listed terms by reference to the jurisdiction where the acts occurred. Section 3 adds State enforcement provisions to several INA sections and makes related amendments. State officials may seek injunctive relief for specified violations that harm the State or its residents; the court must expedite these actions as practicable.",
+        "explanation_ids": [
+          "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ]
+      },
+      "response_sha256": "d66c38f3f6c4e1e1e181235f9251cbae88209616d73e0906d47b56a71682628f",
+      "response_id": "resp_0ad8270a9709946e016ad28c7e995487d287224f52293ebd66",
+      "resolved_model": "gpt-6-luna"
+    }
+  ],
+  "reuse_result": {
+    "schema_version": "2.0-source-first",
+    "document_fingerprint": "eaa02cc1082477559284709de65b2c0abec2e108bd0f2860573249ab4929ea6d",
+    "provisions": [
+      {
+        "claims": [
+          {
+            "action": "may be cited as the “Laken Riley Act”",
+            "actor": "This Act",
+            "conditions": null,
+            "evidence_ids": [
+              "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f"
+            ],
+            "exceptions": [],
+            "modality": "permitted",
+            "money": []
+          }
+        ],
+        "coverage_items": [
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              0
+            ],
+            "item_id": "1f9d69bb0aeda351219be9f7639b2290fc650d76043f5501626e8f42e9c7d8de",
+            "reason": null,
+            "status": "explained"
+          }
+        ],
+        "details": [],
+        "status": "explained",
+        "summary": "The Act may be cited as the “Laken Riley Act.”",
+        "unit_id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+        "unresolved_reason": null,
+        "id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+        "source_limitations": [],
+        "evidence": [
+          {
+            "id": "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f",
+            "text": "SECTION 1. SHORT TITLE.\n    This Act may be cited as the ``Laken Riley Act''.\n",
+            "start": 797,
+            "end": 875,
+            "text_sha256": "fc7d92309f0badf8201108eb310a8be80a75fcd1f656cb3f83b16e64be61f03b",
+            "section_label": "Section 1 · SHORT TITLE.",
+            "url": "/documents/BILLS-119s5enr"
+          }
+        ]
+      },
+      {
+        "claims": [
+          {
+            "action": "Add the specified inadmissibility and offense criteria to the category in INA section 236(c)(1), with the listed offense terms defined by the law of the jurisdiction where the acts occurred.",
+            "actor": "Congress, by amendment",
+            "conditions": null,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "exceptions": [],
+            "modality": "required",
+            "money": []
+          },
+          {
+            "action": "Issue a detainer for an alien described in paragraph (1)(E) and take custody of that alien.",
+            "actor": "Secretary of Homeland Security",
+            "conditions": {
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ],
+              "operator": "leaf",
+              "text": "if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien."
+            },
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "exceptions": [],
+            "modality": "required",
+            "money": []
+          }
+        ],
+        "coverage_items": [
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "7228dacc7f7078c905762caf752fcea770d746fc9eb70869b28f05ce4a2d8d69",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "bdebb631d07e76641b7ef32877a36774e7465e0faf0053a8444c547dba1f07ad",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "aa9e5b061b57384c42b237a05bedec056f1de4a533cd6972761bd9360ac5358e",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "26393cec350b3d877edd6bd39ce1e6ad140e582688e48560d4482c9fc81a5f40",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "ac6789288dc72fdbd1a350b515c7f11efe8831e0b7ab6df87f7cc8bb43fe7f0b",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "d81ba19ad3d297053abacb40785b2355058f01a9107baf2e73bb0185c67d827d",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "1970827c54ba499dfe217545a997942522ffa000c7e658cb4c4cc0b1fa44c0fd",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "e78d3e1268f3a4b3d02a23d7ea73709ef6a664ae30b762e4cd704de52e3f4ab6",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "8834d3d5924da6cd632028f42d15ceed69f6269a5254514bb92296da16716498",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              0
+            ],
+            "explanation_indexes": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "item_id": "9c2c9d0fd598ed0600b24a3cfd3a7572ffea6652c2d74f407df9f58bda481ae8",
+            "reason": null,
+            "status": "explained"
+          },
+          {
+            "claim_indexes": [
+              1
+            ],
+            "explanation_indexes": [
+              5,
+              6
+            ],
+            "item_id": "a3fbe5d911959784e1ef7d2c70c566d39de21096e08addce4b50175b973efbd5",
+            "reason": null,
+            "status": "explained"
+          }
+        ],
+        "details": [
+          "The amendment inserts a new subparagraph (E) into paragraph (1), after changing the preceding subparagraphs’ punctuation and conjunction.",
+          "The new category covers a person inadmissible under section 212(a)(6)(A), (6)(C), or (7), who is charged with, arrested for, convicted of, or admits committing the specified acts.",
+          "The listed acts include burglary, theft, larceny, shoplifting, assault of a law enforcement officer, and a crime resulting in another person’s death or serious bodily injury.",
+          "The terms burglary, theft, larceny, shoplifting, assault of a law enforcement officer, and serious bodily injury take their meanings from the jurisdiction where the acts occurred. The supplied text does not establish the referenced inadmissibility provisions’ full meaning.",
+          "The Secretary must issue a detainer for an alien described in the new paragraph (1)(E).",
+          "If the alien is not already detained by federal, state, or local officials, the Secretary must effectively and expeditiously take custody."
+        ],
+        "status": "explained",
+        "summary": "The amendment expands the specified mandatory-detention category and requires a detainer for covered aliens. It also defines listed terms by reference to the jurisdiction where the acts occurred.",
+        "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+        "unresolved_reason": null,
+        "id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+        "source_limitations": [
+          "Section 236(c) of the Immigration and Nationality Act (8 U",
+          "section 212(a)"
+        ],
+        "evidence": [
+          {
+            "id": "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee",
+            "text": "SEC. 2. DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.\n    Section 236(c) of the Immigration and Nationality Act (8 U.S.C. \n1226(c)) is amended--\n        (1) in paragraph (1)--\n            (A) in subparagraph (C), by striking ``or'';\n            (B) in subparagraph (D), by striking the comma at the end \n        and inserting ``, or''; and\n            (C) by inserting after subparagraph (D) the following:\n            (E)(i) is inadmissible under paragraph (6)(A), (6)(C), or \n        (7) of section 212(a); and\n            ``(ii) is charged with, is arrested for, is convicted of, \n        admits having committed, or admits committing acts which \n        constitute the essential elements of any burglary, theft, \n        larceny, shoplifting, or assault of a law enforcement officer \n        offense, or any crime that results in death or serious bodily \n        injury to another person,'';\n        (2) by redesignating paragraph (2) as paragraph (4); and\n        (3) by inserting after paragraph (1) the following:\n        ``(2) Definition.--For purposes of paragraph (1)(E), the terms \n    `burglary', `theft', `larceny', `shoplifting', `assault of a law \n    enforcement officer', and `serious bodily injury' have the meanings \n    given such terms in the jurisdiction in which the acts occurred.''\n        ``(3) Detainer.--The Secretary of Homeland Security shall issue \n    a detainer for an alien described in paragraph (1)(E) and, if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien.''.\n",
+            "start": 875,
+            "end": 2477,
+            "text_sha256": "29afe6894ce2e6da9dadb2d1dd5730b3d4cfa46a4d3534dbf1b468d56d6a9e5b",
+            "section_label": "Sec. 2 · DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.",
+            "url": "/documents/BILLS-119s5enr"
+          }
+        ]
+      }
+    ]
+  },
+  "result": {
+    "output": {
+      "schema_version": "2.0-source-first",
+      "document_fingerprint": "eaa02cc1082477559284709de65b2c0abec2e108bd0f2860573249ab4929ea6d",
+      "pipeline_version": "source-first-13",
+      "plan_fingerprint": "af41c90c04468409e61ffdba82ade3e346c6a89e744a1b880d977d62a8a08370",
+      "synopsis": {
+        "text": "The Act may be cited as the “Laken Riley Act.” The amendment expands the specified mandatory-detention category and requires a detainer for covered aliens. It also defines listed terms by reference to the jurisdiction where the acts occurred. Section 3 adds State enforcement provisions to several INA sections and makes related amendments. State officials may seek injunctive relief for specified violations that harm the State or its residents; the court must expedite these actions as practicable.",
+        "explanation_ids": [
+          "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ],
+        "status": "partial"
+      },
+      "provisions": [
+        {
+          "claims": [
+            {
+              "action": "may be cited as the “Laken Riley Act”",
+              "actor": "This Act",
+              "conditions": null,
+              "evidence_ids": [
+                "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f"
+              ],
+              "exceptions": [],
+              "modality": "permitted",
+              "money": []
+            }
+          ],
+          "coverage_items": [
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                0
+              ],
+              "item_id": "1f9d69bb0aeda351219be9f7639b2290fc650d76043f5501626e8f42e9c7d8de",
+              "reason": null,
+              "status": "explained"
+            }
+          ],
+          "details": [],
+          "status": "explained",
+          "summary": "The Act may be cited as the “Laken Riley Act.”",
+          "unit_id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "unresolved_reason": null,
+          "id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f",
+              "text": "SECTION 1. SHORT TITLE.\n    This Act may be cited as the ``Laken Riley Act''.\n",
+              "start": 797,
+              "end": 875,
+              "text_sha256": "fc7d92309f0badf8201108eb310a8be80a75fcd1f656cb3f83b16e64be61f03b",
+              "section_label": "Section 1 · SHORT TITLE.",
+              "url": "/documents/BILLS-119s5enr"
+            }
+          ]
+        },
+        {
+          "claims": [
+            {
+              "action": "Add the specified inadmissibility and offense criteria to the category in INA section 236(c)(1), with the listed offense terms defined by the law of the jurisdiction where the acts occurred.",
+              "actor": "Congress, by amendment",
+              "conditions": null,
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ],
+              "exceptions": [],
+              "modality": "required",
+              "money": []
+            },
+            {
+              "action": "Issue a detainer for an alien described in paragraph (1)(E) and take custody of that alien.",
+              "actor": "Secretary of Homeland Security",
+              "conditions": {
+                "evidence_ids": [
+                  "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                ],
+                "operator": "leaf",
+                "text": "if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien."
+              },
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ],
+              "exceptions": [],
+              "modality": "required",
+              "money": []
+            }
+          ],
+          "coverage_items": [
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "7228dacc7f7078c905762caf752fcea770d746fc9eb70869b28f05ce4a2d8d69",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "bdebb631d07e76641b7ef32877a36774e7465e0faf0053a8444c547dba1f07ad",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "aa9e5b061b57384c42b237a05bedec056f1de4a533cd6972761bd9360ac5358e",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "26393cec350b3d877edd6bd39ce1e6ad140e582688e48560d4482c9fc81a5f40",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "ac6789288dc72fdbd1a350b515c7f11efe8831e0b7ab6df87f7cc8bb43fe7f0b",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "d81ba19ad3d297053abacb40785b2355058f01a9107baf2e73bb0185c67d827d",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "1970827c54ba499dfe217545a997942522ffa000c7e658cb4c4cc0b1fa44c0fd",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "e78d3e1268f3a4b3d02a23d7ea73709ef6a664ae30b762e4cd704de52e3f4ab6",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "8834d3d5924da6cd632028f42d15ceed69f6269a5254514bb92296da16716498",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "item_id": "9c2c9d0fd598ed0600b24a3cfd3a7572ffea6652c2d74f407df9f58bda481ae8",
+              "reason": null,
+              "status": "explained"
+            },
+            {
+              "claim_indexes": [
+                1
+              ],
+              "explanation_indexes": [
+                5,
+                6
+              ],
+              "item_id": "a3fbe5d911959784e1ef7d2c70c566d39de21096e08addce4b50175b973efbd5",
+              "reason": null,
+              "status": "explained"
+            }
+          ],
+          "details": [
+            "The amendment inserts a new subparagraph (E) into paragraph (1), after changing the preceding subparagraphs’ punctuation and conjunction.",
+            "The new category covers a person inadmissible under section 212(a)(6)(A), (6)(C), or (7), who is charged with, arrested for, convicted of, or admits committing the specified acts.",
+            "The listed acts include burglary, theft, larceny, shoplifting, assault of a law enforcement officer, and a crime resulting in another person’s death or serious bodily injury.",
+            "The terms burglary, theft, larceny, shoplifting, assault of a law enforcement officer, and serious bodily injury take their meanings from the jurisdiction where the acts occurred. The supplied text does not establish the referenced inadmissibility provisions’ full meaning.",
+            "The Secretary must issue a detainer for an alien described in the new paragraph (1)(E).",
+            "If the alien is not already detained by federal, state, or local officials, the Secretary must effectively and expeditiously take custody."
+          ],
+          "status": "explained",
+          "summary": "The amendment expands the specified mandatory-detention category and requires a detainer for covered aliens. It also defines listed terms by reference to the jurisdiction where the acts occurred.",
+          "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "unresolved_reason": null,
+          "id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "source_limitations": [
+            "Section 236(c) of the Immigration and Nationality Act (8 U",
+            "section 212(a)"
+          ],
+          "evidence": [
+            {
+              "id": "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee",
+              "text": "SEC. 2. DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.\n    Section 236(c) of the Immigration and Nationality Act (8 U.S.C. \n1226(c)) is amended--\n        (1) in paragraph (1)--\n            (A) in subparagraph (C), by striking ``or'';\n            (B) in subparagraph (D), by striking the comma at the end \n        and inserting ``, or''; and\n            (C) by inserting after subparagraph (D) the following:\n            (E)(i) is inadmissible under paragraph (6)(A), (6)(C), or \n        (7) of section 212(a); and\n            ``(ii) is charged with, is arrested for, is convicted of, \n        admits having committed, or admits committing acts which \n        constitute the essential elements of any burglary, theft, \n        larceny, shoplifting, or assault of a law enforcement officer \n        offense, or any crime that results in death or serious bodily \n        injury to another person,'';\n        (2) by redesignating paragraph (2) as paragraph (4); and\n        (3) by inserting after paragraph (1) the following:\n        ``(2) Definition.--For purposes of paragraph (1)(E), the terms \n    `burglary', `theft', `larceny', `shoplifting', `assault of a law \n    enforcement officer', and `serious bodily injury' have the meanings \n    given such terms in the jurisdiction in which the acts occurred.''\n        ``(3) Detainer.--The Secretary of Homeland Security shall issue \n    a detainer for an alien described in paragraph (1)(E) and, if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien.''.\n",
+              "start": 875,
+              "end": 2477,
+              "text_sha256": "29afe6894ce2e6da9dadb2d1dd5730b3d4cfa46a4d3534dbf1b468d56d6a9e5b",
+              "section_label": "Sec. 2 · DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.",
+              "url": "/documents/BILLS-119s5enr"
+            }
+          ]
+        },
+        {
+          "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+          "status": "explained",
+          "summary": "Section 3 adds State enforcement provisions to several INA sections and makes related amendments. State officials may seek injunctive relief for specified violations that harm the State or its residents; the court must expedite these actions as practicable.",
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "Congress",
+              "action": "Redesignate paragraph (3) of INA section 235(b) as paragraph (4), and insert a new paragraph (3) after paragraph (2).",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "A State attorney general or other authorized State officer",
+              "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief concerning alleged violations of INA section 235(b)(1) or (2) detention and removal requirements that harm the State or its residents.",
+              "modality": "permitted",
+              "money": [
+                {
+                  "amount": "100",
+                  "currency": "USD",
+                  "measure": "financial harm threshold",
+                  "comparator": "more than",
+                  "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of detention and removal requirements",
+                  "period": null,
+                  "base": null
+                }
+              ],
+              "conditions": {
+                "operator": "leaf",
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ],
+                "text": "if the State or its residents experience harm, \n    including financial harm in excess of $100."
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "The court",
+              "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "Congress",
+              "action": "Amend INA section 236(e) by striking “or release” and replacing “grant, revocation, or denial” with “revocation or denial.”",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "A State attorney general or other authorized State officer",
+              "action": "Bring an action against the Attorney General or Secretary of Homeland Security for appropriate injunctive relief concerning an alleged action or decision under INA section 236 to release an alien or grant bond or parole to an alien, when it harms the State or its residents.",
+              "modality": "permitted",
+              "money": [
+                {
+                  "amount": "100",
+                  "currency": "USD",
+                  "measure": "financial harm threshold",
+                  "comparator": "more than",
+                  "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged release, bond, or parole actions or decisions",
+                  "period": null,
+                  "base": null
+                }
+              ],
+              "conditions": {
+                "operator": "leaf",
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ],
+                "text": "if the State or its residents experience harm, including \nfinancial harm in excess of $100."
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "The court",
+              "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "Congress",
+              "action": "Add a new subsection (e) to INA section 243.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "A State attorney general or other authorized State officer",
+              "action": "Bring an action against the Secretary of State for appropriate injunctive relief concerning an alleged violation of the subsection (d) requirement to discontinue granting visas to the specified citizens, subjects, nationals, and residents, when it harms the State or its residents.",
+              "modality": "permitted",
+              "money": [
+                {
+                  "amount": "100",
+                  "currency": "USD",
+                  "measure": "financial harm threshold",
+                  "comparator": "more than",
+                  "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of the requirement to discontinue granting specified visas",
+                  "period": null,
+                  "base": null
+                }
+              ],
+              "conditions": {
+                "operator": "leaf",
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ],
+                "text": "if the State or its residents experience harm, \nincluding financial harm in excess of $100."
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "The court",
+              "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "Congress",
+              "action": "In INA section 212(d)(5), replace each occurrence of “Attorney General” with “Secretary of Homeland Security,” and add a new subparagraph at the end.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "A State attorney general or other authorized State officer",
+              "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief concerning an alleged violation of the limitation in subparagraph (A) on parole, when it harms the State or its residents.",
+              "modality": "permitted",
+              "money": [
+                {
+                  "amount": "100",
+                  "currency": "USD",
+                  "measure": "financial harm threshold",
+                  "comparator": "more than",
+                  "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of the parole limitation",
+                  "period": null,
+                  "base": null
+                }
+              ],
+              "conditions": {
+                "operator": "leaf",
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ],
+                "text": "if the State or its residents experience \nharm, including financial harm in excess of $100."
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "The court",
+              "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "Congress",
+              "action": "Amend INA section 241(a)(2) by redesignating its existing removal-period text as subparagraph (A) and adding a new subparagraph (B).",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "A State attorney general or other authorized State officer",
+              "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief concerning an alleged violation of the detention requirement in INA section 241(a)(2)(A), when it harms the State or its residents.",
+              "modality": "permitted",
+              "money": [
+                {
+                  "amount": "100",
+                  "currency": "USD",
+                  "measure": "financial harm threshold",
+                  "comparator": "more than",
+                  "purpose": "Eligibility to bring a State enforcement action for injunctive relief concerning alleged violations of the detention requirement",
+                  "period": null,
+                  "base": null
+                }
+              ],
+              "conditions": {
+                "operator": "leaf",
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ],
+                "text": "if the State \n        or its residents experience harm, including financial harm in \n        excess of $100."
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "The court",
+              "action": "Advance the civil action on its docket and expedite its disposition to the greatest extent practicable.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            },
+            {
+              "actor": "Congress",
+              "action": "Add a rule to INA section 242(f) providing that paragraph (1) does not apply to actions brought under the listed provisions.",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+              ]
+            }
+          ],
+          "details": [
+            "Section 3 amends INA section 235(b) by redesignating paragraph (3) as paragraph (4).",
+            "It inserts a new paragraph (3) after paragraph (2).",
+            "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+            "The alleged violation must harm the State or its residents; harm includes financial harm exceeding $100.",
+            "The court must advance and expedite the action as much as practicable.",
+            "The amendment removes the words “or release” from subsection (e).",
+            "It changes the listed matters from “grant, revocation, or denial” to “revocation or denial,” then adds a new subsection (f).",
+            "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+            "The alleged release, bond, or parole action or decision must harm the State or its residents; harm includes financial harm exceeding $100.",
+            "The court must advance and expedite the action as much as practicable.",
+            "The amendment adds a new subsection (e) to INA section 243.",
+            "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+            "The alleged violation must harm the State or its residents; harm includes financial harm exceeding $100.",
+            "The court must advance and expedite the action as much as practicable.",
+            "The amendment substitutes “Secretary of Homeland Security” for “Attorney General” each place the latter term appears in INA section 212(d)(5).",
+            "It also adds a new subparagraph at the end.",
+            "The alleged violation concerns the limitation that parole be granted solely case by case and solely for urgent humanitarian reasons or significant public benefit.",
+            "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court if the alleged violation harms them; harm includes financial harm exceeding $100.",
+            "The court must advance and expedite the action as much as practicable.",
+            "The amendment places the existing words “During the removal period” under a new subparagraph (A), labeled “In general.”",
+            "It adds a new subparagraph (B).",
+            "The official has standing to sue on behalf of the State or its residents in an appropriate federal district court.",
+            "The alleged violation must harm the State or its residents; harm includes financial harm exceeding $100.",
+            "The court must advance and expedite the action as much as practicable.",
+            "The amendment adds paragraph (3) to INA section 242(f).",
+            "Paragraph (1) does not apply to actions brought under INA section 235(b)(3), section 236(e) or (f), or section 241(a)(2)(B).",
+            "The supplied text does not establish the broader scope or effect of INA section 242(f)(1)."
+          ],
+          "coverage_items": [
+            {
+              "item_id": "935d0cbb95fa43afe888a10f1159c1598f7e26e87506ef976696bde4be4ac55d",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "bbd0990d564412c2cc6df6ba7126800c96a476c5712e4ea18e1448d3ad5acab9",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "e9c02518780fcbce627ea17745bebbbfcb21b8304628ecd2609962b271719e54",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "4b5a3d2b992b022caab7a4a9689dee1e3398621d09d97d9e11450696f0f8e144",
+              "status": "explained",
+              "claim_indexes": [
+                0
+              ],
+              "explanation_indexes": [
+                1,
+                2
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "d83a3f518d06070aca4c0ae019313a9767f49ade04063409d98b464524ae2d4d",
+              "status": "explained",
+              "claim_indexes": [
+                1
+              ],
+              "explanation_indexes": [
+                3,
+                4
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "7ea0c5abbf1fa6544041a013de86fad82acfbf9df261be6cd36f5ee292828d20",
+              "status": "explained",
+              "claim_indexes": [
+                1,
+                2
+              ],
+              "explanation_indexes": [
+                3,
+                4,
+                5
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "10955e75232f71fef5ee2308364f5c34e4dcf23cce230a4f6855764cf24293d6",
+              "status": "explained",
+              "claim_indexes": [
+                3
+              ],
+              "explanation_indexes": [
+                6,
+                7
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "2c874c69a15c952c6ad2c157aec646dae739bcddf0b509744b8a38c142f4b7d2",
+              "status": "explained",
+              "claim_indexes": [
+                3
+              ],
+              "explanation_indexes": [
+                6,
+                7
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "510772569028a4a929d52810455759e2a5e26ff8fdf462c29e5ba94c6d78479d",
+              "status": "explained",
+              "claim_indexes": [
+                3
+              ],
+              "explanation_indexes": [
+                6,
+                7
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "326561f18787f20d006c8a51b5d699bd64998a8bf905da90cbe157e96016070e",
+              "status": "explained",
+              "claim_indexes": [
+                3
+              ],
+              "explanation_indexes": [
+                6,
+                7
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "12d6aea0afb9bb858d98651566d420538efab73016a3931f064f74c4026caba9",
+              "status": "explained",
+              "claim_indexes": [
+                3
+              ],
+              "explanation_indexes": [
+                6,
+                7
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "559dd837c5f6ef566f764b70a1d3812e5cf430779881a076a3126f926a590c70",
+              "status": "explained",
+              "claim_indexes": [
+                4,
+                5
+              ],
+              "explanation_indexes": [
+                8,
+                9,
+                10
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "638cb3b23b79346fbb4621c805ea782a8c7938d3723746bd44d3c11699fe3c4f",
+              "status": "explained",
+              "claim_indexes": [
+                6
+              ],
+              "explanation_indexes": [
+                11
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "36f12e6bc49b650a21431722cbfd6a6f929c0de40225957deaf46bfc0a851c5c",
+              "status": "explained",
+              "claim_indexes": [
+                7,
+                8
+              ],
+              "explanation_indexes": [
+                12,
+                13,
+                14
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "2e8c721ace1059ef9e39c30adbc256ce8339f17575b39b9bd5896cd13bcb8788",
+              "status": "explained",
+              "claim_indexes": [
+                9
+              ],
+              "explanation_indexes": [
+                15,
+                16
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "7af8a96eb9b3bc3ea52f875643ad24c90ed94d0afcaa41cbb02fdacc7f0642af",
+              "status": "explained",
+              "claim_indexes": [
+                9
+              ],
+              "explanation_indexes": [
+                15,
+                16
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "fd44690aee5f140435fa7cdfa8844b9859ca6db7cd98c6ce24b389b3ccee8428",
+              "status": "explained",
+              "claim_indexes": [
+                9
+              ],
+              "explanation_indexes": [
+                15,
+                16
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "63c9faf0dbe5322f1f02be60af867513132006666adbf0daf5afe47c98db7050",
+              "status": "explained",
+              "claim_indexes": [
+                10,
+                11
+              ],
+              "explanation_indexes": [
+                17,
+                18,
+                19
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "bdf58f67742a2b0df826aba0c2c4282d61b4e5108bd6e79db5fb6ca9bdb39915",
+              "status": "explained",
+              "claim_indexes": [
+                12
+              ],
+              "explanation_indexes": [
+                20,
+                21
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "ff1d3b4b9e4cc7366b0c85fcde4e434c3c8c6b437166eee57122735b3516d225",
+              "status": "explained",
+              "claim_indexes": [
+                12
+              ],
+              "explanation_indexes": [
+                20,
+                21
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "b8d1c46b41f21da1cab577f46dec4000f491afb11d64b8acfcd5b46fb3c26f82",
+              "status": "explained",
+              "claim_indexes": [
+                12
+              ],
+              "explanation_indexes": [
+                20,
+                21
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "b44572dfc4017b638c464038cceaec4ed9f3cb6fed30467730dcb25683398344",
+              "status": "explained",
+              "claim_indexes": [
+                12
+              ],
+              "explanation_indexes": [
+                20,
+                21
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "d40655a3284ba2b25a35f883b642cb557018766c26973b04253c00b262be9f8e",
+              "status": "explained",
+              "claim_indexes": [
+                13,
+                14
+              ],
+              "explanation_indexes": [
+                22,
+                23,
+                24
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "b8c1f776624bcb0484eb8644f2c03110f8195606f75eaff682451af0e4e9c733",
+              "status": "explained",
+              "claim_indexes": [
+                15
+              ],
+              "explanation_indexes": [
+                25,
+                26,
+                27
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "16ec876441b5d5114e9d36e46660df056978a43f3cae868379205426e81c0a5a",
+              "status": "explained",
+              "claim_indexes": [
+                15
+              ],
+              "explanation_indexes": [
+                25,
+                26,
+                27
+              ],
+              "reason": null
+            },
+            {
+              "item_id": "14db925ecc2a436158f797773fd217865bdb87909b3187fe013e446644c7ed92",
+              "status": "explained",
+              "claim_indexes": [
+                15
+              ],
+              "explanation_indexes": [
+                25,
+                26,
+                27
+              ],
+              "reason": null
+            }
+          ],
+          "id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+          "source_limitations": [
+            "Section 212(d)(5) of the ",
+            "Section 235(b) of the ",
+            "Section 236 of the ",
+            "Section 241(a)(2) of the Immigration and ",
+            "Section 242(f) of the Immigration ",
+            "Section 243 of the Immigration and Nationality Act ",
+            "section 235(b)(3)",
+            "section 236",
+            "section 241(a)(2)(B)"
+          ],
+          "evidence": [
+            {
+              "id": "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a",
+              "text": "SEC. 3. ENFORCEMENT BY ATTORNEY GENERAL OF A STATE.\n    (a) Inspection of Applicants for Admission.--Section 235(b) of the \nImmigration and Nationality Act (8 U.S.C. 1225(b)) is amended--\n        (1) by redesignating paragraph (3) as paragraph (4); and\n        (2) by inserting after paragraph (2) the following:\n        ``(3) Enforcement by attorney general of a state.--The attorney \n    general of a State, or other authorized State officer, alleging a \n    violation of the detention and removal requirements under paragraph \n    (1) or (2) that harms such State or its residents shall have \n    standing to bring an action against the Secretary of Homeland \n    Security on behalf of such State or the residents of such State in \n    an appropriate district court of the United States to obtain \n    appropriate injunctive relief. The court shall advance on the \n    docket and expedite the disposition of a civil action filed under \n    this paragraph to the greatest extent practicable. For purposes of \n    this paragraph, a State or its residents shall be considered to \n    have been harmed if the State or its residents experience harm, \n    including financial harm in excess of $100.''.\n    (b) Apprehension and Detention of Aliens.--Section 236 of the \nImmigration and Nationality Act (8 U.S.C. 1226), as amended by this \nAct, is further amended--\n        (1) in subsection (e)--\n            (A) by striking ``or release''; and\n            (B) by striking ``grant, revocation, or denial'' and insert \n        ``revocation or denial''; and\n        (2) by adding at the end the following:\n    ``(f) Enforcement by Attorney General of a State.--The attorney \ngeneral of a State, or other authorized State officer, alleging an \naction or decision by the Attorney General or Secretary of Homeland \nSecurity under this section to release any alien or grant bond or \nparole to any alien that harms such State or its residents shall have \nstanding to bring an action against the Attorney General or Secretary \nof Homeland Security on behalf of such State or the residents of such \nState in an appropriate district court of the United States to obtain \nappropriate injunctive relief. The court shall advance on the docket \nand expedite the disposition of a civil action filed under this \nsubsection to the greatest extent practicable. For purposes of this \nsubsection, a State or its residents shall be considered to have been \nharmed if the State or its residents experience harm, including \nfinancial harm in excess of $100.''.\n    (c) Penalties.--Section 243 of the Immigration and Nationality Act \n(8 U.S.C. 1253) is amended by adding at the end the following:\n    ``(e) Enforcement by Attorney General of a State.--The attorney \ngeneral of a State, or other authorized State officer, alleging a \nviolation of the requirement to discontinue granting visas to citizens, \nsubjects, nationals, and residents as described in subsection (d) that \nharms such State or its residents shall have standing to bring an \naction against the Secretary of State on behalf of such State or the \nresidents of such State in an appropriate district court of the United \nStates to obtain appropriate injunctive relief. The court shall advance \non the docket and expedite the disposition of a civil action filed \nunder this subsection to the greatest extent practicable. For purposes \nof this subsection, a State or its residents shall be considered to \nhave been harmed if the State or its residents experience harm, \nincluding financial harm in excess of $100.''.\n    (d) Certain Classes of Aliens.--Section 212(d)(5) of the \nImmigration and Nationality Act (8 U.S.C. 1182(d)(5)) is amended--\n        (1) by striking ``Attorney General'' each place such term \n    appears and inserting ``Secretary of Homeland Security''; and\n        (2) by adding at the end the following:\n    ``(C) The attorney general of a State, or other authorized State \nofficer, alleging a violation of the limitation under subparagraph (A) \nthat parole solely be granted on a case-by-case basis and solely for \nurgent humanitarian reasons or a significant public benefit, that harms \nsuch State or its residents shall have standing to bring an action \nagainst the Secretary of Homeland Security on behalf of such State or \nthe residents of such State in an appropriate district court of the \nUnited States to obtain appropriate injunctive relief. The court shall \nadvance on the docket and expedite the disposition of a civil action \nfiled under this subparagraph to the greatest extent practicable. For \npurposes of this subparagraph, a State or its residents shall be \nconsidered to have been harmed if the State or its residents experience \nharm, including financial harm in excess of $100.''.\n    (e) Detention.--Section 241(a)(2) of the Immigration and \nNationality Act (8 U.S.C. 1231(a)(2)) is amended--\n        (1) by striking ``During the removal period,'' and inserting \n    the following:\n            ``(A) In general.--During the removal period,''; and\n        (2) by adding at the end the following:\n            ``(B) Enforcement by attorney general of a state.--The \n        attorney general of a State, or other authorized State officer, \n        alleging a violation of the detention requirement under \n        subparagraph (A) that harms such State or its residents shall \n        have standing to bring an action against the Secretary of \n        Homeland Security on behalf of such State or the residents of \n        such State in an appropriate district court of the United \n        States to obtain appropriate injunctive relief. The court shall \n        advance on the docket and expedite the disposition of a civil \n        action filed under this subparagraph to the greatest extent \n        practicable. For purposes of this subparagraph, a State or its \n        residents shall be considered to have been harmed if the State \n        or its residents experience harm, including financial harm in \n        excess of $100.''.\n    (f) Limit on Injunctive Relief.--Section 242(f) of the Immigration \nand Nationality Act (8 U.S.C. 1252(f)) is amended by adding at the end \nfollowing:\n        ``(3) Certain actions.--Paragraph (1) shall not apply to an \n    action brought pursuant to section 235(b)(3), subsections (e) or \n    (f) of section 236, or section 241(a)(2)(B).''.\n\n                               Speaker of the House of Representatives.\n\n                            Vice President of the United States and    \n                                               President of the Senate.\n",
+              "start": 2477,
+              "end": 9055,
+              "text_sha256": "9e86b94b87b210550fa1f5d6bff24e033495773ff26a6e2de68b71ba9b6918d7",
+              "section_label": "Sec. 3 · ENFORCEMENT BY ATTORNEY GENERAL OF A STATE.",
+              "url": "/documents/BILLS-119s5enr"
+            }
+          ]
+        }
+      ],
+      "coverage": {
+        "unit_ids": [
+          "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ],
+        "inventory_complete": false,
+        "omitted_source_ranges": [],
+        "normalization_version": "raw-decoded-v1",
+        "source_items": [
+          {
+            "id": "1f9d69bb0aeda351219be9f7639b2290fc650d76043f5501626e8f42e9c7d8de",
+            "start": 797,
+            "end": 875,
+            "evidence_ids": [
+              "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "7228dacc7f7078c905762caf752fcea770d746fc9eb70869b28f05ce4a2d8d69",
+            "start": 875,
+            "end": 1020,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "bdebb631d07e76641b7ef32877a36774e7465e0faf0053a8444c547dba1f07ad",
+            "start": 1020,
+            "end": 1051,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "aa9e5b061b57384c42b237a05bedec056f1de4a533cd6972761bd9360ac5358e",
+            "start": 1051,
+            "end": 1108,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "26393cec350b3d877edd6bd39ce1e6ad140e582688e48560d4482c9fc81a5f40",
+            "start": 1108,
+            "end": 1215,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "ac6789288dc72fdbd1a350b515c7f11efe8831e0b7ab6df87f7cc8bb43fe7f0b",
+            "start": 1215,
+            "end": 1353,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "d81ba19ad3d297053abacb40785b2355058f01a9107baf2e73bb0185c67d827d",
+            "start": 1353,
+            "end": 1388,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "1970827c54ba499dfe217545a997942522ffa000c7e658cb4c4cc0b1fa44c0fd",
+            "start": 1388,
+            "end": 1771,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "e78d3e1268f3a4b3d02a23d7ea73709ef6a664ae30b762e4cd704de52e3f4ab6",
+            "start": 1771,
+            "end": 1836,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "8834d3d5924da6cd632028f42d15ceed69f6269a5254514bb92296da16716498",
+            "start": 1836,
+            "end": 1896,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "9c2c9d0fd598ed0600b24a3cfd3a7572ffea6652c2d74f407df9f58bda481ae8",
+            "start": 1896,
+            "end": 2182,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "a3fbe5d911959784e1ef7d2c70c566d39de21096e08addce4b50175b973efbd5",
+            "start": 2182,
+            "end": 2477,
+            "evidence_ids": [
+              "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission"
+            ],
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "935d0cbb95fa43afe888a10f1159c1598f7e26e87506ef976696bde4be4ac55d",
+            "start": 2477,
+            "end": 2529,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "structural_context"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "structural_context"
+          },
+          {
+            "id": "bbd0990d564412c2cc6df6ba7126800c96a476c5712e4ea18e1448d3ad5acab9",
+            "start": 2529,
+            "end": 2665,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "e9c02518780fcbce627ea17745bebbbfcb21b8304628ecd2609962b271719e54",
+            "start": 2665,
+            "end": 2730,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "4b5a3d2b992b022caab7a4a9689dee1e3398621d09d97d9e11450696f0f8e144",
+            "start": 2730,
+            "end": 2790,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "d83a3f518d06070aca4c0ae019313a9767f49ade04063409d98b464524ae2d4d",
+            "start": 2790,
+            "end": 3007,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "7ea0c5abbf1fa6544041a013de86fad82acfbf9df261be6cd36f5ee292828d20",
+            "start": 3007,
+            "end": 3677,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "10955e75232f71fef5ee2308364f5c34e4dcf23cce230a4f6855764cf24293d6",
+            "start": 3677,
+            "end": 3839,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "2c874c69a15c952c6ad2c157aec646dae739bcddf0b509744b8a38c142f4b7d2",
+            "start": 3839,
+            "end": 3871,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "510772569028a4a929d52810455759e2a5e26ff8fdf462c29e5ba94c6d78479d",
+            "start": 3871,
+            "end": 3919,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "326561f18787f20d006c8a51b5d699bd64998a8bf905da90cbe157e96016070e",
+            "start": 3919,
+            "end": 4030,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "12d6aea0afb9bb858d98651566d420538efab73016a3931f064f74c4026caba9",
+            "start": 4030,
+            "end": 4078,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "559dd837c5f6ef566f764b70a1d3812e5cf430779881a076a3126f926a590c70",
+            "start": 4078,
+            "end": 5012,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "638cb3b23b79346fbb4621c805ea782a8c7938d3723746bd44d3c11699fe3c4f",
+            "start": 5012,
+            "end": 5147,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "36f12e6bc49b650a21431722cbfd6a6f929c0de40225957deaf46bfc0a851c5c",
+            "start": 5147,
+            "end": 6031,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "2e8c721ace1059ef9e39c30adbc256ce8339f17575b39b9bd5896cd13bcb8788",
+            "start": 6031,
+            "end": 6160,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "7af8a96eb9b3bc3ea52f875643ad24c90ed94d0afcaa41cbb02fdacc7f0642af",
+            "start": 6160,
+            "end": 6293,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "fd44690aee5f140435fa7cdfa8844b9859ca6db7cd98c6ce24b389b3ccee8428",
+            "start": 6293,
+            "end": 6341,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "63c9faf0dbe5322f1f02be60af867513132006666adbf0daf5afe47c98db7050",
+            "start": 6341,
+            "end": 7239,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "bdf58f67742a2b0df826aba0c2c4282d61b4e5108bd6e79db5fb6ca9bdb39915",
+            "start": 7239,
+            "end": 7352,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "ff1d3b4b9e4cc7366b0c85fcde4e434c3c8c6b437166eee57122735b3516d225",
+            "start": 7352,
+            "end": 7441,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "amendment"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "b8d1c46b41f21da1cab577f46dec4000f491afb11d64b8acfcd5b46fb3c26f82",
+            "start": 7441,
+            "end": 7506,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "b44572dfc4017b638c464038cceaec4ed9f3cb6fed30467730dcb25683398344",
+            "start": 7506,
+            "end": 7554,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "d40655a3284ba2b25a35f883b642cb557018766c26973b04253c00b262be9f8e",
+            "start": 7554,
+            "end": 8491,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "condition",
+              "duty_or_permission",
+              "financial"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "b8c1f776624bcb0484eb8644f2c03110f8195606f75eaff682451af0e4e9c733",
+            "start": 8491,
+            "end": 8646,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "16ec876441b5d5114e9d36e46660df056978a43f3cae868379205426e81c0a5a",
+            "start": 8646,
+            "end": 8785,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [
+              "duty_or_permission"
+            ],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          },
+          {
+            "id": "14db925ecc2a436158f797773fd217865bdb87909b3187fe013e446644c7ed92",
+            "start": 8785,
+            "end": 9055,
+            "evidence_ids": [
+              "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+            ],
+            "kinds": [],
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "mapped_unreviewed"
+          }
+        ],
+        "unresolved_unit_ids": [],
+        "context_limited_unit_ids": [
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ]
+      },
+      "quality": {
+        "mechanical_status": "mechanically_valid",
+        "semantic_review_status": "unreviewed"
+      }
+    },
+    "completeness": "complete",
+    "call_count": 3,
+    "findings": [
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/5",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Source block 3007:3677 requires a financial entry on its mapped claim. Preserve its purpose and restrictions; use a null amount when no fixed amount is stated, not zero or an invented dollar value."
+      },
+      {
+        "code": "source_item_amount_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/5",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Every explicit dollar amount in this source block must be represented on its mapped claim, not a neighboring rule."
+      },
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/11",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Source block 4078:5012 requires a financial entry on its mapped claim. Preserve its purpose and restrictions; use a null amount when no fixed amount is stated, not zero or an invented dollar value."
+      },
+      {
+        "code": "source_item_amount_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/11",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Every explicit dollar amount in this source block must be represented on its mapped claim, not a neighboring rule."
+      },
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/13",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Source block 5147:6031 requires a financial entry on its mapped claim. Preserve its purpose and restrictions; use a null amount when no fixed amount is stated, not zero or an invented dollar value."
+      },
+      {
+        "code": "source_item_amount_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/13",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Every explicit dollar amount in this source block must be represented on its mapped claim, not a neighboring rule."
+      },
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/17",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Source block 6341:7239 requires a financial entry on its mapped claim. Preserve its purpose and restrictions; use a null amount when no fixed amount is stated, not zero or an invented dollar value."
+      },
+      {
+        "code": "source_item_amount_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/17",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Every explicit dollar amount in this source block must be represented on its mapped claim, not a neighboring rule."
+      },
+      {
+        "code": "source_item_money_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/22",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Source block 7554:8491 requires a financial entry on its mapped claim. Preserve its purpose and restrictions; use a null amount when no fixed amount is stated, not zero or an invented dollar value."
+      },
+      {
+        "code": "source_item_amount_missing",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "coverage_items/22",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "Every explicit dollar amount in this source block must be represented on its mapped claim, not a neighboring rule."
+      },
+      {
+        "code": "financial_coverage_unverified",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "claims.money",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "financial coverage unverified"
+      }
+    ]
+  }
+}

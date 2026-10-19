@@ -7,6 +7,7 @@ from typing import Any
 from jsonschema import Draft202012Validator, ValidationError
 
 from .diagnostics import output_error
+from .citations import citation_spans
 
 OUTPUT_SCHEMA_VERSION = "1.2"
 
@@ -236,14 +237,11 @@ def validate_enhancement_output(
                     )
                 sources = {s["source_ref"]: s["quoted_text"] for s in source_snapshot}
                 for quote_index, quote in enumerate(quotes):
-                    if (
-                        not quote["quote"].strip()
-                        or sources[quote["source_ref"]].count(quote["quote"]) != 1
-                    ):
+                    matches = citation_spans(sources[quote["source_ref"]], quote["quote"])
+                    if len(matches) != 1:
                         code = (
                             "citation_quote_ambiguous"
-                            if quote["quote"].strip()
-                            and sources[quote["source_ref"]].count(quote["quote"]) > 1
+                            if len(matches) > 1
                             else "citation_quote_not_found"
                         )
                         raise output_error(

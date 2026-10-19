@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import ProfileProvider, { ProfilePreference } from "@/app/components/ProfileProvider";
+import ProfileProvider from "@/app/components/ProfileProvider";
 import LegislatorName from "@/app/components/LegislatorName";
 import BillDeckModal from "@/app/components/BillDeckModal";
 
@@ -30,8 +30,43 @@ beforeEach(() => {
   }));
 });
 
+it.each(["loading", "error"])("bill Close remains usable while details are %s and supports reopening", async state => {
+  vi.stubGlobal("fetch", vi.fn(() => state === "loading" ? new Promise<Response>(() => {}) : Promise.reject(new Error("offline"))));
+  function Fixture() {
+    const [open, setOpen] = React.useState(false);
+    return <ProfileProvider><button onClick={() => setOpen(true)}>Open bill</button>{open && <BillDeckModal bill={bill} onClose={() => setOpen(false)} />}</ProfileProvider>;
+  }
+  render(<React.StrictMode><Fixture /></React.StrictMode>);
+  const user = userEvent.setup();
+  const opener = screen.getByRole("button", { name: "Open bill" });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await user.click(opener);
+    await screen.findByRole("dialog", { name: bill.title });
+    if (state === "error") await screen.findByRole("alert");
+    else expect(screen.getByText("Loading bill details…")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close bill details" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(opener).toHaveFocus());
+    expect(document.body.style.overflow).toBe("");
+  }
+});
+
+it.each(["loading", "error"])("profile Close remains usable while profile is %s", async state => {
+  localStorage.setItem(FLAG, "true");
+  vi.stubGlobal("fetch", vi.fn(() => state === "loading" ? new Promise<Response>(() => {}) : Promise.reject(new Error("offline"))));
+  render(<React.StrictMode>{page()}</React.StrictMode>);
+  const user = userEvent.setup();
+  const opener = screen.getByRole("link", { name: "First Member" });
+  await user.click(opener);
+  await screen.findByRole("dialog");
+  await user.click(screen.getByRole("button", { name: "Close legislator profile" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(() => expect(opener).toHaveFocus());
+  expect(document.body.style.overflow).toBe("");
+});
+
 function page() {
-  return <ProfileProvider><ProfilePreference /><LegislatorName id={1} name="First Member" congress={119} /><LegislatorName id={2} name="Second Member" congress={119} /></ProfileProvider>;
+  return <ProfileProvider><LegislatorName id={1} name="First Member" congress={119} /><LegislatorName id={2} name="Second Member" congress={119} /></ProfileProvider>;
 }
 
 it("retains historical anchor context and does not fetch profiles while disabled", async () => {
@@ -43,7 +78,7 @@ it("retains historical anchor context and does not fetch profiles while disabled
 });
 
 it("opens factual sections by ID, loads votes lazily, and suppresses unsafe source URLs", async () => {
-  localStorage.setItem(FLAG, "true"); render(page());
+  localStorage.setItem(FLAG, "false"); render(page());
   const user = userEvent.setup();
   const opener = screen.getByRole("link", { name: "First Member" });
   await user.click(opener);
@@ -77,7 +112,7 @@ it("keeps bill→profile nesting in one stack, with unique titles and rollback c
   await waitFor(() => expect(child).not.toBeInTheDocument());
   expect(introduced).toHaveFocus();
   expect(document.body.style.overflow).toBe("hidden");
-  await user.click(screen.getByRole("checkbox", { name: /legislator profiles/ }));
+  await user.click(screen.getByRole("button", { name: "Close legislator profile" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(document.body.style.overflow).toBe("");
 });
@@ -122,9 +157,9 @@ it("returns focus to a connected page control when the opener disappears", async
   const view = render(page()); const user = userEvent.setup();
   await user.click(screen.getByRole("link", { name: "First Member" }));
   await screen.findByRole("dialog", { name: "First Member" });
-  view.rerender(<ProfileProvider><ProfilePreference /></ProfileProvider>);
+  view.rerender(<ProfileProvider><button>Page action</button></ProfileProvider>);
   await user.click(screen.getByRole("button", { name: "Close legislator profile" }));
-  await waitFor(() => expect(screen.getByRole("checkbox")).toHaveFocus());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Page action" })).toHaveFocus());
 });
 
 it("repeated clicks consume the same profile navigation without duplicate dialogs", async () => {

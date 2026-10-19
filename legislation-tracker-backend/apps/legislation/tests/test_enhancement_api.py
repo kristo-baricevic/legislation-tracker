@@ -61,12 +61,16 @@ def test_all_enhancement_routes_require_authentication(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("output_limit", [4000, 8000])
 def test_estimate_reports_full_confirmation_and_credential_state(
     enhancement_client,
     enhancement_owner,
     source_bill,
     enhancement_settings,
+    settings,
+    output_limit,
 ):
+    settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = output_limit
     with enhancement_settings:
         credential = _valid_credential(enhancement_owner)
         preflight = build_enhancement_preflight(source_bill)
@@ -81,7 +85,7 @@ def test_estimate_reports_full_confirmation_and_credential_state(
     assert body["request_fingerprint"] == preflight.request_fingerprint
     assert body["credential_revision"] == credential.revision
     assert body["estimated_input_tokens"] == preflight.estimated_input_tokens
-    assert body["max_output_tokens"] == 4000
+    assert body["max_output_tokens"] == output_limit
     assert "price" not in str(body).lower()
     _assert_private(response)
 

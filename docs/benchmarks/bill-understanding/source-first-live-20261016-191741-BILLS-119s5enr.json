@@ -1,0 +1,1040 @@
+{
+  "plan_fingerprint": "c39bec99c03578f0193df8e8795e45326ff2500e6ab2af9991c10ea9935b6ea0",
+  "model": "gpt-6-luna",
+  "limits": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "output_tokens": 8000,
+    "per_call_input": 100000
+  },
+  "document_fingerprint": "eaa02cc1082477559284709de65b2c0abec2e108bd0f2860573249ab4929ea6d",
+  "mode": "fresh_generation",
+  "status": "completed",
+  "maximum_calls": 3,
+  "maximum_input": 216720,
+  "maximum_output": 24000,
+  "network_calls": 3,
+  "calls": [
+    {
+      "request_fingerprint": "68552fd9914265e53eb0a99fab6806fe2e8ea2da9b72e2d8eb4798dc1d072ce9",
+      "stage": "generation",
+      "unit_ids": [
+        "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+        "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+        "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 3607,
+        "output_tokens": 2334,
+        "total_tokens": 5941
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+            "status": "explained",
+            "summary": "Section 1 names the Act the “Laken Riley Act.”",
+            "details": [
+              "The Act may be cited as the “Laken Riley Act.”"
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "This Act",
+                "action": "be cited as the “Laken Riley Act”",
+                "modality": "permitted",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+            "status": "explained",
+            "summary": "Section 2 adds a category of aliens to the detention provisions and requires detainers and custody in specified circumstances. The referenced INA provisions are not defined in the supplied text.",
+            "details": [
+              "The new category covers a person inadmissible under INA section 212(a)(6)(A), (6)(C), or (7), who is charged with, arrested for, convicted of, or admits committing specified acts or offenses.",
+              "The listed offenses are burglary, theft, larceny, shoplifting, assault of a law enforcement officer, or a crime resulting in another person’s death or serious bodily injury.",
+              "For these terms, the meanings are those given by the jurisdiction where the acts occurred.",
+              "The Secretary of Homeland Security must issue a detainer for an alien in this category. If the alien is not otherwise detained by Federal, State, or local officials, the Secretary must effectively and expeditiously take custody.",
+              "The supplied text does not establish the contents of the referenced INA provisions or the meaning of inadmissibility under section 212(a)."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Congress, by amendment",
+                "action": "include in the specified detention category an alien inadmissible under INA section 212(a)(6)(A), (6)(C), or (7), who meets one of the listed offense-related criteria",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "is inadmissible under paragraph (6)(A), (6)(C), or (7) of section 212(a); and",
+                      "evidence_ids": [
+                        "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                      ]
+                    },
+                    {
+                      "operator": "any",
+                      "children": [
+                        {
+                          "operator": "leaf",
+                          "text": "is charged with,",
+                          "evidence_ids": [
+                            "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "is arrested for,",
+                          "evidence_ids": [
+                            "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "is convicted of,",
+                          "evidence_ids": [
+                            "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "admits having committed,",
+                          "evidence_ids": [
+                            "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                          ]
+                        },
+                        {
+                          "operator": "leaf",
+                          "text": "or admits committing acts which constitute the essential elements of any burglary, theft, larceny, shoplifting, or assault of a law enforcement officer offense, or any crime that results in death or serious bodily injury to another person,",
+                          "evidence_ids": [
+                            "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                ]
+              },
+              {
+                "actor": "The terms ‘burglary’, ‘theft’, ‘larceny’, ‘shoplifting’, ‘assault of a law enforcement officer’, and ‘serious bodily injury’",
+                "action": "have the meanings given such terms in the jurisdiction in which the acts occurred",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                ]
+              },
+              {
+                "actor": "The Secretary of Homeland Security",
+                "action": "issue a detainer for an alien described in paragraph (1)(E)",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                ]
+              },
+              {
+                "actor": "The Secretary of Homeland Security",
+                "action": "effectively and expeditiously take custody of the alien",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien.",
+                  "evidence_ids": [
+                    "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                ]
+              }
+            ]
+          },
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "explained",
+            "summary": "Section 3 gives State attorneys general or other authorized State officers standing to seek injunctive relief over specified alleged immigration-law violations or actions that harm the State or its residents.",
+            "details": [
+              "For each listed enforcement action, the State representative must allege the specified violation or action and harm to the State or its residents. The text treats harm as present if they experience harm, including financial harm in excess of $100.",
+              "The actions may be brought in an appropriate U.S. district court against the specified federal official, on behalf of the State or its residents, to obtain appropriate injunctive relief.",
+              "The court must advance and expedite covered civil actions to the greatest extent practicable.",
+              "Section 3 also makes a conforming change to INA section 236(e). The supplied text does not establish the contents of the referenced INA provisions or the limits of the referenced injunction rule."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "The attorney general of a State, or other authorized State officer",
+                "action": "bring an action against the Secretary of Homeland Security on behalf of the State or its residents, in an appropriate U.S. district court, to obtain appropriate injunctive relief",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the detention and removal requirements under paragraph (1) or (2) that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, \n    including financial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "advance on the docket and expedite disposition of a civil action filed under this paragraph to the greatest extent practicable",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "a civil action filed under this paragraph",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The attorney general of a State, or other authorized State officer",
+                "action": "bring an action against the Attorney General or Secretary of Homeland Security on behalf of the State or its residents, in an appropriate U.S. district court, to obtain appropriate injunctive relief",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging an action or decision by the Attorney General or Secretary of Homeland Security under this section to release any alien or grant bond or parole to any alien that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, including \nfinancial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "advance on the docket and expedite disposition of a civil action filed under this subsection to the greatest extent practicable",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "a civil action filed under this subsection",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The attorney general of a State, or other authorized State officer",
+                "action": "bring an action against the Secretary of State on behalf of the State or its residents, in an appropriate U.S. district court, to obtain appropriate injunctive relief",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the requirement to discontinue granting visas to citizens, subjects, nationals, and residents as described in subsection (d) that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, \nincluding financial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "advance on the docket and expedite disposition of a civil action filed under this subsection to the greatest extent practicable",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "a civil action filed under this subsection",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The attorney general of a State, or other authorized State officer",
+                "action": "bring an action against the Secretary of Homeland Security on behalf of the State or its residents, in an appropriate U.S. district court, to obtain appropriate injunctive relief",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the limitation under subparagraph (A) that parole solely be granted on a case-by-case basis and solely for urgent humanitarian reasons or a significant public benefit, that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience \nharm, including financial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "advance on the docket and expedite disposition of a civil action filed under this subparagraph to the greatest extent practicable",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "a civil action filed under this subparagraph",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The attorney general of a State, or other authorized State officer",
+                "action": "bring an action against the Secretary of Homeland Security on behalf of the State or its residents, in an appropriate U.S. district court, to obtain appropriate injunctive relief",
+                "modality": "permitted",
+                "money": [],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the detention requirement under subparagraph (A) that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State \n        or its residents experience harm, including financial harm in \n        excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "The court",
+                "action": "advance on the docket and expedite disposition of a civil action filed under this subparagraph to the greatest extent practicable",
+                "modality": "required",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "a civil action filed under this subparagraph",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Paragraph (1) of INA section 242(f)",
+                "action": "not apply to actions brought under the listed provisions",
+                "modality": "prohibited",
+                "money": [],
+                "conditions": {
+                  "operator": "leaf",
+                  "text": "Paragraph (1) shall not apply to an action brought pursuant to section 235(b)(3), subsections (e) or (f) of section 236, or section 241(a)(2)(B).",
+                  "evidence_ids": [
+                    "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "f2b933bb963c91ce0e9db6a19b40ae94d646d1f1bb3c7e343a16f3ddda6ab1c0",
+      "response_id": "resp_0b04c329bc07e3cd016ad278cc8a0887d2bbfe53c6cc251d38",
+      "resolved_model": "gpt-6-luna"
+    },
+    {
+      "request_fingerprint": "4416693c1a4a29bbe749a2ba9115d4d895e631addd6e832a90b8d5ce8e33a8c9",
+      "stage": "repair",
+      "unit_ids": [
+        "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 2934,
+        "output_tokens": 1774,
+        "total_tokens": 4708
+      },
+      "response": {
+        "provisions": [
+          {
+            "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+            "status": "explained",
+            "summary": "State attorneys general or other authorized State officers may bring specified federal-court actions seeking injunctive relief over alleged immigration-law violations or decisions that harm the State or its residents. In five provisions, harm includes financial harm in excess of $100.",
+            "details": [
+              "For the provisions concerning detention and removal requirements, release or bond/parole decisions, visa restrictions, parole limitations, and detention requirements, the specified State official has standing to sue the named federal official in an appropriate federal district court for appropriate injunctive relief if the alleged violation or decision harms the State or its residents.",
+              "For each of those five provisions, the State or its residents are considered harmed if they experience harm, including financial harm in excess of $100. The provisions do not specify a currency or measurement period for that threshold.",
+              "The court must advance and expedite each covered civil action to the greatest extent practicable.",
+              "The bill also amends statutory text concerning review of release-related decisions and limits the application of a referenced restriction on injunctive relief for specified actions. The supplied text does not establish the full meaning of those referenced statutory provisions."
+            ],
+            "unresolved_reason": null,
+            "claims": [
+              {
+                "actor": "Attorney general of a State, or other authorized State officer",
+                "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief, alleging a violation of the detention and removal requirements under paragraph (1) or (2) that harms the State or its residents.",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "100",
+                    "currency": null,
+                    "measure": null,
+                    "comparator": "in excess of",
+                    "purpose": "Threshold included in the statutory definition of harm; the provision also covers other harm",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the detention and removal requirements under paragraph (1) or (2) that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, \n    including financial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Court",
+                "action": "Advance on the docket and expedite disposition of a civil action filed under paragraph (3) to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Attorney general of a State, or other authorized State officer",
+                "action": "Bring an action against the Attorney General or Secretary of Homeland Security for appropriate injunctive relief, alleging an action or decision under section 236 to release an alien or grant bond or parole to an alien that harms the State or its residents.",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "100",
+                    "currency": null,
+                    "measure": null,
+                    "comparator": "in excess of",
+                    "purpose": "Threshold included in the statutory definition of harm; the provision also covers other harm",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging an action or decision by the Attorney General or Secretary of Homeland Security under this section to release any alien or grant bond or parole to any alien that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, including \nfinancial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Court",
+                "action": "Advance on the docket and expedite disposition of a civil action filed under subsection (f) to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Attorney general of a State, or other authorized State officer",
+                "action": "Bring an action against the Secretary of State for appropriate injunctive relief, alleging a violation of the requirement to discontinue granting visas to specified citizens, subjects, nationals, and residents under subsection (d) that harms the State or its residents.",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "100",
+                    "currency": null,
+                    "measure": null,
+                    "comparator": "in excess of",
+                    "purpose": "Threshold included in the statutory definition of harm; the provision also covers other harm",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the requirement to discontinue granting visas to citizens, subjects, nationals, and residents as described in subsection (d) that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, \nincluding financial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Court",
+                "action": "Advance on the docket and expedite disposition of a civil action filed under subsection (e) to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Attorney general of a State, or other authorized State officer",
+                "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief, alleging a violation of the limitation that parole be granted solely on a case-by-case basis and solely for urgent humanitarian reasons or a significant public benefit, where the violation harms the State or its residents.",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "100",
+                    "currency": null,
+                    "measure": null,
+                    "comparator": "in excess of",
+                    "purpose": "Threshold included in the statutory definition of harm; the provision also covers other harm",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the limitation under subparagraph (A) that parole solely be granted on a case-by-case basis and solely for urgent humanitarian reasons or a significant public benefit, that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State or its residents experience harm, \nincluding financial harm in excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Court",
+                "action": "Advance on the docket and expedite disposition of a civil action filed under this subparagraph to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Attorney general of a State, or other authorized State officer",
+                "action": "Bring an action against the Secretary of Homeland Security for appropriate injunctive relief, alleging a violation of the detention requirement under subparagraph (A) that harms the State or its residents.",
+                "modality": "permitted",
+                "money": [
+                  {
+                    "amount": "100",
+                    "currency": null,
+                    "measure": null,
+                    "comparator": "in excess of",
+                    "purpose": "Threshold included in the statutory definition of harm; the provision also covers other harm",
+                    "period": null,
+                    "base": null
+                  }
+                ],
+                "conditions": {
+                  "operator": "all",
+                  "children": [
+                    {
+                      "operator": "leaf",
+                      "text": "alleging a violation of the detention requirement under subparagraph (A) that harms such State or its residents",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    },
+                    {
+                      "operator": "leaf",
+                      "text": "if the State \n        or its residents experience harm, including financial harm in \n        excess of $100.",
+                      "evidence_ids": [
+                        "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                      ]
+                    }
+                  ]
+                },
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Court",
+                "action": "Advance on the docket and expedite disposition of a civil action filed under this subparagraph to the greatest extent practicable.",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "Amend section 236(e) by striking “or release” and replacing “grant, revocation, or denial” with “revocation or denial.”",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              },
+              {
+                "actor": "Congress",
+                "action": "Amend section 242(f) so paragraph (1) does not apply to actions brought under section 235(b)(3), subsections (e) or (f) of section 236, or section 241(a)(2)(B).",
+                "modality": "required",
+                "money": [],
+                "conditions": null,
+                "exceptions": [],
+                "evidence_ids": [
+                  "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "response_sha256": "397abaa7800baf899c91cda6eefe0f22090eb47311a050a5c5c74199bf44b4d0",
+      "response_id": "resp_0688f5325c8c5ef4016ad278d9754887d291386b6c10616c7b",
+      "resolved_model": "gpt-6-luna"
+    },
+    {
+      "request_fingerprint": "9b839e01a1635b93d73a5e3e6aa48d1769bc61440c2696cb01ede31d99eaa9e7",
+      "stage": "synopsis",
+      "unit_ids": [
+        "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+        "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97"
+      ],
+      "status": "succeeded",
+      "usage": {
+        "input_tokens": 229,
+        "output_tokens": 71,
+        "total_tokens": 300
+      },
+      "response": {
+        "text": "Section 1 names the Act the “Laken Riley Act.” Section 2 adds a category of aliens to the detention provisions and requires detainers and custody in specified circumstances. The referenced INA provisions are not defined in the supplied text.",
+        "explanation_ids": [
+          "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97"
+        ]
+      },
+      "response_sha256": "cec147a824898fd2e7b3b3f23ecd6d7e0b9337d06259e542f44de9d2aa39ee1d",
+      "response_id": "resp_0c5a469cfa181c87016ad278e5474487d2894e1ba1a5bd7b0c",
+      "resolved_model": "gpt-6-luna"
+    }
+  ],
+  "result": {
+    "output": {
+      "schema_version": "2.0-source-first",
+      "document_fingerprint": "eaa02cc1082477559284709de65b2c0abec2e108bd0f2860573249ab4929ea6d",
+      "pipeline_version": "source-first-4",
+      "plan_fingerprint": "c39bec99c03578f0193df8e8795e45326ff2500e6ab2af9991c10ea9935b6ea0",
+      "synopsis": {
+        "text": "Section 1 names the Act the “Laken Riley Act.” Section 2 adds a category of aliens to the detention provisions and requires detainers and custody in specified circumstances. The referenced INA provisions are not defined in the supplied text.",
+        "explanation_ids": [
+          "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97"
+        ],
+        "status": "partial"
+      },
+      "provisions": [
+        {
+          "unit_id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "status": "explained",
+          "summary": "Section 1 names the Act the “Laken Riley Act.”",
+          "details": [
+            "The Act may be cited as the “Laken Riley Act.”"
+          ],
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "This Act",
+              "action": "be cited as the “Laken Riley Act”",
+              "modality": "permitted",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f"
+              ]
+            }
+          ],
+          "id": "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "source_limitations": [],
+          "evidence": [
+            {
+              "id": "c997c5cd59c5980997317b1311650f1f1dfe4428d2ff65f0d80fd594df61fb1f",
+              "text": "SECTION 1. SHORT TITLE.\n    This Act may be cited as the ``Laken Riley Act''.\n",
+              "start": 797,
+              "end": 875,
+              "text_sha256": "fc7d92309f0badf8201108eb310a8be80a75fcd1f656cb3f83b16e64be61f03b",
+              "section_label": "Section 1 · SHORT TITLE.",
+              "url": "/documents/BILLS-119s5enr"
+            }
+          ]
+        },
+        {
+          "unit_id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "status": "explained",
+          "summary": "Section 2 adds a category of aliens to the detention provisions and requires detainers and custody in specified circumstances. The referenced INA provisions are not defined in the supplied text.",
+          "details": [
+            "The new category covers a person inadmissible under INA section 212(a)(6)(A), (6)(C), or (7), who is charged with, arrested for, convicted of, or admits committing specified acts or offenses.",
+            "The listed offenses are burglary, theft, larceny, shoplifting, assault of a law enforcement officer, or a crime resulting in another person’s death or serious bodily injury.",
+            "For these terms, the meanings are those given by the jurisdiction where the acts occurred.",
+            "The Secretary of Homeland Security must issue a detainer for an alien in this category. If the alien is not otherwise detained by Federal, State, or local officials, the Secretary must effectively and expeditiously take custody.",
+            "The supplied text does not establish the contents of the referenced INA provisions or the meaning of inadmissibility under section 212(a)."
+          ],
+          "unresolved_reason": null,
+          "claims": [
+            {
+              "actor": "Congress, by amendment",
+              "action": "include in the specified detention category an alien inadmissible under INA section 212(a)(6)(A), (6)(C), or (7), who meets one of the listed offense-related criteria",
+              "modality": "required",
+              "money": [],
+              "conditions": {
+                "operator": "all",
+                "children": [
+                  {
+                    "operator": "leaf",
+                    "text": "is inadmissible under paragraph (6)(A), (6)(C), or (7) of section 212(a); and",
+                    "evidence_ids": [
+                      "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                    ]
+                  },
+                  {
+                    "operator": "any",
+                    "children": [
+                      {
+                        "operator": "leaf",
+                        "text": "is charged with,",
+                        "evidence_ids": [
+                          "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                        ]
+                      },
+                      {
+                        "operator": "leaf",
+                        "text": "is arrested for,",
+                        "evidence_ids": [
+                          "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                        ]
+                      },
+                      {
+                        "operator": "leaf",
+                        "text": "is convicted of,",
+                        "evidence_ids": [
+                          "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                        ]
+                      },
+                      {
+                        "operator": "leaf",
+                        "text": "admits having committed,",
+                        "evidence_ids": [
+                          "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                        ]
+                      },
+                      {
+                        "operator": "leaf",
+                        "text": "or admits committing acts which constitute the essential elements of any burglary, theft, larceny, shoplifting, or assault of a law enforcement officer offense, or any crime that results in death or serious bodily injury to another person,",
+                        "evidence_ids": [
+                          "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ]
+            },
+            {
+              "actor": "The terms ‘burglary’, ‘theft’, ‘larceny’, ‘shoplifting’, ‘assault of a law enforcement officer’, and ‘serious bodily injury’",
+              "action": "have the meanings given such terms in the jurisdiction in which the acts occurred",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ]
+            },
+            {
+              "actor": "The Secretary of Homeland Security",
+              "action": "issue a detainer for an alien described in paragraph (1)(E)",
+              "modality": "required",
+              "money": [],
+              "conditions": null,
+              "exceptions": [],
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ]
+            },
+            {
+              "actor": "The Secretary of Homeland Security",
+              "action": "effectively and expeditiously take custody of the alien",
+              "modality": "required",
+              "money": [],
+              "conditions": {
+                "operator": "leaf",
+                "text": "if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien.",
+                "evidence_ids": [
+                  "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+                ]
+              },
+              "exceptions": [],
+              "evidence_ids": [
+                "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee"
+              ]
+            }
+          ],
+          "id": "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "source_limitations": [
+            "Section 236(c) of the Immigration and Nationality Act (8 U",
+            "section 212(a)"
+          ],
+          "evidence": [
+            {
+              "id": "72f7a6d0b8cf163b719e369518e87ca6f9aa7feb44e015acdb24d11c30124dee",
+              "text": "SEC. 2. DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.\n    Section 236(c) of the Immigration and Nationality Act (8 U.S.C. \n1226(c)) is amended--\n        (1) in paragraph (1)--\n            (A) in subparagraph (C), by striking ``or'';\n            (B) in subparagraph (D), by striking the comma at the end \n        and inserting ``, or''; and\n            (C) by inserting after subparagraph (D) the following:\n            (E)(i) is inadmissible under paragraph (6)(A), (6)(C), or \n        (7) of section 212(a); and\n            ``(ii) is charged with, is arrested for, is convicted of, \n        admits having committed, or admits committing acts which \n        constitute the essential elements of any burglary, theft, \n        larceny, shoplifting, or assault of a law enforcement officer \n        offense, or any crime that results in death or serious bodily \n        injury to another person,'';\n        (2) by redesignating paragraph (2) as paragraph (4); and\n        (3) by inserting after paragraph (1) the following:\n        ``(2) Definition.--For purposes of paragraph (1)(E), the terms \n    `burglary', `theft', `larceny', `shoplifting', `assault of a law \n    enforcement officer', and `serious bodily injury' have the meanings \n    given such terms in the jurisdiction in which the acts occurred.''\n        ``(3) Detainer.--The Secretary of Homeland Security shall issue \n    a detainer for an alien described in paragraph (1)(E) and, if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien.''.\n",
+              "start": 875,
+              "end": 2477,
+              "text_sha256": "29afe6894ce2e6da9dadb2d1dd5730b3d4cfa46a4d3534dbf1b468d56d6a9e5b",
+              "section_label": "Sec. 2 · DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.",
+              "url": "/documents/BILLS-119s5enr"
+            }
+          ]
+        },
+        {
+          "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+          "status": "unresolved",
+          "summary": "",
+          "details": [],
+          "claims": [],
+          "unresolved_reason": "currency_conflict",
+          "id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+          "source_limitations": [
+            "Section 212(d)(5) of the ",
+            "Section 235(b) of the ",
+            "Section 236 of the ",
+            "Section 241(a)(2) of the Immigration and ",
+            "Section 242(f) of the Immigration ",
+            "Section 243 of the Immigration and Nationality Act ",
+            "section 235(b)(3)",
+            "section 236",
+            "section 241(a)(2)(B)"
+          ],
+          "evidence": [
+            {
+              "id": "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a",
+              "text": "SEC. 3. ENFORCEMENT BY ATTORNEY GENERAL OF A STATE.\n    (a) Inspection of Applicants for Admission.--Section 235(b) of the \nImmigration and Nationality Act (8 U.S.C. 1225(b)) is amended--\n        (1) by redesignating paragraph (3) as paragraph (4); and\n        (2) by inserting after paragraph (2) the following:\n        ``(3) Enforcement by attorney general of a state.--The attorney \n    general of a State, or other authorized State officer, alleging a \n    violation of the detention and removal requirements under paragraph \n    (1) or (2) that harms such State or its residents shall have \n    standing to bring an action against the Secretary of Homeland \n    Security on behalf of such State or the residents of such State in \n    an appropriate district court of the United States to obtain \n    appropriate injunctive relief. The court shall advance on the \n    docket and expedite the disposition of a civil action filed under \n    this paragraph to the greatest extent practicable. For purposes of \n    this paragraph, a State or its residents shall be considered to \n    have been harmed if the State or its residents experience harm, \n    including financial harm in excess of $100.''.\n    (b) Apprehension and Detention of Aliens.--Section 236 of the \nImmigration and Nationality Act (8 U.S.C. 1226), as amended by this \nAct, is further amended--\n        (1) in subsection (e)--\n            (A) by striking ``or release''; and\n            (B) by striking ``grant, revocation, or denial'' and insert \n        ``revocation or denial''; and\n        (2) by adding at the end the following:\n    ``(f) Enforcement by Attorney General of a State.--The attorney \ngeneral of a State, or other authorized State officer, alleging an \naction or decision by the Attorney General or Secretary of Homeland \nSecurity under this section to release any alien or grant bond or \nparole to any alien that harms such State or its residents shall have \nstanding to bring an action against the Attorney General or Secretary \nof Homeland Security on behalf of such State or the residents of such \nState in an appropriate district court of the United States to obtain \nappropriate injunctive relief. The court shall advance on the docket \nand expedite the disposition of a civil action filed under this \nsubsection to the greatest extent practicable. For purposes of this \nsubsection, a State or its residents shall be considered to have been \nharmed if the State or its residents experience harm, including \nfinancial harm in excess of $100.''.\n    (c) Penalties.--Section 243 of the Immigration and Nationality Act \n(8 U.S.C. 1253) is amended by adding at the end the following:\n    ``(e) Enforcement by Attorney General of a State.--The attorney \ngeneral of a State, or other authorized State officer, alleging a \nviolation of the requirement to discontinue granting visas to citizens, \nsubjects, nationals, and residents as described in subsection (d) that \nharms such State or its residents shall have standing to bring an \naction against the Secretary of State on behalf of such State or the \nresidents of such State in an appropriate district court of the United \nStates to obtain appropriate injunctive relief. The court shall advance \non the docket and expedite the disposition of a civil action filed \nunder this subsection to the greatest extent practicable. For purposes \nof this subsection, a State or its residents shall be considered to \nhave been harmed if the State or its residents experience harm, \nincluding financial harm in excess of $100.''.\n    (d) Certain Classes of Aliens.--Section 212(d)(5) of the \nImmigration and Nationality Act (8 U.S.C. 1182(d)(5)) is amended--\n        (1) by striking ``Attorney General'' each place such term \n    appears and inserting ``Secretary of Homeland Security''; and\n        (2) by adding at the end the following:\n    ``(C) The attorney general of a State, or other authorized State \nofficer, alleging a violation of the limitation under subparagraph (A) \nthat parole solely be granted on a case-by-case basis and solely for \nurgent humanitarian reasons or a significant public benefit, that harms \nsuch State or its residents shall have standing to bring an action \nagainst the Secretary of Homeland Security on behalf of such State or \nthe residents of such State in an appropriate district court of the \nUnited States to obtain appropriate injunctive relief. The court shall \nadvance on the docket and expedite the disposition of a civil action \nfiled under this subparagraph to the greatest extent practicable. For \npurposes of this subparagraph, a State or its residents shall be \nconsidered to have been harmed if the State or its residents experience \nharm, including financial harm in excess of $100.''.\n    (e) Detention.--Section 241(a)(2) of the Immigration and \nNationality Act (8 U.S.C. 1231(a)(2)) is amended--\n        (1) by striking ``During the removal period,'' and inserting \n    the following:\n            ``(A) In general.--During the removal period,''; and\n        (2) by adding at the end the following:\n            ``(B) Enforcement by attorney general of a state.--The \n        attorney general of a State, or other authorized State officer, \n        alleging a violation of the detention requirement under \n        subparagraph (A) that harms such State or its residents shall \n        have standing to bring an action against the Secretary of \n        Homeland Security on behalf of such State or the residents of \n        such State in an appropriate district court of the United \n        States to obtain appropriate injunctive relief. The court shall \n        advance on the docket and expedite the disposition of a civil \n        action filed under this subparagraph to the greatest extent \n        practicable. For purposes of this subparagraph, a State or its \n        residents shall be considered to have been harmed if the State \n        or its residents experience harm, including financial harm in \n        excess of $100.''.\n    (f) Limit on Injunctive Relief.--Section 242(f) of the Immigration \nand Nationality Act (8 U.S.C. 1252(f)) is amended by adding at the end \nfollowing:\n        ``(3) Certain actions.--Paragraph (1) shall not apply to an \n    action brought pursuant to section 235(b)(3), subsections (e) or \n    (f) of section 236, or section 241(a)(2)(B).''.\n\n                               Speaker of the House of Representatives.\n\n                            Vice President of the United States and    \n                                               President of the Senate.\n",
+              "start": 2477,
+              "end": 9055,
+              "text_sha256": "9e86b94b87b210550fa1f5d6bff24e033495773ff26a6e2de68b71ba9b6918d7",
+              "section_label": "Sec. 3 · ENFORCEMENT BY ATTORNEY GENERAL OF A STATE.",
+              "url": "/documents/BILLS-119s5enr"
+            },
+            {
+              "id": "4c2e0df27b3177d0fd9eae3f4bfce99b2c32f5f9813c61ce1fe644278d608503",
+              "text": "\n[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[S. 5 Enrolled Bill (ENR)]\n\n        S.5\n\n                     One Hundred Nineteenth Congress\n\n                                 of the\n\n                        United States of America\n\n\n                          AT THE FIRST SESSION\n\n           Begun and held at the City of Washington on Friday,\n         the third day of January, two thousand and twenty five\n\n\n                                 An Act\n\n\n \n   To require the Secretary of Homeland Security to take into custody \n aliens who have been charged in the United States with theft, and for \n                             other purposes.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n",
+              "start": 0,
+              "end": 797,
+              "text_sha256": "0ce902130db70621592b66dd67151093ecfdefac36b2a7484be3bee3d3e70cf4",
+              "section_label": "Preamble",
+              "url": "/documents/BILLS-119s5enr"
+            }
+          ]
+        }
+      ],
+      "coverage": {
+        "unit_ids": [
+          "1353d078c5feb7b7bfbf5e4065f4049c05e912233c720b7eb87923084f450887",
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ],
+        "inventory_complete": false,
+        "omitted_source_ranges": [],
+        "normalization_version": "raw-decoded-v1",
+        "unresolved_unit_ids": [
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ],
+        "context_limited_unit_ids": [
+          "a8246756cb24798d0e76c3d31609123925a3a31e9db664e8da42fe6872ac7b97",
+          "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99"
+        ]
+      },
+      "quality": {
+        "mechanical_status": "partial",
+        "semantic_review_status": "unreviewed"
+      }
+    },
+    "completeness": "partial",
+    "call_count": 3,
+    "findings": [
+      {
+        "code": "financial_coverage_unverified",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "claims.money",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "unresolved",
+        "message": "financial coverage unverified"
+      },
+      {
+        "code": "currency_conflict",
+        "unit_id": "57a305fbcaacd31489ed025a85235ca8d9a9e2c54324f64b019b1dc82c10bf99",
+        "path": "claims.money.currency",
+        "evidence_ids": [
+          "618700e004d0933a17f581ee8713a36b6d49b03f93f57aebc25836dd53b4a46a"
+        ],
+        "outcome": "repairable",
+        "message": "currency conflict"
+      }
+    ]
+  }
+}

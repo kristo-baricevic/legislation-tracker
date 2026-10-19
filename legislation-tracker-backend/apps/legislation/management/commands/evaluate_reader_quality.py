@@ -25,7 +25,7 @@ class Command(BaseCommand):
         parser.add_argument("--case", action="append", dest="cases")
         parser.add_argument(
             "--suite",
-            choices=["correctness"],
+            choices=["correctness", "whole-bill"],
             help="Select the bounded correctness corpus",
         )
         parser.add_argument(
@@ -43,6 +43,25 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if options["suite"] == "whole-bill":
+            from apps.legislation.evaluation.whole_bill import run_benchmark, markdown_report
+            if not options["output"]:
+                raise CommandError("Whole-bill review requires --output for its review packet.")
+            if Path(options["output"]).suffix != ".json":
+                raise CommandError("Whole-bill --output must end in .json; the companion Markdown report is separate.")
+            if any(options[name] is not None for name in ("max_item_words", "input_usd_per_million", "output_usd_per_million")):
+                raise CommandError("Whole-bill review reports readability separately and does not accept price or word-limit gates.")
+            try:
+                report = run_benchmark(replay_path=options["replay"], selected=options["cases"])
+                path = Path(options["output"])
+                path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+                path.with_suffix(".md").write_text(markdown_report(report))
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise CommandError(f"Whole-bill benchmark failed: {exc}") from exc
+            for case in report["results"]:
+                for pipeline, result in case["pipelines"].items():
+                    self.stdout.write(f"{case['case_id']} {pipeline}: {result['status']}; gate={result['release_gate']}; items={len(result['output_items'])}; mechanical_failures={len(result['mechanical_failures'])}")
+            raise CommandError(f"Whole-bill gate {report['release_gate']}: provisional keys and human review pending. Reports saved to {path} and {path.with_suffix('.md')}.")
         if options["max_item_words"] is not None and options["max_item_words"] <= 0:
             raise CommandError("--max-item-words must be positive")
         cases = {

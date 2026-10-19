@@ -276,6 +276,12 @@ def main() -> None:
     )
 
     source_text, contract_json, evidence = _reader_contract_fixture()
+    source_first_bill = Bill.objects.create(jurisdiction="federal", session=119,
+        bill_number="HR SOURCE E2E", title="Source-first grants fixture", status="Introduced", processing_status="complete")
+    BillDocument.objects.create(bill=source_first_bill, version_label="IH", is_active_version=True,
+        extracted_text="SEC. 1. GRANTS\nThe Secretary shall award $100 in grants to rural hospitals.",
+        raw_text="SEC. 1. GRANTS\nThe Secretary shall award $100 in grants to rural hospitals.",
+        content_type="text/plain", content_hash="source-first-e2e")
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,

@@ -17,6 +17,20 @@ pytestmark = pytest.mark.django_db(transaction=True)
 PATH = "/api/tracking/representative-recommendations/"
 
 
+def test_reuses_representative_results_until_follows_change():
+    from unittest.mock import patch
+    from apps.accounts.representative_recommendation_views import ranking
+    api, user = client()
+    TrackedTopic.objects.create(user=user, topic=topic())
+    with patch("apps.accounts.representative_recommendation_views.ranking", wraps=ranking) as rank:
+        assert api.get(PATH).status_code == 200
+        assert api.get(PATH).status_code == 200
+        assert rank.call_count == 1
+        TrackedTopic.objects.create(user=user, topic=topic("education"))
+        assert api.get(PATH).status_code == 200
+        assert rank.call_count == 2
+
+
 @pytest.fixture(autouse=True)
 def empty_cache():
     cache.clear()

@@ -1,0 +1,26 @@
+.wrap { display: grid; gap: .5rem; }
+
+/* Four equal cells that each hold a stop and the line to the next one, plus a
+   fixed cell for the last stop so it sits flush with the right edge. */
+.track { display: grid; grid-template-columns: repeat(4, 1fr) 10px; align-items: center; }
+
+.stop { position: relative; height: 14px; }
+
+.stop::before { content: ""; position: absolute; z-index: 1; left: 0; top: 50%; width: 10px; height: 10px; transform: translateY(-50%); box-sizing: border-box; border: 2px solid var(--line, #d5dbd1); border-radius: 50%; background: var(--paper, #fff); }
+
+.stop:not(:last-child)::after { content: ""; position: absolute; left: 10px; right: 0; top: 50%; height: 2px; transform: translateY(-50%); background: var(--line, #d5dbd1); }
+
+/* A line is filled once the stop after it has been reached. */
+.stop[data-state="done"]::before { border-color: var(--topic); background: var(--topic); }
+.stop[data-state="done"]::after { background: var(--topic); }
+
+.stop[data-state="current"]::before { left: -2px; width: 14px; height: 14px; border-color: var(--topic); background: var(--topic); box-shadow: 0 0 0 3px color-mix(in srgb, var(--topic) 22%, transparent); }
+
+.label { margin: 0; font-size: .9rem; font-weight: 600; line-height: 1.3; }
+
+@media (forced-colors: active) {
+  .stop::before { border-color: CanvasText; background: Canvas; }
+  .stop[data-state="done"]::before, .stop[data-state="current"]::before { background: CanvasText; }
+  .stop::after { background: GrayText; }
+  .stop[data-state="done"]::after { background: CanvasText; }
+}

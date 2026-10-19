@@ -136,7 +136,7 @@ export function FinancialLedger({
   return (
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none" aria-labelledby={`money-${contractId}`}>
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-4 dark:border-green-900 dark:bg-black/20">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Financial provisions</p>
+        <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Financial provisions</p>
         <h2 id={`money-${contractId}`} className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">{lineItemId ? "Money in this provision" : "Money in this bill"}</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">
           Every recognized financial provision is listed here with its amount, purpose, timing, and source text. This is not a CBO cost estimate and does not combine provisions into a spending total.
@@ -182,13 +182,13 @@ export function FinancialLedger({
               <li key={item.id} className="grid gap-3 py-5 md:grid-cols-[11rem_minmax(0,1fr)]">
                 <div>
                   <p className="font-semibold text-slate-950 dark:text-green-300">{actionLabels[item.financial_action]}</p>
-                  {formatAmount(item) && <p className="mt-2 font-mono text-sm font-semibold text-slate-800 dark:text-green-200">{formatAmount(item)}</p>}
+                  {formatAmount(item) && <p className="mt-2 font-sans text-sm font-semibold text-slate-800 dark:text-green-200">{formatAmount(item)}</p>}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">What the money is for</p>
                   <p className="mt-1 text-lg font-semibold leading-7 text-slate-950 dark:text-green-200">{financialPurpose(item)}</p>
                   <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-green-200">{item.display_text}</p>
-                  <p className="mt-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
+                  <p className="mt-2 font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
                   {item.fiscal_years.length > 0 && <p className="mt-2 text-sm text-slate-600 dark:text-green-600">Fiscal {item.fiscal_years.join(", ")}</p>}
                   {(item.source_account || item.destination_account) && <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
                     {item.source_account && <div><dt className="font-semibold text-slate-600 dark:text-green-600">From</dt><dd>{item.source_account}</dd></div>}

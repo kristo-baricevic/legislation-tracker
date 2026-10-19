@@ -13,7 +13,7 @@ const empty = { ...page, results: [], empty_reason: "no_follows" };
 const channel = { status: "insufficient_history", missing_date_count: 2, unknown_session_count: 0, withdrawn_count: 0, raw_observation_count: 3, grouped_observation_count: 3, raw_tagged_count: 3, grouped_tagged_count: 3, raw_tag_coverage: { fraction: { numerator: "1", denominator: "1" }, display: 1 }, grouped_tag_coverage: { fraction: { numerator: "1", denominator: "1" }, display: 1 }, recurring_topic_ids: [], topics: [] };
 const activity = { schema_version: "representative-topic-activity-v1", policy_version: "test", representative: { id: 1, name: "Member One", bioguide_id: "A000001", chamber: "house", state: "NY", is_current: true }, captured_at: "2026-10-10T00:00:00Z", window: { start_date: "2024-10-09", end_date_exclusive: "2026-10-10", timezone: "America/New_York", months: 24 }, policy: { topic_share: "0.20", minimum_observations: 20, minimum_topic_observations: 5, minimum_tag_coverage: "0.80" }, exposure: { status: "unknown", term_precision: "unknown", service_days: null, monthly_rate: null, reason: "term_precision_unknown" }, channels: { sponsor: channel, active_cosponsor: channel }, passage_evidence: { status: "coverage_unknown", yes: 0, no: 0, present: 0, not_voting: 0, other: 0, selected_bill_count: 0, yes_rate: null, missing_or_uncertain: 1, missing_eligibility: "unknown", topics: [], examples: [] }, resolutions: { coverage: "unsupported", joint_count: null, simple_count: null, concurrent_count: null }, caveats: [] } as RepresentativeTopicActivity;
 
-beforeEach(() => { document.cookie = "csrftoken=test"; localStorage.clear(); });
+beforeEach(async () => { document.cookie = "csrftoken=test"; localStorage.clear(); (await import("@/lib/personalized-scope")).announceTrackingChange(); });
 afterEach(() => vi.unstubAllGlobals());
 function mockRequests(response: () => Response | Promise<Response>) {
   vi.stubGlobal("fetch", vi.fn((url, init) => {
@@ -24,11 +24,37 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
-  it("starts off independently of the card dashboard and makes no recommendation calls", () => {
-    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  it("expires cached recommendations after five minutes", async () => {
+    mockRequests(() => Response.json(page));
+    const view = render(<BillRecommendations onOpenBill={() => true} />);
+    await screen.findByRole("link", { name: bill.title });
+    view.unmount();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 300001);
+    try {
+      render(<BillRecommendations onOpenBill={() => true} />);
+      await screen.findByRole("link", { name: bill.title });
+      expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(2);
+    } finally { clock.mockRestore(); }
+  });
+  it("reuses recommendations across navigation until explicitly refreshed", async () => {
+    mockRequests(() => Response.json(page));
+    const view = render(<BillRecommendations onOpenBill={() => true} />);
+    await screen.findByRole("link", { name: bill.title });
+    const calls = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/")).length;
+    expect(calls()).toBe(1);
+    view.unmount();
+    render(<BillRecommendations onOpenBill={() => true} />);
+    await screen.findByRole("link", { name: bill.title });
+    expect(calls()).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh bill recommendations" }));
+    await waitFor(() => expect(calls()).toBe(2));
+  });
+  it("always renders recommendations even with a legacy disabled preference", () => {
+    localStorage.setItem("legislation-tracker-recommendations", "false");
+    mockRequests(() => Response.json(empty));
     render(<RecommendationsPreview onOpenBill={() => true} />);
-    expect(screen.getByLabelText("Show recommendations on this browser")).not.toBeChecked();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Show recommendations on this browser")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bills to discover" })).toBeInTheDocument();
   });
   it("shows neutral reasons and reuses the bill opener with a navigable fallback", async () => {
     mockRequests(() => Response.json(page));

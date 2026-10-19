@@ -1,0 +1,1716 @@
+{
+  "evaluation_version": "whole-bill-live-1",
+  "provider": "openai",
+  "requested_model": "gpt-6-luna",
+  "reasoning_effort": "none",
+  "max_provider_calls": 3,
+  "max_output_tokens_per_call": 4000,
+  "results": [
+    {
+      "case_id": "BILLS-119hr9300ih",
+      "source_text_sha256": "72fbabd85d8e2482b7d462a85d572db55df13b93ad0b88c344f1a918a623a4f7",
+      "answer_sha256": "78faaca2a389c9a84f2b58b62b20b4c51191536e189e6f8cd3447051ed42e786",
+      "source_snapshot": [
+        {
+          "source_ref": "src_0001",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119hr9300ih",
+          "quoted_text": "[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[H.R. 9300 Introduced in House (IH)]\n\n<DOC>\n\n\n\n\n\n\n119th CONGRESS\n  2d Session\n                                H. R. 9300\n\n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n\n_______________________________________________________________________\n\n\n                    IN THE HOUSE OF REPRESENTATIVES\n\n                             June 11, 2026\n\n  Ms. Stansbury (for herself, Ms. Pettersen, Ms. Norton, Mr. Moulton, \n Mrs. McBath, Mr. Lynch, Mr. Krishnamoorthi, Ms. Tlaib, Ms. Velazquez, \nand Ms. Bynum) introduced the following bill; which was referred to the \n                  Committee on Education and Workforce\n\n_______________________________________________________________________\n\n                                 A BILL\n\n\n \n   To authorize the Secretary of Education to award grants to create \n     evidence-based student success programs designed to increase \n participation, retention, and completion rates of high-need students.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\n\nSECTION 1. SHORT TITLE.\n\n    This Act may be cited as the ``Postsecondary Student Success Act of \n2026''.\n\nSEC. 2. PURPOSE.\n\n    It is the purpose of this Act to support evidence-based \nparticipation, retention, and completion activities designed to ensure \nthe postsecondary success of high-need students.\n\nSEC. 3. DEFINITIONS.\n\n    In this Act:\n            (1) Completion rate.--The term ``completion rate'' means--\n                    (A) the percentage of students from an initial \n                cohort enrolled at an entity that is a 2-year \n                institution who have graduated from the institution or \n                transferred to a 4-year institution of higher \n                education; or\n                    (B) the percentage of students from an initial \n                cohort enrolled at an entity in the State that is a 4-\n                year institution who have graduated from the \n                institution.\n            (2) Dual or concurrent enrollment program.--The term ``dual \n        or concurrent enrollment program'' has the meaning given the \n        term in section 8101 of the Elementary and Secondary Education \n        Act of 1965 (20 U.S.C. 7801).\n            (3) Early college high school.--The term ``early college \n        high school'' has the meaning given the term in section 8101 of \n        the Elementary and Secondary Education Act of 1965 (20 U.S.C. \n        7801).\n            (4) Eligible entity.--The term ``eligible entity'' means--\n                    (A) a public institution of higher education;\n                    (B) a partnership between a nonprofit educational \n                organization and an institution of higher education; or\n                    (C) a consortium of institutions of higher \n                education.\n            (5) Eligible indian entity.--The term ``eligible Indian \n        entity'' means the entity responsible for the governance, \n        operation, or control of a Tribal College or University.\n            (6) Evidence-based.--The term ``evidence-based'' has the \n        meaning given the term in section 8101(21)(A) of the Elementary \n        and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A)).\n            (7) Evidence tiers.--\n                    (A) Evidence tier 1 reform or practice.--The term \n                ``evidence tier 1 reform or practice'' means a reform \n                or practice that prior research suggests has promise \n                for the purpose of successfully improving student \n                achievement or attainment for high-need students.\n                    (B) Evidence tier 2 reform or practice.--The term",
+          "start_char": 1,
+          "end_char": 3960,
+          "text_sha256": "eb6e0e1f8e7060a55dd9e28d0c525a35771b0c40cd8705a868e2eb48990ac2cd"
+        },
+        {
+          "source_ref": "src_0002",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119hr9300ih",
+          "quoted_text": "``evidence tier 2 reform or practice'' means a reform \n                or practice described in subparagraph (A), or other \n                reform or practice meeting similar criteria, that \n                measures impact and cost effectiveness of student \n                success activities, and, through rigorous evaluation \n                (including through the use of existing administrative \n                data, as applicable), has been found to be successfully \n                implemented.\n                    (C) Evidence tier 3 reform or practice.--The term \n                ``evidence tier 3 reform or practice'' means a reform \n                or practice described in subparagraph (B), or other \n                reform or practice meeting similar criteria, that has \n                been found to produce sizable, important impacts on \n                student success and--\n                            (i) determining whether such impacts can be \n                        successfully reproduced and sustained over \n                        time; and\n                            (ii) identifying the conditions in which \n                        such reform or practice is most effective.\n            (8) First generation college student.--The term ``first \n        generation college student'' has the meaning given the term in \n        section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. \n        1070a-11(h)).\n            (9) High-need student.--The term ``high-need student'' \n        means--\n                    (A) a student from a low-income background;\n                    (B) a first generation college student;\n                    (C) a caregiver student;\n                    (D) a student with a disability;\n                    (E) a student who dropped out before completing;\n                    (F) a reentering justice-impacted student; or\n                    (G) a military-connected student.\n            (10) Institution of higher education.--The term \n        ``institution of higher education'' has the meaning given the \n        term in section 101 of the Higher Education Act of 1965 (20 \n        U.S.C. 1001).\n            (11) Secretary.--The term ``Secretary'' means the Secretary \n        of Education.\n            (12) Tribal college or university.--The term ``Tribal \n        College or University'' has the meaning given the term in \n        section 316(b)(3) of the Higher Education Act of 1965 (20 \n        U.S.C. 1059c(b)(3)).\n\nSEC. 4. RESERVATION OF FUNDS FOR ELIGIBLE INDIAN ENTITIES.\n\n    From the total amount appropriated to carry out this Act for a \nfiscal year, the Secretary shall reserve 2 percent for grants to \neligible Indian entities to increase participation, retention, and \ncompletion rates of high-need students.\n\nSEC. 5. AUTHORIZATION OF POSTSECONDARY STUDENT SUCCESS COMPETITIVE \n              GRANTS.\n\n    (a) Grant Authorization.--For each of fiscal years 2027 through \n2032, the Secretary shall award, on a competitive basis, grants to \neligible entities to provide student services to increase \nparticipation, retention, and completion rates of high-need students.\n    (b) Notification and Application.--An eligible entity or eligible \nIndian entity desiring a grant under this Act shall submit an \napplication to the Secretary at such time, in such manner, and \ncontaining the information required under subsection (c).\n    (c) Content of Application.--An application submitted under this \nsection shall include the following:\n            (1) A plan to increase, with respect to all students \n        enrolled at the eligible entity or Tribal College or \n        University, attainment and completion rates or graduation \n        rates, including--\n                    (A) a description of the evidence-based reform or \n                practice that would be used and whether the reform or \n                practice would be an evidence tier 1 reform or",
+          "start_char": 3978,
+          "end_char": 7908,
+          "text_sha256": "eb4fbcd307f32dce4c9ffc8e5fce5052ecfa93c306c6734a4e4bb934ab805ec9"
+        },
+        {
+          "source_ref": "src_0003",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119hr9300ih",
+          "quoted_text": "practice, evidence tier 2 reform or practice, or \n                evidence tier 3 reform or practice; and\n                    (B) a particular focus on serving high-need \n                students through student services and collaboration \n                among 2-year programs, 4-year programs, and workforce \n                systems.\n            (2) Annual benchmarks for student outcomes with respect to \n        the evidence-based reform or practice that would be used.\n            (3) A plan to evaluate the evidence-based reform or \n        practice that would be used.\n            (4) Rates of enrolled students who received a Federal Pell \n        Grant under subpart 1 of part A of title IV of the Higher \n        Education Act of 1965 (20 U.S.C. 1070a et seq.).\n            (5) Demographics of enrolled students, including high-need \n        students.\n            (6) A description of how the eligible entity or eligible \n        Indian entity will, directly or in collaboration with other \n        institutions of higher education or nonprofit organizations, \n        use the grant funds to implement one or more of the following \n        evidence-based reforms and practices:\n                    (A) Providing comprehensive academic, career, and \n                student services, which may include mentoring, \n                advising, or case management services.\n                    (B) Providing accelerated learning opportunities, \n                which may include dual or concurrent enrollment \n                programs and early college high school programs.\n                    (C) Reforming course scheduling, or credit-awarding \n                policies.\n                    (D) Improving transfer pathways between the \n                eligible entity, or Tribal College or University, and \n                other institutions of higher education.\n            (7) A description of how the evidence-based reform or \n        practice will be sustained once the grant expires.\n    (d) Evidence-Based Student Success Programs.--From the total amount \nappropriated to carry out this Act for a fiscal year and not reserved \nunder section 4, the Secretary shall reserve not less than 20 percent \nto award grants to eligible entities with applications that propose to \ninclude evidence-based reforms and practices--\n            (1) at least 1 of which is an evidence tier 3 reform or \n        practice; and\n            (2) the rest of which are evidence tier 1 reforms or \n        practices or evidence tier 2 reforms or practices.\n    (e) Required Uses of Funds.--An eligible entity or eligible Indian \nentity that receives a grant under this Act shall use the grant funds \nto carry out the plans submitted under subsection (c) and for evidence-\nbased reforms and practices for improving participation, retention, and \ncompletion rates of students that may include the following:\n            (1) Student services to support retention, completion, and \n        success, which may include--\n                    (A) faculty and peer counseling;\n                    (B) use of real-time data on student progress;\n                    (C) improving transfer student success; and\n                    (D) incentives for students to re-enroll or stay on \n                track.\n            (2) Direct student support services, including a \n        combination of--\n                    (A) tutoring, academic supports, and enrichment \n                services; and\n                    (B) emergency financial assistance.\n            (3) Efforts to prepare students for a career, which may \n        include--\n                    (A) career coaching, career counseling and planning \n                services, and efforts to lower student to advisor \n                ratios;\n                    (B) networking and work-based learning \n                opportunities to support the development of skills and \n                professional relationships;",
+          "start_char": 7926,
+          "end_char": 11878,
+          "text_sha256": "039fa3a8c28ee4947678be63cac3ac5ff0f007993fe41ffe77bfe3860250bbc2"
+        },
+        {
+          "source_ref": "src_0004",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119hr9300ih",
+          "quoted_text": "(C) utilizing career pathways; and\n                    (D) boosting experiences necessary to obtain and \n                succeed in high-skill, high-wage, or in-demand industry \n                sectors or occupations, as described in section \n                135(b)(3) of the Carl D. Perkins Career and Technical \n                Education Act of 2006 (20 U.S.C. 2355(b)(3)).\n            (4) Efforts to recruit and retain faculty and other \n        instructional staff.\n    (f) Permissive Use of Funds.--From the total amount appropriated to \ncarry out this Act for a fiscal year and not reserved under section 4 \nor subsection (d), the Secretary may set aside--\n            (1) not more than 5 percent for administration, capacity \n        building, research, evaluation, and reporting; and\n            (2) not more than 2 percent for technical assistance to \n        eligible entities and eligible Indian entities.\n    (g) Evaluations.--\n            (1) In general.--For the purpose of improving the \n        effectiveness of the evidence-based reforms and practices \n        carried out by eligible entities and eligible Indian entities \n        pursuant to a grant under this Act, the Secretary shall make \n        grants to or enter into contracts with 1 or more organizations \n        to--\n                    (A) evaluate the effectiveness of such evidence-\n                based reforms and practices; and\n                    (B) disseminate information on the impact of such \n                evidence-based reforms and practices in increasing \n                completion and retention activities of students, as \n                well as other appropriate measures.\n            (2) Issues to be evaluated.--The evaluations required under \n        paragraph (1) shall measure the effectiveness of the evidence-\n        based reforms and practices carried out by eligible entities \n        and eligible Indian entities pursuant to a grant under this \n        subsection in--\n                    (A) whether such entity implemented the plans, and \n                carried out the activities, described in subsection \n                (c); and\n                    (B) comparing the completion and retention rates of \n                students who participated in such reforms and practices \n                with the rates of students of similar backgrounds who \n                did not participate in such reforms and practices.\n            (3) Results.--Not later than 18 months after the date of \n        enactment of this Act, the Secretary shall submit a final \n        report to the Committee on Health, Education, Labor, and \n        Pensions of the Senate and the Committee on Education and \n        Workforce of the House of Representatives.\n    (h) Grant Limit.--An eligible entity that has a branch campus may \nonly receive a grant under this Act for 1 campus of the entity at a \ntime.\n                                 <all>",
+          "start_char": 11899,
+          "end_char": 14835,
+          "text_sha256": "7220e9c46fca78da23d834b562f352a56fc7f0d0aa0b8b2a34b61c794ff263ce"
+        }
+      ],
+      "source_manifest": {
+        "document_id": "BILLS-119hr9300ih",
+        "document_content_hash": "72fbabd85d8e2482b7d462a85d572db55df13b93ad0b88c344f1a918a623a4f7",
+        "document_version_label": "BILLS-119hr9300ih",
+        "source_kind": "document_chunk",
+        "total_candidates": 4,
+        "selected_count": 4,
+        "truncated": false
+      },
+      "source_fingerprint": "20d4d2d855f4494c7c217639423af389b1986c32abf97f16018aed47f9f044a8",
+      "request_fingerprint": "0cf4f143831a18b8a8717674bf4d47092430b2558fe94cca8248633cc82d2d97",
+      "prompt_version": "1.2",
+      "output_schema_version": "1.2",
+      "source_packet_version": "1.1",
+      "truncated": false,
+      "estimated_input_tokens_upper_bound": 24213,
+      "status": "failed",
+      "usage": {
+        "input_tokens": 4795,
+        "output_tokens": 2744,
+        "total_tokens": 7539
+      },
+      "resolved_model": "gpt-6-luna",
+      "response_id": "resp_0483b7a406bbd8a1016ad1795589c887d2b2cc4b5b155f9fa4",
+      "output": {
+        "schema_version": "1.2",
+        "overview": [
+          {
+            "text": "The introduced bill would support evidence-based programs to increase college participation, retention, and completion among high-need students. High-need students include students from low-income backgrounds, first-generation students, caregivers, students with disabilities, students who left school before completing, justice-impacted students returning to school, and military-connected students.",
+            "source_refs": [
+              "src_0001",
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "It is the purpose of this Act to support evidence-based participation, retention, and completion activities designed to ensure the postsecondary success of high-need students."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "(9) High-need student.--The term ``high-need student'' means--                    (A) a student from a low-income background;                    (B) a first generation college student;                    (C) a caregiver student;                    (D) a student with a disability;                    (E) a student who dropped out before completing;                    (F) a reentering justice-impacted student; or                    (G) a military-connected student."
+              }
+            ]
+          }
+        ],
+        "key_impacts": [
+          {
+            "text": "Grant applications would have to plan to improve outcomes for all enrolled students, with a particular focus on high-need students and cooperation among two-year colleges, four-year colleges, and workforce systems.",
+            "source_refs": [
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0002",
+                "quote": "A plan to increase, with respect to all students enrolled at the eligible entity or Tribal College or University, attainment and completion rates or graduation rates"
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "a particular focus on serving high-need students through student services and collaboration among 2-year programs, 4-year programs, and workforce systems."
+              }
+            ]
+          },
+          {
+            "text": "Applicants would describe their reform’s evidence tier: tier 1 is promising based on prior research; tier 2 has been rigorously evaluated and found successfully implemented, with impact and cost effectiveness measured; and tier 3 has shown sizable, important effects, with work to test whether results can be reproduced and sustained and to identify where it works best.",
+            "source_refs": [
+              "src_0001",
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "a reform or practice that prior research suggests has promise for the purpose of successfully improving student achievement or attainment for high-need students."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "measures impact and cost effectiveness of student success activities, and, through rigorous evaluation (including through the use of existing administrative data, as applicable), has been found to be successfully implemented."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "has been found to produce sizable, important impacts on student success and--                            (i) determining whether such impacts can be successfully reproduced and sustained over time; and                            (ii) identifying the conditions in which such reform or practice is most effective."
+              }
+            ]
+          },
+          {
+            "text": "Grant-funded plans may provide academic, career, and student services; accelerated learning such as dual enrollment or early-college programs; course-scheduling or credit-awarding changes; and improved transfer routes between colleges.",
+            "source_refs": [
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0003",
+                "quote": "(A) Providing comprehensive academic, career, and student services, which may include mentoring, advising, or case management services."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "(B) Providing accelerated learning opportunities, which may include dual or concurrent enrollment programs and early college high school programs."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "(C) Reforming course scheduling, or credit-awarding policies."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "(D) Improving transfer pathways between the eligible entity, or Tribal College or University, and other institutions of higher education."
+              }
+            ]
+          },
+          {
+            "text": "Required grant uses may include faculty and peer counseling, real-time progress data, transfer-student support, re-enrollment or on-track incentives, tutoring and other academic support, enrichment, emergency financial help, career guidance, work-based learning and networking, career pathways, and preparation for high-skill, high-wage, or in-demand work.",
+            "source_refs": [
+              "src_0003",
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0003",
+                "quote": "(A) faculty and peer counseling;                    (B) use of real-time data on student progress;                    (C) improving transfer student success; and                    (D) incentives for students to re-enroll or stay on track."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "tutoring, academic supports, and enrichment services; and                    (B) emergency financial assistance."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "career coaching, career counseling and planning services, and efforts to lower student to advisor ratios;"
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "networking and work-based learning opportunities to support the development of skills and professional relationships;"
+              },
+              {
+                "source_ref": "src_0004",
+                "quote": "utilizing career pathways; and                    (D) boosting experiences necessary to obtain and succeed in high-skill, high-wage, or in-demand industry sectors or occupations"
+              }
+            ]
+          },
+          {
+            "text": "Grant-funded efforts may also recruit and retain faculty and other instructional staff.",
+            "source_refs": [
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0004",
+                "quote": "Efforts to recruit and retain faculty and other instructional staff."
+              }
+            ]
+          },
+          {
+            "text": "Grant applications would include annual outcome benchmarks, an evaluation plan, Pell Grant receipt rates, student demographics, and an explanation of how the reform would continue after the grant ends.",
+            "source_refs": [
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0003",
+                "quote": "Annual benchmarks for student outcomes with respect to the evidence-based reform or practice that would be used."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "A plan to evaluate the evidence-based reform or practice that would be used."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "Rates of enrolled students who received a Federal Pell Grant"
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "Demographics of enrolled students, including high-need students."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "A description of how the evidence-based reform or practice will be sustained once the grant expires."
+              }
+            ]
+          }
+        ],
+        "obligations": [
+          {
+            "actor": "Grant applicant",
+            "modality": "required",
+            "action": "submit an application with the required information",
+            "conditions": "To seek a grant under the Act.",
+            "source_refs": [
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0002",
+                "quote": "An eligible entity or eligible Indian entity desiring a grant under this Act shall submit an application to the Secretary at such time, in such manner, and containing the information required under subsection (c)."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "An application submitted under this section shall include the following:"
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "award competitive grants to eligible entities",
+            "conditions": "For each fiscal year 2027 through 2032.",
+            "source_refs": [
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0002",
+                "quote": "For each of fiscal years 2027 through 2032, the Secretary shall award, on a competitive basis, grants to eligible entities"
+              }
+            ]
+          },
+          {
+            "actor": "Grant recipient",
+            "modality": "required",
+            "action": "use grant funds for its submitted plan and evidence-based reforms and practices",
+            "conditions": "To improve student participation, retention, and completion rates.",
+            "source_refs": [
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0003",
+                "quote": "An eligible entity or eligible Indian entity that receives a grant under this Act shall use the grant funds to carry out the plans submitted under subsection (c) and for evidence-based reforms and practices for improving participation, retention, and completion rates of students"
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "fund evaluations and share information about program results",
+            "conditions": null,
+            "source_refs": [
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0004",
+                "quote": "the Secretary shall make grants to or enter into contracts with 1 or more organizations to--                    (A) evaluate the effectiveness of such evidence-based reforms and practices; and                    (B) disseminate information on the impact of such evidence-based reforms and practices"
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "submit a final report to the Senate HELP Committee and House Education and Workforce Committee",
+            "conditions": "Not later than 18 months after enactment.",
+            "source_refs": [
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0004",
+                "quote": "Not later than 18 months after the date of enactment of this Act, the Secretary shall submit a final report to the Committee on Health, Education, Labor, and Pensions of the Senate and the Committee on Education and Workforce of the House of Representatives."
+              }
+            ]
+          }
+        ],
+        "funding_and_timing": [
+          {
+            "kind": "funding",
+            "text": "The Secretary would reserve 2 percent of the total amount appropriated for a fiscal year for grants to eligible Indian entities serving high-need students; the text does not state a dollar total.",
+            "source_refs": [
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0002",
+                "quote": "From the total amount appropriated to carry out this Act for a fiscal year, the Secretary shall reserve 2 percent for grants to eligible Indian entities to increase participation, retention, and completion rates of high-need students."
+              }
+            ]
+          },
+          {
+            "kind": "funding",
+            "text": "At least 20 percent of appropriated funds remaining after the 2 percent reservation would be reserved for eligible-entity grants proposing at least one tier 3 reform, with the rest of the proposed reforms at tier 1 or tier 2.",
+            "source_refs": [
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0003",
+                "quote": "From the total amount appropriated to carry out this Act for a fiscal year and not reserved under section 4, the Secretary shall reserve not less than 20 percent to award grants to eligible entities with applications that propose to include evidence-based reforms and practices--            (1) at least 1 of which is an evidence tier 3 reform or practice; and            (2) the rest of which are evidence tier 1 reforms or practices or evidence tier 2 reforms or practices."
+              }
+            ]
+          },
+          {
+            "kind": "funding",
+            "text": "From appropriated funds remaining after the section 4 reservation and the tier 3 reservation, the Secretary may set aside up to 5 percent for administration, capacity building, research, evaluation, and reporting.",
+            "source_refs": [
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0004",
+                "quote": "From the total amount appropriated to carry out this Act for a fiscal year and not reserved under section 4 or subsection (d), the Secretary may set aside--            (1) not more than 5 percent for administration, capacity building, research, evaluation, and reporting"
+              }
+            ]
+          },
+          {
+            "kind": "funding",
+            "text": "From appropriated funds remaining after the section 4 reservation and the tier 3 reservation, the Secretary may set aside up to 2 percent for technical help to eligible entities and eligible Indian entities.",
+            "source_refs": [
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0004",
+                "quote": "not more than 2 percent for technical assistance to eligible entities and eligible Indian entities."
+              }
+            ]
+          },
+          {
+            "kind": "timing",
+            "text": "The Secretary would award competitive grants for each fiscal year from 2027 through 2032.",
+            "source_refs": [
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0002",
+                "quote": "For each of fiscal years 2027 through 2032, the Secretary shall award, on a competitive basis, grants"
+              }
+            ]
+          },
+          {
+            "kind": "timing",
+            "text": "The Secretary’s final report would be due no later than 18 months after enactment.",
+            "source_refs": [
+              "src_0004"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0004",
+                "quote": "Not later than 18 months after the date of enactment of this Act"
+              }
+            ]
+          }
+        ],
+        "uncertain_language": [
+          {
+            "text": "“Evidence-based” and “first generation college student” refer to definitions in other laws that are not supplied here, so their exact meaning cannot be resolved from this material.",
+            "why_it_matters": "The referenced definitions may affect which practices qualify as evidence-based and which students qualify as first-generation.",
+            "source_refs": [
+              "src_0001",
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "Evidence-based.--The term ``evidence-based'' has the meaning given the term in section 8101(21)(A) of the Elementary and Secondary Education Act of 1965 (20 U.S.C. 7801(21)(A))."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "First generation college student.--The term ``first generation college student'' has the meaning given the term in section 402A(h) of the Higher Education Act of 1965 (20 U.S.C. 1070a-11(h))."
+              }
+            ]
+          }
+        ]
+      },
+      "failure_category": "invalid_output",
+      "validation_message": "A cited quote does not exactly match its source text.",
+      "latency_seconds": 21.14
+    },
+    {
+      "case_id": "BILLS-119hr1589ih",
+      "source_text_sha256": "cc66856f3eb337fd5d9a480234fcff6794b0a53b0f96b3066ed97f5dabf55392",
+      "answer_sha256": "cca2c22d2fca09d1408b9b6df937fdc2327862e33db3508055e7a91ab40e44a5",
+      "source_snapshot": [
+        {
+          "source_ref": "src_0001",
+          "kind": "contract_evidence",
+          "field_path": "requirements[0].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "This title may be cited as the ``Dream Act of 2025''.",
+          "start_char": 6404,
+          "end_char": 6457,
+          "text_sha256": "2099bb514e14841f627497d7a63eff1fee8f7713d412df9cf891ff1052d1c2ff"
+        },
+        {
+          "source_ref": "src_0002",
+          "kind": "contract_evidence",
+          "field_path": "timeline_items[0].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "the alien has been continuously physically \n                present in the United States since January 1, 2021;",
+          "start_char": 7828,
+          "end_char": 7939,
+          "text_sha256": "838fb476c536e14710532fd618b67b257583a410362ae22993b8565422d03045"
+        },
+        {
+          "source_ref": "src_0003",
+          "kind": "contract_evidence",
+          "field_path": "line_items[12].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Grounds of ineligibility.--Except as provided in \n        paragraph (2), an alien is ineligible for adjustment of status \n        under this title (whether on a conditional basis or without the \n        conditional basis as provided in section 104(c)(2)) if any of \n        the following apply:\n                    (A) The alien is inadmissible under paragraph (2) \n                or (3) of section 212(a) of the Immigration and \n                Nationality Act (8 U.S.C. 1182(a)).\n                    (B) Excluding any offense under State law for which \n                an essential element is the alien's immigration status, \n                and any minor traffic offense, the alien has been \n                convicted of--\n                            (i) any felony offense;\n                            (ii) three or more misdemeanor offenses \n                        (excluding simple possession of cannabis or \n                        cannabis-related paraphernalia, any offense \n                        involving cannabis or cannabis-related \n                        paraphernalia which is no longer prosecutable \n                        in the State in which the conviction was \n                        entered, and any offense involving civil \n                        disobedience without violence) not occurring on \n                        the same date, and not arising out of the same \n                        act, omission, or scheme of misconduct; or\n                            (iii) a misdemeanor offense of domestic \n                        violence, unless the alien demonstrates that \n                        such crime is related to the alien having \n                        been--\n                                    (I) a victim of domestic violence, \n                                sexual assault, stalking, child abuse \n                                or neglect, abuse or neglect in later \n                                life, or human trafficking;\n                                    (II) battered or subjected to \n                                extreme cruelty; or\n                                    (III) a victim of criminal activity \n                                described in section 101(a)(15)(U)(iii) \n                                of the Immigration and Nationality Act \n                                (8 U.S.C. 1101(a)(15)(U)(iii)).",
+          "start_char": 14141,
+          "end_char": 16517,
+          "text_sha256": "55f3b17f4f3c307004eb4be3f75e27a1a714fa1264ebafc56e8e5baf6b9dd340"
+        },
+        {
+          "source_ref": "src_0004",
+          "kind": "contract_evidence",
+          "field_path": "amendment_operations[0].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In General.--Section 505 of the Illegal Immigration Reform and \nImmigrant Responsibility Act of 1996 (8 U.S.C. 1623) is repealed.",
+          "start_char": 37911,
+          "end_char": 38040,
+          "text_sha256": "95abeba11376e868fcbd400200cf7c14ec387024823bbb5b98521a5c0da108ee"
+        },
+        {
+          "source_ref": "src_0005",
+          "kind": "contract_evidence",
+          "field_path": "definitions[0].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "The term ``DACA'' means deferred action granted \n        to an alien pursuant to the Deferred Action for Childhood \n        Arrivals policy announced by the Secretary of Homeland Security \n        on June 15, 2012.",
+          "start_char": 44065,
+          "end_char": 44279,
+          "text_sha256": "6d3a841b145c298282a1ed00efdae844a0b625f650756baaaf1149e7a665e8dd"
+        },
+        {
+          "source_ref": "src_0006",
+          "kind": "contract_evidence",
+          "field_path": "financial_items[7].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "SEC. 310. GRANT PROGRAM TO ASSIST ELIGIBLE APPLICANTS.",
+          "start_char": 70092,
+          "end_char": 70146,
+          "text_sha256": "6274f5076677324d168cf05e29991b091429f1b38c54205a4e2333f036e339f2"
+        },
+        {
+          "source_ref": "src_0007",
+          "kind": "contract_evidence",
+          "field_path": "requirements[1].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Conditional Basis for Status.--Notwithstanding any other \nprovision of law, and except as provided in section 104(c)(2), an alien \nshall be considered, at the time of obtaining the status of an alien \nlawfully admitted for permanent residence under this section, to have \nobtained such status on a conditional basis subject to the provisions \nof this title.",
+          "start_char": 6632,
+          "end_char": 6989,
+          "text_sha256": "55edf55ecad840ca4ab9ca8e0f249d1eac9570a3ff935588153e7a6635663e4b"
+        },
+        {
+          "source_ref": "src_0008",
+          "kind": "contract_evidence",
+          "field_path": "timeline_items[2].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Second notice.--Not more than 30 days \n                        after the issuance of the notice under clause",
+          "start_char": 23165,
+          "end_char": 23273,
+          "text_sha256": "6dc0b0b6bce3c899465fc7041d387c4c1e8e1051337c29fd60c260cabcead66c"
+        },
+        {
+          "source_ref": "src_0009",
+          "kind": "contract_evidence",
+          "field_path": "line_items[15].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In general.--Notwithstanding an alien's \n                eligibility for adjustment of status under this title, \n                and subject to the procedures described in this \n                paragraph, the Secretary may, as a matter of non-\n                delegable discretion, provisionally deny an application \n                for adjustment of status (whether on a conditional \n                basis or without the conditional basis as provided in \n                section 104(c)(2)) if the Secretary, based on clear and \n                convincing evidence, which shall include credible law \n                enforcement information, determines that the alien is \n                described in subparagraph (B) or (D).",
+          "start_char": 17987,
+          "end_char": 18711,
+          "text_sha256": "6488790b51cb2e6277d60dd4176676f1c4cefc6bf273433cad9987b151f291fe"
+        },
+        {
+          "source_ref": "src_0010",
+          "kind": "contract_evidence",
+          "field_path": "definitions[1].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "the term ``Secretary'' means the Secretary of Homeland \n        Security.",
+          "start_char": 45871,
+          "end_char": 45944,
+          "text_sha256": "644f46cdf8e749ef31ec427dc382bc628358b07af00590796c904d21361ca66d"
+        },
+        {
+          "source_ref": "src_0011",
+          "kind": "contract_evidence",
+          "field_path": "financial_items[7].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Amounts authorized.--There are authorized to be \n        appropriated such sums as may be necessary for each of the \n        fiscal years 2026 through 2036 to carry out this section.",
+          "start_char": 72489,
+          "end_char": 72671,
+          "text_sha256": "b01c613c44dd55c878ea96c0e7515f546b0d600e58514330c98b116d994b7e46"
+        },
+        {
+          "source_ref": "src_0012",
+          "kind": "contract_evidence",
+          "field_path": "requirements[2].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In general.--Notwithstanding any other provision of \n        law, the Secretary or the Attorney General shall adjust to the \n        status of an alien lawfully admitted for permanent residence on \n        a conditional basis, or without the conditional basis as \n        provided in section 104(c)(2), an alien who is inadmissible or \n        deportable from the United States, is subject to a grant of \n        Deferred Enforced Departure, has temporary protected status \n        under section 244 of the Immigration and Nationality Act (8 \n        U.S.C. 1254a), or is the son or daughter of an alien admitted \n        as a nonimmigrant under subparagraph (E)(i), (E)(ii),",
+          "start_char": 7030,
+          "end_char": 7705,
+          "text_sha256": "a399248bc9d257661d9b85083881a35e47845772a6d7d72d5097ba331070767f"
+        },
+        {
+          "source_ref": "src_0013",
+          "kind": "contract_evidence",
+          "field_path": "timeline_items[5].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "who was eligible for Deferred Enforced Departure as of \n        January 20, 2021, and has not engaged in conduct since that \n        date that would render the alien ineligible for Deferred \n        Enforced Departure.",
+          "start_char": 40524,
+          "end_char": 40742,
+          "text_sha256": "ac3a1aa2e3a89a4b5cf2f4e704332d3b02261456ff4b0ecbd10acb985325c7f5"
+        },
+        {
+          "source_ref": "src_0014",
+          "kind": "contract_evidence",
+          "field_path": "line_items[27].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "the term ``misdemeanor offense'' means an \n                offense under Federal or State law that is punishable \n                by a term of imprisonment of more than 5 days but not \n                more than 1 year; and",
+          "start_char": 26801,
+          "end_char": 27023,
+          "text_sha256": "e65289626cba6018e533cccf6a5d8a71907d9127d080e02168ae5ea2a66de536"
+        },
+        {
+          "source_ref": "src_0015",
+          "kind": "contract_evidence",
+          "field_path": "requirements[3].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Waiver of grounds of inadmissibility.--With respect to \n        any benefit under this title, and in addition to the waivers \n        under subsection (c)(2), the Secretary may waive the grounds of \n        inadmissibility under paragraph (1), (6)(E), (6)(G), or (10)(D) \n        of section 212(a) of the Immigration and Nationality Act (8 \n        U.S.C. 1182(a)) for humanitarian purposes, for family unity, or \n        because the waiver is otherwise in the public interest.",
+          "start_char": 11492,
+          "end_char": 11969,
+          "text_sha256": "13f2a331408abdf636218632417e5ea2d82124f83600e48eaa89838e00a06689"
+        },
+        {
+          "source_ref": "src_0016",
+          "kind": "contract_evidence",
+          "field_path": "timeline_items[6].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "DACA.--The term ``DACA'' means deferred action granted \n        to an alien pursuant to the Deferred Action for Childhood \n        Arrivals policy announced by the Secretary of Homeland Security \n        on June 15, 2012.",
+          "start_char": 44058,
+          "end_char": 44279,
+          "text_sha256": "0ab70c232ae8d657872fb4496feb3a0d6a43df11631c116bd9df5626c467718c"
+        },
+        {
+          "source_ref": "src_0017",
+          "kind": "contract_evidence",
+          "field_path": "line_items[76].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Limitation on Removal.--An alien who appears to be prima facie \neligible for relief under this Act shall be given a reasonable \nopportunity to apply for such relief and may not be removed until, \nsubject to section 306(c)(2), a final decision establishing \nineligibility for relief is rendered.",
+          "start_char": 47801,
+          "end_char": 48095,
+          "text_sha256": "5a2c21356e0658513b4cec11e45d8b5c1f5b425e8fe6beb3f4cae2270f6cad44"
+        },
+        {
+          "source_ref": "src_0018",
+          "kind": "contract_evidence",
+          "field_path": "requirements[4].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In general.--The Secretary may, subject to an \n                exemption under section 303(c), require an alien \n                applying under this section to pay a reasonable fee \n                that is commensurate with the cost of processing the \n                application but does not exceed $495.00.",
+          "start_char": 12029,
+          "end_char": 12337,
+          "text_sha256": "a839becc441968465a5a9772004bfec80e6b13711ee30099d0105aba2e842e0a"
+        },
+        {
+          "source_ref": "src_0019",
+          "kind": "contract_evidence",
+          "field_path": "line_items[84].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Employment.--An alien whose removal is stayed pursuant to this \nAct, who may not be placed in removal proceedings pursuant to this Act, \nor who has pending an application under this Act, shall, upon \napplication to the Secretary, be granted an employment authorization \ndocument.",
+          "start_char": 49942,
+          "end_char": 50221,
+          "text_sha256": "8e1af08ff8c4ab2988e3be1c728bf2df50285d27ca9299f81f771f62b02339c3"
+        },
+        {
+          "source_ref": "src_0020",
+          "kind": "contract_evidence",
+          "field_path": "requirements[5].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Special procedures for applicants with daca.--\n                The Secretary shall establish a streamlined procedure \n                for aliens who have been granted DACA and who meet the \n                requirements for renewal (under the terms of the \n                program in effect on January 1, 2017) to apply for \n                adjustment of status to that of an alien lawfully \n                admitted for permanent residence on a conditional basis \n                under this section, or without the conditional basis as \n                provided in section 104(c)(2).",
+          "start_char": 12362,
+          "end_char": 12945,
+          "text_sha256": "fe0d825d39b44198912143572a4aa768a05fe7f76b32de577d8aa0708e7d0dbc"
+        },
+        {
+          "source_ref": "src_0021",
+          "kind": "contract_evidence",
+          "field_path": "line_items[93].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Administrative Review.--Not later than 30 days after the date \nof the enactment of this Act, the Secretary shall provide to aliens who \nhave applied for adjustment of status under this Act a process by which \nan applicant may seek administrative appellate review of a denial of an \napplication for adjustment of status, or a revocation of such status.",
+          "start_char": 54122,
+          "end_char": 54473,
+          "text_sha256": "a6604a90ab24d37eaf9ebc020a8cbf6767eb10ed428d44a88e7bb994181c3e08"
+        },
+        {
+          "source_ref": "src_0022",
+          "kind": "contract_evidence",
+          "field_path": "requirements[6].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Such procedure shall not \n                include a requirement that the applicant pay a fee, \n                except that the Secretary",
+          "start_char": 12946,
+          "end_char": 13082,
+          "text_sha256": "3d96d424cd14c1370cd4161a5f1c02436ac1fed4be0560fb33244022e193e0b4"
+        },
+        {
+          "source_ref": "src_0023",
+          "kind": "contract_evidence",
+          "field_path": "line_items[147].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In General.--Not later than 90 days after the date of the \nenactment of this Act, the Secretary shall publish in the Federal \nRegister interim final rules implementing this Act, which shall allow \neligible individuals to immediately apply for relief under this Act.",
+          "start_char": 67826,
+          "end_char": 68091,
+          "text_sha256": "aeb34125fb1c2ac4f67ba9b73b9eac751d4488307602196c74f0cfa2f1225b01"
+        },
+        {
+          "source_ref": "src_0024",
+          "kind": "contract_evidence",
+          "field_path": "requirements[7].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Such procedure shall not \n                include a requirement that the applicant pay a fee, \n                except that the Secretary may require an applicant who \n                meets the requirements for lawful permanent residence \n                without the conditional basis under section 104(c)(2) \n                to pay a fee that is commensurate with the cost of \n                processing the application, subject to the exemption \n                under section 303(c).",
+          "start_char": 12946,
+          "end_char": 13430,
+          "text_sha256": "6b35113aa2a8d066c2acdf3503b285dbf58b277294bfb0c3916eb8339267554e"
+        },
+        {
+          "source_ref": "src_0025",
+          "kind": "contract_evidence",
+          "field_path": "line_items[167].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "An alien's eligibility to be lawfully admitted for permanent \nresidence under this Act (whether on a conditional basis, or without \nthe conditional basis as provided in section 104(c)(2)) shall not \npreclude the alien from seeking any status under any other provision of \nlaw for which the alien may otherwise be eligible.",
+          "start_char": 72877,
+          "end_char": 73199,
+          "text_sha256": "f6c4e187c3084016558b5968c5fd3fa54c219409946f53f7b00b44f6153fe62f"
+        },
+        {
+          "source_ref": "src_0026",
+          "kind": "contract_evidence",
+          "field_path": "requirements[8].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Background checks.--The Secretary may not grant an \n        alien permanent resident status on a conditional basis under \n        this section until the requirements of section 302 are \n        satisfied.",
+          "start_char": 13447,
+          "end_char": 13651,
+          "text_sha256": "6b729eab3b314405c7c8f54a1404e16df9a870c41b610ddb94c0f68d54a1aeeb"
+        },
+        {
+          "source_ref": "src_0027",
+          "kind": "contract_evidence",
+          "field_path": "line_items[170].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Report.--At the end of each 2-year period, beginning with the \nestablishment of this account, the Secretary of Homeland Security shall \nsubmit a report to the Congress concerning the status of the account, \nincluding any balances therein, and recommend any adjustment in the \nprescribed fee that may be required to ensure that the receipts \ncollected from the fee charged for the succeeding two years equal, as \nclosely as possible, the cost of providing appointed counsel as \nrequired under this Act.",
+          "start_char": 74085,
+          "end_char": 74586,
+          "text_sha256": "5bddd669571dea5066acf49c8f2c484e8ea1e29c1fd8514effb3ea62e0cfdc65"
+        },
+        {
+          "source_ref": "src_0028",
+          "kind": "contract_evidence",
+          "field_path": "requirements[9].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Military selective service.--An alien applying for \n        permanent resident status on a conditional basis under this \n        section, or without the conditional basis as provided in \n        section 104(c)(2), shall establish that the alien has \n        registered under the Military Selective Service Act (50 U.S.C. \n        3801 et seq.), if the alien is subject to registration under \n        such Act.",
+          "start_char": 13668,
+          "end_char": 14077,
+          "text_sha256": "650717daef19025a4a27b550d67095d15d0367d2b5bf2416a2b2e4222aecc776"
+        },
+        {
+          "source_ref": "src_0029",
+          "kind": "contract_evidence",
+          "field_path": "requirements[10].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Waivers for certain misdemeanors.--For humanitarian \n        purposes, family unity, or if otherwise in the public interest, \n        the Secretary may--",
+          "start_char": 16534,
+          "end_char": 16687,
+          "text_sha256": "60f890d1505345694a5ca5025634ffbcedfa2b9cb305b2033f7af91edd95bc52"
+        },
+        {
+          "source_ref": "src_0030",
+          "kind": "contract_evidence",
+          "field_path": "requirements[10].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "waive the grounds of inadmissibility under \n                subparagraphs (A), (C), and (D) of section 212(a)(2) of \n                the Immigration and Nationality Act (8 U.S.C. \n                1182(a)(2)), unless the conviction forming the basis \n                for inadmissibility would otherwise render the alien \n                ineligible under paragraph (1)(B) (subject to \n                subparagraph (B)); and",
+          "start_char": 16712,
+          "end_char": 17133,
+          "text_sha256": "81c6cea729020100c065f1acb170de6595314fdbd2e238b11b9c172543d720c5"
+        },
+        {
+          "source_ref": "src_0031",
+          "kind": "contract_evidence",
+          "field_path": "requirements[11].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "for purposes of clauses (ii) and (iii) of \n                paragraph (1)(B), waive consideration of--",
+          "start_char": 17158,
+          "end_char": 17259,
+          "text_sha256": "6f78299afffae59c9d2b63c127012e7c0841834f76b983761ba83bb154062a48"
+        },
+        {
+          "source_ref": "src_0032",
+          "kind": "contract_evidence",
+          "field_path": "requirements[11].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "                            (i) one misdemeanor offense if the alien \n                        has not been convicted of any offense in the 5-\n                        year period preceding the date on which the \n                        alien applies for adjustment of status under \n                        this title; or\n                            (ii) up to two misdemeanor offenses if the \n                        alien has not been convicted of any offense in \n                        the 10-year period preceding the date on which \n                        the alien applies for adjustment of status \n                        under this title.\n",
+          "start_char": 17260,
+          "end_char": 17906,
+          "text_sha256": "56b64611fe8afbac80b360e490c92c4659c6d4b55fbadefe0fde0403fa6a352f"
+        },
+        {
+          "source_ref": "src_0033",
+          "kind": "contract_evidence",
+          "field_path": "requirements[12].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Public safety determination.--For purposes of \n                subparagraph (B)(ii), the Secretary shall consider the \n                recency of the conviction or adjudication; the length \n                of any imposed sentence or placement; the nature and \n                seriousness of the conviction or adjudication, \n                including whether the elements of the offense include \n                the unlawful possession or use of a deadly weapon to \n                commit an offense or other conduct intended to cause \n                serious bodily injury; and any mitigating factors \n                pertaining to the alien's role in the commission of the \n                offense.",
+          "start_char": 20284,
+          "end_char": 20983,
+          "text_sha256": "c47e2c14fe834d277518193f54ea0ee99b29f4dc998ebb35607e8d5d81340d2a"
+        },
+        {
+          "source_ref": "src_0034",
+          "kind": "contract_evidence",
+          "field_path": "requirements[13].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In general.--Prior to rendering a \n                        discretionary decision under this paragraph, \n                        the Secretary shall provide written notice of \n                        the intent to provisionally deny the \n                        application to the alien (or the alien's \n                        counsel of record, if any) by certified mail \n                        and, if an electronic mail address is provided, \n                        by electronic mail (or other form of electronic \n                        communication).",
+          "start_char": 22105,
+          "end_char": 22664,
+          "text_sha256": "a11c530e68c0e9068a75cfbc55c3c2d3db05cadeb853144789c515687a316c57"
+        },
+        {
+          "source_ref": "src_0035",
+          "kind": "contract_evidence",
+          "field_path": "requirements[14].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": ", the Secretary shall provide a second \n                        written notice that meets the requirements of \n                        such clause.",
+          "start_char": 23302,
+          "end_char": 23449,
+          "text_sha256": "2b90bbf6fc9fe44f2a9d9ffd04a468f381db52bab8c66a29cf3156fc8fb30109"
+        },
+        {
+          "source_ref": "src_0036",
+          "kind": "contract_evidence",
+          "field_path": "requirements[15].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Scope of review and decision.--\n                        Notwithstanding any other provision of law, \n                        review under paragraph (1) shall be de novo",
+          "start_char": 24888,
+          "end_char": 25056,
+          "text_sha256": "f5a379b215110de33f37dbdef75eff375c602995848babd25e220ff406c89721"
+        },
+        {
+          "source_ref": "src_0037",
+          "kind": "contract_evidence",
+          "field_path": "requirements[16].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Scope of review and decision.--\n                        Notwithstanding any other provision of law, \n                        review under paragraph (1) shall be de novo and \n                        based solely on the administrative record, \n                        except that the applicant shall be given the \n                        opportunity to supplement the administrative \n                        record and the Secretary shall be given the \n                        opportunity to rebut the evidence and arguments \n                        raised in such submission.",
+          "start_char": 24888,
+          "end_char": 25462,
+          "text_sha256": "6d413a7148dc20f5b5e4fb07722eff4ef523d3d798464aee69d5df1bc5d3e9d7"
+        },
+        {
+          "source_ref": "src_0038",
+          "kind": "contract_evidence",
+          "field_path": "requirements[18].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Upon issuing its \n                        decision, the court shall remand the matter, \n                        with appropriate instructions, to the \n                        Department of Homeland Security to render a \n                        final decision on the application.",
+          "start_char": 25463,
+          "end_char": 25741,
+          "text_sha256": "9878ad26aec1ba23117e32b2060107a7708a23a04cbfcba08a126ec8ce7cfd3a"
+        },
+        {
+          "source_ref": "src_0039",
+          "kind": "contract_evidence",
+          "field_path": "requirements[19].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Appointed counsel.--Notwithstanding \n                        any other provision of law, an applicant \n                        seeking judicial review under clause (i) shall \n                        be represented by counsel.",
+          "start_char": 25776,
+          "end_char": 26001,
+          "text_sha256": "2c03709fb3a7ab4a0c8045f49099527fa273c17de3ff801490d2db39dcd9d246"
+        },
+        {
+          "source_ref": "src_0040",
+          "kind": "contract_evidence",
+          "field_path": "requirements[20].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Upon the request of \n                        the applicant, counsel shall be appointed for \n                        the applicant, in accordance with procedures to \n                        be established by the Attorney General within \n                        90 days of the date of the enactment of this \n                        Act,",
+          "start_char": 26002,
+          "end_char": 26336,
+          "text_sha256": "bd177ede22a69cc5e7323a3db68f6146d38efc60cb3a71e5b797f0dce420b0dd"
+        },
+        {
+          "source_ref": "src_0041",
+          "kind": "contract_evidence",
+          "field_path": "requirements[21].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Upon the request of \n                        the applicant, counsel shall be appointed for \n                        the applicant, in accordance with procedures to \n                        be established by the Attorney General within \n                        90 days of the date of the enactment of this \n                        Act, and shall be funded in accordance with \n                        fees collected and deposited in the Immigration \n                        Counsel Account under section 312.",
+          "start_char": 26002,
+          "end_char": 26508,
+          "text_sha256": "0c8ea5ce6f634c6ca95b782fade8964dc147c39570acb0e18e5bd485fa0ae6d9"
+        },
+        {
+          "source_ref": "src_0042",
+          "kind": "contract_evidence",
+          "field_path": "requirements[22].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Limitation on Removal of Certain Alien Minors.--An alien who is \n18 years of age or younger and meets the requirements under \nsubparagraphs (A), (B), and (C) of subsection (b)(1) shall be provided \na reasonable opportunity to meet the educational requirements under \nsubparagraph (D) of such subsection.",
+          "start_char": 28013,
+          "end_char": 28316,
+          "text_sha256": "ce433e7c4a146f4d83dcf1c65440192b5bac2f3940d06c9b6bb635e8518a7b99"
+        },
+        {
+          "source_ref": "src_0043",
+          "kind": "contract_evidence",
+          "field_path": "requirements[23].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "The Attorney General or the \nSecretary may not commence or continue with removal proceedings against \nsuch an alien.",
+          "start_char": 28317,
+          "end_char": 28433,
+          "text_sha256": "9b613782d86026157a9e8ce22193828e1f1c8786cb43b8e2c5e054e97ebf4f5b"
+        },
+        {
+          "source_ref": "src_0044",
+          "kind": "contract_evidence",
+          "field_path": "requirements[24].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Withdrawal of Application.--The Secretary shall, upon receipt \nof a request to withdraw an application for adjustment of status under \nthis section, cease processing of the application, and close the case.",
+          "start_char": 28442,
+          "end_char": 28647,
+          "text_sha256": "b4224afd057b1fd5e81ed13678e9469faec9fc147e668e95e979c352ab74cc6e"
+        },
+        {
+          "source_ref": "src_0045",
+          "kind": "contract_evidence",
+          "field_path": "requirements[25].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Withdrawal of the application under this subsection shall not prejudice \nany future application filed by the applicant for any immigration \nbenefit under this title or under the Immigration and Nationality Act \n(8 U.S.C. 1101 et seq.).",
+          "start_char": 28649,
+          "end_char": 28884,
+          "text_sha256": "7ad5901cc118e28fd17c8953218dcd182e609ee6a0b383a8ceda089d97950685"
+        },
+        {
+          "source_ref": "src_0046",
+          "kind": "contract_evidence",
+          "field_path": "requirements[26].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Notice of Requirements.--At the time an alien obtains permanent \nresident status on a conditional basis, the Secretary shall provide \nnotice to the alien regarding the provisions of this title and the \nrequirements to have the conditional basis of such status removed.",
+          "start_char": 29216,
+          "end_char": 29484,
+          "text_sha256": "b3921e28ecf37867d8ce28334ca4a677adafad4a19ec27b7f951020e1c2715a2"
+        },
+        {
+          "source_ref": "src_0047",
+          "kind": "contract_evidence",
+          "field_path": "requirements[27].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Revocation of Status.--The Secretary may revoke the permanent \nresident status on a conditional basis of an alien only if the \nSecretary--",
+          "start_char": 29493,
+          "end_char": 29631,
+          "text_sha256": "20ffa8a5e337ff82d01e29dc4c1982da34da9c025e02e662c494ad2394e61a25"
+        },
+        {
+          "source_ref": "src_0048",
+          "kind": "contract_evidence",
+          "field_path": "requirements[27].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "determines that the alien ceases to meet the \n        requirements under section 102(b)(1)(C); and",
+          "start_char": 29648,
+          "end_char": 29746,
+          "text_sha256": "f85158a09e145234730c0a8495c43e00ad792b15393591d25ed880ed68b3e4cc"
+        },
+        {
+          "source_ref": "src_0049",
+          "kind": "contract_evidence",
+          "field_path": "requirements[28].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "prior to the revocation, provides the alien--",
+          "start_char": 29763,
+          "end_char": 29808,
+          "text_sha256": "dbe4277cb17e8f689ac2cef6aea012e70527fc2c5368c6adf5d70a79998dcca1"
+        },
+        {
+          "source_ref": "src_0050",
+          "kind": "contract_evidence",
+          "field_path": "requirements[28].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "notice of the proposed revocation; and",
+          "start_char": 29833,
+          "end_char": 29871,
+          "text_sha256": "3008d53cd69ff21470ea76409b74a4c5031d3d716b4ce138a7867c7dcd21b71d"
+        },
+        {
+          "source_ref": "src_0051",
+          "kind": "contract_evidence",
+          "field_path": "requirements[29].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "the opportunity for a hearing to provide \n                evidence that the alien meets such requirements or \n                otherwise to contest the proposed revocation.",
+          "start_char": 29896,
+          "end_char": 30067,
+          "text_sha256": "a8a4935e9c4aa8a21f6dd6aaa0a3930415d991985b250306240bff66035e79ae"
+        },
+        {
+          "source_ref": "src_0052",
+          "kind": "contract_evidence",
+          "field_path": "requirements[30].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "Return to Previous Immigration Status.--An alien whose \npermanent resident status on a conditional basis expires under \nsubsection (a)(1) or is revoked under subsection (c), shall return to \nthe immigration status that the alien had immediately before receiving \npermanent resident status on a conditional basis.",
+          "start_char": 30076,
+          "end_char": 30388,
+          "text_sha256": "2c9e96f1e16b09e29828e5aad889c3c4087646fd21172497c51255da07a06316"
+        },
+        {
+          "source_ref": "src_0053",
+          "kind": "contract_evidence",
+          "field_path": "requirements[31].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "In general.--Subject to paragraph (2), the Secretary \n        shall remove the conditional basis of an alien's permanent \n        resident status granted under this title and grant the alien \n        status as an alien lawfully admitted for permanent residence if \n        the alien--",
+          "start_char": 30532,
+          "end_char": 30816,
+          "text_sha256": "e5b023dec49563b3f0692c3d35158eeba54545ca30ef8af317b66b4080e0fb3b"
+        },
+        {
+          "source_ref": "src_0054",
+          "kind": "contract_evidence",
+          "field_path": "requirements[31].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "is described in section 102(b)(1)(C);",
+          "start_char": 30841,
+          "end_char": 30878,
+          "text_sha256": "0bb0fa1d5193d1a14819c294e6e6e61a2d6e7657ad627edc126bae2ab55656ea"
+        },
+        {
+          "source_ref": "src_0055",
+          "kind": "contract_evidence",
+          "field_path": "requirements[32].display_text",
+          "section_label": "BILLS-119hr1589ih",
+          "quoted_text": "has not abandoned the alien's residence in the \n                United States during the period in which the alien has \n                permanent resident status on a conditional basis; and",
+          "start_char": 30903,
+          "end_char": 31092,
+          "text_sha256": "66da98a6805cfc599ffee5e752e6512a371fc47a4ecf3271579de8bfa896a3af"
+        }
+      ],
+      "source_manifest": {
+        "contract_id": "BILLS-119hr1589ih",
+        "contract_hash": "391c11c9ef4ff6488f8cf0de274506a19c58e8e792c8e03eea1ee0718b0bb8ee",
+        "contract_schema_version": "2.1-legal-nlp",
+        "document_id": "BILLS-119hr1589ih",
+        "source_kind": "contract_evidence",
+        "total_candidates": 207,
+        "selected_count": 55,
+        "truncated": true
+      },
+      "source_fingerprint": "2f867c730a1dc738aec97c42b448403f8c2bb00145916385f2efbae760d5690f",
+      "request_fingerprint": "24ec6fe98eeff84b4d7161fc90d11bb4366c5ccdeffb157c3296328bd01e8711",
+      "prompt_version": "1.2",
+      "output_schema_version": "1.2",
+      "source_packet_version": "1.1",
+      "truncated": true,
+      "estimated_input_tokens_upper_bound": 59070,
+      "status": "failed",
+      "usage": {
+        "input_tokens": 13527,
+        "output_tokens": 3247,
+        "total_tokens": 16774
+      },
+      "resolved_model": "gpt-6-luna",
+      "response_id": "resp_0bf22dd05e8fb259016ad1796a151087d28e96ae2f6c8328fd",
+      "output": {
+        "schema_version": "1.2",
+        "overview": [
+          {
+            "text": "The introduced bill would let certain people who meet its requirements seek permanent resident status, including some people facing removal, people with temporary protected status, and some children of nonimmigrant workers. Some approvals would be conditional, with later requirements to keep permanent resident status.",
+            "source_refs": [
+              "src_0012",
+              "src_0007"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0012",
+                "quote": "the Secretary or the Attorney General shall adjust to the status of an alien lawfully admitted for permanent residence on a conditional basis, or without the conditional basis as provided in section 104(c)(2), an alien who is inadmissible or deportable from the United States, is subject to a grant of Deferred Enforced Departure, has temporary protected status"
+              },
+              {
+                "source_ref": "src_0007",
+                "quote": "an alien shall be considered, at the time of obtaining the status of an alien lawfully admitted for permanent residence under this section, to have obtained such status on a conditional basis"
+              }
+            ]
+          }
+        ],
+        "key_impacts": [
+          {
+            "text": "The bill would create a streamlined application process for people granted DACA who meet renewal requirements based on the program’s terms in effect on January 1, 2017.",
+            "source_refs": [
+              "src_0020"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0020",
+                "quote": "The Secretary shall establish a streamlined procedure for aliens who have been granted DACA and who meet the requirements for renewal (under the terms of the program in effect on January 1, 2017)"
+              }
+            ]
+          },
+          {
+            "text": "A person who applies under the bill may receive a work-authorization document after applying to the Secretary if removal is stayed, removal proceedings may not be started under the bill, or an application is pending.",
+            "source_refs": [
+              "src_0019"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0019",
+                "quote": "An alien whose removal is stayed pursuant to this Act, who may not be placed in removal proceedings pursuant to this Act, or who has pending an application under this Act, shall, upon application to the Secretary, be granted an employment authorization document."
+              }
+            ]
+          },
+          {
+            "text": "The Secretary could provisionally deny an otherwise eligible application based on clear and convincing evidence, including credible law-enforcement information, in specified circumstances.",
+            "source_refs": [
+              "src_0009"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0009",
+                "quote": "the Secretary may, as a matter of non-delegable discretion, provisionally deny an application for adjustment of status (whether on a conditional basis or without the conditional basis as provided in section 104(c)(2)) if the Secretary, based on clear and convincing evidence, which shall include credible law enforcement information, determines that the alien is described in subparagraph (B) or (D)."
+              }
+            ]
+          },
+          {
+            "text": "A person 18 or younger who meets specified requirements would get a reasonable opportunity to meet the education requirements, and removal proceedings could not be started or continued against that person during that opportunity.",
+            "source_refs": [
+              "src_0042",
+              "src_0043"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0042",
+                "quote": "An alien who is 18 years of age or younger and meets the requirements under subparagraphs (A), (B), and (C) of subsection (b)(1) shall be provided a reasonable opportunity to meet the educational requirements under subparagraph (D) of such subsection."
+              },
+              {
+                "source_ref": "src_0043",
+                "quote": "The Attorney General or the Secretary may not commence or continue with removal proceedings against such an alien."
+              }
+            ]
+          },
+          {
+            "text": "A person whose application for conditional permanent resident status is approved would receive notice explaining the bill’s provisions and the requirements for removing the conditional basis.",
+            "source_refs": [
+              "src_0046"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0046",
+                "quote": "At the time an alien obtains permanent resident status on a conditional basis, the Secretary shall provide notice to the alien regarding the provisions of this title and the requirements to have the conditional basis of such status removed."
+              }
+            ]
+          }
+        ],
+        "obligations": [
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "establish a streamlined application process for qualifying DACA recipients",
+            "conditions": "The applicants must meet renewal requirements under the program terms in effect on January 1, 2017.",
+            "source_refs": [
+              "src_0020"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0020",
+                "quote": "The Secretary shall establish a streamlined procedure for aliens who have been granted DACA and who meet the requirements for renewal (under the terms of the program in effect on January 1, 2017)"
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "provide a process for administrative appeal of an application denial or status revocation",
+            "conditions": "Within 30 days after enactment.",
+            "source_refs": [
+              "src_0021"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0021",
+                "quote": "Not later than 30 days after the date of the enactment of this Act, the Secretary shall provide to aliens who have applied for adjustment of status under this Act a process by which an applicant may seek administrative appellate review of a denial of an application for adjustment of status, or a revocation of such status."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "publish interim final rules implementing the bill",
+            "conditions": "Within 90 days after enactment; the rules must allow eligible individuals to apply for relief immediately.",
+            "source_refs": [
+              "src_0023"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0023",
+                "quote": "Not later than 90 days after the date of the enactment of this Act, the Secretary shall publish in the Federal Register interim final rules implementing this Act, which shall allow eligible individuals to immediately apply for relief under this Act."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "complete required background checks before granting conditional permanent resident status",
+            "conditions": "The cited text refers to section 302, whose requirements are not supplied here.",
+            "source_refs": [
+              "src_0026"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0026",
+                "quote": "The Secretary may not grant an alien permanent resident status on a conditional basis under this section until the requirements of section 302 are satisfied."
+              }
+            ]
+          },
+          {
+            "actor": "Applicant",
+            "modality": "required",
+            "action": "show registration under the Military Selective Service Act",
+            "conditions": "Only if the applicant is subject to registration under that Act.",
+            "source_refs": [
+              "src_0028"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0028",
+                "quote": "shall establish that the alien has registered under the Military Selective Service Act (50 U.S.C. 3801 et seq.), if the alien is subject to registration under such Act."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "consider specified factors in the public-safety determination",
+            "conditions": "For the determination described in subparagraph (B)(ii), including conviction recency, sentence length, offense seriousness, and mitigating factors.",
+            "source_refs": [
+              "src_0033"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0033",
+                "quote": "the Secretary shall consider the recency of the conviction or adjudication; the length of any imposed sentence or placement; the nature and seriousness of the conviction or adjudication, including whether the elements of the offense include the unlawful possession or use of a deadly weapon to commit an offense or other conduct intended to cause serious bodily injury; and any mitigating factors pertaining to the alien's role in the commission of the offense."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "send written notice before a provisional denial decision",
+            "conditions": "Send by certified mail and, if an email address is provided, by email or another electronic communication method.",
+            "source_refs": [
+              "src_0034"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0034",
+                "quote": "the Secretary shall provide written notice of the intent to provisionally deny the application to the alien (or the alien's counsel of record, if any) by certified mail and, if an electronic mail address is provided, by electronic mail (or other form of electronic communication)."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "send a second written notice",
+            "conditions": "No more than 30 days after issuing the first notice.",
+            "source_refs": [
+              "src_0008",
+              "src_0035"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0008",
+                "quote": "Not more than 30 days after the issuance of the notice under clause"
+              },
+              {
+                "source_ref": "src_0035",
+                "quote": "the Secretary shall provide a second written notice that meets the requirements of such clause."
+              }
+            ]
+          },
+          {
+            "actor": "Court",
+            "modality": "required",
+            "action": "review the matter anew based on the administrative record",
+            "conditions": "The applicant may add to the record, and the Secretary may respond to that added evidence and argument.",
+            "source_refs": [
+              "src_0036",
+              "src_0037"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0036",
+                "quote": "review under paragraph (1) shall be de novo"
+              },
+              {
+                "source_ref": "src_0037",
+                "quote": "based solely on the administrative record, except that the applicant shall be given the opportunity to supplement the administrative record and the Secretary shall be given the opportunity to rebut the evidence and arguments raised in such submission."
+              }
+            ]
+          },
+          {
+            "actor": "Court",
+            "modality": "required",
+            "action": "send the matter back to the Department of Homeland Security for a final application decision",
+            "conditions": null,
+            "source_refs": [
+              "src_0038"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0038",
+                "quote": "Upon issuing its decision, the court shall remand the matter, with appropriate instructions, to the Department of Homeland Security to render a final decision on the application."
+              }
+            ]
+          },
+          {
+            "actor": "Attorney General",
+            "modality": "required",
+            "action": "set procedures for appointing counsel",
+            "conditions": "Within 90 days after enactment; counsel is appointed upon an applicant’s request for judicial review.",
+            "source_refs": [
+              "src_0040"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0040",
+                "quote": "Upon the request of the applicant, counsel shall be appointed for the applicant, in accordance with procedures to be established by the Attorney General within 90 days of the date of the enactment of this Act"
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "stop processing and close a case after receiving a withdrawal request",
+            "conditions": "The request must be to withdraw an application for adjustment of status under this section.",
+            "source_refs": [
+              "src_0044"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0044",
+                "quote": "upon receipt of a request to withdraw an application for adjustment of status under this section, cease processing of the application, and close the case."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "permitted",
+            "action": "revoke conditional permanent resident status",
+            "conditions": "Only if the person no longer meets the requirements under section 102(b)(1)(C), and only after notice of proposed revocation and an opportunity for a hearing.",
+            "source_refs": [
+              "src_0047",
+              "src_0048",
+              "src_0049",
+              "src_0050",
+              "src_0051"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0047",
+                "quote": "The Secretary may revoke the permanent resident status on a conditional basis of an alien only if the Secretary"
+              },
+              {
+                "source_ref": "src_0048",
+                "quote": "determines that the alien ceases to meet the requirements under section 102(b)(1)(C); and"
+              },
+              {
+                "source_ref": "src_0049",
+                "quote": "prior to the revocation, provides the alien"
+              },
+              {
+                "source_ref": "src_0050",
+                "quote": "notice of the proposed revocation; and"
+              },
+              {
+                "source_ref": "src_0051",
+                "quote": "the opportunity for a hearing to provide evidence that the alien meets such requirements or otherwise to contest the proposed revocation."
+              }
+            ]
+          },
+          {
+            "actor": "Secretary",
+            "modality": "required",
+            "action": "remove the conditional basis and grant permanent resident status",
+            "conditions": "The person must meet the conditions in section 102(b)(1)(C) and must not have abandoned residence in the United States while holding conditional status.",
+            "source_refs": [
+              "src_0053",
+              "src_0054",
+              "src_0055"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0053",
+                "quote": "Subject to paragraph (2), the Secretary shall remove the conditional basis of an alien's permanent resident status granted under this title and grant the alien status as an alien lawfully admitted for permanent residence if the alien"
+              },
+              {
+                "source_ref": "src_0054",
+                "quote": "is described in section 102(b)(1)(C);"
+              },
+              {
+                "source_ref": "src_0055",
+                "quote": "has not abandoned the alien's residence in the United States during the period in which the alien has permanent resident status on a conditional basis; and"
+              }
+            ]
+          }
+        ],
+        "funding_and_timing": [
+          {
+            "kind": "funding",
+            "text": "The bill would authorize, but not itself appropriate, such sums as may be necessary for the applicant-assistance grant program for each fiscal year from 2026 through 2036; the supplied provisions give no dollar total.",
+            "source_refs": [
+              "src_0011"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0011",
+                "quote": "There are authorized to be appropriated such sums as may be necessary for each of the fiscal years 2026 through 2036 to carry out this section."
+              }
+            ]
+          },
+          {
+            "kind": "timing",
+            "text": "The Secretary would have to issue interim final rules within 90 days after enactment, allowing eligible people to apply for relief immediately.",
+            "source_refs": [
+              "src_0023"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0023",
+                "quote": "Not later than 90 days after the date of the enactment of this Act, the Secretary shall publish in the Federal Register interim final rules implementing this Act, which shall allow eligible individuals to immediately apply for relief under this Act."
+              },
+              {
+                "source_ref": "src_0023",
+                "quote": "eligible individuals to immediately apply for relief under this Act."
+              }
+            ]
+          },
+          {
+            "kind": "timing",
+            "text": "The bill sets January 1, 2021, as the date from which an applicant must have been continuously physically present in the United States for the cited eligibility condition.",
+            "source_refs": [
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0002",
+                "quote": "the alien has been continuously physically present in the United States since January 1, 2021;"
+              }
+            ]
+          }
+        ],
+        "uncertain_language": [
+          {
+            "text": "For a provisional denial, the Secretary must find the applicant described in subparagraph (B) or (D), but those subparagraphs are not included in the supplied material.",
+            "why_it_matters": "Without those descriptions, the situations allowing provisional denial cannot be identified from this packet.",
+            "source_refs": [
+              "src_0009"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0009",
+                "quote": "determines that the alien is described in subparagraph (B) or (D)."
+              }
+            ]
+          },
+          {
+            "text": "The background-check restriction depends on section 302, whose requirements are not included in the supplied material.",
+            "why_it_matters": "The packet does not explain what checks must be completed before conditional status is granted.",
+            "source_refs": [
+              "src_0026"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0026",
+                "quote": "until the requirements of section 302 are satisfied."
+              }
+            ]
+          },
+          {
+            "text": "One provision says the Secretary may issue a second notice within 30 days, while another says it must be issued no more than 30 days after the first notice.",
+            "why_it_matters": "The supplied wording does not clearly resolve whether issuing the second notice is optional or required.",
+            "source_refs": [
+              "src_0008",
+              "src_0035"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0008",
+                "quote": "Second notice.--Not more than 30 days after the issuance of the notice under clause"
+              },
+              {
+                "source_ref": "src_0035",
+                "quote": "the Secretary shall provide a second written notice that meets the requirements of such clause."
+              }
+            ]
+          }
+        ]
+      },
+      "failure_category": "invalid_output",
+      "validation_message": "A cited quote does not exactly match its source text.",
+      "latency_seconds": 23.11
+    },
+    {
+      "case_id": "BILLS-119s5enr",
+      "source_text_sha256": "7f408cbda015580afe312ae8455ef130ebae509c8beb6f8f9fc4edf2b895e599",
+      "answer_sha256": "b5a5bf17b20db764b54a676dfd36659f4916ff227421b4064af1c44542ebe100",
+      "source_snapshot": [
+        {
+          "source_ref": "src_0001",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119s5enr",
+          "quoted_text": "[Congressional Bills 119th Congress]\n[From the U.S. Government Publishing Office]\n[S. 5 Enrolled Bill (ENR)]\n\n        S.5\n\n                     One Hundred Nineteenth Congress\n\n                                 of the\n\n                        United States of America\n\n\n                          AT THE FIRST SESSION\n\n           Begun and held at the City of Washington on Friday,\n         the third day of January, two thousand and twenty five\n\n\n                                 An Act\n\n\n \n   To require the Secretary of Homeland Security to take into custody \n aliens who have been charged in the United States with theft, and for \n                             other purposes.\n\n    Be it enacted by the Senate and House of Representatives of the \nUnited States of America in Congress assembled,\nSECTION 1. SHORT TITLE.\n    This Act may be cited as the ``Laken Riley Act''.\nSEC. 2. DETENTION OF CERTAIN ALIENS WHO COMMIT THEFT.\n    Section 236(c) of the Immigration and Nationality Act (8 U.S.C. \n1226(c)) is amended--\n        (1) in paragraph (1)--\n            (A) in subparagraph (C), by striking ``or'';\n            (B) in subparagraph (D), by striking the comma at the end \n        and inserting ``, or''; and\n            (C) by inserting after subparagraph (D) the following:\n            (E)(i) is inadmissible under paragraph (6)(A), (6)(C), or \n        (7) of section 212(a); and\n            ``(ii) is charged with, is arrested for, is convicted of, \n        admits having committed, or admits committing acts which \n        constitute the essential elements of any burglary, theft, \n        larceny, shoplifting, or assault of a law enforcement officer \n        offense, or any crime that results in death or serious bodily \n        injury to another person,'';\n        (2) by redesignating paragraph (2) as paragraph (4); and\n        (3) by inserting after paragraph (1) the following:\n        ``(2) Definition.--For purposes of paragraph (1)(E), the terms \n    `burglary', `theft', `larceny', `shoplifting', `assault of a law \n    enforcement officer', and `serious bodily injury' have the meanings \n    given such terms in the jurisdiction in which the acts occurred.''\n        ``(3) Detainer.--The Secretary of Homeland Security shall issue \n    a detainer for an alien described in paragraph (1)(E) and, if the \n    alien is not otherwise detained by Federal, State, or local \n    officials, shall effectively and expeditiously take custody of the \n    alien.''.\nSEC. 3. ENFORCEMENT BY ATTORNEY GENERAL OF A STATE.\n    (a) Inspection of Applicants for Admission.--Section 235(b) of the \nImmigration and Nationality Act (8 U.S.C. 1225(b)) is amended--\n        (1) by redesignating paragraph (3) as paragraph (4); and\n        (2) by inserting after paragraph (2) the following:\n        ``(3) Enforcement by attorney general of a state.--The attorney \n    general of a State, or other authorized State officer, alleging a \n    violation of the detention and removal requirements under paragraph \n    (1) or (2) that harms such State or its residents shall have \n    standing to bring an action against the Secretary of Homeland \n    Security on behalf of such State or the residents of such State in \n    an appropriate district court of the United States to obtain \n    appropriate injunctive relief. The court shall advance on the \n    docket and expedite the disposition of a civil action filed under \n    this paragraph to the greatest extent practicable. For purposes of \n    this paragraph, a State or its residents shall be considered to \n    have been harmed if the State or its residents experience harm, \n    including financial harm in excess of $100.''.\n    (b) Apprehension and Detention of Aliens.--Section 236 of the \nImmigration and Nationality Act (8 U.S.C. 1226), as amended by this \nAct, is further amended--\n        (1) in subsection (e)--\n            (A) by striking ``or release''; and\n            (B) by striking ``grant, revocation, or denial'' and insert",
+          "start_char": 1,
+          "end_char": 3990,
+          "text_sha256": "74a8706d20f542f34d059a1a0fa4e4a1f4f39a2baf421092e9edc6256e23b1e8"
+        },
+        {
+          "source_ref": "src_0002",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119s5enr",
+          "quoted_text": "``revocation or denial''; and\n        (2) by adding at the end the following:\n    ``(f) Enforcement by Attorney General of a State.--The attorney \ngeneral of a State, or other authorized State officer, alleging an \naction or decision by the Attorney General or Secretary of Homeland \nSecurity under this section to release any alien or grant bond or \nparole to any alien that harms such State or its residents shall have \nstanding to bring an action against the Attorney General or Secretary \nof Homeland Security on behalf of such State or the residents of such \nState in an appropriate district court of the United States to obtain \nappropriate injunctive relief. The court shall advance on the docket \nand expedite the disposition of a civil action filed under this \nsubsection to the greatest extent practicable. For purposes of this \nsubsection, a State or its residents shall be considered to have been \nharmed if the State or its residents experience harm, including \nfinancial harm in excess of $100.''.\n    (c) Penalties.--Section 243 of the Immigration and Nationality Act \n(8 U.S.C. 1253) is amended by adding at the end the following:\n    ``(e) Enforcement by Attorney General of a State.--The attorney \ngeneral of a State, or other authorized State officer, alleging a \nviolation of the requirement to discontinue granting visas to citizens, \nsubjects, nationals, and residents as described in subsection (d) that \nharms such State or its residents shall have standing to bring an \naction against the Secretary of State on behalf of such State or the \nresidents of such State in an appropriate district court of the United \nStates to obtain appropriate injunctive relief. The court shall advance \non the docket and expedite the disposition of a civil action filed \nunder this subsection to the greatest extent practicable. For purposes \nof this subsection, a State or its residents shall be considered to \nhave been harmed if the State or its residents experience harm, \nincluding financial harm in excess of $100.''.\n    (d) Certain Classes of Aliens.--Section 212(d)(5) of the \nImmigration and Nationality Act (8 U.S.C. 1182(d)(5)) is amended--\n        (1) by striking ``Attorney General'' each place such term \n    appears and inserting ``Secretary of Homeland Security''; and\n        (2) by adding at the end the following:\n    ``(C) The attorney general of a State, or other authorized State \nofficer, alleging a violation of the limitation under subparagraph (A) \nthat parole solely be granted on a case-by-case basis and solely for \nurgent humanitarian reasons or a significant public benefit, that harms \nsuch State or its residents shall have standing to bring an action \nagainst the Secretary of Homeland Security on behalf of such State or \nthe residents of such State in an appropriate district court of the \nUnited States to obtain appropriate injunctive relief. The court shall \nadvance on the docket and expedite the disposition of a civil action \nfiled under this subparagraph to the greatest extent practicable. For \npurposes of this subparagraph, a State or its residents shall be \nconsidered to have been harmed if the State or its residents experience \nharm, including financial harm in excess of $100.''.\n    (e) Detention.--Section 241(a)(2) of the Immigration and \nNationality Act (8 U.S.C. 1231(a)(2)) is amended--\n        (1) by striking ``During the removal period,'' and inserting \n    the following:\n            ``(A) In general.--During the removal period,''; and\n        (2) by adding at the end the following:\n            ``(B) Enforcement by attorney general of a state.--The \n        attorney general of a State, or other authorized State officer, \n        alleging a violation of the detention requirement under \n        subparagraph (A) that harms such State or its residents shall \n        have standing to bring an action against the Secretary of \n        Homeland Security on behalf of such State or the residents of",
+          "start_char": 4000,
+          "end_char": 7967,
+          "text_sha256": "481883a45e0205b7be7ac497d380ab413a627bae9ef66375fbb15c2c688d846f"
+        },
+        {
+          "source_ref": "src_0003",
+          "kind": "document_chunk",
+          "field_path": null,
+          "section_label": "BILLS-119s5enr",
+          "quoted_text": "such State in an appropriate district court of the United \n        States to obtain appropriate injunctive relief. The court shall \n        advance on the docket and expedite the disposition of a civil \n        action filed under this subparagraph to the greatest extent \n        practicable. For purposes of this subparagraph, a State or its \n        residents shall be considered to have been harmed if the State \n        or its residents experience harm, including financial harm in \n        excess of $100.''.\n    (f) Limit on Injunctive Relief.--Section 242(f) of the Immigration \nand Nationality Act (8 U.S.C. 1252(f)) is amended by adding at the end \nfollowing:\n        ``(3) Certain actions.--Paragraph (1) shall not apply to an \n    action brought pursuant to section 235(b)(3), subsections (e) or \n    (f) of section 236, or section 241(a)(2)(B).''.\n\n                               Speaker of the House of Representatives.\n\n                            Vice President of the United States and    \n                                               President of the Senate.",
+          "start_char": 7977,
+          "end_char": 9054,
+          "text_sha256": "9148bcfddc2cf641d1d2f582042a4d7cf7b05f7e1db46ca45098cd9a94dadf23"
+        }
+      ],
+      "source_manifest": {
+        "document_id": "BILLS-119s5enr",
+        "document_content_hash": "7f408cbda015580afe312ae8455ef130ebae509c8beb6f8f9fc4edf2b895e599",
+        "document_version_label": "BILLS-119s5enr",
+        "source_kind": "document_chunk",
+        "total_candidates": 3,
+        "selected_count": 3,
+        "truncated": false
+      },
+      "source_fingerprint": "205ac82d257b8e1d4128c64b4833b79e9cfba4139df75d69afb9f8a985a6b810",
+      "request_fingerprint": "54e9258119549a6c99096e06968faf83d589f5acdc7ed9a7f61981a61ca74e2a",
+      "prompt_version": "1.2",
+      "output_schema_version": "1.2",
+      "source_packet_version": "1.1",
+      "truncated": false,
+      "estimated_input_tokens_upper_bound": 18044,
+      "status": "failed",
+      "usage": {
+        "input_tokens": 3694,
+        "output_tokens": 1713,
+        "total_tokens": 5407
+      },
+      "resolved_model": "gpt-6-luna",
+      "response_id": "resp_04a32278028aa819016ad179812d7487d2aba2cfc5f5c7edec",
+      "output": {
+        "schema_version": "1.2",
+        "overview": [
+          {
+            "text": "The enacted law requires federal immigration officials to detain certain noncitizens who meet specified immigration and offense conditions. It also lets state officials sue over certain alleged federal immigration violations that harm their state or residents.",
+            "source_refs": [
+              "src_0001",
+              "src_0002"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "is inadmissible under paragraph (6)(A), (6)(C), or (7) of section 212(a); and"
+              },
+              {
+                "source_ref": "src_0001",
+                "quote": "The Secretary of Homeland Security shall issue a detainer for an alien described in paragraph (1)(E)"
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "The attorney general of a State, or other authorized State officer, alleging an action or decision by the Attorney General or Secretary of Homeland Security under this section to release any alien or grant bond or parole to any alien that harms such State or its residents shall have standing"
+              }
+            ]
+          }
+        ],
+        "key_impacts": [
+          {
+            "text": "The detention rule covers people charged with, arrested for, convicted of, or admitting conduct constituting burglary, theft, larceny, shoplifting, assault of a law enforcement officer, or a crime resulting in death or serious bodily injury.",
+            "source_refs": [
+              "src_0001"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "is charged with, is arrested for, is convicted of, admits having committed, or admits committing acts which constitute the essential elements of any burglary, theft, larceny, shoplifting, or assault of a law enforcement officer offense, or any crime that results in death or serious bodily injury to another person"
+              }
+            ]
+          },
+          {
+            "text": "The listed offense terms and “serious bodily injury” use the meanings given by the jurisdiction where the acts occurred.",
+            "source_refs": [
+              "src_0001"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "the terms `burglary', `theft', `larceny', `shoplifting', `assault of a law enforcement officer', and `serious bodily injury' have the meanings given such terms in the jurisdiction in which the acts occurred."
+              }
+            ]
+          },
+          {
+            "text": "A state attorney general or other authorized state officer may sue for injunctive relief over specified alleged immigration violations that harm the state or its residents, including financial harm exceeding $100.",
+            "source_refs": [
+              "src_0001",
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "alleging a violation of the detention and removal requirements under paragraph (1) or (2) that harms such State or its residents shall have standing to bring an action"
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "alleging a violation of the requirement to discontinue granting visas to citizens, subjects, nationals, and residents as described in subsection (d) that harms such State or its residents shall have standing"
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "alleging a violation of the detention requirement under subparagraph (A) that harms such State or its residents shall have standing"
+              }
+            ]
+          },
+          {
+            "text": "The covered state lawsuits include challenges involving certain detention or removal requirements, release, bond or parole decisions, visa restrictions, parole limits, and detention during the removal period.",
+            "source_refs": [
+              "src_0001",
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "alleging a violation of the detention and removal requirements under paragraph (1) or (2)"
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "alleging an action or decision by the Attorney General or Secretary of Homeland Security under this section to release any alien or grant bond or parole to any alien"
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "alleging a violation of the requirement to discontinue granting visas to citizens, subjects, nationals, and residents as described in subsection (d)"
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "alleging a violation of the limitation under subparagraph (A) that parole solely be granted on a case-by-case basis and solely for urgent humanitarian reasons or a significant public benefit"
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "alleging a violation of the detention requirement under subparagraph (A)"
+              }
+            ]
+          },
+          {
+            "text": "Courts must move these state-filed cases forward and decide them as quickly as practicable.",
+            "source_refs": [
+              "src_0001",
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "The court shall advance on the docket and expedite the disposition of a civil action filed under this paragraph to the greatest extent practicable."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "The court shall advance on the docket and expedite the disposition of a civil action filed under this subsection to the greatest extent practicable."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "The court shall advance on the docket and expedite the disposition of a civil action filed under this subparagraph to the greatest extent practicable."
+              }
+            ]
+          }
+        ],
+        "obligations": [
+          {
+            "actor": "Secretary of Homeland Security",
+            "modality": "required",
+            "action": "issue a detainer for a covered noncitizen",
+            "conditions": "When the person meets the immigration and offense conditions described in the law.",
+            "source_refs": [
+              "src_0001"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "The Secretary of Homeland Security shall issue a detainer for an alien described in paragraph (1)(E)"
+              }
+            ]
+          },
+          {
+            "actor": "Secretary of Homeland Security",
+            "modality": "required",
+            "action": "take custody of a covered noncitizen",
+            "conditions": "If the person is not otherwise detained by federal, state, or local officials; custody must be taken effectively and expeditiously.",
+            "source_refs": [
+              "src_0001"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "if the alien is not otherwise detained by Federal, State, or local officials, shall effectively and expeditiously take custody of the alien."
+              }
+            ]
+          },
+          {
+            "actor": "State attorney general or authorized state officer",
+            "modality": "permitted",
+            "action": "bring a lawsuit seeking injunctive relief",
+            "conditions": "When alleging a covered violation that harms the state or its residents.",
+            "source_refs": [
+              "src_0001",
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "shall have standing to bring an action against the Secretary of Homeland Security on behalf of such State or the residents of such State in an appropriate district court of the United States to obtain appropriate injunctive relief."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "shall have standing to bring an action against the Attorney General or Secretary of Homeland Security on behalf of such State or the residents of such State in an appropriate district court of the United States to obtain appropriate injunctive relief."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "shall have standing to bring an action against the Secretary of State on behalf of such State or the residents of such State in an appropriate district court of the United States to obtain appropriate injunctive relief."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "shall have standing to bring an action against the Secretary of Homeland Security on behalf of such State or the residents of such State in an appropriate district court of the United States to obtain appropriate injunctive relief."
+              }
+            ]
+          },
+          {
+            "actor": "Court",
+            "modality": "required",
+            "action": "advance and expedite a covered state-filed civil case",
+            "conditions": "To the greatest extent practicable.",
+            "source_refs": [
+              "src_0001",
+              "src_0002",
+              "src_0003"
+            ],
+            "source_quotes": [
+              {
+                "source_ref": "src_0001",
+                "quote": "The court shall advance on the docket and expedite the disposition of a civil action filed under this paragraph to the greatest extent practicable."
+              },
+              {
+                "source_ref": "src_0002",
+                "quote": "The court shall advance on the docket and expedite the disposition of a civil action filed under this subsection to the greatest extent practicable."
+              },
+              {
+                "source_ref": "src_0003",
+                "quote": "The court shall advance on the docket and expedite the disposition of a civil action filed under this subparagraph to the greatest extent practicable."
+              }
+            ]
+          }
+        ],
+        "funding_and_timing": [],
+        "uncertain_language": []
+      },
+      "failure_category": "invalid_output",
+      "validation_message": "A cited quote does not exactly match its source text.",
+      "latency_seconds": 12.15
+    }
+  ]
+}

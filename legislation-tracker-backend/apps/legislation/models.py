@@ -311,6 +311,11 @@ class BillEnhancement(models.Model):
         blank=True,
         related_name="promoted_enhancement",
     )
+    published_attempt = models.OneToOneField(
+        "BillEnhancementAttempt", on_delete=models.SET_NULL, null=True,
+        blank=True, related_name="published_enhancement",
+    )
+    result_completeness = models.CharField(max_length=16, default="none")
     input_tokens = models.PositiveIntegerField(null=True, blank=True)
     output_tokens = models.PositiveIntegerField(null=True, blank=True)
     total_tokens = models.PositiveIntegerField(null=True, blank=True)
@@ -357,6 +362,8 @@ class BillEnhancementAttempt(models.Model):
         related_name="enhancement_attempts",
     )
     credential_revision = models.PositiveIntegerField()
+    approved_request_fingerprint = models.CharField(max_length=64, default="", blank=True)
+    reused_result_json = models.JSONField(null=True, blank=True)
     status = models.CharField(
         max_length=24,
         choices=Status.choices,
@@ -376,6 +383,7 @@ class BillEnhancementAttempt(models.Model):
     result_json = models.JSONField(null=True, blank=True)
     failure_category = models.CharField(max_length=64, blank=True, default="")
     failure_detail = models.JSONField(default=dict, blank=True)
+    citation_resolution_json = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -400,6 +408,28 @@ class BillEnhancementAttempt(models.Model):
             models.Index(fields=["status", "lease_expires_at"]),
             models.Index(fields=["enhancement", "created_at"]),
         ]
+
+
+class BillEnhancementStep(models.Model):
+    """Durable per-call authorization; dispatching after a crash is ambiguous."""
+
+    attempt = models.ForeignKey(BillEnhancementAttempt, on_delete=models.CASCADE, related_name="steps")
+    step_index = models.PositiveIntegerField()
+    stage = models.CharField(max_length=16)
+    request_fingerprint = models.CharField(max_length=64)
+    unit_ids = models.JSONField(default=list)
+    status = models.CharField(max_length=24, default="prepared")
+    response_id = models.CharField(max_length=255, default="", blank=True)
+    result_json = models.JSONField(null=True)
+    diagnostics = models.JSONField(default=dict)
+    input_tokens = models.PositiveIntegerField(null=True)
+    output_tokens = models.PositiveIntegerField(null=True)
+    total_tokens = models.PositiveIntegerField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["attempt", "step_index"], name="enhancement_step_index_uniq")]
 
 
 class BillTopic(models.Model):

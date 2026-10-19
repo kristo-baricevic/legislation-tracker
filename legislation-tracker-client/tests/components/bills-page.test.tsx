@@ -42,6 +42,19 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillsPage", () => {
+  it("shows search results as cards with highlights and full-bill links", async () => {
+    vi.mocked(getBills).mockResolvedValue({ count: 1, next: null, previous: null, results: [{
+      id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "Rural health grants",
+      status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [],
+      highlights: [{ kind: "metadata", segments: [{ text: "Rural", matched: true }, { text: " health grants", matched: false }] }],
+    }] });
+    render(<BillsPage />);
+    expect(await screen.findByRole("article")).toHaveTextContent("Rural health grants");
+    expect(screen.getByRole("button", { name: "Rural health grants" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Open full bill page" })).toHaveAttribute("href", "/bills/42");
+    expect(screen.getByText("Rural", { selector: "mark" })).toBeVisible();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
   beforeEach(async () => {
     const api = await import("@/lib/api");
     searchState.query = "topic_id=7";

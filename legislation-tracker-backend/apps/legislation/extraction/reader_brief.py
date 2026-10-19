@@ -258,13 +258,20 @@ def build_reader_brief(
         c
         for c in (clauses or ())
         if c.disposition == "uncertain"
+        or c.preserve_group
         or (c.disposition == "prohibition" and c.modality and "not" not in c.modality)
     ]
     rendered_by_claim: dict[int, RenderedReaderClaim] = {}
     renderable_claims = []
     for claim in claims:
         if any(
-            span.start_char < c.span.end_char and c.span.start_char < span.end_char
+            span.start_char < c.span.end_char
+            and c.span.start_char < span.end_char
+            and (
+                not c.preserve_group
+                or c.disposition == "uncertain"
+                or claim.category != "financial_items"
+            )
             for c in uncertain
             for span in claim.evidence
         ):

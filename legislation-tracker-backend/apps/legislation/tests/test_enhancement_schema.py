@@ -124,6 +124,29 @@ def test_precise_citations_are_exact_source_substrings():
         validate_enhancement_output(value, _source_snapshot())
 
 
+def test_precise_citations_accept_layout_but_reject_wrong_location_and_ambiguity():
+    snapshot = _source_snapshot()
+    snapshot[0]["quoted_text"] = "The Secretary shall\n    issue a rule within 180 days."
+    snapshot[0]["text_sha256"] = hashlib.sha256(snapshot[0]["quoted_text"].encode()).hexdigest()
+    value = _precise_output()
+    assert validate_enhancement_output(value, snapshot) == value
+
+    # A quote in another valid source is not a citation to the assigned source.
+    second = dict(snapshot[0], source_ref="src_0002")
+    snapshot[0]["quoted_text"] = "Unrelated source."
+    snapshot[0]["text_sha256"] = hashlib.sha256(b"Unrelated source.").hexdigest()
+    with pytest.raises(ValidationError) as error:
+        validate_enhancement_output(value, snapshot + [second])
+    assert error.value.validator == "citation_quote_not_found"
+
+    second["source_ref"] = "src_0001"
+    second["quoted_text"] += " The Secretary shall issue a rule within 180 days."
+    second["text_sha256"] = hashlib.sha256(second["quoted_text"].encode()).hexdigest()
+    with pytest.raises(ValidationError) as error:
+        validate_enhancement_output(value, [second])
+    assert error.value.validator == "citation_quote_ambiguous"
+
+
 def test_precise_citations_cover_every_reference_and_reject_version_downgrade():
     value = _precise_output()
     value["overview"][0]["source_quotes"][0]["source_ref"] = "src_0002"

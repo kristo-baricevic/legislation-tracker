@@ -198,7 +198,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
         <div className="w-full">
           <p className="text-slate-600 dark:text-green-500">Loading...</p>
         </div>
@@ -208,7 +208,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
   if (error || !bill) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
         <div className="w-full">
           <p className="text-red-700 dark:text-red-400">{error ?? "Bill not found"}</p>
           <Link
@@ -223,7 +223,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="w-full">
         <Link
           href="/bills"

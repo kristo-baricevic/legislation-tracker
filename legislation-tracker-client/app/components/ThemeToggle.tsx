@@ -21,7 +21,7 @@ export default function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      className="rounded border border-slate-500/60 bg-slate-200 px-2.5 py-1 text-xs font-mono text-slate-900 hover:bg-slate-300 dark:border-green-800 dark:bg-green-950/50 dark:text-green-400 dark:hover:bg-green-950"
+      className="rounded border border-control bg-wash px-2.5 py-1 text-xs font-sans text-ink hover:bg-wash"
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
       {isDark ? "Light mode" : "Dark mode"}

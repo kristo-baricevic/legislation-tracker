@@ -1,0 +1,239 @@
+.page {
+  min-height: 100vh;
+  padding: 32px 20px 72px;
+  background:
+    radial-gradient(circle at 12% 3%, rgba(201, 67, 53, 0.13), transparent 24rem),
+    #e6e5dd;
+  color: #182431;
+}
+
+.notice {
+  width: min(1160px, 100%);
+  margin: 0 auto 12px;
+  color: #4e514e;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.notice span {
+  margin-right: 10px;
+  padding: 3px 6px;
+  border: 1px solid #a33d30;
+  color: #8f2f23;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sheet {
+  width: min(1160px, 100%);
+  margin: 0 auto;
+  overflow: hidden;
+  background: #faf9f3;
+  box-shadow: 0 24px 70px rgba(31, 36, 34, 0.18);
+}
+
+.hero {
+  padding: clamp(32px, 6vw, 76px) clamp(24px, 6vw, 84px) 0;
+  border-top: 8px solid #ba4133;
+  background: #182431;
+  color: #f8f5ea;
+}
+
+.kickerRow,
+.cardTopline,
+.fundingRow,
+.moneyFooter,
+.footer,
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.kicker,
+.eyebrow,
+.noteLabel,
+.billMeta,
+.cardTopline,
+.itemCount,
+.sourceExample span,
+.footer,
+.timeline span {
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.kicker {
+  margin: 0;
+  color: #f6c45a;
+  font-weight: 700;
+}
+
+.billMeta {
+  margin: 0;
+  color: #b9c8cc;
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 40px;
+  align-items: end;
+  padding: 38px 0 44px;
+}
+
+.hero h1,
+.sectionHeading h2,
+.policyCard h3 {
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 0;
+  font-size: clamp(42px, 6vw, 76px);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+.deck {
+  max-width: 700px;
+  margin: 26px 0 0;
+  color: #d5e0df;
+  font-size: clamp(18px, 2vw, 23px);
+  line-height: 1.45;
+}
+
+.disclosure {
+  max-width: 620px;
+  margin: 16px 0 0;
+  color: #aebfc2;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.readingNote {
+  display: grid;
+  gap: 9px;
+  padding: 18px 0 0 18px;
+  border-left: 1px solid #52636a;
+  color: #ced9d8;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.readingNote strong {
+  color: #f8f5ea;
+  font-size: 17px;
+}
+
+.noteLabel { color: #f6c45a; }
+
+.jumpNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0 -84px;
+  border-top: 1px solid #45555c;
+}
+
+.jumpNav a {
+  flex: 1 1 170px;
+  padding: 16px 20px;
+  border-right: 1px solid #45555c;
+  color: #dce5e2;
+  font-size: 13px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.jumpNav a:hover { background: #253542; color: #fff; }
+
+.section {
+  padding: clamp(38px, 5vw, 68px) clamp(24px, 6vw, 84px);
+  border-bottom: 1px solid #d8d5ca;
+}
+
+.sectionHeading { align-items: end; }
+.eyebrow { margin: 0 0 7px; color: #ad3f31; font-weight: 700; }
+.sectionHeading h2 { margin: 0; font-size: clamp(30px, 4vw, 46px); line-height: 1; letter-spacing: -0.04em; }
+.sectionIntro { max-width: 735px; margin: 22px 0 30px; color: #4f585a; font-size: 17px; line-height: 1.55; }
+
+.policyGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #c8c7bf; border: 1px solid #c8c7bf; }
+.policyCard { display: flex; flex-direction: column; min-height: 280px; padding: 25px; background: #faf9f3; }
+.cardTopline { color: #687174; }
+.cardNumber { color: #ad3f31; font-weight: 700; }
+.policyCard h3 { margin: 42px 0 10px; font-size: 29px; line-height: 1.04; letter-spacing: -0.035em; }
+.policyCard p { margin: 0; color: #526063; font-size: 15px; line-height: 1.5; }
+
+.textButton,
+.sourceLink,
+.allChanges,
+.primaryButton,
+.sourceExample button {
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+
+.textButton { display: inline-flex; align-items: center; gap: 9px; width: fit-content; margin-top: auto; padding-top: 22px; color: #173b52; font-size: 13px; font-weight: 700; }
+.arrow { font-size: 18px; line-height: 0.8; }
+.allChanges { margin-top: 24px; padding: 0; color: #173b52; font-size: 14px; font-weight: 700; }
+
+.moneySection { background: #ebe8dc; }
+.itemCount { padding-bottom: 5px; color: #586363; }
+.fundingTable { border-top: 2px solid #1c2a34; }
+.fundingRow { display: grid; grid-template-columns: minmax(260px, 1.8fr) minmax(100px, .55fr) minmax(130px, .8fr) minmax(125px, .7fr); align-items: start; padding: 21px 0; border-bottom: 1px solid #c6c5bd; gap: 18px; }
+.fundingHeader { padding: 11px 0; color: #5f6868; font-family: inherit; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.fundingRow strong { color: #1e2b34; font-size: 16px; }
+.fundingRow p { margin: 6px 0 0; color: #596364; font-size: 13px; line-height: 1.45; }
+.fundingRow .amount { color: #a5382b; font-family: inherit; font-size: 25px; font-weight: 500; letter-spacing: -0.04em; }
+.period { color: #586263; font-size: 13px; line-height: 1.35; }
+.sourceLink { padding: 0; color: #173b52; font-size: 13px; font-weight: 700; line-height: 1.35; }
+.moneyFooter { margin-top: 20px; color: #626b6c; font-size: 13px; }
+.primaryButton { display: inline-flex; align-items: center; gap: 8px; padding: 13px 16px; background: #183c52; color: #f9f6ed; font-size: 13px; font-weight: 700; }
+.primaryButton:hover { background: #0f2d3f; }
+
+.lowerGrid { display: grid; grid-template-columns: 1fr 1fr; }
+.compactSection { min-height: 385px; }
+.lowerGrid > .section + .section { border-left: 1px solid #d8d5ca; }
+.timeline { display: grid; gap: 18px; margin: 32px 0 25px; padding: 0; list-style: none; }
+.timeline li { display: grid; grid-template-columns: 78px 1fr; gap: 15px; }
+.timeline li:not(:last-child) div { padding-bottom: 18px; border-bottom: 1px solid #d8d5ca; }
+.timeline span { color: #ad3f31; font-weight: 700; }
+.timeline strong, .timeline small { display: block; }
+.timeline strong { font-size: 15px; }
+.timeline small { margin-top: 4px; color: #637072; font-size: 13px; }
+.sourceSection { background: #f1efe7; }
+.sourceSection > p { max-width: 430px; margin: 28px 0; color: #4f585a; font-size: 15px; line-height: 1.55; }
+.sourceExample { display: grid; gap: 6px; padding: 17px; border: 1px solid #c9c7bd; background: #faf9f3; }
+.sourceExample span { color: #ad3f31; font-weight: 700; }
+.sourceExample strong { font-family: inherit; font-size: 19px; font-weight: 500; }
+.sourceExample button { padding: 4px 0 0; color: #173b52; font-size: 13px; font-weight: 700; }
+
+.footer { padding: 20px clamp(24px, 6vw, 84px); background: #182431; color: #b9c8cc; letter-spacing: 0.03em; text-transform: none; }
+.footer span:first-child { color: #f6c45a; font-weight: 700; }
+
+@media (max-width: 740px) {
+  .page { padding: 0; }
+  .notice { padding: 12px 16px; margin: 0; }
+  .heroGrid, .lowerGrid { grid-template-columns: 1fr; }
+  .heroGrid { gap: 18px; }
+  .jumpNav { margin: 0 -24px; }
+  .jumpNav a { flex-basis: 50%; }
+  .readingNote { border-top: 1px solid #52636a; border-left: 0; padding: 16px 0 0; }
+  .policyGrid { grid-template-columns: 1fr; }
+  .policyCard { min-height: 240px; }
+  .fundingHeader { display: none; }
+  .fundingRow { grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+  .fundingRow > :first-child { grid-column: 1 / -1; }
+  .fundingRow .amount { font-size: 23px; }
+  .lowerGrid > .section + .section { border-top: 1px solid #d8d5ca; border-left: 0; }
+  .moneyFooter, .footer, .sectionHeading { align-items: flex-start; flex-direction: column; }
+}

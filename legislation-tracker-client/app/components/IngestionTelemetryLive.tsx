@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { authGet, authPost } from "@/lib/api";
-import styles from "./bill-deck.module.css";
+import dashboard from "./ingestion-dashboard.module.css";
 type Telemetry = {
     observed_at: string;
     last_discovery_completed_at: string | null;
@@ -110,18 +110,57 @@ export default function IngestionTelemetryLive() {
     const count = (statuses: string[]) => telemetry ? telemetry.counts_by_kind_and_status.filter(row => statuses.includes(row.status)).reduce((total, row) => total + row.count, 0) : "Unavailable";
     const sourceAge = readiness?.age_seconds != null && receivedAt != null ? readiness.age_seconds + Math.max(0, (now - receivedAt) / 1000) : null;
     const sourceFresh = readiness?.available && sourceAge != null && sourceAge <= 300;
-    return <section aria-labelledby="live-telemetry-title" className={styles.telemetry}>
-    <div className={styles.telemetryBanner}><strong>Operational telemetry · staff only</strong><span>Observed snapshots; downstream run completion is not tracked.</span></div>
-    <div className={styles.heading}><div><h2 id="live-telemetry-title">Legislation ingestion</h2><p>Congress.gov API · federal HR and S bills</p></div><button className={styles.loadMore} disabled={busy} onClick={() => void refresh()}>{busy ? "Loading…" : "Refresh telemetry"}</button></div>
-    <label className={styles.telemetryScope}>Congress <input type="number" min="1" max="200" step="1" value={scope} disabled={busy} onChange={event => { epoch.current++; setScope(event.target.value); setTelemetry(null); setReadiness(null); setRequestKey(null); setAcceptedRunId(null); setNotice(""); }}/></label>
-    {error && <p role="alert">{error}</p>}
-    {!telemetry && !error && <p>Unavailable — refresh to read the backend. This view never starts ingestion automatically.</p>}
-    <div className={styles.telemetryMetrics}><div><h3>Ready for incremental discovery</h3><strong>{sourceFresh && readiness?.incremental_discoverable_count_available ? readiness.ready_to_start ?? "Unavailable" : "Unavailable"}</strong><p>Observed bill identities whose source revision would create new bill work. Includes updates; existing equal or newer work revisions are excluded regardless of status.</p></div><div><h3>Missing unqueued metadata</h3><strong>{sourceFresh ? readiness?.missing_unqueued_metadata ?? "Unavailable" : "Unavailable"}</strong><p>Full inventory gaps excluding queued, active, blocked and failed identities. Historical gaps may fall before the incremental cursor and will not necessarily be discovered by Start. This historical gap count is separate from incremental readiness.</p></div><div><h3>Queued work items</h3><strong>{count(["pending", "dispatched"])}</strong></div><div><h3>Processing work items</h3><strong>{count(["processing"])}</strong></div><div><h3>Terminal failed items</h3><strong>{count(["dead"])}</strong></div></div>
-    <p className={styles.note}>Source snapshot: {sourceAge != null ? `${Math.round(sourceAge)} seconds old; ${readiness?.complete ? "complete observed inventory" : "incomplete"}` : "Unavailable"}. {sourceAge != null && sourceAge > 300 ? "Stale — readiness is unavailable." : readiness?.reason} Queue observed: {telemetry?.observed_at ?? "Unavailable"}. Refresh does not scan Congress.gov or enqueue work.</p>
-    <p className={styles.note}>Discovery basis: cursor {readiness?.discovery_basis?.cursor_at ?? "none / unavailable"}; fromDateTime {readiness?.discovery_basis?.from_date_time ?? "full discovery / unavailable"}; observed {readiness?.discovery_checked_completed_at ?? "Unavailable"}. Readiness becomes unavailable when the cursor or bill-work revision basis changes.</p>
-    <div className={styles.telemetryFreshness}><div><h3>Last discovery completed</h3><p>{telemetry?.last_discovery_completed_at ?? "Unavailable"}</p></div><div><h3>Last successful work item</h3><p>{telemetry?.last_successful_work_item_at ?? "Unavailable"}</p></div></div>
-    <h3>Latest discovery run</h3><p>{telemetry?.discovery_run ? `${telemetry.discovery_run.status} · started ${telemetry.discovery_run.started_at ?? "not recorded"} · finished ${telemetry.discovery_run.finished_at ?? "not recorded"}` : "Unavailable"}</p>
-    <h3>Current pipeline backlog</h3><p className={styles.note}>Scoped work-item counts, not progress for the latest run. Stale leases: {telemetry?.stale_leases ?? "Unavailable"}.</p><ul>{telemetry?.counts_by_kind_and_status.map(row => <li key={`${row.kind}:${row.status}`}>{row.kind.replaceAll("_", " ")} · {row.status}: {row.count}</li>) ?? <li>Unavailable</li>}</ul>
-    <div className={styles.telemetryBottom}><div><h3>Recent work states</h3><ul>{telemetry?.recent_work_states.map(row => <li key={row.id}>{row.updated_at} · {row.kind} · {row.status}</li>) ?? <li>Unavailable</li>}</ul></div><div><h3>Ingestion controls</h3><button disabled={busy || !telemetry || !scope || !Number.isInteger(Number(scope)) || Number(scope) < 1 || Number(scope) > 200} onClick={() => void start()}>Start discovery and ingestion</button><p className={styles.note}>Explicit action queues discovery and downstream work. Backend connection and staff access required. Request retries retain the same idempotency key.</p><button disabled={busy || !requestKey || !acceptedRunId || telemetry?.discovery_run?.id !== acceptedRunId || !["succeeded", "failed", "unknown"].includes(telemetry.discovery_run.status)} onClick={() => { setRequestKey(null); setAcceptedRunId(null); setNotice("New request prepared. Start explicitly when ready."); }}>Prepare a new discovery request</button><p role="status">{notice}</p></div></div>
-  </section>;
+    const stageNames: Record<string, string> = { bill: "Bill metadata", bill_versions: "Bill text versions", document_download: "Document downloads", generate_contract: "Bill analysis", bill_subjects: "Topics", bill_actions: "Bill actions", bill_cosponsors: "Cosponsors", bill_committees: "Committees", bill_summaries: "Official summaries", bill_votes: "Votes" };
+    const label = (value: string) => stageNames[value] ?? value.replaceAll("_", " ").replace(/^./, char => char.toUpperCase());
+    const date = (value?: string | null) => {
+        if (!value) return "Not recorded";
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? "Not recorded" : parsed.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    };
+    const rows = telemetry?.counts_by_kind_and_status ?? [];
+    const stages = [...new Set(rows.map(row => row.kind))];
+    const stageCount = (kind: string, statuses: string[]) => rows.filter(row => row.kind === kind && statuses.includes(row.status)).reduce((total, row) => total + row.count, 0);
+    const otherStates = [...new Set(rows.map(row => row.status))].filter(status => !["pending", "dispatched", "processing", "blocked", "dead", "succeeded"].includes(status));
+    return <section aria-labelledby="live-telemetry-title" className={dashboard.dashboard}>
+      <div className={dashboard.header}>
+        <div><h2 id="live-telemetry-title">Legislation ingestion</h2><p>Bring bills from Congress.gov into the tracker.</p></div>
+        <div className={dashboard.actions}>
+          <label>Congress <input type="number" min="1" max="200" step="1" value={scope} disabled={busy} onChange={event => { epoch.current++; setScope(event.target.value); setTelemetry(null); setReadiness(null); setRequestKey(null); setAcceptedRunId(null); setNotice(""); }}/></label>
+          <button className={dashboard.secondary} disabled={busy} onClick={() => void refresh()}>{busy ? "Working…" : "Refresh telemetry"}</button>
+          <button className={dashboard.primary} disabled={busy || !scope || !Number.isInteger(Number(scope)) || Number(scope) < 1 || Number(scope) > 200} onClick={() => void start()}>Start discovery and ingestion</button>
+        </div>
+      </div>
+      <div className={dashboard.snapshot}><span className={dashboard.badge}>{telemetry ? "Snapshot loaded" : "Not loaded"}</span><span>{telemetry ? `Updated ${date(telemetry.observed_at)}` : "Refresh to load counts. You can start ingestion without refreshing."}</span><span>Staff access required</span></div>
+      {error && <p role="alert" className={dashboard.alert}>{error}</p>}
+      <p role="status" className={notice ? dashboard.notice : undefined}>{notice}</p>
+      <div className={dashboard.metrics}>
+        <div><h3>Queued</h3><strong>{telemetry ? count(["pending", "dispatched"]) : "—"}</strong><span>Waiting to be processed</span></div>
+        <div><h3>Processing</h3><strong>{telemetry ? count(["processing"]) : "—"}</strong><span>Work currently in progress</span></div>
+        <div className={dashboard.failed}><h3>Failed</h3><strong>{telemetry ? count(["dead"]) : "—"}</strong><span>Stopped after retries</span></div>
+        <div><h3>Last discovery completed</h3><strong className={dashboard.dateValue}>{date(telemetry?.last_discovery_completed_at)}</strong><span>Discovery only, not all processing</span></div>
+      </div>
+      <div className={dashboard.pipelineHeader}><div><h3>Current pipeline backlog</h3><p>Work items across this Congress—not a completion percentage.</p></div>{telemetry?.discovery_run && <span className={dashboard.badge}>Latest discovery: {label(telemetry.discovery_run.status)}</span>}</div>
+      {!telemetry ? <div className={dashboard.empty}>No pipeline snapshot loaded. Select Refresh telemetry to see current work.</div> : !stages.length ? <div className={dashboard.empty}>No work items in this snapshot.</div> :
+        <div className={dashboard.tableScroll} role="region" aria-label="Pipeline counts" tabIndex={0}><table aria-label="Pipeline work items">
+          <thead><tr><th scope="col">Stage</th>{["Queued", "Processing", "Blocked", "Failed", "Completed", ...otherStates.map(label)].map(name => <th scope="col" key={name}>{name}</th>)}</tr></thead>
+          <tbody>{stages.map(kind => <tr key={kind}><th scope="row">{label(kind)}</th>{[["pending", "dispatched"], ["processing"], ["blocked"], ["dead"], ["succeeded"], ...otherStates.map(status => [status])].map((statuses, index) => <td key={statuses.join(",")} className={index === 3 && stageCount(kind, statuses) > 0 ? dashboard.failureCount : undefined}>{stageCount(kind, statuses).toLocaleString()}</td>)}</tr>)}</tbody>
+        </table></div>}
+      <details className={dashboard.details}><summary>Recent activity</summary>
+        <p>Latest recorded work states; not a complete event log.</p>
+        <div className={dashboard.activity}>{telemetry?.recent_work_states.length ? <ul>{telemetry.recent_work_states.map(row => <li key={row.id}><div><strong>{label(row.kind)}</strong><span>{label(row.status)}</span></div><time dateTime={row.updated_at}>{date(row.updated_at)}</time></li>)}</ul> : <p>{telemetry ? "No recent activity recorded." : "Refresh telemetry to load activity."}</p>}</div>
+      </details>
+      <details className={dashboard.details}><summary>Source &amp; technical details</summary>
+        <div className={dashboard.sourceMetrics}><div><h3>Ready for incremental discovery</h3><strong>{sourceFresh && readiness?.incremental_discoverable_count_available ? readiness.ready_to_start ?? "Unavailable" : "Unavailable"}</strong><p>New or updated bill records eligible for discovery.</p></div><div><h3>Missing unqueued metadata</h3><strong>{sourceFresh ? readiness?.missing_unqueued_metadata ?? "Unavailable" : "Unavailable"}</strong><p>Historical gaps may fall before the discovery cursor; Start may not fill them.</p></div></div>
+        <dl className={dashboard.facts}>
+          <div><dt>Last successful work item</dt><dd>{date(telemetry?.last_successful_work_item_at)}</dd></div>
+          <div><dt>Stale leases</dt><dd>{telemetry?.stale_leases ?? "Unavailable"}</dd></div>
+          <div><dt>Latest discovery started</dt><dd>{date(telemetry?.discovery_run?.started_at)}</dd></div>
+          <div><dt>Latest discovery finished</dt><dd>{date(telemetry?.discovery_run?.finished_at)}</dd></div>
+        </dl>
+        <p>Source snapshot: {sourceAge != null ? `${Math.round(sourceAge)} seconds old; ${readiness?.complete ? "complete observed inventory" : "incomplete"}` : "Unavailable"}. {sourceAge != null && sourceAge > 300 ? "Stale — readiness is unavailable." : readiness?.reason}</p>
+        <p>Discovery basis: cursor {readiness?.discovery_basis?.cursor_at ?? "none / unavailable"}; fromDateTime {readiness?.discovery_basis?.from_date_time ?? "full discovery / unavailable"}; observed {readiness?.discovery_checked_completed_at ?? "Unavailable"}.</p>
+        <p>Refresh reads stored status; it does not scan Congress.gov or enqueue work. Retrying Start uses the same request key to avoid duplicate discovery.</p>
+        <button className={dashboard.secondary} disabled={busy || !requestKey || !acceptedRunId || telemetry?.discovery_run?.id !== acceptedRunId || !["succeeded", "failed", "unknown"].includes(telemetry.discovery_run.status)} onClick={() => { setRequestKey(null); setAcceptedRunId(null); setNotice("New request prepared. Start explicitly when ready."); }}>Prepare a new discovery request</button>
+      </details>
+    </section>;
 }

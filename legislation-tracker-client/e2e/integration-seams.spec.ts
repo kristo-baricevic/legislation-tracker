@@ -16,6 +16,7 @@ async function fixtures(page: Page) {
     else if (path === "/api/tracking/") value = { bills: [], topics: [], legislators: [], is_staff: false };
     else if (path === "/api/representatives/") value = { count: 2, next: null, previous: null, results: [{ id: 1, bioguide_id: "S000033", name: "Same Name", state: "VT", chamber: "senate", party: "Independent", district: null }, { id: 2, bioguide_id: "I000002", name: "Same Name", state: "NY", chamber: "house", party: "Other", district: "1" }] };
     else if (path === "/api/bills/filter-options/") value = { jurisdictions: ["federal"], current_congress: 119 };
+    else if (path === "/api/topics/") value = [];
     else if (path === "/api/bills/") value = { count: 1, next: null, previous: null, results: [bill] };
     else if (/\/api\/bills\/1[01]\/$/.test(path)) value = { ...(path.includes("/11/") ? second : bill), sponsor: 1, summary: "Stored official summary", documents: [], latest_contract: null };
     else if (path.endsWith("/profile/")) value = path.includes("/2/") ? { ...profile, identity: { ...profile.identity, id: 2, bioguide_id: "I000002" } } : profile;
@@ -40,8 +41,8 @@ async function changeAccount(page: Page) {
 }
 test("recommendation root invalidation closes nested subtree and restores owner focus", async ({page}) => {
   await personalizedFixtures(page); await page.goto("/");
-  await page.getByLabel("Enable legislator profiles").check();
-  await page.getByLabel("Show recommendations on this browser").check();
+  await expect(page.getByLabel("Enable legislator profiles")).toHaveCount(0);
+  await expect(page.getByLabel("Show recommendations on this browser")).toHaveCount(0);
   await page.getByRole("region", {name: "Recommended bills"}).getByRole("link", {name: "Original bill"}).click();
   const root = page.getByRole("dialog", {name: "Original bill"});
   await root.getByRole("link", {name: "Same Name"}).click();
@@ -62,7 +63,7 @@ test("public bill survives account change and telemetry rollback never ingests",
   await page.screenshot({path: "test-results/integration-telemetry.png", fullPage: true});
   await page.getByLabel("Show ingestion telemetry preview").uncheck();
   await expect(page.getByText("Preview — sample data")).toHaveCount(0);
-  await page.getByRole("button", {name: "View all bills"}).click();
+  await page.goto("/bills");
   await page.getByRole("button", {name: "Original bill", exact: true}).click();
   await expect(page.getByRole("dialog", {name: "Original bill"})).toBeVisible();
   await changeAccount(page);
@@ -74,7 +75,7 @@ test("public bill survives account change and telemetry rollback never ingests",
 
 test("late private recommendation response cannot repopulate after account generation changes", async ({page}) => {
   await personalizedFixtures(page); await page.goto("/");
-  await page.getByLabel("Show recommendations on this browser").check();
+  await expect(page.getByLabel("Show recommendations on this browser")).toHaveCount(0);
   await expect(page.getByRole("region", {name: "Recommended bills"})).toBeVisible();
   let release!: () => Promise<void>; let held = false;
   await page.route("**/api/tracking/recommendations/**", async route => {
@@ -99,7 +100,7 @@ test("real isolated API activity is rendered through the client profile wrapper"
   const catalog = await request.get(`${apiBase}/api/representatives/${member.id}/topic-activity/`);
   expect(catalog.status(), await catalog.text()).toBe(200);
   await page.goto("/representatives");
-  await page.getByLabel("Enable legislator profiles").check();
+  await expect(page.getByLabel("Enable legislator profiles")).toHaveCount(0);
   const activityResponse = page.waitForResponse(response => response.url().includes("/topic-activity/") && response.request().method() === "GET");
   await page.getByRole("link", {name: "Synthetic Integration Member", exact: true}).click();
   const response = await activityResponse;

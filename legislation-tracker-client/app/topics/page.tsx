@@ -91,11 +91,11 @@ export default function TopicsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-2 font-mono text-2xl font-bold text-slate-900 dark:text-green-400">
+    <div className="tracker-page">
+      <h1 className="mb-2 font-sans tracker-heading text-ink">
         Policy Topics
       </h1>
-      <p className="mb-6 font-mono text-sm text-slate-600 dark:text-green-600">
+      <p className="mb-6 font-sans text-sm text-muted">
         Browse all policy topics.
         {loggedIn
           ? " Click to follow or unfollow topics you care about — followed topics appear first."
@@ -107,7 +107,7 @@ export default function TopicsPage() {
           type="button"
           onClick={() => void loadTopics()}
           disabled={topicsLoading}
-          className="cursor-pointer border border-slate-700 px-3 py-1.5 font-mono text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300"
+          className="cursor-pointer border border-control px-3 py-1.5 font-sans text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
         >
           {topicsError ? "Retry topics" : "Refresh topics"}
         </button>
@@ -116,7 +116,7 @@ export default function TopicsPage() {
             type="button"
             onClick={() => void loadFollowedTopics()}
             disabled={followedLoading}
-            className="cursor-pointer border border-slate-700 px-3 py-1.5 font-mono text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300"
+            className="cursor-pointer border border-control px-3 py-1.5 font-sans text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
           >
             {followedError ? "Retry followed topics" : "Refresh followed topics"}
           </button>
@@ -124,13 +124,13 @@ export default function TopicsPage() {
       </div>
 
       {topicsLoading && (
-        <p aria-live="polite" className="mb-4 font-mono text-sm text-slate-500 dark:text-green-600">
+        <p aria-live="polite" className="mb-4 font-sans text-sm text-muted">
           {topics.length > 0 ? "Refreshing topics…" : "Loading topics…"}
         </p>
       )}
 
       {loggedIn && followedLoading && (
-        <p aria-live="polite" className="mb-4 font-mono text-sm text-slate-500 dark:text-green-600">
+        <p aria-live="polite" className="mb-4 font-sans text-sm text-muted">
           Refreshing followed topics…
         </p>
       )}
@@ -138,7 +138,7 @@ export default function TopicsPage() {
       {topicsError && (
         <p
           role="alert"
-          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-mono text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-sans text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
         >
           {topicsError}
         </p>
@@ -147,7 +147,7 @@ export default function TopicsPage() {
       {followedError && (
         <p
           role="alert"
-          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-mono text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-sans text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
         >
           {followedError}
         </p>
@@ -156,14 +156,14 @@ export default function TopicsPage() {
       {trackingError && (
         <p
           role="alert"
-          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-mono text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+          className="mb-4 rounded border border-red-200 bg-red-50 p-3 font-sans text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
         >
           {trackingError}
         </p>
       )}
 
       {!topicsLoading && !topicsError && topics.length === 0 && (
-        <p className="font-mono text-sm text-slate-600 dark:text-green-600">
+        <p className="font-sans text-sm text-muted">
           No policy topics are available.
         </p>
       )}
@@ -183,14 +183,14 @@ export default function TopicsPage() {
                 key={topic.id}
                 className={`flex items-center justify-between rounded-lg border p-4 transition-colors ${
                   isFollowed
-                    ? "border-blue-500 bg-blue-50 dark:border-green-500 dark:bg-green-950/30"
-                    : "border-slate-300 bg-white dark:border-green-800/40 dark:bg-black"
+                    ? "border-control bg-wash"
+                    : "border-line bg-paper"
                 }`}
               >
                 <div className="min-w-0 flex-1">
                   <Link
                     href={`/bills?topic_id=${topic.id}`}
-                    className="font-mono text-sm font-semibold text-slate-900 hover:underline dark:text-green-400"
+                    className="font-sans text-sm font-semibold text-ink hover:underline"
                   >
                     {topic.name}
                   </Link>
@@ -203,10 +203,10 @@ export default function TopicsPage() {
                       busy === topic.id || followedLoading || Boolean(followedError)
                     }
                     onClick={() => handleToggle(topic.id)}
-                    className={`ml-3 flex-shrink-0 rounded-md px-3 py-1 font-mono text-xs font-medium transition-colors ${
+                    className={`ml-3 flex-shrink-0 rounded-md px-3 py-1 font-sans text-xs font-medium transition-colors ${
                       isFollowed
-                        ? "bg-blue-600 text-white hover:bg-blue-700 dark:bg-green-600 dark:hover:bg-green-500"
-                        : "border border-slate-400 text-slate-600 hover:bg-slate-100 dark:border-green-700 dark:text-green-500 dark:hover:bg-green-950/40"
+                        ? "bg-ink text-paper hover:opacity-90"
+                        : "border border-line text-muted hover:bg-wash"
                     } disabled:opacity-50`}
                   >
                     {busy === topic.id

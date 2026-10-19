@@ -88,7 +88,7 @@ function RepresentativeCompareContent() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-4 py-6 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <main className="min-h-[calc(100vh-4rem)] bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl space-y-6">
         <Link href="/representatives" className="text-blue-900 underline dark:text-green-400">← Representatives</Link>
         <header><h1 className="text-2xl font-semibold">Compare representatives</h1><p className="mt-1 text-slate-600 dark:text-green-600">Compare shared roll calls with stated counts and coverage—not a score.</p></header>
@@ -117,7 +117,7 @@ export default function RepresentativeComparePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[60vh] items-center justify-center font-mono text-slate-600 dark:text-green-500">
+        <div className="flex min-h-[60vh] items-center justify-center font-sans text-slate-600 dark:text-green-500">
           Loading representative comparison…
         </div>
       }

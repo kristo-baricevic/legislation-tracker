@@ -115,26 +115,26 @@ function LLMSettingsSection() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-8 font-mono text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+    <main className="tracker-page min-h-[calc(100vh-4rem)] font-sans">
       <div className="mx-auto max-w-4xl">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-700 dark:text-amber-400">
+        <p className="mb-2 text-sm font-medium text-muted">
           Private account controls
         </p>
-        <h1 className="text-3xl font-semibold text-slate-950 dark:text-green-300">Settings</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700 dark:text-green-600">
+        <h1 className="tracker-heading text-ink">Settings</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
           Your provider key is encrypted by the server and used only after you confirm an enhancement for a specific bill.
         </p>
 
-        <section className="mt-8 border-l-4 border-amber-500 bg-white/80 p-5 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-300 pb-4 dark:border-green-900/70">
+        <section className="tracker-panel mt-8 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-950 dark:text-green-300">AI bill enhancement</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-green-600">
+              <h2 className="text-xl font-semibold text-ink">AI bill enhancement</h2>
+              <p className="mt-1 text-sm text-muted">
                 Optional, user-triggered analysis layered over the deterministic bill summary.
               </p>
             </div>
             {settings && (
-              <span className="border border-slate-400 px-2 py-1 text-xs uppercase tracking-wide text-slate-700 dark:border-green-800 dark:text-green-500">
+              <span className="border border-line px-2 py-1 text-xs uppercase tracking-wide text-muted">
                 {settings.feature_available ? "Available" : "Unavailable"}
               </span>
             )}
@@ -145,21 +145,21 @@ function LLMSettingsSection() {
             <>
               <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-3">
                 <div>
-                  <dt className="text-slate-500 dark:text-green-700">Provider</dt>
+                  <dt className="text-muted">Provider</dt>
                   <dd className="mt-1 font-semibold capitalize">{settings.provider}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500 dark:text-green-700">Requested model</dt>
+                  <dt className="text-muted">Requested model</dt>
                   <dd className="mt-1 font-semibold">{settings.requested_model}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500 dark:text-green-700">Validation</dt>
+                  <dt className="text-muted">Validation</dt>
                   <dd className="mt-1 font-semibold">{statusLabel(settings.validation_status)}</dd>
                 </div>
               </dl>
 
               {settings.configured && (
-                <p className="mt-5 text-sm text-slate-700 dark:text-green-500">
+                <p className="mt-5 text-sm text-muted">
                   {`Stored key ending in ${settings.key_suffix} · revision ${settings.revision}`}
                 </p>
               )}
@@ -178,12 +178,12 @@ function LLMSettingsSection() {
                     spellCheck={false}
                     disabled={!settings.feature_available || busy !== null}
                     placeholder={settings.configured ? "Enter a replacement key" : "sk-…"}
-                    className="min-w-0 flex-1 border border-slate-500 bg-white px-3 py-2 text-slate-950 outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-60 dark:border-green-800 dark:bg-black dark:text-green-200"
+                    className="min-w-0 flex-1 border border-control bg-paper px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-focus disabled:opacity-60"
                   />
                   <button
                     type="submit"
                     disabled={!apiKey.trim() || !settings.feature_available || busy !== null}
-                    className="border border-slate-900 bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400"
+                    className="border border-control bg-ink px-4 py-2 font-semibold text-paper hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-focus disabled:opacity-50"
                   >
                     {busy === "save" ? "Saving…" : "Save API key"}
                   </button>
@@ -199,7 +199,7 @@ function LLMSettingsSection() {
                   type="button"
                   onClick={validateKey}
                   disabled={!settings.configured || !settings.feature_available || busy !== null}
-                  className="border border-slate-700 px-3 py-2 text-sm font-semibold hover:bg-slate-200 disabled:opacity-50 dark:border-green-700 dark:hover:bg-green-950/50"
+                  className="border border-control px-3 py-2 text-sm font-semibold hover:bg-wash disabled:opacity-50"
                 >
                   {busy === "validate" ? "Validating…" : "Validate key"}
                 </button>
@@ -207,7 +207,7 @@ function LLMSettingsSection() {
                   type="button"
                   onClick={toggleEnabled}
                   disabled={!settings.configured || (!settings.feature_available && !settings.enabled) || busy !== null}
-                  className="border border-slate-700 px-3 py-2 text-sm font-semibold hover:bg-slate-200 disabled:opacity-50 dark:border-green-700 dark:hover:bg-green-950/50"
+                  className="border border-control px-3 py-2 text-sm font-semibold hover:bg-wash disabled:opacity-50"
                 >
                   {busy === "toggle" ? "Saving…" : settings.enabled ? "Disable enhancement" : "Enable enhancement"}
                 </button>
@@ -230,7 +230,7 @@ function LLMSettingsSection() {
                     <button type="button" onClick={removeKey} disabled={busy !== null} className="bg-red-800 px-3 py-2 font-semibold text-white disabled:opacity-50">
                       {busy === "delete" ? "Deleting…" : "Confirm deletion"}
                     </button>
-                    <button type="button" onClick={() => setConfirmDelete(false)} disabled={busy !== null} className="border border-slate-600 px-3 py-2 font-semibold">
+                    <button type="button" onClick={() => setConfirmDelete(false)} disabled={busy !== null} className="border border-control px-3 py-2 font-semibold">
                       Keep key
                     </button>
                   </div>
@@ -240,7 +240,7 @@ function LLMSettingsSection() {
           )}
 
           {error && <p role="alert" className="mt-5 text-sm text-red-700 dark:text-red-400">{error}</p>}
-          {notice && <p role="status" className="mt-5 text-sm text-slate-700 dark:text-green-500">{notice}</p>}
+          {notice && <p role="status" className="mt-5 text-sm text-muted">{notice}</p>}
         </section>
       </div>
     </main>

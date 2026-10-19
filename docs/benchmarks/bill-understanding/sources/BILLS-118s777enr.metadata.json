@@ -1,0 +1,23 @@
+{
+  "package_id": "BILLS-118s777enr",
+  "source_url": "https://www.govinfo.gov/content/pkg/BILLS-118s777enr/html/BILLS-118s777enr.htm",
+  "retrieved_date": "2026-10-07",
+  "source_version": "enrolled",
+  "raw_file": "BILLS-118s777enr.htm",
+  "raw_sha256": "69edd98e0e5a9d15a97e1bfc55f2b7dc4a6ad72fe460e5242d37c8a5e30d1be4",
+  "answer_file": "../answers/BILLS-118s777enr.md",
+  "method": "Independent manual full-text reading; no app-generated output; original source retained.",
+  "coverage": "Sections 1-3 complete; all five mandatory benefit categories plus discretionary special rule",
+  "financial_record_count": 7,
+  "quote_validation": {
+    "method": "Extract each Markdown blockquote; HTML-decode source pre text; collapse whitespace; assert each complete excerpt is a literal substring. No punctuation or hyphen normalization.",
+    "quote_count": 11,
+    "status": "passed"
+  },
+  "limitations": [
+    "Pinned enrolled text only; enactment date, implementation and present law not independently established.",
+    "Referenced external statutory rules and amounts unresolved unless reproduced.",
+    "No specified monetary amount does not establish zero fiscal cost.",
+    "Negative findings require full-text review; no individual excerpt proves absence."
+  ]
+}

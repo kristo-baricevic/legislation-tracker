@@ -4,19 +4,72 @@
 @custom-variant dark (.dark &);
 
 :root {
-  --background: #e2e8f0;
-  --foreground: #0f172a;
+  --background: #fafaf7;
+  --foreground: #273b36;
+  --paper: #ffffff;
+  --muted: #5b6862;
+  --line: #d5dbd1;
+  --wash: #eeefe8;
+  --control-line: #7d8981;
+  --focus: #35665a;
 }
 
 html.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #18221e;
+  --foreground: #edf0e8;
+  --paper: #202d26;
+  --muted: #bac6bc;
+  --line: #48594c;
+  --wash: #2b3930;
+  --control-line: #84978a;
+  --focus: #a9c9b4;
+}
+
+/*
+ * Topic palette. One hue per topic id (see topicColor in lib/bill-format.ts).
+ * Ordered so consecutive ids land in different colour families. Each light
+ * value is at least 4.9:1 on white and each dark value at least 5:1 on the
+ * dark card surface, so they are safe for text as well as fills.
+ * --on-topic is the text colour to use on top of a solid topic fill.
+ */
+:root {
+  --topic-0: #233f68; /* navy */
+  --topic-1: #923e47; /* brick */
+  --topic-2: #2f6b50; /* green */
+  --topic-3: #8a5a14; /* ochre */
+  --topic-4: #705786; /* plum */
+  --topic-5: #357b78; /* teal */
+  --topic-6: #9a3f72; /* berry */
+  --topic-7: #5f6b1f; /* moss */
+  --topic-8: #426c86; /* steel */
+  --topic-9: #4a5aa8; /* periwinkle */
+  --on-topic: #ffffff;
+}
+html.dark {
+  --topic-0: #8da7de;
+  --topic-1: #dc9a9f;
+  --topic-2: #86bf9c;
+  --topic-3: #cfaa6a;
+  --topic-4: #bba5da;
+  --topic-5: #6fc0bb;
+  --topic-6: #d795bd;
+  --topic-7: #b2b86a;
+  --topic-8: #8fb5cc;
+  --topic-9: #a3a9f0;
+  --on-topic: #18221e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-ink: var(--foreground);
+  --color-paper: var(--paper);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-wash: var(--wash);
+  --color-control: var(--control-line);
+  --color-focus: var(--focus);
+  --font-sans: var(--font-ui);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -33,14 +86,21 @@ body {
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-ui), var(--font-geist-sans), Arial, sans-serif;
+}
+
+h1, h2, h3 { font-family: var(--font-reading), Georgia, "Times New Roman", serif; }
+
+/* Source passages and technical labels use the same reader typeface. */
+pre,
+code,
+kbd,
+samp {
+  font-family: inherit;
 }
 
 body > header,
-body > header > div,
-body > header + div,
-body > header + div > div,
-body > header + div > main {
+body > header > div {
   width: 100%;
   max-width: none;
   margin-left: 0;
@@ -108,4 +168,55 @@ textarea:disabled,
 
 .responsive-card-grid {
   gap: 1rem;
+}
+
+/* Shared dashboard language; semantic tokens adapt to both themes. */
+@layer components {
+  .tracker-page {
+    width: 100%;
+    max-width: 1440px;
+    margin-inline: auto;
+    padding: 2.5rem 1rem;
+    color: var(--foreground);
+    line-height: 1.55;
+  }
+
+  .tracker-heading {
+    font-size: clamp(1.8rem, 3vw, 2.6rem);
+    font-weight: 650;
+    letter-spacing: -.035em;
+    line-height: 1.2;
+  }
+
+  .tracker-panel {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    padding: 1.3rem;
+  }
+
+  .tracker-table {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+  }
+
+  .tracker-table table { min-width: 52rem; }
+  .tracker-table th { font-size: .82rem; }
+  .tracker-table td { font-size: .9rem; }
+  .tracker-table tbody tr:last-child { border-bottom: 0; }
+
+  .tracker-page :is(input, select, button) { border-radius: 6px; }
+  .tracker-page input { min-height: 2.5rem; }
+  .tracker-page input::placeholder { color: var(--muted); opacity: 1; }
+  .tracker-page a { text-underline-offset: 3px; }
+
+  @media (min-width: 640px) { .tracker-page { padding-inline: 1.5rem; } }
+  @media (min-width: 1024px) { .tracker-page { padding-inline: 2rem; } }
+}
+
+:is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
 }
