@@ -2,9 +2,36 @@ import { describe, expect, it } from "vitest";
 import definitions from "../fixtures/hr7583-definitions.json";
 import { buildGlossary } from "../../lib/glossary";
 import type { LegalNlpDefinitionItem } from "../../lib/contracts";
+import { render, screen } from "@testing-library/react";
+import { GlossaryEntryView } from "../../app/bills/[id]/bill-brief";
 
 describe("H.R. 7583 glossary", () => {
   const source = definitions as LegalNlpDefinitionItem[];
+  it.each(["includes", "excludes"] as const)("preserves %s in explanations and legal text", definition_type => {
+    const item = { ...source[0], term: "eligible worker", definition_type, definition: "an independent contractor" };
+    const entry = buildGlossary([item])[0];
+    const prefix = definition_type === "includes" ? "Includes:" : "Excludes:";
+    expect(entry.explanation).toBe(`${prefix} an independent contractor.`);
+    render(<GlossaryEntryView entry={entry} contractId={10} document={null} />);
+    expect(screen.getByText(`${prefix} an independent contractor`)).toBeInTheDocument();
+  });
+  it("does not apply affirmative rewrites to exclusions or merge legal operators", () => {
+    const items = (["means", "includes", "excludes"] as const).map((definition_type, i) => ({
+      ...source[0], id: `operator-${i}`, definition_type,
+      definition: "meets the burdens of production and persuasion",
+    }));
+    const entries = buildGlossary(items);
+    expect(entries).toHaveLength(3);
+    expect(entries[2].explanation).toBe("Excludes: meets the burdens of production and persuasion.");
+  });
+  it.each(["includes", "excludes"] as const)("retains %s for long definitions and unresolved references", definition_type => {
+    const long = buildGlossary([{ ...source[0], definition_type, definition: "a qualifying worker ".repeat(30) }])[0];
+    expect(long.explanation).toContain(` ${definition_type} `);
+    const reference = buildGlossary([{ ...source[0], definition_type,
+      definition: "the meaning given in section 101 of the Education Act of 1965" }])[0];
+    expect(reference.explanation).toContain(definition_type);
+    expect(reference.explanation).toContain("has not been verified");
+  });
   it("merges identical meanings but retains every source and distinct scope", () => {
     const entries = buildGlossary(source);
     expect(entries).toHaveLength(30);

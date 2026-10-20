@@ -1962,22 +1962,29 @@ def _process_bill_versions_impl(bill_id):
             update_fields.append("source_order")
         if update_fields:
             doc.save(update_fields=update_fields)
-        if i == len(versions) - 1:
-            # Contract promotion takes the same bill lock. Serializing the active
-            # document switch with promotion prevents an old extraction from
-            # becoming latest after a newer version has been activated.
-            with transaction.atomic():
-                Bill.objects.select_for_update().get(pk=bill.pk)
-                BillDocument.objects.filter(bill=bill).update(is_active_version=False)
-                doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
-                doc.is_active_version = True
-                doc.save(update_fields=["is_active_version"])
         needs_download = (
             created
             or source_url_changed
             or not doc.object_storage_key
             or doc.downloaded_at is None
         )
+        if i == len(versions) - 1:
+            # Contract promotion takes the same bill lock. Serializing the active
+            # document switch with promotion prevents an old extraction from
+            # becoming latest after a newer version has been activated.
+            with transaction.atomic():
+                locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
+                BillDocument.objects.filter(bill=bill).update(is_active_version=False)
+                doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
+                doc.is_active_version = True
+                doc.save(update_fields=["is_active_version"])
+                if not needs_download and (
+                    not locked_bill.latest_contract_id
+                    or locked_bill.latest_contract.document_id != doc.pk
+                ):
+                    from apps.legislation.tasks import enqueue_document_contract
+
+                    enqueue_document_contract(doc, reconcile_active=True)
         if needs_download:
             _queue_document_download(doc)
     logger.info(

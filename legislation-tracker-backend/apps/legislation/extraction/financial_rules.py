@@ -469,13 +469,16 @@ def _claim(
     )
 
 
-def _grant_payment_claims(source_text, sections):
+def _grant_payment_claims(source_text, sections, clauses):
     """Keep grant amounts attached to the complete governing sentence.
 
     Modal splitting loses the grant recipient and eligibility from caps. These
     narrowly recognized payment rules therefore use exact source wording.
     """
     excluded = _quoted_block_ranges(source_text)
+    claims = []
+    owned_amounts = set()
+    by_span = {c.span: c for c in clauses}
     for section in sections:
         for span in sentence_spans(section, source_text):
             if any(a < span.end_char and span.start_char < b for a, b in excluded):
@@ -499,11 +502,43 @@ def _grant_payment_claims(source_text, sections):
                     action = "allocation"
                 if action is None:
                     continue
-                claim = _claim(section=section, evidence=(span,), action=action,
+                # The amount's clause owns its legal context. A leaf sentence
+                # alone can turn an eligibility condition or a discussion of a
+                # payment into an unconditional grant.
+                start = span.start_char + amount.start
+                end = span.start_char + amount.end
+                # Even an abstained grant amount belongs to this parser. The
+                # legacy cap parser must not revive it without its context.
+                owned_amounts.add((start, end))
+                owner = next(
+                    (c for c in clauses
+                     if c.span.start_char <= start and end <= c.span.end_char),
+                    None,
+                )
+                if owner is None or owner.disposition in {"discussion", "unasserted"}:
+                    continue
+                if owner.disposition == "prohibition" and not (
+                    action == "limitation"
+                    and re.match(r"exceed\b", owner.action, re.I)
+                    and all(
+                        by_span.get(parent) is not None
+                        and by_span[parent].disposition
+                        not in {"prohibition", "discussion", "uncertain"}
+                        for parent in owner.context
+                    )
+                ):
+                    continue
+                # A ceiling within a complex eligibility sentence is retained
+                # verbatim, never paraphrased as a positive payment mandate.
+                if owner.disposition == "uncertain" and action != "limitation":
+                    continue
+                evidence = owner.evidence
+                claim = _claim(section=section, evidence=evidence, action=action,
                                amount=amount, fiscal_years=_fiscal_years(text),
                                purpose=None, source_account=None, destination_account=None,
-                               inherited=False, source_span=span)
-                yield replace(claim, rule_id=f"financial.grant_source.{action}.v1")
+                               inherited=bool(owner.context), source_span=span)
+                claims.append(replace(claim, rule_id=f"financial.grant_source.{action}.v1"))
+    return claims, owned_amounts
 
 
 def extract_financial_claims(
@@ -515,12 +550,13 @@ def extract_financial_claims(
         clauses = parse_operative_clauses(source_text, sections)
     claims = list(_payment_claims(source_text, sections, clauses))
     payment_spans = [claim.fields["_payment_span"] for claim in claims]
-    claims.extend(_grant_payment_claims(source_text, sections))
+    grant_claims, grant_offsets = _grant_payment_claims(source_text, sections, clauses)
+    claims.extend(grant_claims)
     payment_offsets = {
         claim.fields["_amount_span"]
         for claim in claims
         if claim.fields.get("_amount_span")
-    }
+    } | grant_offsets
     for section, span, _ in iter_operative_clauses(
         source_text, sections, reader_mode=True
     ):

@@ -12,8 +12,27 @@ export function cleanDefinition(text: string): string {
     .replace(/\s+/g, " ").replace(/(?:\.\s*){2,}/g, ".").trim().replace(/[.;]+$/, "");
 }
 
+export function legalDefinition(item: LegalNlpDefinitionItem): string {
+  const text = cleanDefinition(item.definition);
+  return item.definition_type === "includes" ? `Includes: ${text}`
+    : item.definition_type === "excludes" ? `Excludes: ${text}` : text;
+}
+
 function explain(item: LegalNlpDefinitionItem): string {
   const text = cleanDefinition(item.definition);
+  // Affirmative paraphrases are valid only for "means". Preserve inclusion
+  // and exclusion operators rather than silently turning either into identity.
+  if (item.definition_type !== "means") {
+    if (/meaning given|meaning provided|meaning assigned/i.test(text)) {
+      const external = /United States Code|U\.S\.C\.|Act of \d{4}/i.test(text);
+      return `This provision ${item.definition_type} a category defined ${external ? "in another law" : "elsewhere in this bill"}. The referenced meaning has not been verified here.`;
+    }
+    if (item.definition_type === "includes" && text.startsWith("a report prepared by an employer") && text.includes("any such similar record")) {
+      return "Includes discrimination-investigation reports, employment statistics about protected characteristics, referenced labor-law records, and similar records needed for this subtitle.";
+    }
+    if (text.split(/\s+/).length <= 65) return legalDefinition(item) + ".";
+    return `This provision ${item.definition_type} the categories listed in the legal definition. Open it below for the complete scope and conditions.`;
+  }
   if (/meaning given|meaning provided|meaning assigned/i.test(text)) {
     const external = /United States Code|U\.S\.C\.|Act of \d{4}/i.test(text);
     return `Defined ${external ? "in another law" : "elsewhere in this bill"}. The referenced meaning has not been verified here.`;
@@ -47,9 +66,6 @@ function explain(item: LegalNlpDefinitionItem): string {
   }
   if (text.startsWith("any of the following: A nonprofit organization") && text.includes("An institution of higher education")) {
     return "Qualifying nonprofits that provide services and support to workers, or higher-education institutions as defined in the referenced law. See the full definition for the categories and requirements.";
-  }
-  if (item.definition_type === "includes" && text.startsWith("a report prepared by an employer") && text.includes("any such similar record")) {
-    return "Includes discrimination-investigation reports, employment statistics about protected characteristics, referenced labor-law records, and similar records needed for this subtitle.";
   }
   return "This term has a detailed legal definition. Open it below to check the complete requirements; no simplified meaning has been verified.";
 }

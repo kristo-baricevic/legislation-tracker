@@ -104,6 +104,7 @@ def enqueue_document_contract(
     *,
     reextract_source: bool = False,
     generation_reason: GenerationReason = "ingestion",
+    reconcile_active: bool = False,
 ):
     generation_reason = _validated_generation_reason(generation_reason)
     extractor_version = active_extractor_version()
@@ -128,13 +129,32 @@ def enqueue_document_contract(
         )
         if value is not None
     )
+    dedupe_key = (
+        f"{document.id}:{source_fingerprint}:{extractor_version}:"
+        f"{reextraction_version}:{generation_reason}"
+    )
+    if reconcile_active:
+        # Caller holds the bill lock shared with contract promotion. A prior
+        # successful extraction may have run while this document was inactive.
+        # Reuse live/retry/dead-letter work; only completed work needs a fresh
+        # occurrence to reconcile the bill's current analysis.
+        from apps.ingestion.models import IngestionWorkItem, IngestionWorkStatus
+
+        latest = (
+            IngestionWorkItem.objects.filter(
+                kind=WORK_KIND_DOCUMENT_CONTRACT, dedupe_key=dedupe_key,
+            ).order_by("-source_updated_at", "-id").first()
+        )
+        if latest and latest.status == IngestionWorkStatus.SUCCEEDED:
+            source_updated_at = max(
+                source_updated_at,
+                timezone.now(),
+                latest.source_updated_at + timedelta(microseconds=1),
+            )
     generation_occurrence = source_updated_at.isoformat()
     return enqueue_ingestion_work(
         kind=WORK_KIND_DOCUMENT_CONTRACT,
-        dedupe_key=(
-            f"{document.id}:{source_fingerprint}:{extractor_version}:"
-            f"{reextraction_version}:{generation_reason}"
-        ),
+        dedupe_key=dedupe_key,
         source_updated_at=source_updated_at,
         payload_json={
             "document_id": document.id,

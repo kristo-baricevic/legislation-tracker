@@ -51,6 +51,8 @@ def _classify(section, span, parent=None):
     disposition = "operative"
     if parent and parent.disposition in {"prohibition", "discussion", "uncertain"}:
         disposition = parent.disposition
+    elif re.search(r"\bCongress finds\b", text, re.I):
+        disposition = "discussion"
     elif re.search(
         r'\b(?:it is (?:the )?sense of Congress|is the policy of the United States|'
         r'no Federal funds are authorized|hereby designated as being categorically excluded|'

@@ -26,7 +26,7 @@ import {
   readerOverview,
 } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
-import { buildGlossary, cleanDefinition, type GlossaryEntry } from "@/lib/glossary";
+import { buildGlossary, legalDefinition, type GlossaryEntry } from "@/lib/glossary";
 import { ReaderExplanation, ReaderIdentityProvider, ReaderSummary, LegacyReaderChanges } from "./reader-explanation";
 
 interface BillBriefProps {
@@ -205,7 +205,7 @@ export function GlossaryEntryView({ entry, contractId, document }: { entry: Glos
     <dd className="mt-1 text-xs text-slate-500 dark:text-green-500">Used in: {entry.scopes.join("; ") || "See source section"}</dd>
     <dd><details className="mt-2 text-sm">
       <summary className="cursor-pointer text-blue-900 underline dark:text-green-400">View legal definition</summary>
-      <p className="mt-2 text-slate-700 dark:text-green-200">{cleanDefinition(entry.sources[0].definition)}</p>
+      <p className="mt-2 text-slate-700 dark:text-green-200">{legalDefinition(entry.sources[0])}</p>
       {refined?.source_quotes?.map((quote, index) => <blockquote key={index} className="mt-2 border-l pl-2">{quote.quote}</blockquote>)}
       {entry.sources.map(item => <div key={item.id}>
       <p className="mt-1 text-xs text-slate-500 dark:text-green-500">{pathLabel(item.section_path)}</p>

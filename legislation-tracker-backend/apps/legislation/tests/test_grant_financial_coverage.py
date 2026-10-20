@@ -1,4 +1,6 @@
 """Financial coverage regressions from H.R. 3511 (119th Congress, IH)."""
+import pytest
+
 from apps.legislation.tests.test_reader_synopsis import extract
 
 
@@ -27,3 +29,32 @@ def test_quoted_background_grant_is_not_new_funding():
     result = extract("SEC. 1. Findings\nCongress finds the following:\n[[QUOTED_BLOCK_START]]\n"
                      + PAYMENT + "\n[[QUOTED_BLOCK_END]]\nSEC. 2. Report\nThe Secretary shall submit a report.")
     assert result.contract_json["financial_items"] == []
+
+
+def test_grant_retains_parent_eligibility():
+    result = extract("SEC. 1. Grants\n(a) Eligibility.—Only if the State has adopted the required plan—\n"
+                     "(1) the Secretary shall pay a grant in the amount of $8,000 to the State.")
+    items = result.contract_json["financial_items"]
+    assert len(items) == 1
+    assert "Only if the State has adopted the required plan" in items[0]["display_text"]
+
+
+@pytest.mark.parametrize("source", [
+    "SEC. 1. Grants\n(a) Prohibition.—The Secretary shall not direct any agency to implement the following payment:\n(1) The agency shall pay a grant in the amount of $8,000.",
+    "SEC. 1. Findings\nCongress finds that the Secretary shall pay a grant in the amount of $8,000.",
+    "SEC. 1. Report\nThe Secretary shall study whether the agency shall pay a grant in the amount of $8,000.",
+    "SEC. 1. Grants\n(a) Prohibition.—The Secretary shall not implement the following payment:\n(1) The grant shall not exceed $8,000.",
+    "SEC. 1. Report\nThe Secretary shall study whether a grant shall not exceed $8,000.",
+])
+def test_nonoperative_grant_is_not_positive_funding(source):
+    assert extract(source).contract_json["financial_items"] == []
+
+
+def test_grant_cap_keeps_complete_parent_conditions_and_source_evidence():
+    source = ("SEC. 1. Grants\n(a) Eligibility.—Only if the State has adopted a plan—\n"
+              "(1) The grant shall not exceed $8,000.")
+    result = extract(source)
+    items = result.contract_json["financial_items"]
+    assert len(items) == 1
+    assert "Only if the State has adopted a plan" in items[0]["display_text"]
+    assert "shall not exceed $8,000" in items[0]["display_text"]

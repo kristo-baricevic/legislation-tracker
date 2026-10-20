@@ -2100,6 +2100,45 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch,
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("has_previous", [True, False])
+def test_version_reorder_reconciles_analysis_even_after_completed_generation(monkeypatch, has_previous):
+    from apps.legislation.tasks import enqueue_document_contract, generate_contract
+
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 1", title="Reports")
+    docs = [BillDocument.objects.create(
+        bill=bill, version_label=label, source_order=2-i, is_active_version=i == 0,
+        source_url=f"https://example.org/{i}.txt", object_storage_key=f"{i}.txt",
+        downloaded_at=timezone.now(), extracted_text="SEC. 1. Report\nThe Secretary shall submit an annual report.",
+    ) for i, label in enumerate(["Introduced", "Enrolled"])]
+    if has_previous:
+        generate_contract(docs[0].id)
+    generate_contract(docs[1].id)
+    prior = enqueue_document_contract(docs[1])
+    prior.status = IngestionWorkStatus.SUCCEEDED
+    prior.save(update_fields=["status"])
+    monkeypatch.setattr(tasks, "bill_text_list", lambda *args: [
+        {"version_label": d.version_label, "source_order": i+1, "url": d.source_url}
+        for i, d in enumerate(docs)
+    ])
+
+    tasks._process_bill_versions_impl(bill.id)
+    tasks._process_bill_versions_impl(bill.id)
+    pending = IngestionWorkItem.objects.filter(kind="document_contract", status=IngestionWorkStatus.PENDING)
+    assert pending.count() == 1
+    work = pending.get()
+    assert work.payload_json["document_id"] == docs[1].id
+    assert not IngestionWorkItem.objects.filter(kind="document_download").exists()
+    tasks._process_durable_work(work)
+    bill.refresh_from_db()
+    assert bill.latest_contract.document_id == docs[1].id
+    work.status = IngestionWorkStatus.SUCCEEDED
+    work.save(update_fields=["status"])
+    tasks._process_bill_versions_impl(bill.id)
+    assert not pending.exists()
+
+
+@pytest.mark.django_db
 def test_process_bill_versions_does_not_reenqueue_download_for_unchanged_document(
     monkeypatch,
 ):
