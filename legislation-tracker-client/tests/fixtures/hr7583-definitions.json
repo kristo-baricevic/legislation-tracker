@@ -1,0 +1,1241 @@
+[
+  {
+    "id": "definition-1072-1",
+    "term": "Commission",
+    "source_id": "definition-1072-1",
+    "definition": "the Equal Employment Opportunity Commission",
+    "section_id": "section-1056",
+    "display_text": "Legal definition: the Equal Employment Opportunity Commission.",
+    "section_path": [
+      {
+        "label": "Title I",
+        "level": "title",
+        "heading": "Researching and Preventing Workplace Discrimination, Including Harassment; Tipped Employees"
+      },
+      {
+        "label": "Sec. 100",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Commission"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[0].display_text",
+      "definitions[0].term",
+      "definitions[0].definition",
+      "definitions[0].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-1157-1",
+    "term": "employer",
+    "source_id": "definition-1157-1",
+    "definition": "the meaning given the term in section 701 of the Civil Rights Act of 1964 (42 U.S.C. 2000e), as amended by section 202 of this Act",
+    "section_id": "section-1143",
+    "display_text": "Unresolved legal reference. This bill defines “employer” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title I",
+        "level": "title",
+        "heading": "Researching and Preventing Workplace Discrimination, Including Harassment; Tipped Employees"
+      },
+      {
+        "label": "Sec. 100",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Employer"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[1].display_text",
+      "definitions[1].term",
+      "definitions[1].definition",
+      "definitions[1].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-61943-1",
+    "term": "demonstrates",
+    "source_id": "definition-61943-1",
+    "definition": "meets the burdens of production and persuasion. . [[QUOTED_BLOCK_END]]",
+    "section_id": "section-61924",
+    "display_text": "Legal definition: meets the burdens of production and persuasion.. [[QUOTED_BLOCK_END]].",
+    "section_path": [
+      {
+        "label": "Title II",
+        "level": "title",
+        "heading": "Strengthening Workplace Rights"
+      },
+      {
+        "label": "Sec. 205",
+        "level": "section",
+        "heading": "Clarifying other standards of proof"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Amendments to definitions"
+      },
+      {
+        "label": "(11)",
+        "level": "paragraph",
+        "heading": "Demonstrates"
+      }
+    ],
+    "section_label": "(11)",
+    "evidence_paths": [
+      "definitions[2].display_text",
+      "definitions[2].term",
+      "definitions[2].definition",
+      "definitions[2].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-99607-1",
+    "term": "covered establishment",
+    "source_id": "definition-99607-1",
+    "definition": "an individual or entity that— is not acting as an employer or entity covered by a provision specified in subsection (a); and engages the services (including soliciting such services) of an independent contractor (regardless of business structure, including organization as a legal or commercial entity), intern, fellow, volunteer, or trainee by means of an instrument of transportation or communication in interstate commerce, or through an arrangement that involves the use of such an instrument to carry out or be conveyed to carry out those services",
+    "section_id": "section-99571",
+    "display_text": "Legal definition: an individual or entity that— is not acting as an employer or entity covered by a provision specified in subsection (a); and engages the services (including soliciting such services) of an independent contractor (regardless of business structure, including organization as a legal or commercial entity), intern, fellow, volunteer, or trainee by means of an instrument of transportation or communication in interstate commerce, or through an arrangement that involves the use of such an instrument to carry out or be conveyed to carry out those services.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 301",
+        "level": "section",
+        "heading": "Independent contractors, interns, fellows, volunteers, and trainees"
+      },
+      {
+        "label": "(b)",
+        "level": "subsection",
+        "heading": "Covered establishments"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Definition"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[3].display_text",
+      "definitions[3].term",
+      "definitions[3].definition",
+      "definitions[3].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-102511-1",
+    "term": "Commission",
+    "source_id": "definition-102511-1",
+    "definition": "the Equal Employment Opportunity Commission",
+    "section_id": "section-102495",
+    "display_text": "Legal definition: the Equal Employment Opportunity Commission.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Commission"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[4].display_text",
+      "definitions[4].term",
+      "definitions[4].definition",
+      "definitions[4].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-102609-1",
+    "term": "covered establishment",
+    "source_id": "definition-102609-1",
+    "definition": "the meaning given the term in section 301",
+    "section_id": "section-102582",
+    "display_text": "Unresolved legal reference. This bill defines “covered establishment” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Covered establishment"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[5].display_text",
+      "definitions[5].term",
+      "definitions[5].definition",
+      "definitions[5].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-102711-1",
+    "term": "covered individual",
+    "source_id": "definition-102711-1",
+    "definition": "in the case of an individual required to be afforded protections under section 301(a)— an individual required to be afforded those protections by an employer described in paragraph (5)(A); an individual required to be afforded those protections by an employer described in paragraph (5)(B); an individual required to be afforded those protections by an employer described in paragraph (5)(C); an individual required to be afforded those protections by an employer described in paragraph (5)(D); or an individual required to be afforded those protections by an employer described in paragraph (5)(E); and in the case of an individual required to be afforded protections under section 301(b) by a covered establishment, that individual",
+    "section_id": "section-102687",
+    "display_text": "Legal definition: in the case of an individual required to be afforded protections under section 301(a)— an individual required to be afforded those protections by an employer described in paragraph (5)(A); an individual required to be afforded those protections by an employer described in paragraph (5)(B); an individual required to be afforded those protections by an employer described in paragraph (5)(C); an individual required to be afforded those protections by an employer described in paragraph (5)(D); or an individual required to be afforded those protections by an employer described in paragraph (5)(E); and in the case of an individual required to be afforded protections under section 301(b) by a covered establishment, that individual.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(3)",
+        "level": "paragraph",
+        "heading": "Covered individual"
+      }
+    ],
+    "section_label": "(3)",
+    "evidence_paths": [
+      "definitions[6].display_text",
+      "definitions[6].term",
+      "definitions[6].definition",
+      "definitions[6].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-103527-1",
+    "term": "employee",
+    "source_id": "definition-103527-1",
+    "definition": "an employee (including an applicant), as defined in section 701(f) of the Civil Rights Act of 1964 (42 U.S.C. 2000e(f)); a State employee (including an applicant) described in section 304(a) of the Government Employee Rights Act of 1991 (42 U.S.C. 2000e–16c(a)); a covered employee (including an applicant), as defined in section 101 of the Congressional Accountability Act of 1995 (2 U.S.C. 1301), including an individual treated as a covered employee under that section; a covered employee (including an applicant), as defined in section 411(c) of title 3, United States Code; or an employee or applicant to which section 717(a) of the Civil Rights Act of 1964 (42 U.S.C. 2000e–16(a)) applies",
+    "section_id": "section-103513",
+    "display_text": "Legal definition: an employee (including an applicant), as defined in section 701(f) of the Civil Rights Act of 1964 (42 U.S.C. 2000e(f)); a State employee (including an applicant) described in section 304(a) of the Government Employee Rights Act of 1991 (42 U.S.C. 2000e–16c(a)); a covered employee (including an applicant), as defined in section 101 of the Congressional Accountability Act of 1995 (2 U.S.C. 1301), including an individual treated as a covered employee under that section; a covered employee (including an applicant), as defined in section 411(c) of title 3, United States Code; or an employee or applicant to which section 717(a) of the Civil Rights Act of 1964 (42 U.S.C. 2000e–16(a)) applies.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(4)",
+        "level": "paragraph",
+        "heading": "Employee"
+      }
+    ],
+    "section_label": "(4)",
+    "evidence_paths": [
+      "definitions[7].display_text",
+      "definitions[7].term",
+      "definitions[7].definition",
+      "definitions[7].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-104282-1",
+    "term": "employer",
+    "source_id": "definition-104282-1",
+    "definition": "an employer (as defined in section 701(b) of the Civil Rights Act of 1964 (42 U.S.C. 2000e(b))); an entity employing a State employee described in section 304(a) of the Government Employee Rights Act of 1991; an employing office, as defined in section 101(a) of the Congressional Accountability Act of 1995 (2 U.S.C. 1301(a)); an employing office, as defined in section 411(c) of title 3, United States Code; or an entity to which section 717(a) of the Civil Rights Act of 1964 applies",
+    "section_id": "section-104268",
+    "display_text": "Legal definition: an employer (as defined in section 701(b) of the Civil Rights Act of 1964 (42 U.S.C. 2000e(b))); an entity employing a State employee described in section 304(a) of the Government Employee Rights Act of 1991; an employing office, as defined in section 101(a) of the Congressional Accountability Act of 1995 (2 U.S.C. 1301(a)); an employing office, as defined in section 411(c) of title 3, United States Code; or an entity to which section 717(a) of the Civil Rights Act of 1964 applies.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(5)",
+        "level": "paragraph",
+        "heading": "Employer"
+      }
+    ],
+    "section_label": "(5)",
+    "evidence_paths": [
+      "definitions[8].display_text",
+      "definitions[8].term",
+      "definitions[8].definition",
+      "definitions[8].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-104840-1",
+    "term": "nondisclosure clause",
+    "source_id": "definition-104840-1",
+    "definition": "a provision in a contract or agreement establishing that each party to the contract or agreement agrees not to disclose information covered by the terms and conditions of the contract or agreement",
+    "section_id": "section-104814",
+    "display_text": "Legal definition: a provision in a contract or agreement establishing that each party to the contract or agreement agrees not to disclose information covered by the terms and conditions of the contract or agreement.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(6)",
+        "level": "paragraph",
+        "heading": "Nondisclosure clause"
+      }
+    ],
+    "section_label": "(6)",
+    "evidence_paths": [
+      "definitions[9].display_text",
+      "definitions[9].term",
+      "definitions[9].definition",
+      "definitions[9].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-105103-1",
+    "term": "nondisparagement clause",
+    "source_id": "definition-105103-1",
+    "definition": "a provision in a contract or agreement requiring one or more parties to the contract or agreement not to make negative statements about another such party",
+    "section_id": "section-105074",
+    "display_text": "Legal definition: a provision in a contract or agreement requiring one or more parties to the contract or agreement not to make negative statements about another such party.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(7)",
+        "level": "paragraph",
+        "heading": "Nondisparagement clause"
+      }
+    ],
+    "section_label": "(7)",
+    "evidence_paths": [
+      "definitions[10].display_text",
+      "definitions[10].term",
+      "definitions[10].definition",
+      "definitions[10].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-105310-1",
+    "term": "worker",
+    "source_id": "definition-105310-1",
+    "definition": "an employee or a covered individual",
+    "section_id": "section-105298",
+    "display_text": "Legal definition: an employee or a covered individual.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(8)",
+        "level": "paragraph",
+        "heading": "Worker"
+      }
+    ],
+    "section_label": "(8)",
+    "evidence_paths": [
+      "definitions[11].display_text",
+      "definitions[11].term",
+      "definitions[11].definition",
+      "definitions[11].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-120276-1",
+    "term": "program or activity",
+    "source_id": "definition-120276-1",
+    "definition": "the meaning given the term in section 606 of the Civil Rights Act of 1964 (42 U.S.C. 2000d–4a)",
+    "section_id": "section-120237",
+    "display_text": "Unresolved legal reference. This bill defines “program or activity” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Sec. 302",
+        "level": "section",
+        "heading": "Nondisclosure agreements"
+      },
+      {
+        "label": "(g)",
+        "level": "subsection",
+        "heading": "State and Federal immunity"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Waiver of State immunity"
+      },
+      {
+        "label": "(A)",
+        "level": "subparagraph",
+        "heading": "In general"
+      },
+      {
+        "label": "(ii)",
+        "level": "clause",
+        "heading": "Definition"
+      }
+    ],
+    "section_label": "(ii)",
+    "evidence_paths": [
+      "definitions[12].display_text",
+      "definitions[12].term",
+      "definitions[12].definition",
+      "definitions[12].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-124630-1",
+    "term": "covered entity",
+    "source_id": "definition-124630-1",
+    "definition": "an employer; or an individual or entity that is not acting as an employer and engages the services of a worker",
+    "section_id": "section-124610",
+    "display_text": "Legal definition: an employer; or an individual or entity that is not acting as an employer and engages the services of a worker.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Chapter 5",
+        "level": "chapter",
+        "heading": "Arbitration of Work Disputes"
+      },
+      {
+        "label": "Sec. 501",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Covered entity"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[13].display_text",
+      "definitions[13].term",
+      "definitions[13].definition",
+      "definitions[13].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-124820-1",
+    "term": "predispute arbitration agreement",
+    "source_id": "definition-124820-1",
+    "definition": "the meaning given the term in section 401",
+    "section_id": "section-124781",
+    "display_text": "Unresolved legal reference. This bill defines “predispute arbitration agreement” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Chapter 5",
+        "level": "chapter",
+        "heading": "Arbitration of Work Disputes"
+      },
+      {
+        "label": "Sec. 501",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(3)",
+        "level": "paragraph",
+        "heading": "Presdispute arbitration agreement"
+      }
+    ],
+    "section_label": "(3)",
+    "evidence_paths": [
+      "definitions[14].display_text",
+      "definitions[14].term",
+      "definitions[14].definition",
+      "definitions[14].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-124948-1",
+    "term": "postdispute arbitration agreement",
+    "source_id": "definition-124948-1",
+    "definition": "any agreement to arbitrate a dispute that arose before the time of the making of the agreement",
+    "section_id": "section-124909",
+    "display_text": "Legal definition: any agreement to arbitrate a dispute that arose before the time of the making of the agreement.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Chapter 5",
+        "level": "chapter",
+        "heading": "Arbitration of Work Disputes"
+      },
+      {
+        "label": "Sec. 501",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(4)",
+        "level": "paragraph",
+        "heading": "Postdispute arbitration agreement"
+      }
+    ],
+    "section_label": "(4)",
+    "evidence_paths": [
+      "definitions[15].display_text",
+      "definitions[15].term",
+      "definitions[15].definition",
+      "definitions[15].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-125105-1",
+    "term": "worker",
+    "source_id": "definition-125105-1",
+    "definition": "an employee engaged in an activity affecting commerce; or an individual, engaged in an activity affecting commerce, who is engaged by a covered entity to perform services or work as an independent contractor (regardless of the label or classification assigned or used by the covered entity)",
+    "section_id": "section-125093",
+    "display_text": "Legal definition: an employee engaged in an activity affecting commerce; or an individual, engaged in an activity affecting commerce, who is engaged by a covered entity to perform services or work as an independent contractor (regardless of the label or classification assigned or used by the covered entity).",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Chapter 5",
+        "level": "chapter",
+        "heading": "Arbitration of Work Disputes"
+      },
+      {
+        "label": "Sec. 501",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(5)",
+        "level": "paragraph",
+        "heading": "Worker"
+      }
+    ],
+    "section_label": "(5)",
+    "evidence_paths": [
+      "definitions[16].display_text",
+      "definitions[16].term",
+      "definitions[16].definition",
+      "definitions[16].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-131348-1",
+    "term": "covered contract",
+    "source_id": "definition-131348-1",
+    "definition": "a Federal contract for the procurement of property or services, including construction, valued in excess of $500,000",
+    "section_id": "section-131326",
+    "display_text": "Legal definition: a Federal contract for the procurement of property or services, including construction, valued in excess of $500,000.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Chapter 5",
+        "level": "chapter",
+        "heading": "Arbitration of Work Disputes"
+      },
+      {
+        "label": "Sec. 304",
+        "level": "section",
+        "heading": "Federal contractor compliance with labor and civil rights laws"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Covered contract"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[17].display_text",
+      "definitions[17].term",
+      "definitions[17].definition",
+      "definitions[17].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-131793-1",
+    "term": "executive agency",
+    "source_id": "definition-131793-1",
+    "definition": "the meaning given the term in section 133 of title 41, United States Code",
+    "section_id": "section-131771",
+    "display_text": "Unresolved legal reference. This bill defines “executive agency” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title III",
+        "level": "title",
+        "heading": "Broadening Protections and Ensuring Transparency"
+      },
+      {
+        "label": "Chapter 5",
+        "level": "chapter",
+        "heading": "Arbitration of Work Disputes"
+      },
+      {
+        "label": "Sec. 304",
+        "level": "section",
+        "heading": "Federal contractor compliance with labor and civil rights laws"
+      },
+      {
+        "label": "(a)",
+        "level": "subsection",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(3)",
+        "level": "paragraph",
+        "heading": "Executive agency"
+      }
+    ],
+    "section_label": "(3)",
+    "evidence_paths": [
+      "definitions[18].display_text",
+      "definitions[18].term",
+      "definitions[18].definition",
+      "definitions[18].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-147113-1",
+    "term": "Commission",
+    "source_id": "definition-147113-1",
+    "definition": "the Equal Employment Opportunity Commission",
+    "section_id": "section-147097",
+    "display_text": "Legal definition: the Equal Employment Opportunity Commission.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 401",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Commission"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[19].display_text",
+      "definitions[19].term",
+      "definitions[19].definition",
+      "definitions[19].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-147211-1",
+    "term": "covered establishment",
+    "source_id": "definition-147211-1",
+    "definition": "the meaning given the term in section 302(a)(2)",
+    "section_id": "section-147184",
+    "display_text": "Unresolved legal reference. This bill defines “covered establishment” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 401",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Covered establishment"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[20].display_text",
+      "definitions[20].term",
+      "definitions[20].definition",
+      "definitions[20].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-147326-1",
+    "term": "employment discrimination",
+    "source_id": "definition-147326-1",
+    "definition": "discrimination that is in violation of applicable Federal, State, or local employment law, including each of the following: Title VII of the Civil Rights Act of 1964 (42 U.S.C. 2000e et seq.). The Government Employee Rights Act of 1991 (42 U.S.C. 2000e–16a et seq.). The Congressional Accountability Act of 1995 (2 U.S.C. 1301 et seq.). Subchapter II of chapter 5 of title 3, United States Code. The Age Discrimination in Employment Act of 1967 (29 U.S.C. 621 et seq.). Title I and section 503 (for violations with respect to that title) of the Americans with Disabilities Act of 1990 (42 U.S.C. 12111 et seq.; 12203). Sections 501 and 505 of the Rehabilitation Act of 1973 (29 U.S.C. 791, 794a). Section 6(d) of the Fair Labor Standards Act of 1938 (commonly known as the Equal Pay Act of 1963) (29 U.S.C. 206(d)). Title II of the Genetic Information Nondiscrimination Act of 2008 (42 U.S.C. 2000ff et seq.). Section 4311 of title 38, United States Code. The Pregnant Workers Fairness Act (42 U.S.C. 2000gg et seq.). Other Federal, State, or local employment law",
+    "section_id": "section-147295",
+    "display_text": "Legal definition: discrimination that is in violation of applicable Federal, State, or local employment law, including each of the following: Title VII of the Civil Rights Act of 1964 (42 U.S.C. 2000e et seq.). The Government Employee Rights Act of 1991 (42 U.S.C. 2000e–16a et seq.). The Congressional Accountability Act of 1995 (2 U.S.C. 1301 et seq.). Subchapter II of chapter 5 of title 3, United States Code. The Age Discrimination in Employment Act of 1967 (29 U.S.C. 621 et seq.). Title I and section 503 (for violations with respect to that title) of the Americans with Disabilities Act of 1990 (42 U.S.C. 12111 et seq.; 12203). Sections 501 and 505 of the Rehabilitation Act of 1973 (29 U.S.C. 791, 794a). Section 6(d) of the Fair Labor Standards Act of 1938 (commonly known as the Equal Pay Act of 1963) (29 U.S.C. 206(d)). Title II of the Genetic Information Nondiscrimination Act of 2008 (42 U.S.C. 2000ff et seq.). Section 4311 of title 38, United States Code. The Pregnant Workers Fairness Act (42 U.S.C. 2000gg et seq.). Other Federal, State, or local employment law.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 401",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(3)",
+        "level": "paragraph",
+        "heading": "Employment discrimination"
+      }
+    ],
+    "section_label": "(3)",
+    "evidence_paths": [
+      "definitions[21].display_text",
+      "definitions[21].term",
+      "definitions[21].definition",
+      "definitions[21].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-148494-1",
+    "term": "employer",
+    "source_id": "definition-148494-1",
+    "definition": "the meaning given the term in section 302(a)(5)",
+    "section_id": "section-148480",
+    "display_text": "Unresolved legal reference. This bill defines “employer” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 401",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(4)",
+        "level": "paragraph",
+        "heading": "Employer"
+      }
+    ],
+    "section_label": "(4)",
+    "evidence_paths": [
+      "definitions[22].display_text",
+      "definitions[22].term",
+      "definitions[22].definition",
+      "definitions[22].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-148577-1",
+    "term": "worker",
+    "source_id": "definition-148577-1",
+    "definition": "the meaning given the term in section 302(a)(8)",
+    "section_id": "section-148565",
+    "display_text": "Unresolved legal reference. This bill defines “worker” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 401",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(5)",
+        "level": "paragraph",
+        "heading": "Worker"
+      }
+    ],
+    "section_label": "(5)",
+    "evidence_paths": [
+      "definitions[23].display_text",
+      "definitions[23].term",
+      "definitions[23].definition",
+      "definitions[23].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-148805-1",
+    "term": "Director",
+    "source_id": "definition-148805-1",
+    "definition": "the Director of the Women’s Bureau of the Department of Labor",
+    "section_id": "section-148791",
+    "display_text": "Legal definition: the Director of the Women’s Bureau of the Department of Labor.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle A",
+        "level": "subtitle",
+        "heading": "National Grants for Preventing and Addressing Employment Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 411",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Director"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[24].display_text",
+      "definitions[24].term",
+      "definitions[24].definition",
+      "definitions[24].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-148913-1",
+    "term": "eligible entity",
+    "source_id": "definition-148913-1",
+    "definition": "any of the following: A nonprofit organization, including a community-based organization, nonprofit legal aid organization, or labor organization, that provides services and support to workers, including by assisting workers in filing charges of employment discrimination. An institution of higher education, as defined in section 101 of the Higher Education Act of 1965 (20 U.S.C. 1001)",
+    "section_id": "section-148892",
+    "display_text": "Legal definition: any of the following: A nonprofit organization, including a community-based organization, nonprofit legal aid organization, or labor organization, that provides services and support to workers, including by assisting workers in filing charges of employment discrimination. An institution of higher education, as defined in section 101 of the Higher Education Act of 1965 (20 U.S.C. 1001).",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle A",
+        "level": "subtitle",
+        "heading": "National Grants for Preventing and Addressing Employment Discrimination, Including Harassment"
+      },
+      {
+        "label": "Sec. 411",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Eligible entity"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[25].display_text",
+      "definitions[25].term",
+      "definitions[25].definition",
+      "definitions[25].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-153878-1",
+    "term": "covered client",
+    "source_id": "definition-153878-1",
+    "definition": "an individual who— is an eligible client; and faces legal issues related to harassment or other employment discrimination",
+    "section_id": "section-153858",
+    "display_text": "Legal definition: an individual who— is an eligible client; and faces legal issues related to harassment or other employment discrimination.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle B",
+        "level": "subtitle",
+        "heading": "Grants for Legal Assistance for Low-Income Workers"
+      },
+      {
+        "label": "Sec. 421",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Covered client"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[26].display_text",
+      "definitions[26].term",
+      "definitions[26].definition",
+      "definitions[26].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-154060-1",
+    "term": "eligible client",
+    "source_id": "definition-154060-1",
+    "definition": "the meaning given the term in section 1002 of the Legal Services Corporation Act (42 U.S.C. 2996a) and the regulations of the Legal Services Corporation",
+    "section_id": "section-154039",
+    "display_text": "Unresolved legal reference. This bill defines “eligible client” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle B",
+        "level": "subtitle",
+        "heading": "Grants for Legal Assistance for Low-Income Workers"
+      },
+      {
+        "label": "Sec. 421",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Eligible client"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[27].display_text",
+      "definitions[27].term",
+      "definitions[27].definition",
+      "definitions[27].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-154264-1",
+    "term": "eligible entity",
+    "source_id": "definition-154264-1",
+    "definition": "a nonprofit organization; and an individual who is licensed to practice law",
+    "section_id": "section-154243",
+    "display_text": "Legal definition: a nonprofit organization; and an individual who is licensed to practice law.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle B",
+        "level": "subtitle",
+        "heading": "Grants for Legal Assistance for Low-Income Workers"
+      },
+      {
+        "label": "Sec. 421",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(3)",
+        "level": "paragraph",
+        "heading": "Eligible entity"
+      }
+    ],
+    "section_label": "(3)",
+    "evidence_paths": [
+      "definitions[28].display_text",
+      "definitions[28].term",
+      "definitions[28].definition",
+      "definitions[28].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-154396-1",
+    "term": "Secretary",
+    "source_id": "definition-154396-1",
+    "definition": "the Secretary of Labor",
+    "section_id": "section-154381",
+    "display_text": "Legal definition: the Secretary of Labor.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle B",
+        "level": "subtitle",
+        "heading": "Grants for Legal Assistance for Low-Income Workers"
+      },
+      {
+        "label": "Sec. 421",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(4)",
+        "level": "paragraph",
+        "heading": "Secretary"
+      }
+    ],
+    "section_label": "(4)",
+    "evidence_paths": [
+      "definitions[29].display_text",
+      "definitions[29].term",
+      "definitions[29].definition",
+      "definitions[29].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-159743-1",
+    "term": "record",
+    "source_id": "definition-159743-1",
+    "definition": "a report prepared by an employer, covered establishment, or staff person charged with investigating reports of employment discrimination that describes incidents of possible discrimination and the steps taken to investigate those incidents; statistical information related to employment decisions and the race, sex (including sexual orientation and gender identity), religion, national origin, age, disability, genetic information, or other protected characteristics of workers; records described in section 11(c) of the Fair Labor Standards Act (29 U.S.C. 211(c)); and any such similar record, as may be necessary to carry out the purposes of this subtitle",
+    "section_id": "section-159731",
+    "display_text": "Includes: a report prepared by an employer, covered establishment, or staff person charged with investigating reports of employment discrimination that describes incidents of possible discrimination and the steps taken to investigate those incidents; statistical information related to employment decisions and the race, sex (including sexual orientation and gender identity), religion, national origin, age, disability, genetic information, or other protected characteristics of workers; records described in section 11(c) of the Fair Labor Standards Act (29 U.S.C. 211(c)); and any such similar record, as may be necessary to carry out the purposes of this subtitle.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle C",
+        "level": "subtitle",
+        "heading": "Grants for a System of State Advocacy"
+      },
+      {
+        "label": "Sec. 432",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(1)",
+        "level": "paragraph",
+        "heading": "Record"
+      }
+    ],
+    "section_label": "(1)",
+    "evidence_paths": [
+      "definitions[30].display_text",
+      "definitions[30].term",
+      "definitions[30].definition",
+      "definitions[30].definition_type"
+    ],
+    "definition_type": "includes"
+  },
+  {
+    "id": "definition-160459-1",
+    "term": "Secretary",
+    "source_id": "definition-160459-1",
+    "definition": "the Secretary of Labor",
+    "section_id": "section-160444",
+    "display_text": "Legal definition: the Secretary of Labor.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle C",
+        "level": "subtitle",
+        "heading": "Grants for a System of State Advocacy"
+      },
+      {
+        "label": "Sec. 432",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(2)",
+        "level": "paragraph",
+        "heading": "Secretary"
+      }
+    ],
+    "section_label": "(2)",
+    "evidence_paths": [
+      "definitions[31].display_text",
+      "definitions[31].term",
+      "definitions[31].definition",
+      "definitions[31].definition_type"
+    ],
+    "definition_type": "means"
+  },
+  {
+    "id": "definition-160519-1",
+    "term": "State, except as otherwise provided,",
+    "source_id": "definition-160519-1",
+    "definition": ", in addition to each of the several States of the United States, the District of Columbia, the Commonwealth of Puerto Rico, the United States Virgin Islands, Guam, American Samoa, and the Commonwealth of the Northern Mariana Islands",
+    "section_id": "section-160508",
+    "display_text": "Includes: , in addition to each of the several States of the United States, the District of Columbia, the Commonwealth of Puerto Rico, the United States Virgin Islands, Guam, American Samoa, and the Commonwealth of the Northern Mariana Islands.",
+    "section_path": [
+      {
+        "label": "Title IV",
+        "level": "title",
+        "heading": "Nationwide Grants to Prevent and Respond to Workplace Discrimination, Including Harassment"
+      },
+      {
+        "label": "Subtitle C",
+        "level": "subtitle",
+        "heading": "Grants for a System of State Advocacy"
+      },
+      {
+        "label": "Sec. 432",
+        "level": "section",
+        "heading": "Definitions"
+      },
+      {
+        "label": "(3)",
+        "level": "paragraph",
+        "heading": "State"
+      }
+    ],
+    "section_label": "(3)",
+    "evidence_paths": [
+      "definitions[32].display_text",
+      "definitions[32].term",
+      "definitions[32].definition",
+      "definitions[32].definition_type"
+    ],
+    "definition_type": "includes"
+  }
+]

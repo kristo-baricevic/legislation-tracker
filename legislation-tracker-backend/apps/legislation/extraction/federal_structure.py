@@ -41,10 +41,13 @@ _SUBSECTION_RANK = 120
 _PARAGRAPH_RANK = 130
 _SUBPARAGRAPH_RANK = 140
 _CLAUSE_RANK = 150
+_SUBCLAUSE_RANK = 160
+_ITEM_RANK = 170
+_SUBITEM_RANK = 180
 _HEADING_SEPARATOR_RE = re.compile(r"^(?P<heading>[^\n]{1,160}?)(?:\.—|\. -|\.―)")
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?=\s|$)")
 _STATUTORY_ABBREVIATION_RE = re.compile(
-    r"\b(?:U\.S\.C|U\.S|Sec|No|e\.g|i\.e)\.$",
+    r"\b(?:U\.S\.C|U\.S|D\.C|Stat|Sec|No|e\.g|i\.e)\.$",
     re.IGNORECASE,
 )
 
@@ -56,6 +59,21 @@ class _Marker:
     level: str
     label: str
     heading: str | None
+
+
+class StructuralSections(tuple):
+    """An immutable traversal with a document-local containment index."""
+    def __new__(cls, sections):
+        result = super().__new__(cls, sections)
+        result.parents = {}
+        stack = []
+        for section in result:
+            while stack and (stack[-1].span.start_char >= section.span.start_char or
+                             stack[-1].span.end_char < section.span.end_char):
+                stack.pop()
+            result.parents[id(section)] = stack[-1] if stack else None
+            stack.append(section)
+        return result
 
 
 def _line_end(source_text: str, start: int) -> int:
@@ -93,7 +111,20 @@ def _subdivision_rank(label: str, prior_markers: list[_Marker]) -> int:
     token = label[1:-1]
     if token.isdigit():
         return _PARAGRAPH_RANK
+    prior_rank = prior_markers[-1].rank if prior_markers else 0
+    if len(token) > 1 and len(set(token)) == 1 and not re.fullmatch(r'[ivxlcdmIVXLCDM]+', token):
+        if token.islower() and prior_rank >= _SUBCLAUSE_RANK:
+            return _ITEM_RANK
+        if token.isupper() and prior_rank >= _ITEM_RANK:
+            return _SUBITEM_RANK
     if token.isupper():
+        # (I), (II) below roman (i) are subclauses, not sibling (A)s.
+        enclosing = next((m for m in reversed(prior_markers) if m.rank <= _SUBPARAGRAPH_RANK), None)
+        previous = enclosing.label[1:-1] if enclosing else ''
+        is_next_letter = len(previous) == len(token) == 1 and ord(token) == ord(previous) + 1
+        if not is_next_letter and ((token == 'I' and prior_rank >= _CLAUSE_RANK) or
+            (re.fullmatch(r'[IVXLCDM]+', token) and len(token) > 1 and prior_rank >= _SUBCLAUSE_RANK)):
+            return _SUBCLAUSE_RANK
         return _SUBPARAGRAPH_RANK
     if prior_markers:
         previous_marker = prior_markers[-1]
@@ -141,6 +172,9 @@ def _provision_level(rank: int) -> str:
         _PARAGRAPH_RANK: "paragraph",
         _SUBPARAGRAPH_RANK: "subparagraph",
         _CLAUSE_RANK: "clause",
+        _SUBCLAUSE_RANK: "subclause",
+        _ITEM_RANK: "item",
+        _SUBITEM_RANK: "subitem",
     }[rank]
 
 
@@ -261,12 +295,12 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
         sections.append(section)
         stack.append((marker, marker.label))
 
-    return tuple(sections)
+    return StructuralSections(sections)
 
 
 def _content_start(section: StructuralSection, source_text: str) -> int:
     local_text = source_text[section.span.start_char : section.span.end_char]
-    if section.level in {"subsection", "paragraph", "subparagraph", "clause"}:
+    if section.level in {"subsection", "paragraph", "subparagraph", "clause", "subclause", "item", "subitem"}:
         match = SUBDIVISION_RE.match(local_text)
         if match is None:
             return section.span.start_char
@@ -289,9 +323,13 @@ def sentence_spans(
 ) -> tuple[SourceSpan, ...]:
     start = _content_start(section, source_text)
     end = section.span.end_char
-    nested_marker = SUBDIVISION_RE.search(source_text, start, end)
-    if nested_marker is not None:
-        end = nested_marker.start()
+    # A container owns only its introduction, not the text of child sections.
+    # Otherwise a title's first definition can become the governing context
+    # for every later section in that title.
+    for pattern in (SECTION_RE, CONTAINER_RE, SUBDIVISION_RE):
+        nested_marker = pattern.search(source_text, start, end)
+        if nested_marker is not None:
+            end = nested_marker.start()
     sentences = []
     cursor = start
 

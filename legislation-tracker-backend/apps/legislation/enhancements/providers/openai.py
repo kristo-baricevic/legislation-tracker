@@ -156,7 +156,11 @@ class OpenAIEnhancementProvider:
             "source_packet": request.request_envelope["source_packet"],
         }
         schema = PROVIDER_OUTPUT_SCHEMA
-        if request.request_envelope.get("coverage_candidate_version") == "2":
+        if request.request_envelope.get("output_schema_version") == "1.4":
+            from ..reader_targets import READER_SCHEMA
+            from ..reader_citations import READER_ID_SCHEMA, READER_PROMPT_VERSION
+            schema = READER_ID_SCHEMA if request.request_envelope.get("prompt_version") == READER_PROMPT_VERSION else READER_SCHEMA
+        elif request.request_envelope.get("coverage_candidate_version") == "2":
             from ..coverage_contract import response_schema
 
             schema = response_schema(
@@ -168,7 +172,7 @@ class OpenAIEnhancementProvider:
             schema = provision_schema(
                 input_payload["source_packet"]["coverage_checklist"]
             )
-        return self._generate(
+        result = self._generate(
             api_key=api_key,
             request=request,
             timeout_seconds=timeout_seconds,
@@ -177,6 +181,11 @@ class OpenAIEnhancementProvider:
             schema=schema,
             schema_name="bill_enhancement_v1_1",
         )
+        if schema is PROVIDER_OUTPUT_SCHEMA:
+            from dataclasses import replace
+            from ..schema import add_derived_source_refs
+            return replace(result, output=add_derived_source_refs(result.output))
+        return result
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
         envelope = dict(
@@ -351,7 +360,10 @@ class OpenAIEnhancementProvider:
                     separators=(",", ":"),
                     ensure_ascii=False,
                 ),
-                max_output_tokens=min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+                max_output_tokens=request.request_envelope["max_output_tokens"]
+                if getattr(request, "output_schema_version", None) == "1.4"
+                   and getattr(request, "prompt_version", None) == "reader-2"
+                else min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
                 if schema_name.startswith("source_first_")
                 else settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
                 reasoning={"effort": request.reasoning_effort},
@@ -394,12 +406,37 @@ class OpenAIEnhancementProvider:
                 resolved_model=resolved_model,
             )
         output_text = _value(response, "output_text", "")
+        # The SDK convenience property concatenates commentary and final text.
+        # Only an explicitly marked final answer can disambiguate those phases;
+        # never salvage an arbitrary JSON object from malformed model output.
+        final_messages = [item for item in (_value(response, "output", []) or [])
+                          if _value(item, "type") == "message"
+                          and _value(item, "phase") == "final_answer"]
+        if final_messages:
+            output_text = "".join(
+                _value(content, "text", "")
+                for item in final_messages
+                for content in (_value(item, "content", []) or [])
+                if _value(content, "type") == "output_text"
+                and isinstance(_value(content, "text"), str)
+            )
         try:
             output = json.loads(output_text)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
+            from ..diagnostics import json_parse_diagnostic
+            parser = json_parse_diagnostic(error, output_text)
+            parts = [
+                _value(content, "text", "")
+                for item in (_value(response, "output", []) or [])
+                for content in (_value(item, "content", []) or [])
+                if _value(content, "type") == "output_text"
+                and isinstance(_value(content, "text"), str)
+            ]
+            parser.update(output_text_parts=len(parts), output_text_part_length=sum(map(len, parts)))
             raise ProviderError(
                 "invalid_output",
                 validation_code="provider_invalid_json",
+                validation_detail={"parser": parser},
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,

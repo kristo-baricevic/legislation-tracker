@@ -146,7 +146,7 @@ describe("BillChangeExperience", () => {
     expect(await screen.findByText("Newer change")).toBeVisible();
   });
 
-  it("renders before and after contract values and expandable section operations", async () => {
+  it("compares selected bill versions as readable before/after passages and closes", async () => {
     const user = userEvent.setup();
     vi.mocked(compareBillContracts).mockResolvedValue({
       before: 1,
@@ -182,12 +182,20 @@ describe("BillChangeExperience", () => {
     ];
     render(<BillChangeExperience billId={10} contracts={contracts} documents={documents} />);
 
-    await user.click(await screen.findByRole("button", { name: "Compare analysis" }));
-    expect(await screen.findByText('"old text"')).toBeVisible();
-    expect(screen.getByText('"new text"')).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Compare bill text" }));
-    await user.click(await screen.findByRole("button", { name: /modified sec\. 1#1/ }));
+    await user.click(await screen.findByRole("button", { name: "Compare versions" }));
     expect(await screen.findByText(/old line/)).toBeVisible();
     expect(screen.getByText(/new line/)).toBeVisible();
+    expect(screen.getByLabelText("Before version")).toHaveValue("1");
+    expect(screen.getByLabelText("After version")).toHaveValue("2");
+    expect(compareBillDocumentSection).toHaveBeenCalledWith(10, 1, 2, "sec. 1#1");
+    expect(document.querySelector("pre")).toBeNull();
+    await user.selectOptions(screen.getByLabelText("Before version"), "2");
+    expect(screen.getByText("Choose two different versions.")).toBeVisible();
+    expect(screen.queryByText("old line")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Before version"), "1");
+    expect(await screen.findByText("old line")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Close comparison" }));
+    expect(screen.queryByLabelText("Before version")).not.toBeInTheDocument();
+    expect(screen.queryByText("old line")).not.toBeInTheDocument();
   });
 });

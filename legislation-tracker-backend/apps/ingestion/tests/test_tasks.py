@@ -896,6 +896,47 @@ def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatc
 
 
 @pytest.mark.django_db
+def test_http_throttle_retains_work_and_honors_retry_after(monkeypatch):
+    import requests
+    work = IngestionWorkItem.objects.create(kind="bill", dedupe_key="119-hr-429",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_key": "119-hr-429"}, status=IngestionWorkStatus.DISPATCHED,
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1,
+        lease_expires_at=timezone.now() + timedelta(minutes=5))
+    response = requests.Response()
+    response.status_code = 429
+    response.headers['Retry-After'] = '7200'
+    def throttled(*args):
+        raise requests.HTTPError('429 Too Many Requests', response=response)
+    monkeypatch.setattr(tasks, '_process_bill_impl', throttled)
+    before = timezone.now()
+    tasks.process_ingestion_work_item(work.id)
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.attempt_count == tasks.MAX_INGESTION_WORK_ATTEMPTS - 1
+    assert work.available_at >= before + timedelta(seconds=7200)
+    assert not IngestionTaskFailure.objects.filter(work_item=work).exists()
+
+
+@pytest.mark.django_db
+def test_no_published_versions_remains_scheduled_without_spending_retry_budget(monkeypatch):
+    work = IngestionWorkItem.objects.create(kind=tasks.WORK_KIND_BILL_VERSIONS,
+        dedupe_key='awaiting-text', source_updated_at=timezone.now(),
+        payload_json={'bill_id': 123}, status=IngestionWorkStatus.DISPATCHED,
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1)
+    monkeypatch.setattr(tasks, '_process_bill_versions_impl', lambda *args: {'versions': 0, 'fallback_enqueued': True})
+    before = timezone.now()
+    result = tasks.process_ingestion_work_item(work.id)
+    work.refresh_from_db()
+    assert result['status'] == 'awaiting_source'
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.available_at > before
+    assert work.attempt_count == tasks.MAX_INGESTION_WORK_ATTEMPTS - 1
+    assert work.completed_at is None
+    assert not IngestionTaskFailure.objects.filter(work_item=work).exists()
+
+
+@pytest.mark.django_db
 def test_blocked_work_is_not_retried_or_dead_lettered_until_every_dependency_wakes(
     monkeypatch,
 ):
@@ -2014,7 +2055,11 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
 
 
 @pytest.mark.django_db
-def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch):
+@pytest.mark.parametrize("new_action", [
+    "New action",
+    "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of the provisions within their respective jurisdictions.",
+])
+def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch, new_action):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -2030,7 +2075,7 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
             "title": "New title",
             "latestAction": {
                 "actionDate": "2026-01-02",
-                "text": "New action",
+                "text": new_action,
             },
             "introducedDate": "2026-01-01",
             "url": "https://api.congress.gov/v3/bill/119/hr/1",
@@ -2049,7 +2094,48 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch)
     assert result == {"bill_id": bill.id, "unchanged": False}
     change = ChangeLog.objects.get(change_type="status_update")
     assert change.old_value == {"status": "Old action"}
-    assert change.new_value == {"status": "New action"}
+    assert change.new_value == {"status": new_action}
+    bill.refresh_from_db()
+    assert bill.status == new_action
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("has_previous", [True, False])
+def test_version_reorder_reconciles_analysis_even_after_completed_generation(monkeypatch, has_previous):
+    from apps.legislation.tasks import enqueue_document_contract, generate_contract
+
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
+    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 1", title="Reports")
+    docs = [BillDocument.objects.create(
+        bill=bill, version_label=label, source_order=2-i, is_active_version=i == 0,
+        source_url=f"https://example.org/{i}.txt", object_storage_key=f"{i}.txt",
+        downloaded_at=timezone.now(), extracted_text="SEC. 1. Report\nThe Secretary shall submit an annual report.",
+    ) for i, label in enumerate(["Introduced", "Enrolled"])]
+    if has_previous:
+        generate_contract(docs[0].id)
+    generate_contract(docs[1].id)
+    prior = enqueue_document_contract(docs[1])
+    prior.status = IngestionWorkStatus.SUCCEEDED
+    prior.save(update_fields=["status"])
+    monkeypatch.setattr(tasks, "bill_text_list", lambda *args: [
+        {"version_label": d.version_label, "source_order": i+1, "url": d.source_url}
+        for i, d in enumerate(docs)
+    ])
+
+    tasks._process_bill_versions_impl(bill.id)
+    tasks._process_bill_versions_impl(bill.id)
+    pending = IngestionWorkItem.objects.filter(kind="document_contract", status=IngestionWorkStatus.PENDING)
+    assert pending.count() == 1
+    work = pending.get()
+    assert work.payload_json["document_id"] == docs[1].id
+    assert not IngestionWorkItem.objects.filter(kind="document_download").exists()
+    tasks._process_durable_work(work)
+    bill.refresh_from_db()
+    assert bill.latest_contract.document_id == docs[1].id
+    work.status = IngestionWorkStatus.SUCCEEDED
+    work.save(update_fields=["status"])
+    tasks._process_bill_versions_impl(bill.id)
+    assert not pending.exists()
 
 
 @pytest.mark.django_db
@@ -2508,7 +2594,7 @@ def test_document_extension_fallback_parses_congress_xml_without_a_useful_mime_t
 
 
 @pytest.mark.django_db
-def test_downloaded_xml_quoted_amendment_payload_falls_back_without_current_claims(
+def test_downloaded_xml_replacement_payload_is_operative_new_law(
     monkeypatch,
 ):
     payload = (
@@ -2550,16 +2636,18 @@ def test_downloaded_xml_quoted_amendment_payload_falls_back_without_current_clai
 
     document.refresh_from_db()
     result = extract_contract(document=document, bill=bill)
-    assert result.schema_version == "1.1-deterministic"
-    assert result.fallback_reason == "no_supported_claims"
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.fallback_reason is None
+    assert "market baskets" in str(result.contract_json["requirements"])
 
 
 @pytest.mark.django_db
-def test_downloaded_xml_direct_quoted_funding_falls_back_without_current_claims(
+def test_downloaded_xml_direct_inserted_funding_is_extracted(
     monkeypatch,
 ):
     payload = (
-        b"<bill><legis-body><section><enum>2.</enum><header>Amendments</header>"
+        b"<bill><form><official-title>To provide funding for food assistance.</official-title></form>"
+        b"<legis-body><section><enum>2.</enum><header>Amendments</header>"
         b"<paragraph><enum>(a)</enum><text>Section 3 of the Food Act is amended "
         b"by inserting the following:</text><quoted-block><text>There are "
         b"appropriated $100,000 for fiscal year 2027.</text></quoted-block>"
@@ -2595,8 +2683,10 @@ def test_downloaded_xml_direct_quoted_funding_falls_back_without_current_claims(
 
     document.refresh_from_db()
     result = extract_contract(document=document, bill=bill)
-    assert result.schema_version == "1.1-deterministic"
-    assert result.fallback_reason == "no_supported_claims"
+    assert result.schema_version == "2.0-legal-nlp"
+    assert result.fallback_reason is None
+    assert "100000" in str(result.contract_json["funding_items"])
+    assert document.source_purpose == "To provide funding for food assistance."
 
 
 @pytest.mark.django_db

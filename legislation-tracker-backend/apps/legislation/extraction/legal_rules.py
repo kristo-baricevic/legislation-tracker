@@ -26,10 +26,8 @@ _SECTION_DEFINITION_RE = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_RANGE_RE = re.compile(r'“[^”]*”|"[^"]*"|‘[^’]*’|\'[^\']*\'')
-_QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
-_QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 _AMENDMENT_INSTRUCTION_RE = re.compile(
-    r"^\s*(?:by\s+)?(?:strik(?:e|ing)|insert(?:ing)?|replac(?:e|ing)|"
+    r"^\s*(?:in\s+(?:the\s+)?(?:matter|subsection|subparagraph|paragraph|clause|section|(?:[a-z]+\s+)?sentence)\b[^\n]*?\bby\s+|by\s+)?(?:strik(?:e|ing)|insert(?:ing)?|replac(?:e|ing)|"
     r"redesignat(?:e|ing)|repeal(?:ing)?|amend(?:ing)?)\b",
     re.IGNORECASE,
 )
@@ -113,7 +111,9 @@ _DATE_RE = re.compile(
 _TARGET_RE = re.compile(
     r"\b(?P<target>section\s+[0-9]+[A-Z]?(?:-[0-9A-Z]+)*"
     r"(?:\s+of\s+the\s+[^,.;:]+?\s+Act)?|"
-    r"paragraph\s+\([^)]+\))(?!\w)",
+    r"paragraph\s+\([^)]+\)|"
+    r"The\s+[^\n.;]+?\s+Act(?:\s+of\s+\d{4})?"
+    r"(?:\s+\([^\n]+?\))?(?=\s+is\s+(?:hereby\s+)?repealed\b))(?!\w)",
     re.IGNORECASE,
 )
 _MONTHS = {
@@ -245,23 +245,6 @@ def _heading_contains(
         and section.span.start_char < candidate.span.end_char
         for candidate in sections
     )
-
-
-def _quoted_block_ranges(source_text: str) -> tuple[tuple[int, int], ...]:
-    ranges = []
-    cursor = 0
-    while True:
-        start = source_text.find(_QUOTED_BLOCK_START, cursor)
-        if start < 0:
-            break
-        end = source_text.find(_QUOTED_BLOCK_END, start + len(_QUOTED_BLOCK_START))
-        if end < 0:
-            end = len(source_text)
-        else:
-            end += len(_QUOTED_BLOCK_END)
-        ranges.append((start, end))
-        cursor = end
-    return tuple(ranges)
 
 
 def _is_modal_excluded(
@@ -513,6 +496,12 @@ def _funding_purpose(text: str, *, normalize_whitespace: bool = False) -> str | 
     normalized_text = (
         re.sub(r"\s+", " ", text).strip() if normalize_whitespace else text
     )
+    leading_purpose = re.match(
+        r"To\s+(carry\s+out\b[^,]+),\s*there\s+(?:are|is)\s+",
+        normalized_text, re.I,
+    )
+    if leading_purpose:
+        return leading_purpose.group(1)
     carry_out = re.search(r"\bto\s+(carry\s+out\b.+)$", normalized_text, re.IGNORECASE)
     if carry_out is not None:
         return _strip_terminal_punctuation(carry_out.group(1))
@@ -753,12 +742,15 @@ def extract_amendment_claims(
         inherited_evidence = None
         if target_match is None:
             parent = _parent_section(section, sections)
-            if parent is not None:
+            while parent is not None:
                 for parent_sentence in reversed(sentence_spans(parent, source_text)):
                     target_match = _TARGET_RE.search(parent_sentence.text)
                     if target_match is not None:
                         inherited_evidence = parent_sentence
                         break
+                if target_match is not None:
+                    break
+                parent = _parent_section(parent, sections)
         evidence = (
             (inherited_evidence, sentence)
             if inherited_evidence is not None

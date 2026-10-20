@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import SourceFirstAnalysis from "./source-first-analysis";
 
 import {
@@ -46,6 +47,14 @@ function CitedSources({ sources }: { sources: EnhancementCitedSource[] }) {
 function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
   const result = enhancement.result;
   if (!result) return null;
+  if (result.schema_version === "1.4") return <div className="mt-3 space-y-4">
+    {result.summary.map((item, index) => <div key={`summary-${index}`}><p>{item.text}</p><CitedSources sources={item.cited_sources} /></div>)}
+    {result.explanations.map(item => <div key={item.target_id}>
+      <p>{item.status === "explained" ? item.text : item.original_text}</p>
+      {item.status === "unresolved" && <p className="text-sm">{item.unresolved_reason}</p>}
+      <CitedSources sources={item.cited_sources} />
+    </div>)}
+  </div>;
   if (result.schema_version === "2.0-source-first") return <SourceFirstAnalysis result={result} />;
   return (
     <div className="mt-5 max-w-3xl space-y-6 font-sans leading-relaxed text-slate-900 dark:text-green-200">
@@ -168,37 +177,74 @@ function historyDate(value: string): string {
   }).format(new Date(value));
 }
 
+import { useAiGlossary, ReaderModeSwitch } from "./ai-glossary-context";
+import { subscribePersonalizedChanges } from "@/lib/personalized-scope";
+
+function ControlsSlot({ targetId, children }: { targetId?: string; children: ReactNode }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => { setTarget(targetId ? document.getElementById(targetId) : null); }, [targetId]);
+  if (!targetId) return <>{children}</>;
+  return target ? createPortal(children, target) : null;
+}
+
 export default function BillEnhancementPanel({
   billId,
   jurisdiction,
+  controlsTargetId,
 }: {
   billId: number;
   jurisdiction: string;
+  controlsTargetId?: string;
 }) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [featureAvailable, setFeatureAvailable] = useState<boolean | null>(null);
   const [estimate, setEstimate] = useState<BillEnhancementEstimate | null>(null);
   const [enhancement, setEnhancement] = useState<BillEnhancement | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<BillEnhancement | null>(null);
   const [history, setHistory] = useState<BillEnhancementsPage | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const generation = useRef(0);
+  useEffect(() => subscribePersonalizedChanges(change => {
+    if (change.kind === "revalidate") return;
+    generation.current += 1;
+    setSignedIn(null);
+    setEnhancement(null);
+    setSessionRevision(value => value + 1);
+  }), []);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<"create" | "retry" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isFederal = jurisdiction.trim().toLowerCase() === "federal";
+  const { setEnhancement: publishGlossary } = useAiGlossary();
+  useEffect(() => {
+    if (!signedIn || !featureAvailable) publishGlossary(null);
+    else if (enhancement?.active_reader !== undefined) publishGlossary(enhancement.active_reader);
+    else if (enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale)) publishGlossary(enhancement);
+  }, [enhancement, signedIn, featureAvailable, publishGlossary]);
+  useEffect(() => {
+    publishGlossary(null);
+    return () => publishGlossary(null);
+  }, [billId, publishGlossary]);
 
   useEffect(() => {
     let active = true;
+    generation.current += 1;
     setSignedIn(null);
     setFeatureAvailable(null);
     setEstimate(null);
     setEnhancement(null);
+    setSelectedHistory(null);
     setHistory(null);
     setHistoryPage(1);
     setError(null);
     setConfirming(null);
     setLoading(false);
+    setPreparing(false);
+    setSubmitting(false);
 
     async function load() {
       if (Number.isNaN(billId)) {
@@ -220,12 +266,8 @@ export default function BillEnhancementPanel({
 
       setLoading(true);
       try {
-        const [nextEstimate, latest] = await Promise.all([
-          getBillEnhancementEstimate(billId),
-          getLatestBillEnhancement(billId),
-        ]);
+        const latest = await getLatestBillEnhancement(billId);
         if (!active) return;
-        setEstimate(nextEstimate);
         setEnhancement(latest);
       } catch (reason) {
         if (!active) return;
@@ -239,8 +281,30 @@ export default function BillEnhancementPanel({
     void load();
     return () => {
       active = false;
+      generation.current += 1;
     };
-  }, [billId, isFederal]);
+  }, [billId, isFederal, sessionRevision]);
+
+  async function prepareEnhancement() {
+    const owner = generation.current;
+    setPreparing(true);
+    setError(null);
+    try {
+      const nextEstimate = await getBillEnhancementEstimate(billId);
+      if (owner !== generation.current) return;
+      setEstimate(nextEstimate);
+      if (nextEstimate.can_enhance) {
+        const sameRequest = enhancement?.request_fingerprint === nextEstimate.request_fingerprint;
+        setConfirming(sameRequest && enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
+      }
+    } catch (reason) {
+      if (owner !== generation.current) return;
+      if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
+      else setError(reason instanceof Error ? reason.message : "Could not prepare AI enhancement.");
+    } finally {
+      if (owner === generation.current) setPreparing(false);
+    }
+  }
 
   useEffect(() => {
     if (signedIn !== true || featureAvailable !== true || !isFederal) return;
@@ -308,17 +372,21 @@ export default function BillEnhancementPanel({
   }, [billId, enhancementId, pollDelaySeconds, shouldPoll]);
 
   async function selectHistoryItem(item: BillEnhancement) {
+    const owner = generation.current;
     setError(null);
     try {
       const selected = await getBillEnhancement(billId, item.id);
-      setEnhancement(selected);
+      if (owner !== generation.current) return;
+      setSelectedHistory(selected);
     } catch (reason) {
+      if (owner !== generation.current) return;
       if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
       else setError(reason instanceof Error ? reason.message : "Could not load the selected enhancement.");
     }
   }
 
   async function submitEnhancement() {
+    const owner = generation.current;
     if (!estimate || !confirming) return;
     const confirmation = confirmationFromEstimate(estimate);
     if (!confirmation || !enhancement && confirming === "retry") return;
@@ -328,6 +396,7 @@ export default function BillEnhancementPanel({
       const updated = confirming === "retry" && enhancement
         ? await retryBillEnhancement(billId, enhancement.id, confirmation)
         : await createBillEnhancement(billId, confirmation);
+      if (owner !== generation.current) return;
       setEnhancement(updated);
       setHistoryPage(1);
       setHistory((current) => current ? {
@@ -339,6 +408,7 @@ export default function BillEnhancementPanel({
       } : current);
       setConfirming(null);
     } catch (reason) {
+      if (owner !== generation.current) return;
       const refreshableConflict = reason instanceof ApiError && reason.status === 409;
       if (refreshableConflict) {
         setConfirming(null);
@@ -347,10 +417,12 @@ export default function BillEnhancementPanel({
             getBillEnhancementEstimate(billId),
             getLatestBillEnhancement(billId),
           ]);
+          if (owner !== generation.current) return;
           setEstimate(nextEstimate);
           setEnhancement(latest);
           setError("The bill or credential changed. Review the refreshed estimate and confirm again.");
         } catch (refreshReason) {
+          if (owner !== generation.current) return;
           if (refreshReason instanceof ApiError && refreshReason.status === 401) setSignedIn(false);
           else setError(refreshReason instanceof Error ? refreshReason.message : "Could not refresh AI enhancement.");
         }
@@ -358,7 +430,7 @@ export default function BillEnhancementPanel({
         setError(reason instanceof Error ? reason.message : "Could not start AI enhancement.");
       }
     } finally {
-      setSubmitting(false);
+      if (owner === generation.current) setSubmitting(false);
     }
   }
 
@@ -373,51 +445,63 @@ export default function BillEnhancementPanel({
   }
   if (!signedIn) {
     return (
-      <section className="mb-6 border-l-4 border-amber-500 bg-white/70 p-4 dark:border-amber-400 dark:bg-green-950/20">
-        <h2 className="text-lg font-semibold text-slate-950 dark:text-green-300">AI enhancement</h2>
-        <p className="mt-2 text-sm text-slate-700 dark:text-green-600">Use your own provider key to request an optional source-cited explanation.</p>
-        <Link href="/login" className="mt-3 inline-block text-sm font-semibold text-blue-900 underline dark:text-green-400">
-          Log in to use AI enhancement
+      <ControlsSlot targetId={controlsTargetId}>
+        <Link href="/login" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-green-500 dark:text-black">
+          Enhance with AI
         </Link>
-      </section>
+      </ControlsSlot>
     );
   }
   if (loading) {
-    return <section className="mb-6 border-l-4 border-amber-500 p-4 text-sm">Loading private AI enhancement…</section>;
+    return <ControlsSlot targetId={controlsTargetId}><button type="button" disabled className="rounded-md border px-4 py-2 text-sm opacity-50">Loading AI status…</button></ControlsSlot>;
   }
   if (estimate && !estimate.feature_available) return null;
 
   const retryable = Boolean(enhancement?.latest_attempt?.retry_allowed);
   const isActive = enhancement && ["pending", "running"].includes(enhancement.status);
   const canStartNewIdentity = Boolean(enhancement?.stale);
+  const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
+    : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
+  const hasSavedReader = Boolean(activeReader?.result);
+  const failed = Boolean(enhancement && ["failed", "refused", "outcome_unknown"].includes(enhancement.status));
   return (
-    <section className="mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-950 dark:text-green-300">Your AI explanation</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-green-500">Only visible to you. Based on the cited bill text.</p>
-        </div>
-        {enhancement && enhancement.status !== "succeeded" && <span className="border border-slate-400 px-2 py-1 text-xs uppercase tracking-wide dark:border-green-800">{enhancement.status.replace("_", " ")}</span>}
-      </div>
+    <>
+      <ControlsSlot targetId={controlsTargetId}>
+        {hasSavedReader ? <ReaderModeSwitch /> : <button type="button"
+          disabled={preparing || Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
+          onClick={() => void prepareEnhancement()}
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
+          {preparing ? "Preparing AI estimate…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance with AI"}
+        </button>}
+        {failed && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
+          <p>AI enhancement did not complete. Your original analysis is unchanged.</p>
+          {enhancement?.latest_attempt?.failure_detail?.message && <p>{enhancement.latest_attempt.failure_detail.message}</p>}
+          <p>{retryable ? "You can retry after reviewing and confirming the API usage again." : "See AI metadata below for the failure details and any required settings changes."}</p>
+        </div>}
+        {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
+      </ControlsSlot>
+    <section aria-label="AI metadata" className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
+      <h2 className="text-lg font-semibold">AI metadata</h2>
 
       {estimate && !estimate.can_enhance && (
         <EnhancementUnavailable reason={estimate.unavailable_reason} />
       )}
-      {estimate?.can_enhance && enhancement && !isActive && (retryable || canStartNewIdentity) && (
-        <button type="button" onClick={() => setConfirming(retryable && !canStartNewIdentity ? "retry" : "create")} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
-          {canStartNewIdentity ? "Enhance current version" : "Retry AI enhancement"}
-        </button>
-      )}
-      {estimate?.can_enhance && !enhancement && (
-        <button type="button" onClick={() => setConfirming("create")} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
-          Enhance with AI
+      {hasSavedReader && enhancement && !isActive && (retryable || canStartNewIdentity) && (
+        <button type="button" disabled={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
+          {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : "Retry AI enhancement"}
         </button>
       )}
       {isActive && <p role="status" className="mt-4 text-sm text-slate-700 dark:text-green-500">The confirmed request is {enhancement.status}. This panel will update automatically.</p>}
       {enhancement?.result && (
         <>
           {enhancement.stale && <p className="mt-4 border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-300">This result is for an older bill source or execution version.</p>}
-          <EnhancementResult enhancement={enhancement} />
+          {enhancement.result.schema_version === "1.4"
+            ? <p className="mt-3 text-sm">Matching explanations appear directly in the bill page.</p>
+            : <details className="mt-3 text-sm">
+              <summary className="cursor-pointer underline">View saved analysis</summary>
+              <p className="mt-2">Archived report. Use the reading-version buttons above to switch the bill page.</p>
+              <EnhancementResult enhancement={enhancement} />
+            </details>}
           <p className="mt-5 text-xs leading-5 text-slate-600 dark:text-green-600">{enhancement.disclaimer}</p>
           <details className="mt-3 text-xs text-slate-600 dark:text-green-500">
             <summary className="cursor-pointer">Generation details</summary>
@@ -432,7 +516,11 @@ export default function BillEnhancementPanel({
         </p>
         {enhancement.latest_attempt?.failure_detail ? (
           <div className="mt-2 text-sm text-slate-700 dark:text-green-500">
-            <p>{enhancement.latest_attempt.failure_detail.message}</p>
+            {enhancement.latest_attempt.failure_detail.stage && <p className="mt-1 text-xs">Stage: {enhancement.latest_attempt.failure_detail.stage === "main_analysis"
+              ? "Bill analysis"
+              : enhancement.latest_attempt.failure_detail.batch_index != null
+                ? `${enhancement.latest_attempt.failure_detail.stage === "reader_batch" ? "Reader" : "Glossary"} batch ${enhancement.latest_attempt.failure_detail.batch_index + 1}`
+                : "Explanation processing"}</p>}
             <p className="mt-1 text-xs">Field: <code className="break-all">{enhancement.latest_attempt.failure_detail.path}</code></p>
           </div>
         ) : enhancement.latest_attempt?.failure_category === "invalid_output" ? (
@@ -442,18 +530,25 @@ export default function BillEnhancementPanel({
       )}
 
       {confirming && estimate && (
+        <ControlsSlot targetId={controlsTargetId}>
         <div role="dialog" aria-modal="true" aria-label="Confirm AI enhancement" className="mt-5 border border-amber-500 bg-amber-50 p-4 text-sm text-slate-900 dark:bg-amber-950/20 dark:text-green-300">
           <h3 className="font-semibold">Confirm AI enhancement</h3>
           {confirming === "retry" && enhancement?.status === "outcome_unknown" && <p className="mt-2 font-semibold text-amber-900 dark:text-amber-300">The previous request may have completed and another request may duplicate provider usage.</p>}
           <ul className="mt-3 space-y-1">
             <li>{(estimate.estimated_input_tokens ?? 0).toLocaleString()} estimated input tokens</li>
             <li>{(estimate.aggregate_budget?.maximum_output ?? estimate.max_output_tokens ?? 0).toLocaleString()} maximum output tokens, including reasoning</li>
-            {estimate.aggregate_budget && <li>Up to {estimate.aggregate_budget.maximum_calls} calls, including any repair and overview</li>}
+            {estimate.aggregate_budget && <li>Up to {estimate.aggregate_budget.maximum_calls} calls{estimate.reader_coverage ? ", including the summary and item explanations" : ", including glossary batches and any repair or overview"}</li>}
+            {estimate.reader_coverage && <li>{estimate.reader_coverage.selected_count} of {estimate.reader_coverage.total_count} items eligible for in-place enhancement in {estimate.reader_coverage.batch_count} batches. {estimate.reader_coverage.unavailable_count} items keep their original explanations because complete source context is unavailable or exceeds the request limit.</li>}
+            {estimate.glossary_coverage && <li>All {estimate.glossary_coverage.eligible_definitions} eligible definitions in {estimate.glossary_coverage.batch_count} glossary batches</li>}
             <li>{estimate.provider} · {estimate.requested_model} · reasoning {estimate.reasoning_effort}</li>
             <li>Credential revision {estimate.credential_revision}</li>
           </ul>
+          {!!estimate.reader_coverage?.unavailable.length && <details className="mt-3">
+            <summary>Items that will keep their original explanation</summary>
+            <ul className="mt-2 space-y-1">{estimate.reader_coverage.unavailable.map((item) => <li key={item.target_id}>{item.target_id}: {item.reason.replaceAll("_", " ")}</li>)}</ul>
+          </details>}
           {estimate.coverage_notice && <p className="mt-3">{estimate.coverage_notice}</p>}
-          <p className="mt-3 font-semibold text-amber-900 dark:text-amber-300">{estimate.aggregate_budget ? "Your provider may charge your account. These are total limits across all generation, repair, and overview calls; unused calls are not sent." : "Your provider may charge your account for this request and up to one additional citation-repair request. The token limits above apply to each call; usage includes both calls."}</p>
+          <p className="mt-3 font-semibold text-amber-900 dark:text-amber-300">{estimate.aggregate_budget ? "Your provider may charge your account. These are total limits across all planned calls; unused calls are not sent." : "Your provider may charge your account for this request and up to one additional citation-repair request. The token limits above apply to each call; usage includes both calls."}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={submitEnhancement} disabled={submitting} className="bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50 dark:bg-green-500 dark:text-black">
               {submitting ? "Starting…" : "Confirm and enhance"}
@@ -461,6 +556,7 @@ export default function BillEnhancementPanel({
             <button type="button" onClick={() => setConfirming(null)} disabled={submitting} className="border border-slate-600 px-4 py-2 font-semibold disabled:opacity-50">Cancel</button>
           </div>
         </div>
+        </ControlsSlot>
       )}
       {enhancement?.attempts && enhancement.attempts.length > 0 && (
         <details className="mt-5 border-t border-slate-300 pt-4 text-xs dark:border-green-900/70">
@@ -510,7 +606,12 @@ export default function BillEnhancementPanel({
           )}
         </details>
       )}
-      {error && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-400">{error}</p>}
+      {signedIn && selectedHistory && <section className="mt-4 border-t pt-4" aria-label="Selected historical analysis">
+        <button type="button" className="underline" onClick={() => setSelectedHistory(null)}>Close historical analysis</button>
+        <p className="mt-2 text-sm">Historical analysis only; this does not change the bill page.</p>
+        <EnhancementResult enhancement={selectedHistory} />
+      </section>}
     </section>
+    </>
   );
 }

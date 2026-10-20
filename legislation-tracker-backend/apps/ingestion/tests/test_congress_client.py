@@ -337,7 +337,16 @@ def test_house_vote_detail_paginates_all_member_positions(monkeypatch):
                     "voteCast": "Nay",
                 }
             ]
-        return {"houseRollCallVoteMemberVotes": {"results": results}}
+        return {
+            "houseRollCallVoteMemberVotes": {"results": results},
+            "pagination": {
+                "next": (
+                    "https://api.congress.gov/v3/house-vote/119/1/42/members?offset=250&limit=250"
+                    if params.get("offset") == 0
+                    else None
+                )
+            },
+        }
 
     monkeypatch.setattr(congress_client, "_request", fake_request)
     monkeypatch.setattr(congress_client, "_throttle", lambda: None)
@@ -350,6 +359,48 @@ def test_house_vote_detail_paginates_all_member_positions(monkeypatch):
     ]
     assert len(vote["members"]) == 251
     assert vote["members"][-1]["position"] == "no"
+
+
+@pytest.mark.parametrize("count", [250, 432])
+def test_house_vote_members_without_pagination_are_complete(monkeypatch, count):
+    calls = []
+    rows = [{"bioguideID": f"A{i:06d}", "voteCast": "Yea"} for i in range(count)]
+
+    def request(method, path, params=None):
+        if not path.endswith("/members"):
+            return {"houseRollCallVote": {"votePartyTotal": []}}
+        calls.append(params)
+        assert len(calls) == 1, "unpaginated response fetched again"
+        return {"houseRollCallVoteMemberVotes": {"results": rows}}
+
+    monkeypatch.setattr(congress_client, "_request", request)
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+    vote = congress_client.vote_detail(119, "house", 167, session_number=1)
+    assert len(vote["members"]) == count
+    assert len({member["bioguideId"] for member in vote["members"]}) == count
+
+
+def test_house_vote_repeated_paginated_members_fail_without_publishing(monkeypatch):
+    calls = []
+
+    def request(method, path, params=None):
+        if not path.endswith("/members"):
+            return {"houseRollCallVote": {"votePartyTotal": []}}
+        calls.append(params)
+        assert len(calls) <= 2, "repeated member page looped"
+        return {
+            "houseRollCallVoteMemberVotes": {
+                "results": [{"bioguideID": "A000001", "voteCast": "Yea"}]
+            },
+            "pagination": {
+                "next": f"https://api.congress.gov/v3/house-vote/119/1/42/members?offset={len(calls)}"
+            },
+        }
+
+    monkeypatch.setattr(congress_client, "_request", request)
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+    with pytest.raises(congress_client.CongressAPIError, match="repeated"):
+        congress_client.vote_detail(119, "house", 42, session_number=1)
 
 
 def test_senate_vote_detail_uses_official_senate_xml_with_bioguide_ids(monkeypatch):
@@ -506,6 +557,27 @@ def test_senate_xml_reader_rejects_external_entities_and_oversized_payloads(
     )
     with pytest.raises(congress_client.CongressAPIError, match="byte limit"):
         congress_client._request_senate_xml("https://source.test/large.xml")
+
+
+def test_bill_versions_are_chronological_not_provider_array_order(monkeypatch):
+    monkeypatch.setattr(
+        congress_client,
+        "_request",
+        lambda *a, **k: {
+            "textVersions": [
+                {"type": "Referred in Senate", "date": "2026-03-05T00:00:00Z"},
+                {"type": "Engrossed in House", "date": "2026-03-05T00:00:00Z"},
+                {"type": "Introduced in House", "date": "2026-03-02T00:00:00Z"},
+            ]
+        },
+    )
+    monkeypatch.setattr(congress_client, "_throttle", lambda: None)
+    versions = congress_client.bill_text_list(119, "hr", "7744")
+    assert [(v["version_label"], v["source_order"]) for v in versions] == [
+        ("Introduced in House", 1),
+        ("Engrossed in House", 2),
+        ("Referred in Senate", 3),
+    ]
 
 
 def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(

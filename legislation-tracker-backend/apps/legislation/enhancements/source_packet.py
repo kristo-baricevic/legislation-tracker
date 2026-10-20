@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from typing import Any
 
 from django.conf import settings
@@ -120,7 +121,7 @@ def _within_limits(request_bytes: bytes) -> bool:
     )
 
 
-def select_document_sources(bill, text: str, version_label: str):
+def select_document_sources(bill, text: str, version_label: str, *, glossary_targets=()):
     """Select complete sections, never a prefix of an operative condition group."""
     from .source_sections import document_groups, section_coverage
 
@@ -145,6 +146,8 @@ def select_document_sources(bill, text: str, version_label: str):
                 for source in group["sources"]
             ]
         )
+        from .glossary import attach_targets
+        attach_targets(sources, glossary_targets)
         coverage = section_coverage(groups, selected, sources)
         envelope = _request_envelope(
             bill, sources, truncated=len(selected) != len(groups), coverage=coverage
@@ -195,9 +198,25 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
     if getattr(settings, "LLM_SOURCE_FIRST_ENABLED", False):
         from .source_first_preflight import build_source_first_preflight
         return build_source_first_preflight(document, text, reuse_result=reuse_result)
+    from .reader_targets import reader_contract
+    if reader_contract(document):
+        from .reader_batches import build_reader_preflight
+        return build_reader_preflight(document)
+    from .glossary import definition_targets, build_glossary_batches
     numbered, request_envelope, request_bytes = select_document_sources(
         bill, text, document.version_label
     )
+    batches = build_glossary_batches(
+        bill, text, document.version_label, definition_targets(document),
+        source_ref_start=len(numbered) + 1,
+    )
+    main_bytes = request_bytes
+    if batches:
+        # Fingerprint every paid request, including its limits and instructions.
+        request_bytes = canonical_json_bytes({
+            "main": request_envelope,
+            "glossary_batches": [batch["envelope"] for batch in batches],
+        })
     source_identity = {
         "document_id": document.id,
         "document_content_hash": _text_hash(text),
@@ -207,6 +226,7 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
     truncated = request_envelope["source_packet"]["truncated"]
 
     source_snapshot = [_snapshot(source) for source in numbered]
+    source_snapshot += [source for batch in batches for source in batch["sources"]]
     source_fingerprint = hashlib.sha256(
         canonical_json_bytes(
             {
@@ -225,7 +245,17 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
         "coverage": coverage,
         "truncated": truncated,
     }
-    return EnhancementPreflight(
+    if batches:
+        manifest["glossary"] = {
+            "eligible_definitions": sum(len(batch["sources"]) for batch in batches),
+            "batch_count": len(batches),
+        }
+        manifest["budget"] = {
+            "maximum_calls": 2 + len(batches),  # Main generation + optional citation repair.
+            "maximum_input": 2 * len(main_bytes) + sum(len(batch["bytes"]) for batch in batches),
+            "maximum_output": (2 + len(batches)) * settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+        }
+    preflight = EnhancementPreflight(
         provider=settings.LLM_ENHANCEMENT_PROVIDER,
         requested_model=settings.LLM_ENHANCEMENT_MODEL,
         reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
@@ -238,6 +268,12 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
         source_snapshot=source_snapshot,
         request_envelope=request_envelope,
         request_bytes=request_bytes,
-        estimated_input_tokens=estimate_input_tokens(request_bytes),
+        estimated_input_tokens=manifest.get("budget", {}).get("maximum_input", estimate_input_tokens(request_bytes)),
         truncated=truncated,
     )
+    return replace(preflight, glossary_batches=tuple(
+        replace(preflight, request_envelope=batch["envelope"], request_bytes=batch["bytes"],
+                source_snapshot=batch["sources"], estimated_input_tokens=len(batch["bytes"]),
+                truncated=False)
+        for batch in batches
+    ))

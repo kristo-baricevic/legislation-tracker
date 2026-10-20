@@ -43,7 +43,8 @@ def _pending_attempt(owner, bill):
 
 def _valid_output(source_ref):
     return {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
+        "glossary": [],
         "overview": [
             {
                 "text": "The bill requires a report.",
@@ -61,6 +62,115 @@ def _valid_output(source_ref):
         "funding_and_timing": [],
         "uncertain_language": [],
     }
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("mode", ["success", "omission", "revoked", "timeout", "lease_lost", "source_changed", "bad_quote", "invalid_json"])
+def test_worker_glossary_batches_are_complete_accounted_and_fenced(
+    enhancement_owner, source_bill, enhancement_settings, monkeypatch, mode
+):
+    from apps.legislation.models import BillContract, EvidenceSpan
+    from apps.legislation.enhancements.source_packet import build_enhancement_preflight
+    document = source_bill.documents.get()
+    text = document.extracted_text
+    definitions, spans = [], []
+    for i in range(24):
+        passage = f"\nSEC. {i + 3}. Term {i} means a worker except seasonal workers."
+        start = len(text)
+        text += passage
+        definitions.append({"id": f"d{i}", "term": f"Term {i}", "definition": "a worker except seasonal workers"})
+        spans.append((start, len(text), passage))
+    document.extracted_text = text
+    document.save()
+    contract = BillContract.objects.create(bill=source_bill, document=document, contract_hash="glossary",
+                                          contract_json={"definitions": definitions})
+    source_bill.latest_contract = contract
+    source_bill.save()
+    for i, (start, end, quote) in enumerate(spans):
+        EvidenceSpan.objects.create(bill=source_bill, document=document, contract=contract,
+                                    field_path=f"definitions[{i}].definition", start_char=start, end_char=end,
+                                    quoted_text=quote)
+    received = []
+
+    class Provider:
+        def enhance_bill(self, *, request, **kwargs):
+            received.append(request)
+            if len(received) == 1:
+                return ProviderResult(_valid_output("src_0001"), ProviderUsage(10, 5, 15), "main", "test")
+            attempt.refresh_from_db()
+            assert attempt.total_tokens == 15 * (len(received) - 1)
+            if mode == "timeout":
+                raise ProviderError("timeout", outcome_unknown=True)
+            if mode == "invalid_json":
+                raise ProviderError(
+                    "invalid_output", validation_code="provider_invalid_json",
+                    validation_detail={"parser": {"reason": "missing_comma", "position": 22,
+                                                 "text_length": 28}, "raw": "private"},
+                    usage=ProviderUsage(10, 5, 15), response_id="failed-batch",
+                )
+            result = _valid_output("src_0001")
+            result["overview"] = []
+            result["glossary"] = [
+                {"definition_id": target["definition_id"], "text": "A worker, excluding seasonal workers.",
+                 "source_refs": [source["source_ref"]],
+                 "source_quotes": [{"source_ref": source["source_ref"], "quote": source["quoted_text"]}]}
+                for source in request.source_snapshot for target in source["glossary_targets"]
+            ]
+            if mode == "omission":
+                result["glossary"].pop()
+            if mode == "bad_quote":
+                result["glossary"][0]["source_quotes"][0]["quote"] = "This quote is not in the bill."
+            if mode == "source_changed":
+                document.extracted_text += "\nChanged source."
+                document.save(update_fields=["extracted_text"])
+            if mode == "revoked":
+                LLMCredential.objects.filter(pk=attempt.credential_id).update(enabled=False)
+            if mode == "lease_lost":
+                BillEnhancementAttempt.objects.filter(pk=attempt.pk).update(status="outcome_unknown")
+            return ProviderResult(result, ProviderUsage(10, 5, 15), "batch", "test")
+
+    monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
+    with enhancement_settings:
+        preflight = build_enhancement_preflight(source_bill)
+        assert preflight.source_manifest["budget"]["maximum_calls"] == 8
+        assert preflight.estimated_input_tokens == preflight.source_manifest["budget"]["maximum_input"]
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        attempt.dispatch_token = "glossary-test"
+        attempt.save(update_fields=["dispatch_token"])
+        outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+        assert run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)["status"] == "not_claimed"
+    attempt.refresh_from_db()
+    attempt.enhancement.refresh_from_db()
+    if mode == "success":
+        assert outcome["status"] == "succeeded"
+        assert len(received) == 7
+        assert len(attempt.enhancement.result_json["glossary"]) == 24
+        assert attempt.total_tokens == 105
+    else:
+        assert outcome["status"] != "succeeded"
+        assert len(received) == 2
+        assert attempt.enhancement.result_json is None
+        if mode == "omission":
+            assert attempt.failure_detail["code"] == "glossary_coverage_incomplete"
+            assert attempt.total_tokens == 30
+            assert attempt.failure_detail["stage"] == "glossary_batch"
+            assert attempt.failure_detail["batch_index"] == 0
+            assert attempt.citation_resolution_json["completed_glossary_batches"] == 0
+        if mode == "bad_quote":
+            assert attempt.failure_detail["path"] == "/glossary/0/source_quotes/0/quote"
+            assert attempt.failure_detail["stage"] == "glossary_batch"
+        if mode == "timeout":
+            assert attempt.total_tokens is None
+        if mode == "invalid_json":
+            assert attempt.total_tokens == 30
+            assert attempt.provider_response_id == "failed-batch"
+            assert attempt.failure_detail["stage"] == "glossary_batch"
+            assert attempt.failure_detail["batch_index"] == 0
+            assert attempt.failure_detail["parser"]["reason"] == "missing_comma"
+            assert attempt.failure_detail["parser"]["position"] == 22
+            assert "private" not in str(attempt.failure_detail)
+            assert attempt.citation_resolution_json["completed_glossary_batches"] == 0
+            assert attempt.citation_resolution_json["total_glossary_batches"] == 6
 
 
 @pytest.mark.django_db(transaction=True)

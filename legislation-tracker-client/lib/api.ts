@@ -49,6 +49,7 @@ let bootstrappedCsrfToken: string | null = null;
 let refreshInFlight: { scope: PersonalizedScope; promise: Promise<boolean>; controller: AbortController } | null = null;
 const AUTH_REFRESH_LOCK = "legislation-tracker-auth-refresh";
 subscribePersonalizedChanges(change => {
+  if (change.kind === "revalidate") return;
   refreshInFlight?.controller.abort();
   refreshInFlight = null;
   if (change.kind !== "tracking") bootstrappedCsrfToken = null;
@@ -356,6 +357,8 @@ export interface SearchHighlight {
 
 export interface BillDocumentItem {
   id: number;
+  reader_summary?: string | null;
+  source_purpose?: string;
   version_label: string;
   source_order: number | null;
   is_active_version: boolean;
@@ -1358,12 +1361,37 @@ export interface EnhancementUncertainLanguage extends EnhancementAtomicItem {
 }
 
 export interface EnhancementResult {
-  schema_version: "1.1" | "1.2";
+  schema_version: "1.1" | "1.2" | "1.3";
+  glossary?: (EnhancementAtomicItem & { definition_id: string; contract_id: number; term: string; definition: string; source_quotes: {source_ref: string; quote: string}[] })[];
   overview: EnhancementAtomicItem[];
   key_impacts: EnhancementAtomicItem[];
   obligations: EnhancementObligation[];
   funding_and_timing: EnhancementFundingTiming[];
   uncertain_language: EnhancementUncertainLanguage[];
+}
+
+export interface ReaderEnhancementIdentity {
+  contract_id: number;
+  contract_hash: string;
+  document_id: number;
+  document_content_hash: string;
+}
+export interface ReaderExplanationItem extends ReaderEnhancementIdentity {
+  kind: "line_item" | "financial_item" | "definition";
+  item_id: string;
+  target_id: string;
+  original_text: string;
+  status: "explained" | "unresolved";
+  text: string | null;
+  unresolved_reason: string | null;
+  source_quotes: { source_ref: string; quote: string }[];
+  cited_sources: EnhancementCitedSource[];
+}
+export interface ReaderEnhancementResult {
+  schema_version: "1.4";
+  identity: ReaderEnhancementIdentity;
+  summary: { text: string; cited_sources: EnhancementCitedSource[] }[];
+  explanations: ReaderExplanationItem[];
 }
 
 export type AnalysisCondition = { operator: "leaf"; text: string; evidence_ids: string[] }
@@ -1396,7 +1424,7 @@ export interface EnhancementAttempt {
   usage: EnhancementUsage;
   resolved_model: string | null;
   failure_category: string | null;
-  failure_detail?: { code: string; message: string; path: string } | null;
+  failure_detail?: { code: string; message: string; path: string; stage?: "main_analysis" | "glossary_batch" | "reader_batch"; batch_index?: number } | null;
   retry_allowed: boolean;
   started_at: string | null;
   completed_at: string | null;
@@ -1431,15 +1459,18 @@ export interface BillEnhancement {
   updated_at: string;
   completed_at: string | null;
   latest_attempt: EnhancementAttempt | null;
-  result?: EnhancementResult | SourceFirstResult | null;
+  result?: EnhancementResult | SourceFirstResult | ReaderEnhancementResult | null;
   published_attempt_id?: number | null;
   result_completeness?: "complete" | "partial" | "none";
   attempts?: EnhancementAttempt[];
   poll_after_seconds?: number | null;
   stale?: boolean;
+  source_compatible?: boolean;
+  active_reader?: BillEnhancement | null;
 }
 
 export interface BillEnhancementEstimate {
+  reader_coverage?: { total_count: number; selected_count: number; unavailable_count: number; batch_count: number; unavailable: { target_id: string; reason: string }[] } | null;
   feature_available: boolean;
   can_enhance: boolean;
   unavailable_reason: string | null;
@@ -1456,6 +1487,7 @@ export interface BillEnhancementEstimate {
   estimated_input_tokens?: number;
   max_output_tokens?: number;
   aggregate_budget?: { maximum_calls: number; maximum_input: number; maximum_output: number } | null;
+  glossary_coverage?: { eligible_definitions: number; batch_count: number } | null;
   max_output_includes_reasoning?: boolean;
   truncated?: boolean;
   coverage_notice?: string | null;

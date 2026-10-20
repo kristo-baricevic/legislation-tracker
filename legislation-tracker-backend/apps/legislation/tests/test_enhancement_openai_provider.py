@@ -26,6 +26,44 @@ class FakeResponses:
         return self.result
 
 
+def test_reader_uses_confirmed_per_request_output_budget():
+    response = _completed_response()
+    response.output_text = json.dumps({'schema_version': '1.4', 'summary': [], 'explanations': []})
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    request = _request()
+    request.output_schema_version = '1.4'
+    request.prompt_version = 'reader-2'
+    request.request_envelope['max_output_tokens'] = 20000
+    provider.enhance_bill(api_key='test', request=request, timeout_seconds=30)
+    assert responses.calls[0]['max_output_tokens'] == 20000
+
+
+@pytest.mark.parametrize("text,reason,position", [
+    ('{"secret": "private"\n "x": 1}', "missing_comma", 22),
+    ("", "empty_text", 0),
+    (None, "wrong_text_type", None),
+    ('{"x": "unfinished', "unterminated_string", 6),
+])
+def test_json_parser_diagnostics_preserve_location_not_content(text, reason, position):
+    from apps.legislation.enhancements.diagnostics import provider_validation_diagnostic
+    response = _completed_response()
+    response.output_text = text
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
+    with pytest.raises(ProviderError) as caught:
+        provider.enhance_bill(api_key="secret-key", request=_request(), timeout_seconds=30)
+    detail = provider_validation_diagnostic(caught.value)
+    assert detail["parser"]["reason"] == reason
+    assert detail["parser"].get("position") == position
+    assert detail["parser"]["text_length"] == (len(text) if isinstance(text, str) else 0)
+    assert detail["parser"]["output_text_parts"] == 0
+    assert caught.value.usage.total_tokens == 165
+    assert "private" not in json.dumps(detail)
+    assert "secret-key" not in json.dumps(detail)
+
+
 def test_source_first_failure_reports_safe_schema_location():
     response = _completed_response()
     response.output_text = json.dumps(
@@ -234,6 +272,39 @@ def _completed_response():
     )
 
 
+def test_provider_derives_reference_ids_from_the_single_quoted_citation_field():
+    from .test_enhancement_glossary import output, packet
+    from apps.legislation.enhancements.schema import validate_enhancement_output
+    wire = output()
+    del wire["glossary"][0]["source_refs"]
+    response = _completed_response()
+    response.output_text = json.dumps(wire)
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    validated = validate_enhancement_output(result.output, packet())
+    assert validated["glossary"][0]["source_refs"] == ["src_0001"]
+    schema = responses.calls[0]["text"]["format"]["schema"]
+    assert "source_refs" not in schema["properties"]["glossary"]["items"]["properties"]
+    assert wire["glossary"][0]["source_quotes"] == result.output["glossary"][0]["source_quotes"]
+
+
+def test_deriving_reference_ids_does_not_accept_a_wrong_source_quote():
+    from .test_enhancement_glossary import output, packet
+    from apps.legislation.enhancements.schema import validate_enhancement_output
+    from jsonschema import ValidationError
+    wire = output()
+    del wire["glossary"][0]["source_refs"]
+    wire["glossary"][0]["source_quotes"][0]["quote"] = "Secretary means the Secretary of Labor."
+    response = _completed_response()
+    response.output_text = json.dumps(wire)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
+    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    with pytest.raises(ValidationError) as error:
+        validate_enhancement_output(result.output, packet())
+    assert error.value.validator == "glossary_definition_unsupported"
+
+
 def test_enhancement_uses_one_bounded_non_persistent_structured_request():
     responses = FakeResponses(result=_completed_response())
     factory = FakeClientFactory(responses)
@@ -274,12 +345,8 @@ def test_enhancement_uses_one_bounded_non_persistent_structured_request():
         ]["type"]
         == "string"
     )
-    assert (
-        provider_schema["properties"]["overview"]["items"]["properties"]["source_refs"][
-            "maxItems"
-        ]
-        == 8
-    )
+    assert "source_refs" not in provider_schema["properties"]["overview"]["items"]["properties"]
+    assert "source_quotes" in provider_schema["properties"]["overview"]["items"]["required"]
     assert (
         OUTPUT_SCHEMA["properties"]["overview"]["items"]["properties"]["source_refs"][
             "uniqueItems"
@@ -515,3 +582,27 @@ def test_malformed_completed_output_is_invalid_output():
     assert captured.value.category == "invalid_output"
     assert captured.value.response_id == "resp_test_123"
     assert captured.value.resolved_model == "gpt-5.6-luna-2026-08-01"
+
+
+def test_parses_explicit_final_answer_without_concatenating_commentary():
+    response = _completed_response()
+    final_text = response.output_text
+    response.output = [SimpleNamespace(type="message", phase=phase, content=[
+        SimpleNamespace(type="output_text", text=text)
+    ]) for phase, text in [("commentary", '{"draft":true}'), ("final_answer", final_text)]]
+    response.output_text = '{"draft":true}' + final_text
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
+    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    assert result.output == json.loads(final_text)
+
+
+def test_does_not_guess_between_multiple_final_json_objects():
+    response = _completed_response()
+    response.output = [SimpleNamespace(type="message", phase="final_answer", content=[
+        SimpleNamespace(type="output_text", text=response.output_text)
+    ])] * 2
+    response.output_text *= 2
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
+    with pytest.raises(ProviderError) as caught:
+        provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    assert caught.value.category == "invalid_output"

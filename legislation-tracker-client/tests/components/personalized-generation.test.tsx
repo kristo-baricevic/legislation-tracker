@@ -8,6 +8,14 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("personalized request generations", () => {
+  it("keeps an in-flight private request valid when focus returns without an account change", async () => {
+    let finish!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+    const pending = authGet("/api/private/");
+    window.dispatchEvent(new Event("focus"));
+    finish(Response.json({ ok: true }));
+    await expect(pending).resolves.toEqual({ ok: true });
+  });
   it("invalidates a captured scope after a successful follow", async () => {
     document.cookie = "csrftoken=test";
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ id: 1 })));

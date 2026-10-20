@@ -197,7 +197,24 @@ def download_url(
         stream=True,
     )
     try:
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            parsed = urlparse(url)
+            match = re.fullmatch(r'/([0-9]+)/bills/([a-z]+[0-9]+)/BILLS-\1\2([a-z]+)\.xml', parsed.path)
+            if getattr(response, 'status_code', None) != 429 or parsed.hostname != 'www.congress.gov' or not match:
+                raise
+            # GovInfo distributes the exact same package/version. Never silently
+            # substitute a different text version or an arbitrary mirror host.
+            package = f'BILLS-{match[1]}{match[2]}{match[3]}'
+            mirror = f'https://www.govinfo.gov/content/pkg/{package}/xml/{package}.xml'
+            response.close()
+            try:
+                return download_url(mirror, timeout, max_bytes=max_bytes, spool_max_bytes=spool_max_bytes)
+            except requests.RequestException:
+                # Preserve the original throttle (including Retry-After) if the
+                # mirror is temporarily unavailable or does not have this text.
+                response.raise_for_status()
         declared_length = response.headers.get("Content-Length")
         if declared_length not in (None, ""):
             try:
@@ -450,6 +467,49 @@ def _read_document_bytes(data: bytes | BinaryIO) -> bytes:
     payload = data.read()
     data.seek(0)
     return payload
+
+
+def extract_document_purpose(data: bytes | BinaryIO, content_type, source_url) -> str:
+    """Keep the original XML's version-specific purpose, outside citation text.
+
+    Only the document form is authoritative here. Never use a short title or a
+    similarly named element inside quoted/amended statutory text.
+    """
+    kind = (content_type or "").lower()
+    extension = guess_extension(source_url or "", content_type)
+    is_xml = "xml" in kind or extension == ".xml"
+    if not is_xml and not ("html" in kind or extension in (".html", ".htm", ".txt") or "text/plain" in kind):
+        return ""
+    from defusedxml import ElementTree as SafeElementTree
+    from defusedxml.common import DefusedXmlException
+    position = None if isinstance(data, bytes) else data.tell()
+    try:
+        payload = _read_document_bytes(data)
+        if not is_xml:
+            text = unescape(_MARKUP_TAG_RE.sub("", payload.decode("utf-8", errors="replace")))
+            text = re.sub(r"<<NOTE:.*?>>", "", text, flags=re.S)
+            enacting = re.search(r"\bBe\s+it\s+enacted\s+by\b", text, re.I)
+            if not enacting:
+                return ""
+            header = text[:enacting.start()]
+            purpose = re.search(
+                r"^[ \t]*(?:A BILL|An Act|Joint Resolution)[ \t]*$\s*(.+?)\s*\Z",
+                header, re.M | re.S | re.I,
+            )
+            return re.sub(r"\s+", " ", purpose[1]).strip() if purpose else ""
+        root = SafeElementTree.fromstring(payload)
+        for form in root:
+            if form.tag.split("}")[-1] != "form":
+                continue
+            for element in form:
+                if element.tag.split("}")[-1] == "official-title":
+                    return re.sub(r"\s+", " ", "".join(element.itertext())).strip()
+    except (ElementTree.ParseError, DefusedXmlException):
+        return ""
+    finally:
+        if position is not None:
+            data.seek(position)
+    return ""
 
 
 def extract_document_text(

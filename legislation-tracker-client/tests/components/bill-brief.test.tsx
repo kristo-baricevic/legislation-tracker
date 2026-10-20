@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BillBrief } from "@/app/bills/[id]/bill-brief";
 import { getContractEvidence, getDefinitionItems, getOfficialSummary, getReaderItems, getTimelineItems } from "@/lib/api";
 import type { BillDetailSummary } from "@/lib/api";
-import type { BillContractSummary, LegalNlpLineItem } from "@/lib/contracts";
+import type { BillContractSummary, LegalNlpLineItem, LegalNlpDefinitionItem } from "@/lib/contracts";
+import hr7583Definitions from "../fixtures/hr7583-definitions.json";
 
 vi.mock("@/lib/api", () => ({
   getApiBase: () => "http://localhost:8000",
@@ -76,6 +77,39 @@ function line(number: number): LegalNlpLineItem {
 }
 
 describe("BillBrief", () => {
+  it("does not publish a partial glossary count when a later page fails", async () => {
+    const user = userEvent.setup();
+    const terms = hr7583Definitions as LegalNlpDefinitionItem[];
+    let fail = true;
+    vi.mocked(getDefinitionItems).mockImplementation(async (_id, params) => {
+      if (params?.page === 2 && fail) throw new Error("offline");
+      return {count: 33, next: params?.page === 1 ? "?page=2" : null, previous: null,
+        results: params?.page === 1 ? terms.slice(0, 25) : terms.slice(25)};
+    });
+    render(<BillBrief bill={bill} contractSummary={{...contract, reader_stats: {...contract.reader_stats!, definition_item_count: 33}}} onShowAllFinancial={() => undefined}/>);
+    await user.click(screen.getByRole("button", {name: "Key terms"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load key terms");
+    expect(screen.queryAllByRole("term")).toHaveLength(0);
+    fail = false;
+    await user.click(screen.getByRole("button", {name: "Retry key terms"}));
+    expect(await screen.findByRole("button", {name: "Key terms (30)"})).toBeVisible();
+    expect(screen.getAllByRole("term")).toHaveLength(30);
+  });
+  it("loads all H.R. 7583 glossary pages before counting distinct meanings", async () => {
+    const user = userEvent.setup();
+    const terms = hr7583Definitions as LegalNlpDefinitionItem[];
+    vi.mocked(getDefinitionItems).mockImplementation(async (_id, params) => ({
+      count: 33, next: params?.page === 1 ? "?page=2" : null, previous: null,
+      results: params?.page === 1 ? terms.slice(0, 25) : terms.slice(25),
+    }));
+    render(<BillBrief bill={bill} contractSummary={{...contract, reader_stats: {...contract.reader_stats!, definition_item_count: 33}}} onShowAllFinancial={() => undefined}/>);
+    await user.click(screen.getByRole("button", {name: "Key terms"}));
+    expect(await screen.findByRole("button", {name: "Key terms (30)"})).toBeVisible();
+    expect(screen.getAllByRole("term")).toHaveLength(30);
+    expect(screen.getAllByText("Commission", {exact: true})).toHaveLength(1);
+    expect(screen.getAllByText("worker", {exact: true})).toHaveLength(3);
+    expect(screen.getByText("A federal contract worth more than $500,000 to buy property or services, including construction.")).toBeVisible();
+  });
   it("shows linked and unlinked definitions in the complete key terms list", async () => {
     const user = userEvent.setup();
     const terms = Array.from({ length: 12 }, (_, index) => ({
@@ -89,13 +123,14 @@ describe("BillBrief", () => {
       return { count: results.length, next: null, previous: null, results };
     });
     render(<BillBrief bill={bill} contractSummary={{ ...contract, reader_stats: { ...contract.reader_stats!, definition_item_count: 12 } }} onShowAllFinancial={() => undefined} />);
-    await user.click(screen.getByRole("button", { name: "Key terms (12)" }));
+    await user.click(screen.getByRole("button", { name: "Key terms" }));
     expect(await screen.findAllByRole("term")).toHaveLength(12);
     expect(screen.getByText("Term 12", { exact: true })).toBeVisible();
-    expect(screen.getByText("Term 12 means its stated definition.")).toBeVisible();
-    expect(screen.getAllByText("Its stated definition.")[0]).not.toBeVisible();
-    await user.click(screen.getAllByText("Legal definition and source")[0]);
+    expect(screen.getByRole("button", {name: "Key terms (12)"})).toBeVisible();
     expect(screen.getAllByText("Its stated definition.")[0]).toBeVisible();
+    expect(screen.getAllByText("Its stated definition")[0]).not.toBeVisible();
+    await user.click(screen.getAllByText("View legal definition")[0]);
+    expect(screen.getAllByText("Its stated definition")[0]).toBeVisible();
   });
 
   it("shows a cited non-AI synopsis when there is no official summary", async () => {
@@ -160,8 +195,7 @@ describe("BillBrief", () => {
     expect(screen.getByText("Previously stored summary")).toBeVisible();
   });
 
-  it("keeps detailed extraction collapsed and excludes malformed reader fragments", async () => {
-    const user = userEvent.setup();
+  it("shows readable provisions immediately without duplicate actor and action fields", async () => {
     const malformed = {
       ...line(1),
       display_text: "Requires Allowable cost adjustments.--The Secretary to -(A) <<NOTE: Hawaii.",
@@ -172,39 +206,40 @@ describe("BillBrief", () => {
       count: 2,
       next: null,
       previous: null,
-      results: [malformed, line(2)],
+      results: [malformed, { ...line(2), effect: "Only rural hospitals qualify." }],
       section_supplements: [],
     });
 
     render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
 
-    expect(getReaderItems).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Requires action 2/)).not.toBeInTheDocument();
-    await user.click(screen.getByText("Browse detailed provisions"));
     expect(await screen.findByText("Requires action 2.")).toBeVisible();
+    expect(screen.queryByText("Who")).not.toBeInTheDocument();
+    expect(screen.queryByText("Action")).not.toBeInTheDocument();
+    expect(screen.getByText("Only rural hospitals qualify.")).toBeVisible();
     expect(screen.queryByText(/Hawaii/)).not.toBeInTheDocument();
   });
 
   it("paginates source-ordered reader items and keeps earlier pages when a later page fails", async () => {
     const user = userEvent.setup();
     vi.mocked(getReaderItems)
-      .mockResolvedValueOnce({ count: 61, next: "page-2", previous: null, results: Array.from({ length: 25 }, (_, index) => line(index + 1)), section_supplements: [] })
+      .mockResolvedValueOnce({ count: 13, next: "page-2", previous: null, results: Array.from({ length: 6 }, (_, index) => line(index + 1)), section_supplements: [] })
       .mockRejectedValueOnce(new Error("page unavailable"))
-      .mockResolvedValueOnce({ count: 61, next: "page-3", previous: "page-1", results: Array.from({ length: 25 }, (_, index) => line(index + 26)), section_supplements: [] })
-      .mockResolvedValueOnce({ count: 61, next: null, previous: "page-2", results: Array.from({ length: 11 }, (_, index) => line(index + 51)), section_supplements: [] });
+      .mockResolvedValueOnce({ count: 13, next: "page-3", previous: "page-1", results: Array.from({ length: 6 }, (_, index) => line(index + 7)), section_supplements: [] })
+      .mockResolvedValueOnce({ count: 13, next: null, previous: "page-2", results: [line(13)], section_supplements: [] });
 
     render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
-    await user.click(screen.getByText("Browse detailed provisions"));
-    expect(await screen.findByText("Requires action 25.")).toBeVisible();
-    expect(screen.queryByText("Requires action 26.")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show 25 more" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load more bill provisions");
+    expect(await screen.findByText("Requires action 6.")).toBeVisible();
+    expect(screen.queryByText("Requires action 7.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next provisions" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the bill breakdown");
     expect(screen.getByText("Requires action 1.")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Retry bill provisions" }));
-    expect(await screen.findByText("Requires action 50.")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Show 25 more" }));
-    expect(await screen.findByText("Requires action 61.")).toBeVisible();
-    await waitFor(() => expect(getReaderItems).toHaveBeenLastCalledWith(12, { page: 3, pageSize: 25 }));
+    expect(await screen.findByText("Requires action 12.")).toBeVisible();
+    expect(screen.queryByText("Requires action 1.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next provisions" }));
+    expect(await screen.findByText("Requires action 13.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Next provisions" })).toBeDisabled();
+    await waitFor(() => expect(getReaderItems).toHaveBeenLastCalledWith(12, { page: 3, pageSize: 6 }));
   });
 
   it("opens scoped money, timeline, and definition details for one provision", async () => {
@@ -281,7 +316,6 @@ describe("BillBrief", () => {
         onShowAllFinancial={onShowAllFinancial}
       />,
     );
-    await user.click(screen.getByText("Browse detailed provisions"));
     await screen.findByText("Requires action 1.");
 
     await user.click(screen.getByRole("button", { name: "Show all 4 money items" }));
@@ -296,8 +330,8 @@ describe("BillBrief", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "View 1 linked term" }));
-    expect(await screen.findByText("Defines rural hospital.")).toBeVisible();
-    await user.click(screen.getByText("Legal definition and source"));
+    expect(await screen.findByText("A hospital in a rural area.")).toBeVisible();
+    await user.click(screen.getByText("View legal definition"));
     expect(screen.getByText("a hospital in a rural area")).toBeVisible();
     expect(getDefinitionItems).toHaveBeenCalledWith(12, {
       page: 1,

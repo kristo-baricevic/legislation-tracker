@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 
 import requests
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, When
 from django.utils import timezone
@@ -1023,6 +1024,26 @@ def _retry_delay(attempt_count):
     return timedelta(seconds=min(60 * (2 ** max(attempt_count - 1, 0)), 3600))
 
 
+def _http_throttle_delay(exc):
+    """429 is a temporary source cooldown, not a broken document attempt."""
+    from email.utils import parsedate_to_datetime
+    response = getattr(exc, "response", None)
+    if not isinstance(exc, requests.HTTPError) or response is None or response.status_code != 429:
+        return None
+    value = response.headers.get("Retry-After", "")
+    try:
+        seconds = int(value)
+    except (ValueError, TypeError):
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            seconds = (retry_at - timezone.now()).total_seconds()
+        except (ValueError, TypeError, OverflowError):
+            seconds = 900
+    return timedelta(seconds=max(60, min(seconds, 365 * 86400)))
+
+
 def _tracked_refresh_bucket(now):
     interval_seconds = int(TRACKED_REFRESH_INTERVAL.total_seconds())
     timestamp = int(_ensure_utc_aware(now).timestamp())
@@ -1162,7 +1183,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         )
 
     try:
-        _process_durable_work(work_item)
+        stage_result = _process_durable_work(work_item)
     except BlockedWork as exc:
         with transaction.atomic():
             work_item = IngestionWorkItem.objects.select_for_update().get(
@@ -1193,6 +1214,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         return {"work_item_id": work_item_id, "status": "blocked"}
     except Exception as exc:
         error_message = str(exc)[:10000]
+        throttle_delay = _http_throttle_delay(exc)
         requeued = False
         with transaction.atomic():
             work_item = IngestionWorkItem.objects.select_for_update().get(
@@ -1227,7 +1249,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 )
                 requeued = True
             elif isinstance(exc, DocumentValidationError) or (
-                work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
+                throttle_delay is None and work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
             ):
                 work_item.status = IngestionWorkStatus.DEAD
                 work_item.lease_expires_at = None
@@ -1255,9 +1277,11 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
 
             elif not requeued:
                 work_item.status = IngestionWorkStatus.PENDING
-                work_item.available_at = timezone.now() + _retry_delay(
+                if throttle_delay is not None:
+                    work_item.attempt_count = max(work_item.attempt_count - 1, 0)
+                work_item.available_at = timezone.now() + (throttle_delay or _retry_delay(
                     work_item.attempt_count
-                )
+                ))
                 work_item.lease_expires_at = None
                 work_item.dispatch_token = ""
                 work_item.last_error = error_message
@@ -1265,6 +1289,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                     update_fields=[
                         "status",
                         "available_at",
+                        "attempt_count",
                         "lease_expires_at",
                         "dispatch_token",
                         "last_error",
@@ -1318,6 +1343,26 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             requeued = True
         else:
             requeued = False
+        if (
+            not requeued
+            and work_item.kind == WORK_KIND_BILL_VERSIONS
+            and isinstance(stage_result, dict)
+            and stage_result.get('versions') == 0
+        ):
+            # Publication can lag metadata. Keep checking even when the bill's
+            # metadata never changes; absence is not a failed download attempt.
+            work_item.status = IngestionWorkStatus.PENDING
+            work_item.attempt_count = max(work_item.attempt_count - 1, 0)
+            work_item.available_at = timezone.now() + timedelta(
+                seconds=max(60, int(getattr(settings, 'BILL_TEXT_RECHECK_SECONDS', 3600)))
+            )
+            work_item.lease_expires_at = None
+            work_item.dispatch_token = ''
+            work_item.completed_at = None
+            work_item.last_error = 'Awaiting a published bill text version.'
+            work_item.save(update_fields=['status', 'attempt_count', 'available_at',
+                'lease_expires_at', 'dispatch_token', 'completed_at', 'last_error', 'updated_at'])
+            return {'work_item_id': work_item_id, 'status': 'awaiting_source'}
         if not requeued:
             work_item.status = IngestionWorkStatus.SUCCEEDED
             work_item.lease_expires_at = None
@@ -1615,7 +1660,7 @@ def _process_bill_impl(bill_key_str):
     else:
         action_date = None
         action_text = str(detail.get("latestAction", ""))
-    status = (action_text or detail.get("status") or "")[:100]
+    status = action_text or detail.get("status") or ""
     title = (detail.get("title") or "")[:10000]
     source_metadata_summary = (detail.get("summary") or "")[:10000] or None
     crs_revision = select_latest_crs_summary(
@@ -1735,12 +1780,11 @@ def _process_bill_impl(bill_key_str):
                     not bill.documents.exists()
                     or bill.documents.filter(downloaded_at__isnull=True).exists()
                 )
-                bill.processing_status = (
-                    ProcessingStatus.PROCESSING
-                    if needs_doc_pipeline
-                    else ProcessingStatus.COMPLETE
-                )
-                bill.save(update_fields=["processing_status"])
+                # Only contract generation can establish analysis completion.
+                # A metadata refresh must not turn a failed analysis green.
+                if needs_doc_pipeline:
+                    bill.processing_status = ProcessingStatus.PROCESSING
+                    bill.save(update_fields=["processing_status"])
                 try:
                     if needs_doc_pipeline:
                         _queue_bill_stage(bill, WORK_KIND_BILL_VERSIONS)
@@ -1918,22 +1962,29 @@ def _process_bill_versions_impl(bill_id):
             update_fields.append("source_order")
         if update_fields:
             doc.save(update_fields=update_fields)
-        if i == len(versions) - 1:
-            # Contract promotion takes the same bill lock. Serializing the active
-            # document switch with promotion prevents an old extraction from
-            # becoming latest after a newer version has been activated.
-            with transaction.atomic():
-                Bill.objects.select_for_update().get(pk=bill.pk)
-                BillDocument.objects.filter(bill=bill).update(is_active_version=False)
-                doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
-                doc.is_active_version = True
-                doc.save(update_fields=["is_active_version"])
         needs_download = (
             created
             or source_url_changed
             or not doc.object_storage_key
             or doc.downloaded_at is None
         )
+        if i == len(versions) - 1:
+            # Contract promotion takes the same bill lock. Serializing the active
+            # document switch with promotion prevents an old extraction from
+            # becoming latest after a newer version has been activated.
+            with transaction.atomic():
+                locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
+                BillDocument.objects.filter(bill=bill).update(is_active_version=False)
+                doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
+                doc.is_active_version = True
+                doc.save(update_fields=["is_active_version"])
+                if not needs_download and (
+                    not locked_bill.latest_contract_id
+                    or locked_bill.latest_contract.document_id != doc.pk
+                ):
+                    from apps.legislation.tasks import enqueue_document_contract
+
+                    enqueue_document_contract(doc, reconcile_active=True)
         if needs_download:
             _queue_document_download(doc)
     logger.info(
@@ -2399,6 +2450,8 @@ def _download_document_impl(document_id):
 
     with downloaded:
         content_type = downloaded.content_type
+        from .document_download import extract_document_purpose
+        source_purpose = extract_document_purpose(downloaded.file, content_type, doc.source_url)
         new_hash = downloaded.checksum
         unchanged = doc.content_hash == new_hash and bool(doc.object_storage_key)
         extracted = None
@@ -2449,8 +2502,9 @@ def _download_document_impl(document_id):
         locked_bill, _clock = lock_bill_activity(bill_id=bill.pk)
         locked_doc = BillDocument.objects.select_for_update().get(pk=doc.pk)
 
-        update_fields = ["downloaded_at"]
+        update_fields = ["downloaded_at", "source_purpose"]
         locked_doc.downloaded_at = now
+        locked_doc.source_purpose = source_purpose
         if not unchanged:
             locked_doc.object_storage_key = saved_key
             locked_doc.file_size_bytes = size

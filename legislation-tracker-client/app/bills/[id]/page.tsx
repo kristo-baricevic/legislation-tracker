@@ -21,6 +21,8 @@ import type { BillContractSummary } from "@/lib/contracts";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
+import { stageFor } from "@/lib/bill-stage";
+import { AiGlossaryProvider } from "./ai-glossary-context";
 import BillChangeExperience from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
 import LegislatorName from "../../components/LegislatorName";
@@ -222,6 +224,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     );
   }
 
+  const summaryDocument = bill.documents.find(document => document.is_active_version);
   return (
     <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="w-full">
@@ -280,7 +283,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
           <div>
             <dt className="text-sm text-slate-600 dark:text-green-500">Status</dt>
-            <dd>{bill.status}</dd>
+            <dd>{stageFor(bill.status)?.label ?? bill.status}</dd>
           </div>
           <div>
             <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
@@ -292,21 +295,24 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               <dd>{bill.introduced_at}</dd>
             </div>
           )}
+          {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="sm:col-span-2 lg:col-span-4">
+            <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
+            <dd className="mt-1 leading-6">{bill.status}</dd>
+          </div>}
         </dl>
 
+        <div id="bill-ai-controls" className="mb-5" />
         {bill.latest_contract ? (
           <ContractSection contract={bill.latest_contract} bill={bill} />
         ) : (
           <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
             <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
-              Plain-language summary (beta)
+              What this bill does
             </h2>
             <p>
-              No generated summary yet. After a bill document is downloaded and
-              the{" "}
-              <code className="text-slate-800 dark:text-green-500/90">generate_contract</code> Celery
-              task runs, a structured summary will appear here.
+              {bill.summary_preview || summaryDocument?.reader_summary || "We have not retrieved enough source text to summarize this bill yet."}
             </p>
+            {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
           </section>
         )}
 
@@ -351,8 +357,6 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             <p>No roll-call votes are available.</p>
           </section>
         )}
-
-        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} />
 
         <BillChangeExperience
           billId={bill.id}
@@ -425,6 +429,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             </ul>
           </div>
         )}
+        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
       </div>
     </div>
   );
@@ -433,5 +438,5 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 export default function BillDetailPage() {
   const params = useParams();
   const routeId = params?.id as string;
-  return <BillDetailInner key={routeId} routeId={routeId} />;
+  return <AiGlossaryProvider key={routeId}><BillDetailInner routeId={routeId} /></AiGlossaryProvider>;
 }

@@ -1,0 +1,43 @@
+SEC. 101. Mandatory nondiscrimination policies
+(a) Policies.—
+(1) In general.—Beginning not later than 1 year after the date of enactment of this Act, each employer who has 15 or more employees shall adopt, maintain, and periodically review a comprehensive nondiscrimination policy, which shall establish policies and procedures concerning prohibited discrimination, including harassment, in employment.
+(2) Dissemination and posting.—The employer shall disseminate the comprehensive nondiscrimination policy to each employee at the beginning of employment, annually, and on the issuance of any update to the comprehensive nondiscrimination policy. The employer shall post the comprehensive nondiscrimination policy in prominent locations, including in a prominent location on the employer’s website.
+(b) Contents.—At a minimum, the comprehensive nondiscrimination policy shall include—
+(1) a definition of prohibited discrimination, including harassment, in employment;
+(2) a description of the types of behaviors prohibited by the policy;
+(3) the identification of multiple individuals to whom an employee may report such discrimination, and the contact information for those individuals;
+(4) a description of multiple methods for reporting such discrimination;
+(5) a general description of how the employer will conduct prompt, thorough, and impartial investigations and respond to complaints regarding such discrimination;
+(6) a prohibition against retaliation related to such discrimination, including disclosing, reporting, or challenging such discrimination;
+(7) a description of the confidentiality protections available for such discrimination complaints;
+(8) a description of potential consequences for violating the policy; and
+(9) any additional components required by the Commission for the purpose of preventing such discrimination.
+(c) Accessibility.—The comprehensive nondiscrimination policy shall be made available in plain English and in an accessible manner for individuals with disabilities and for individuals who primarily speak a language other than English.
+(d) Enforcement.—
+(1) In general.—Subject to paragraph (2), an employer who fails to comply with this section shall be fined not more than $1,000 for each separate offense.
+(2) Repeated or willful violations.—An employer who repeatedly or willfully fails to comply with this section shall be fined not less than $5,000 for each separate offense.
+(e) Regulations.—The Commission shall have authority to promulgate regulations to carry out this section.
+SEC. 121. Tipped employees
+(a) Base minimum wage for tipped employees and tips retained by employees.—Section 3(m)(2)(A)(i) of the Fair Labor Standards Act of 1938 (29 U.S.C. 203(m)(2)(A)(i)) is amended to read as follows:
+[[QUOTED_BLOCK_START]]
+(i) the cash wage paid such employee, which for purposes of such determination shall be not less than—
+(I) for the 1-year period beginning on the effective date under section 121(e) of the BE HEARD in the Workplace Act, $3.60 an hour;
+(II) for each succeeding 1-year period until the hourly wage under this clause equals the wage in effect under section 6(a)(1) for such period, an hourly wage equal to the amount determined under this clause for the preceding year, increased by the lesser of—
+(aa) $1.50; or
+(bb) the amount necessary for the wage in effect under this clause to equal the wage in effect under section 6(a)(1) for such period; and
+(III) for each succeeding 1-year period after the increase made pursuant to subclause (II)(bb), the minimum wage in effect under section 6(a)(1); and
+.
+[[QUOTED_BLOCK_END]]
+(b) Tips retained by employees.—Section 3(m)(2)(A) of the Fair Labor Standards Act of 1938 (29 U.S.C. 203(m)(2)(A)) is amended—
+(1) in the second sentence of the matter following clause (ii), by striking of this subsection, and all tips received by such employee have been retained by the employee and inserting of this subsection. Any employee shall have the right to retain any tips received by such employee; and
+(2) by adding at the end the following: An employer shall inform each employee of the right and exception provided under the preceding sentence..
+(c) Publication of notice.—Section 6 of the Fair Labor Standards Act of 1938 (29 U.S.C. 206) is amended by adding at the end the following:
+[[QUOTED_BLOCK_START]]
+(h) Not later than 60 days prior to the effective date of any increase in the required wage determined in accordance with subclause (II) or (III) of section 3(m)(2)(A)(i), the Secretary shall publish in the Federal Register and on the website of the Department of Labor a notice announcing each increase in such required wage.
+.
+[[QUOTED_BLOCK_END]]
+(d) Scheduled repeal of separate minimum wage for tipped employees.—
+(1) Tipped employees.—Section 3(m)(2)(A) of the Fair Labor Standards Act of 1938 (29 U.S.C. 203(m)(2)(A)), as amended by subsections (a) and (b), is further amended by striking the sentence beginning with In determining the wage an employer is required to pay a tipped employee, and all that follows through of this subsection. and inserting The wage required to be paid to a tipped employee shall be the wage set forth in section 6(a)(1)..
+(2) Publication of notice.—Section 6 of the Fair Labor Standards Act of 1938 (29 U.S.C. 206), as amended by subsection (c), is further amended by striking subsection (h).
+(3) Effective date.—The amendments made by paragraphs (1) and (2) shall take effect on the date that is one day after the date on which the hourly wage under subclause (III) of section 3(m)(2)(A)(i) of the Fair Labor Standards Act of 1938 (29 U.S.C. 203(m)(2)(A)(i)), as amended by subsection (a), takes effect.
+(e) Effective date.—Except as provided in subsection (d)(3), this section and the amendments made by this section shall take effect on the first day of the third month that begins after the date of enactment of this Act.

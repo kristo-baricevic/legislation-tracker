@@ -39,7 +39,8 @@ class Bill(models.Model):
     summary_action_date = models.DateField(blank=True, null=True)
     summary_version_code = models.CharField(max_length=16, blank=True, default="")
     summary_last_updated_at = models.DateTimeField(blank=True, null=True)
-    status = models.CharField(max_length=100)
+    # Congress.gov supplies a complete latest-action sentence, not a short enum.
+    status = models.TextField()
     processing_status = models.CharField(
         max_length=20,
         choices=ProcessingStatus.choices,
@@ -111,6 +112,9 @@ class BillDocument(models.Model):
     source_url = models.URLField(max_length=1024, null=True, blank=True)
     raw_text = models.TextField(null=True, blank=True)
     extracted_text = models.TextField(null=True, blank=True)
+    # Exact version-specific official purpose from the original document form.
+    # Kept separate so existing text offsets and source hashes never shift.
+    source_purpose = models.TextField(blank=True, default="")
     content_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     downloaded_at = models.DateTimeField(null=True, blank=True)
     parsed_at = models.DateTimeField(null=True, blank=True)

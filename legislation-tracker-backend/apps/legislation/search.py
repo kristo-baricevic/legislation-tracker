@@ -332,7 +332,18 @@ def apply_bill_list_filters(queryset: QuerySet[Bill], params: dict) -> QuerySet[
     if params.get("bill_number"):
         queryset = queryset.filter(bill_number__icontains=params["bill_number"].strip())
     if params.get("status"):
-        queryset = queryset.filter(status__icontains=params["status"].strip())
+        status = params["status"].strip()
+        if status.startswith("stage:"):
+            from apps.legislation.bill_stage import stage_for
+
+            # Classify distinct action strings, not paginated results. Keep this
+            # in the shared filter path so saved searches behave identically.
+            stage = status.removeprefix("stage:")
+            values = queryset.order_by().values_list("status", flat=True).distinct()
+            queryset = queryset.filter(status__in=[value for value in values if stage_for(value) == stage])
+        else:
+            # Existing saved searches and URLs retain their text-search meaning.
+            queryset = queryset.filter(status__icontains=status)
     if params.get("sponsor"):
         sponsor = params["sponsor"].strip()
         queryset = queryset.filter(

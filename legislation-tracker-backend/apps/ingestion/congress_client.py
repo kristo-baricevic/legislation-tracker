@@ -12,6 +12,7 @@ import unicodedata
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
+from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 import requests
@@ -451,9 +452,12 @@ def bill_text_list(congress, bill_type, bill_number):
     if isinstance(versions, dict):
         versions = versions.get("count", []) or []
     result = []
-    for source_order, v in enumerate(
-        versions if isinstance(versions, list) else [], start=1
-    ):
+    # Congress lists newest versions first. Our source_order is chronological;
+    # reversing also preserves the provider's ordering for same-date versions.
+    ordered_versions = list(reversed(versions)) if isinstance(versions, list) else []
+    if ordered_versions and all(v.get("date") for v in ordered_versions):
+        ordered_versions.sort(key=lambda v: str(v["date"]))
+    for source_order, v in enumerate(ordered_versions, start=1):
         label = v.get("type") or v.get("version") or v.get("label") or "unknown"
         # Congress's top-level version URL is a metadata/referrer endpoint. The
         # downloadable document is exposed in the nested formats collection.
@@ -859,6 +863,7 @@ def vote_detail(
     members = []
     offset = 0
     page_size = 250
+    seen_members = set()
     while True:
         member_data = _request(
             "GET",
@@ -866,10 +871,33 @@ def vote_detail(
             params={"limit": page_size, "offset": offset},
         )
         member_results = _roll_call_member_results(member_data, chamber)
-        members.extend(_roll_call_members(member_data, chamber))
-        if len(member_results) < page_size:
+        page = _roll_call_members(member_data, chamber)
+        identities = [member["bioguideId"] for member in page]
+        if len(page) != len(member_results):
+            raise CongressAPIError("House vote returned invalid member records")
+        if len(set(identities)) != len(identities) or seen_members.intersection(
+            identities
+        ):
+            raise CongressAPIError("House vote pagination repeated member records")
+        seen_members.update(identities)
+        members.extend(page)
+        # This endpoint currently returns the entire roll call, ignoring limit
+        # and offset. Only explicit pagination metadata authorizes another page.
+        pagination = member_data.get("pagination") or {}
+        if not isinstance(pagination, dict):
+            raise CongressAPIError("House vote returned invalid pagination")
+        next_url = pagination.get("next")
+        if not next_url:
             break
-        offset += page_size
+        try:
+            next_offset = int(parse_qs(urlsplit(next_url).query)["offset"][0])
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            raise CongressAPIError(
+                "House vote returned invalid pagination offset"
+            ) from exc
+        if next_offset <= offset or not page or len(seen_members) > 1000:
+            raise CongressAPIError("House vote pagination did not advance safely")
+        offset = next_offset
     _throttle()
 
     detail = detail_data.get(f"{chamber}RollCallVote") or detail_data
