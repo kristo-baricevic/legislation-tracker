@@ -114,6 +114,7 @@ class E2EEnhancementProvider:
                 "obligations": [],
                 "funding_and_timing": [],
                 "uncertain_language": [],
+                "glossary": [],
             },
             usage=ProviderUsage(
                 input_tokens=request.estimated_input_tokens,

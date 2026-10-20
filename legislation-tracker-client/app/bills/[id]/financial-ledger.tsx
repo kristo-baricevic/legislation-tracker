@@ -12,6 +12,15 @@ import type {
 } from "@/lib/contracts";
 import { financialPurpose, readablePath } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
+import { ReaderExplanation, useReaderExplanation } from "./reader-explanation";
+
+function FinancialExplanation({ item }: { item: LegalNlpFinancialItem }) {
+  const enhanced = useReaderExplanation("financial_item", item.id, item.display_text);
+  return <>
+    {!enhanced && <p className="mt-1 text-lg font-semibold leading-7 text-slate-950 dark:text-green-200">{financialPurpose(item)}</p>}
+    <ReaderExplanation kind="financial_item" itemId={item.id} original={item.display_text} />
+  </>;
+}
 
 const actionLabels: Record<FinancialAction, string> = {
   fee: "Application or processing fee",
@@ -29,6 +38,7 @@ const actionLabels: Record<FinancialAction, string> = {
   set_aside: "Set-aside",
   limitation: "Limitation",
   other_explicit: "Other explicit financial provision",
+  source_rule: "Financial rule (see full wording)",
 };
 
 interface FinancialLedgerProps {
@@ -186,8 +196,7 @@ export function FinancialLedger({
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">What the money is for</p>
-                  <p className="mt-1 text-lg font-semibold leading-7 text-slate-950 dark:text-green-200">{financialPurpose(item)}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-green-200">{item.display_text}</p>
+                  <FinancialExplanation item={item} />
                   <p className="mt-2 font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
                   {item.fiscal_years.length > 0 && <p className="mt-2 text-sm text-slate-600 dark:text-green-600">Fiscal {item.fiscal_years.join(", ")}</p>}
                   {(item.source_account || item.destination_account) && <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">

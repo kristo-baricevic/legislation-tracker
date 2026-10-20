@@ -11,6 +11,7 @@ interface DocumentInfo {
   bill_number: string;
   version_label: string;
   download_url: string | null;
+  source_purpose?: string;
 }
 const control = "rounded border border-slate-400 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40 dark:border-green-700";
 
@@ -82,6 +83,10 @@ export function DocumentReader({ documentId }: { documentId: string }) {
       <p className="text-sm text-slate-600 dark:text-green-400">{info.bill_number}</p>
       <h1 className="mt-2 text-3xl font-semibold leading-tight">{info.bill_title}</h1>
       <p className="mt-3">{info.version_label}</p>
+      {info.source_purpose && <section className="mt-4" aria-label="Purpose stated in the original bill">
+        <h2 className="text-sm font-semibold">Purpose stated in the original bill</h2>
+        <p className="mt-1 leading-relaxed">{info.source_purpose}</p>
+      </section>}
       <p className="mt-2 text-sm text-slate-600 dark:text-green-400">Full bill text, not a summary. Wording is preserved from the stored source.</p>
       {info.download_url && <a className="mt-3 inline-block text-sm font-semibold underline" href={/^https?:\/\//.test(info.download_url) ? info.download_url : getApiBase() + info.download_url}>Download original</a>}
     </header>

@@ -49,6 +49,28 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillDetailPage", () => {
+  it("shows a short stage and the complete latest action separately", async () => {
+    const value = await getBill(10);
+    const action = "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of provisions within their respective jurisdictions.";
+    vi.mocked(getBill).mockResolvedValue({ ...value, status: action });
+    render(<BillDetailPage />);
+    expect(await screen.findByText("In committee")).toBeVisible();
+    expect(screen.getByText("Latest action")).toBeVisible();
+    expect(screen.getByText(action)).toBeVisible();
+  });
+  it("shows the document summary before contract generation completes", async () => {
+    const value = await getBill(10);
+    vi.mocked(getBill).mockResolvedValue({
+      ...value, latest_contract: null,
+      documents: value.documents.map(document => ({
+        ...document, reader_summary: "Bill text: The Secretary shall publish annual reports.",
+      })),
+    });
+    render(<BillDetailPage />);
+    expect(await screen.findByText("Bill text: The Secretary shall publish annual reports.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Read summary source text" })).toHaveAttribute("href", "/documents/9");
+    expect(screen.queryByText(/No generated summary yet/)).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     routeState.id = "10";
     vi.clearAllMocks();
@@ -197,8 +219,7 @@ describe("BillDetailPage", () => {
     expect(await screen.findByText("Voting Representative")).toBeVisible();
   });
 
-  it("uses the newest contracts for reader-facing comparison without showing technical history", async () => {
-    const user = userEvent.setup();
+  it("does not treat different analysis runs as different bill text versions", async () => {
     vi.mocked(getContracts).mockResolvedValueOnce({
       count: 4,
       next: "http://example.test/api/contracts/?page=2",
@@ -220,9 +241,9 @@ describe("BillDetailPage", () => {
     render(<BillDetailPage />);
 
     expect(screen.queryByText("Newest")).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Compare analysis" }));
-
-    expect(compareBillContracts).toHaveBeenCalledWith(10, 3, 4);
+    expect(await screen.findByRole("button", { name: "Compare versions" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Compare analysis" })).not.toBeInTheDocument();
+    expect(compareBillContracts).not.toHaveBeenCalled();
   });
 
   it("discards all bill-specific state when navigating to another bill", async () => {

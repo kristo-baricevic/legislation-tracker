@@ -156,7 +156,10 @@ class OpenAIEnhancementProvider:
             "source_packet": request.request_envelope["source_packet"],
         }
         schema = PROVIDER_OUTPUT_SCHEMA
-        if request.request_envelope.get("coverage_candidate_version") == "2":
+        if request.request_envelope.get("output_schema_version") == "1.4":
+            from ..reader_targets import READER_SCHEMA
+            schema = READER_SCHEMA
+        elif request.request_envelope.get("coverage_candidate_version") == "2":
             from ..coverage_contract import response_schema
 
             schema = response_schema(
@@ -168,7 +171,7 @@ class OpenAIEnhancementProvider:
             schema = provision_schema(
                 input_payload["source_packet"]["coverage_checklist"]
             )
-        return self._generate(
+        result = self._generate(
             api_key=api_key,
             request=request,
             timeout_seconds=timeout_seconds,
@@ -177,6 +180,11 @@ class OpenAIEnhancementProvider:
             schema=schema,
             schema_name="bill_enhancement_v1_1",
         )
+        if schema is PROVIDER_OUTPUT_SCHEMA:
+            from dataclasses import replace
+            from ..schema import add_derived_source_refs
+            return replace(result, output=add_derived_source_refs(result.output))
+        return result
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
         envelope = dict(
@@ -396,10 +404,21 @@ class OpenAIEnhancementProvider:
         output_text = _value(response, "output_text", "")
         try:
             output = json.loads(output_text)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
+            from ..diagnostics import json_parse_diagnostic
+            parser = json_parse_diagnostic(error, output_text)
+            parts = [
+                _value(content, "text", "")
+                for item in (_value(response, "output", []) or [])
+                for content in (_value(item, "content", []) or [])
+                if _value(content, "type") == "output_text"
+                and isinstance(_value(content, "text"), str)
+            ]
+            parser.update(output_text_parts=len(parts), output_text_part_length=sum(map(len, parts)))
             raise ProviderError(
                 "invalid_output",
                 validation_code="provider_invalid_json",
+                validation_detail={"parser": parser},
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,

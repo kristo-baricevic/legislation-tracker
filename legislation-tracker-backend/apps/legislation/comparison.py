@@ -474,7 +474,8 @@ def _section_map(document):
             while ancestry and ancestry[-1][0] <= section.span.start_char:
                 ancestry.pop()
             label = _normalize_identity(section.label)
-            base = "/".join([*(key for _end, key in ancestry), label])
+            # Each stored parent key already includes its complete ancestry.
+            base = "/".join([ancestry[-1][1], label]) if ancestry else label
             occurrences[base] = occurrences.get(base, 0) + 1
             key = f"{base}#{occurrences[base]}"
             result[key] = section.span.text

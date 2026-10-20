@@ -54,3 +54,5 @@ class EnhancementPreflight:
     estimated_input_tokens: int
     truncated: bool
     analysis_plan: Any = None
+    glossary_batches: tuple = ()
+    reader_batches: tuple = ()

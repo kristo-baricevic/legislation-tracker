@@ -158,6 +158,7 @@ export type FinancialAction =
   | "set_aside"
   | "limitation"
   | "other_explicit"
+  | "source_rule"
   | "fee" | "surcharge" | "penalty" | "fee_exemption" | "account_rule";
 
 export type FinancialDirection =
@@ -390,6 +391,7 @@ const FINANCIAL_ACTIONS: readonly FinancialAction[] = [
   "set_aside",
   "limitation",
   "other_explicit",
+  "source_rule",
   "fee", "surcharge", "penalty", "fee_exemption", "account_rule",
 ];
 

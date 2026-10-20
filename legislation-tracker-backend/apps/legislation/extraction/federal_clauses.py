@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 
 from .federal_structure import sentence_spans
 from .types import SourceSpan, StructuralSection
@@ -25,7 +26,7 @@ _AMENDMENT_INSTRUCTION_RE = re.compile(
 )
 _QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
 _QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
-_OPERATIVE_LEVELS = {"section", "subsection", "paragraph", "subparagraph", "clause"}
+_OPERATIVE_LEVELS = {"section", "subsection", "paragraph", "subparagraph", "clause", "subclause", "item", "subitem"}
 
 _CALENDAR_DATE = re.compile(
     r"\b(?:May\s+(?:\d{4}|\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?)|"
@@ -52,15 +53,69 @@ def _strip(value: str) -> str:
     return value.strip().rstrip(".;:—–-").strip()
 
 
+@lru_cache(maxsize=2)
 def _quoted_block_ranges(source_text: str) -> tuple[tuple[int, int], ...]:
+    """Ranges of nonoperative quotations, not explicitly inserted new law.
+
+    Classify the immediately preceding instruction, never a distant occurrence
+    of "insert". Nested background/deleted quotations remain excluded. An
+    unclosed block is conservatively excluded even with an insertion instruction.
+    Offsets always refer to the untouched source.
+    """
     ranges = []
-    cursor = 0
-    while (start := source_text.find(_QUOTED_BLOCK_START, cursor)) >= 0:
-        end = source_text.find(_QUOTED_BLOCK_END, start + len(_QUOTED_BLOCK_START))
-        end = len(source_text) if end < 0 else end + len(_QUOTED_BLOCK_END)
-        ranges.append((start, end))
-        cursor = end
-    return tuple(ranges)
+    stack = []
+    sections = None
+    inserted_tail = r"the following(?: new)?(?: (?:subclauses?|clauses?|subparagraphs?|paragraphs?|subsections?|sections?|sentences?|items?|subtitles?|titles?|subchapters?|chapters?|subparts?|parts?|divisions?))?"
+    marker = re.compile(
+        re.escape(_QUOTED_BLOCK_START) + "|" + re.escape(_QUOTED_BLOCK_END)
+    )
+    for match in marker.finditer(source_text):
+        if match.group() == _QUOTED_BLOCK_START:
+            prefix = source_text[:match.start()].rstrip()
+            instruction = prefix.rsplit("\n", 1)[-1]
+            # Classify the terminal operation, not the name of the added
+            # structural unit. Ignore verbs inside inline quoted old wording.
+            grammar = re.sub(r'''"[^"\n]*"|“[^”\n]*”|(?<!\w)'[^'\n]*'(?!\w)|‘[^’\n]*’''', ' ', instruction)
+            grammar = re.sub(
+                r'\(and\s+(?:amending|conforming)\s+the\s+table\s+of\s+(?:sections|contents)\b[^()\n]*\)',
+                ' ', grammar, flags=re.I,
+            )
+            grammar = re.sub(r',?\s+and redesignating succeeding (?:paragraphs|subsections|sections) accordingly(?=[:—–-]?$)', '', grammar, flags=re.I)
+            amended = re.search(r'\b(?:is|are)(?: further)? amended\b|\band amended(?= to read\b)', grammar, re.I)
+            operations = list(re.finditer(
+                r'\b(?:by|and)\s+(?:by\s+)?(?P<verb>adding|inserting|striking|repealing|redesignating|amending)\b|\b(?P<replace>to read(?: as follows)?)\b',
+                grammar[amended.end():] if amended else '', re.I,
+            ))
+            has_payload_boundary = grammar.rstrip().endswith((':','—','–','-')) or bool(re.search(r'\b(?:adding|inserting) at the end$', grammar, re.I))
+            inserted = bool(amended and operations and has_payload_boundary and (
+                operations[-1].group('replace') or operations[-1].group('verb').lower() in {'adding','inserting'}
+            ))
+            if not inserted and re.fullmatch(
+                rf"\([A-Za-z0-9]+\)\s+by\s+(?:inserting|adding)\b[^\n]*\b{inserted_tail}\s*[:—–-]",
+                instruction, re.I,
+            ):
+                # A child instruction inherits only an actual structural
+                # ancestor's amendment, never an unrelated earlier section.
+                from .federal_structure import parse_federal_structure
+                if sections is None:
+                    sections = parse_federal_structure(source_text)
+                offset = len(prefix) - len(instruction)
+                owners = [s for s in sections if s.span.start_char <= offset < s.span.end_char]
+                owner = max(owners, key=lambda s: s.span.start_char) if owners else None
+                parent = _parent_section(owner, sections) if owner else None
+                while parent is not None:
+                    parent_sentences = sentence_spans(parent, source_text)
+                    if parent_sentences and re.search(r"\bis amended\s*[:—–-]$", parent_sentences[-1].text, re.I):
+                        inserted = True
+                        break
+                    parent = _parent_section(parent, sections)
+            stack.append((match.start(), inserted))
+        elif stack:
+            start, inserted = stack.pop()
+            if not inserted:
+                ranges.append((start, match.end()))
+    ranges.extend((start, len(source_text)) for start, _ in stack)
+    return tuple(sorted(ranges))
 
 
 def _intersects_quoted_block(
@@ -197,6 +252,9 @@ def _split_modal_clauses(
 def _parent_section(
     section: StructuralSection, sections: Sequence[StructuralSection]
 ) -> StructuralSection | None:
+    parents = getattr(sections, "parents", {})
+    if id(section) in parents:
+        return parents[id(section)]
     candidates = [
         candidate
         for candidate in sections

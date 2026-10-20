@@ -2,6 +2,7 @@
 import BillCard from "../components/BillCard";
 import BillDeckModal from "../components/BillDeckModal";
 import styles from "../components/bill-deck.module.css";
+import { STAGES } from "@/lib/bill-stage";
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -19,6 +20,11 @@ import {
   getTopics,
   parseTopicIdFromSearchParam,
   trackTopic,
+  trackBill,
+  untrackBill,
+  capturePersonalizedScope,
+  isPersonalizedScopeCurrent,
+  subscribePersonalizedChanges,
   type BillListItem,
   type BillsPage,
   type TopicItem,
@@ -27,6 +33,10 @@ import {
 } from "@/lib/api";
 
 const PAGE_SIZE = 20;
+const STATUS_OPTIONS = [
+  ...STAGES.map(stage => ({ value: `stage:${stage.key}`, label: stage.name })),
+  { value: "stage:other", label: "Other / unclassified" },
+];
 type BillSort = "recent_activity" | "relevance";
 
 function parsePositiveIntegerFilter(value: string): number | undefined {
@@ -87,6 +97,14 @@ function BillsCatalog() {
   const initialTopicIdRef = useRef(topicIdFromUrl);
   const [hasAccount, setHasAccount] = useState(false);
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
+  const [trackedBillIds, setTrackedBillIds] = useState<number[]>([]);
+  const [pendingBill, setPendingBill] = useState<number | null>(null);
+  const [trackingReady, setTrackingReady] = useState(false);
+  const [trackingRefresh, setTrackingRefresh] = useState(0);
+  useEffect(() => subscribePersonalizedChanges(() => {
+    setTrackingReady(false); setTrackedBillIds([]); setPendingBill(null);
+    setTrackingRefresh(value => value + 1);
+  }), []);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedBillSearch[]>([]);
@@ -177,16 +195,19 @@ function BillsCatalog() {
 
   useEffect(() => {
     let cancelled = false;
+    const scope = capturePersonalizedScope();
     void getSession()
       .then((session) => {
-        if (cancelled) return;
+        if (cancelled || !isPersonalizedScopeCurrent(scope)) return;
         const signedIn = Boolean(session);
         setHasAccount(signedIn);
         if (!signedIn) return;
         void getMyTracking()
           .then((summary) => {
-            if (!cancelled) {
+            if (!cancelled && isPersonalizedScopeCurrent(scope)) {
               setTrackedTopicIds(summary.topics.map((item) => item.topic.id));
+              setTrackedBillIds(summary.bills.map((item) => item.bill.id));
+              setTrackingReady(true);
             }
           })
           .catch((e) => {
@@ -203,7 +224,7 @@ function BillsCatalog() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [trackingRefresh]);
 
   useEffect(() => {
     if (!hasAccount) return;
@@ -371,6 +392,22 @@ function BillsCatalog() {
     })),
   ];
 
+  async function toggleBillTracking(id: number) {
+    if (!trackingReady || pendingBill !== null) return;
+    const scope = capturePersonalizedScope();
+    const followed = trackedBillIds.includes(id);
+    setPendingBill(id); setTrackingError(null);
+    try {
+      if (followed) await untrackBill(id, { scope });
+      else await trackBill(id, { scope });
+      if (isPersonalizedScopeCurrent(scope)) setTrackedBillIds(ids => followed ? ids.filter(value => value !== id) : [...new Set([...ids, id])]);
+    } catch {
+      if (isPersonalizedScopeCurrent(scope)) setTrackingError("Your follow preference was not saved. Please try again.");
+    } finally {
+      if (isPersonalizedScopeCurrent(scope)) setPendingBill(null);
+    }
+  }
+
   async function toggleSelectedTopicTracking() {
     if (Number.isNaN(selectedTopicId)) return;
     setTrackingTopicId(selectedTopicId);
@@ -535,14 +572,21 @@ function BillsCatalog() {
               }}
             />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted">Status (contains)</span>
-              <input
-                type="text"
+              <span className="text-muted">Status</span>
+              <select
                 value={statusFilter}
-                onChange={resetPageAndSet(setStatusFilter)}
-                placeholder="e.g. House"
-                className="rounded border border-control bg-paper px-2 py-1 text-ink"
-              />
+                onChange={(event) => {
+                  setPageNum(1);
+                  setStatusFilter(event.target.value);
+                }}
+                className="min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink"
+              >
+                <option value="">All statuses</option>
+                {statusFilter && !STATUS_OPTIONS.some(option => option.value === statusFilter) && (
+                  <option value={statusFilter}>Saved filter: {statusFilter}</option>
+                )}
+                {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Sponsor</span>
@@ -716,6 +760,7 @@ function BillsCatalog() {
               {page.count} bill{page.count !== 1 ? "s" : ""} (page {pageNum})
             </p>
             <div className={styles.deck}>
+              {trackingError && <p role="alert">{trackingError}</p>}
               <div className={styles.toolbar}>
                 <div className={styles.segment} aria-label="Card layout">
                   {(["grid", "list"] as const).map(value => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{value === "grid" ? "Grid" : "List"}</button>)}
@@ -724,7 +769,7 @@ function BillsCatalog() {
               {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
                 <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" tabIndex={0}>
                   {page.results.map(bill => <BillCard key={bill.id} bill={bill} onOpen={() => setSelectedBill(bill)}
-                    footer={<Link href={`/bills/${bill.id}`}>Open full bill page</Link>} />)}
+                    footer={<div className="flex flex-wrap items-center gap-3"><Link href={`/bills/${bill.id}`}>Open full bill page</Link>{hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button onClick={() => setTrackingRefresh(value => value + 1)}>Load follow status</button> : <Link href="/login">Log in to follow</Link>}</div>} />)}
                 </div>}
             </div>
             <div className="mt-4 flex flex-wrap gap-3">

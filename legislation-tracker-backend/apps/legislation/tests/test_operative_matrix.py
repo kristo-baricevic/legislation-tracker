@@ -5,6 +5,53 @@ import pytest
 from apps.legislation.tests.test_reader_synopsis import extract
 
 
+def test_container_does_not_spread_definition_uncertainty_into_other_sections():
+    source = """TITLE I Worker protection
+SEC. 100. Definitions
+In this title:
+(1) Employer.—An employer means an entity that shall report whether workers may qualify.
+SEC. 101. Funding
+There is appropriated $100,000 for worker advocacy services.
+"""
+    result = extract(source).contract_json
+    assert [(i["financial_action"], i["amount"]) for i in result["financial_items"]] == [
+        ("appropriation", "100000.00")
+    ]
+
+
+def test_allotment_minimum_retains_governing_threshold_and_recipient():
+    source = """SEC. 433. Allotments and payments
+(a) Allotments.—
+(1) Minimum allotments.—In any case in which—
+(A) the total amount appropriated for a fiscal year is not less than $20,000,000, the allotment for such fiscal year—
+(i) to each of American Samoa and Guam may not be less than $100,000; and
+(ii) to any other State may not be less than $200,000.
+"""
+    result = extract(source).contract_json
+    items = result["financial_items"]
+    assert {"100000.00", "200000.00"} <= {i["amount"] for i in items}
+    for item in items:
+        if item["amount"] in {"100000.00", "200000.00"}:
+            assert "$20,000,000" in item["display_text"]
+            assert "not less than" in item["display_text"]
+            assert ("American Samoa" if item["amount"] == "100000.00" else "other State") in item["display_text"]
+
+
+def test_conditional_technical_assistance_percentage_keeps_threshold():
+    source = """SEC. 433. Allotments
+(a) Technical assistance.—In any case in which the total amount appropriated for a fiscal year is more than $24,500,000, the Secretary shall—
+(1) use not more than 2 percent of the amount appropriated to provide technical assistance to qualifying systems; and
+(2) provide a grant to an American Indian consortium.
+SEC. 436. Authorization
+There are authorized to be appropriated for allotments under section 433 such sums as may be necessary.
+"""
+    items = extract(source).contract_json["financial_items"]
+    percentage = next(i for i in items if i["amount"] == "2.00")
+    assert "more than $24,500,000" in percentage["display_text"]
+    assert "of the amount appropriated" in percentage["display_text"]
+    assert any(i["financial_action"] == "authorization" and i["amount_type"] == "such_sums" for i in items)
+
+
 @pytest.mark.parametrize(
     "prefix",
     [

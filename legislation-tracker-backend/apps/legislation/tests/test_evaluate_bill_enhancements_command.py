@@ -32,7 +32,10 @@ def test_evaluation_repair_requires_opt_in_and_reports_combined_usage(
 
     class Provider:
         def enhance_bill(self, **kwargs):
-            return result()
+            response = result()
+            response.output["schema_version"] = "1.3"
+            response.output["glossary"] = []
+            return response
 
         def repair_citations(self, **kwargs):
             calls.append(kwargs)
@@ -133,7 +136,8 @@ def test_evaluation_uses_dedicated_key_prints_budget_before_calls_and_writes_onl
             source_ref = kwargs["request"].source_snapshot[0]["source_ref"]
             return ProviderResult(
                 output={
-                    "schema_version": "1.2",
+                    "schema_version": "1.3",
+                    "glossary": [],
                     "overview": [
                         {
                             "text": "The cited provision creates a duty.",
@@ -192,7 +196,7 @@ def test_evaluation_uses_dedicated_key_prints_budget_before_calls_and_writes_onl
     assert artifact["corpus_version"] == "1.1"
     assert artifact["review_rubric"]["citation_precision_target"] == 0.95
     assert artifact["results"][0]["review_labels"]
-    assert artifact["results"][0]["output"]["schema_version"] == "1.2"
+    assert artifact["results"][0]["output"]["schema_version"] == "1.3"
     combined = output_before_call + capsys.readouterr().out
     assert "sk-evaluation-dedicated" not in combined
     assert "private-evaluation-response" not in combined
@@ -264,7 +268,8 @@ def test_reader_case_evaluation_records_quality_not_just_schema(monkeypatch, tmp
             source = kwargs["request"].source_snapshot[0]
             return ProviderResult(
                 output={
-                    "schema_version": "1.2",
+                    "schema_version": "1.3",
+                    "glossary": [],
                     "overview": [
                         {
                             "text": "This bill does something.",

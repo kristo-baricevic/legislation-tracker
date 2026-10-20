@@ -281,7 +281,7 @@ def _require_refs(refs: object, targets: dict[str, dict], *, location: str) -> N
 def _validate_financial_axes(financial: dict[str, dict]) -> None:
     directions = {
         **dict.fromkeys(
-            ("fee", "surcharge", "penalty", "fee_exemption", "account_rule"),
+            ("fee", "surcharge", "penalty", "fee_exemption", "account_rule", "source_rule"),
             "not_applicable",
         ),
         "appropriation": "increase",
@@ -304,7 +304,7 @@ def _validate_financial_axes(financial: dict[str, dict]) -> None:
             "unspecified": amount is None
             and currency is None
             and action
-            in {"fee", "surcharge", "penalty", "fee_exemption", "account_rule"},
+            in {"fee", "surcharge", "penalty", "fee_exemption", "account_rule", "source_rule"},
             "specified": amount is not None and currency == "USD",
             "such_sums": amount is None and currency is None,
             "percentage": amount is not None and currency is None,

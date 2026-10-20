@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from config.api import PaginatedQuerySerializer, StrictQuerySerializer
@@ -67,6 +69,7 @@ class FinancialItemsQuerySerializer(PaginatedQuerySerializer):
             "penalty",
             "fee_exemption",
             "account_rule",
+            "source_rule",
         ),
         required=False,
     )
@@ -179,6 +182,7 @@ class BillDocumentSerializer(serializers.ModelSerializer):
     bill_number = serializers.CharField(source="bill.bill_number", read_only=True)
     download_url = serializers.SerializerMethodField()
     text_url = serializers.SerializerMethodField()
+    reader_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = BillDocument
@@ -196,12 +200,41 @@ class BillDocumentSerializer(serializers.ModelSerializer):
             "downloaded_at",
             "download_url",
             "text_url",
+            "reader_summary",
+            "source_purpose",
         ]
 
     def get_download_url(self, obj):
         if not (obj.object_storage_key or obj.raw_text or obj.extracted_text):
             return None
         return f"/api/documents/{obj.id}/download/"
+
+    def get_reader_summary(self, obj):
+        from .source_summary import purpose_summary
+        purpose = purpose_summary(getattr(obj, "source_purpose", ""))
+        if purpose:
+            return purpose
+        # Use this document's operative statement, never its short title alone.
+        source = obj.extracted_text or obj.raw_text or ""
+        statement = re.search(
+            r"The following sums in this Act are appropriated, out of any money "
+            r"in the Treasury not otherwise appropriated, for the fiscal year "
+            r"ending ([A-Za-z]+ \d{1,2}, \d{4})\.",
+            re.sub(r"\s+", " ", source),
+        )
+        scopes = re.findall(
+            r"^DIVISION [A-Z]+\.? ([^\n]+?) Appropriations\s*$", source, re.M
+        )
+        if statement and scopes:
+            names = list(dict.fromkeys(scopes))
+            scope = (
+                ", ".join(names[:-1]) + " and " + names[-1]
+                if len(names) > 1
+                else names[0]
+            )
+            return f"This bill would provide funding for {scope} for the fiscal year ending {statement[1]}."
+        from .source_summary import source_summary
+        return source_summary(source)
 
     def get_text_url(self, obj):
         if not (obj.raw_text or obj.extracted_text):
@@ -268,6 +301,7 @@ class FinancialPreviewPublicSerializer(serializers.Serializer):
             "penalty",
             "fee_exemption",
             "account_rule",
+            "source_rule",
         )
     )
     direction = serializers.ChoiceField(

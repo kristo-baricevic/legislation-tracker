@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from decimal import Decimal
+import re
 
 from .display_text import normalize_reader_fragment
+from .federal_clauses import _quoted_block_ranges
 from .glossary import explain_definition
 from .schema import validate_contract
 from .types import (
@@ -156,6 +158,14 @@ def _render_amendment(
         return _warning(claim)
     removed = _clean(claim.fields.get("removed_text"))
     inserted = _clean(claim.fields.get("inserted_text"))
+    source_instruction = normalize_reader_fragment(" ".join(s.text for s in claim.evidence))
+    if operation == 'repeal' and re.search(r'\brepealed\s*,', source_instruction, re.I):
+        # A repeal may also revive prior law or include a saving condition.
+        # Do not replace that compound instruction with "repeals provision".
+        if len(source_instruction) > 4000:
+            return _warning(claim)
+        return RenderedReaderClaim(kind='amendment', display_text=source_instruction,
+                                   actor=None, action='repeal', effect=None)
     if operation == "replace" and removed and inserted:
         detail = f"replacing “{removed}” with “{inserted}”"
     elif operation == "strike_and_insert" and removed and inserted:
@@ -172,7 +182,13 @@ def _render_amendment(
     elif operation == "amend":
         detail = "amending the provision"
     else:
-        return _warning(claim)
+        # XML text can omit quotation marks around the before/after payloads.
+        # Keep the complete instruction instead of silently dropping the change.
+        text = normalize_reader_fragment(" ".join(s.text for s in claim.evidence))
+        if not text or len(text) > 4000:
+            return _warning(claim)
+        return RenderedReaderClaim(kind="amendment", display_text=text,
+                                   actor=None, action=str(operation), effect=None)
     return RenderedReaderClaim(
         kind="amendment",
         display_text=f"Changes {target} by {detail}.",
@@ -224,6 +240,34 @@ def _render_financial(
 ) -> RenderedReaderClaim | ExtractionWarning:
     fields = claim.fields
     action = fields.get("financial_action")
+    if claim.rule_id.startswith("financial.grant_source."):
+        text = normalize_reader_fragment(" ".join(span.text for span in claim.evidence))
+        if not text or len(text) > 4000:
+            return _warning(claim)
+        return RenderedReaderClaim(kind="financial", display_text=text,
+                                   actor=None, action=str(action), effect=None)
+    if any(re.search(r"\ballot(?:ment|ments|ted|ting)?\b|\bin any case in which\b", s.text, re.I) for s in claim.evidence):
+        # Allotment thresholds are not new appropriations. Retain the governing
+        # funding condition and recipient together with the minimum/formula.
+        text = normalize_reader_fragment(" ".join(s.text for s in claim.evidence))
+        if not text or len(text) > 4000:
+            return _warning(claim)
+        return RenderedReaderClaim(
+            kind="financial", display_text=text,
+            actor=None, action=str(action), effect=None,
+        )
+    if (
+        action == "allocation"
+        and fields.get("amount_type") == "percentage"
+        and not fields.get("source_account")
+    ):
+        # The parent owns the base and distribution instruction. Keep it with
+        # the percentage instead of publishing an amount without its denominator.
+        return RenderedReaderClaim(
+            kind="financial",
+            display_text=normalize_reader_fragment(" ".join(s.text for s in claim.evidence)),
+            actor=None, action=str(action), effect=None,
+        )
     if action in {"fee", "surcharge", "penalty", "fee_exemption", "account_rule"}:
         # Keep exceptions and eligibility attached; never describe receipts as funding.
         text = normalize_reader_fragment(" ".join(span.text for span in claim.evidence))
@@ -301,9 +345,15 @@ def _render_financial(
         text += f" from {source_account} to {destination_account}"
     purpose = _clean(fields.get("purpose"))
     if purpose:
-        text += f" for {purpose}"
+        text += f" {'to' if purpose.lower().startswith('carry out ') else 'for'} {purpose}"
     fiscal_phrase = _fiscal_phrase(fields.get("fiscal_years"))
     if fiscal_phrase:
+        if any(
+            span.text.count("$") == 1
+            and re.search(r"\bfor each of (?:the )?fiscal years\b", span.text, re.I)
+            for span in claim.evidence
+        ):
+            fiscal_phrase = fiscal_phrase.replace("for fiscal years", "for each fiscal year")
         text += f" {fiscal_phrase}"
     return RenderedReaderClaim(
         kind="financial",
@@ -399,6 +449,12 @@ def _render_definition(
 def render_reader_claim(
     claim: ExtractedClaim,
 ) -> RenderedReaderClaim | ExtractionWarning:
+    if claim.rule_id.startswith("coverage.source."):
+        text = normalize_reader_fragment(" ".join(s.text for s in claim.evidence))
+        if not text or len(text) > 4000:
+            return _warning(claim)
+        return RenderedReaderClaim(kind="financial" if claim.category == "financial_items" else "timeline",
+                                   display_text=text, actor=None, action=None, effect=None)
     renderers = {
         "requirements": _render_requirement,
         "amendment_operations": _render_amendment,
@@ -533,6 +589,20 @@ def render_contract(
     brief = build_reader_brief(claims, sections, source_text, clauses)
     evidence = []
     warnings = list(brief.warnings)
+    for start, end in _quoted_block_ranges(source_text):
+        instruction = source_text[:start].rstrip().rsplit("\n", 1)[-1]
+        payload = source_text[start:end].replace('[[QUOTED_BLOCK_START]]', '').replace('[[QUOTED_BLOCK_END]]', '')
+        if 'table of contents' in instruction.lower() and not re.search(r'\w', payload):
+            continue
+        if re.search(r"\bis amended\b", instruction, re.I) and not re.search(
+            r"\b(?:striking|repealing)\b", instruction, re.I
+        ):
+            warnings.append(ExtractionWarning(
+                code="incomplete_amendment_extraction",
+                rule_id="amendment-context",
+                source_id=None,
+                evidence=(SourceSpan(source_text[start:end], start, end),),
+            ))
     contract_categories: dict[str, list[dict[str, object]]] = {
         "financial_items": [],
         "timeline_items": [],
@@ -635,7 +705,12 @@ def render_contract(
             ),
             "warnings": list(dict.fromkeys(item.code for item in warnings)),
         },
-        "coverage_note": brief.coverage_note,
+        "coverage_note": (
+            "This breakdown is incomplete: some amendment text could not be "
+            "safely interpreted. Read the full bill text for those provisions. "
+            if any(w.code == "incomplete_amendment_extraction" for w in warnings)
+            else ""
+        ) + brief.coverage_note,
         "orientation": orientation,
         "reader_stats": {
             "line_item_count": brief.reader_stats.line_item_count,

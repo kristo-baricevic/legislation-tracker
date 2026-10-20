@@ -48,14 +48,36 @@ def _expanded_result(enhancement: BillEnhancement):
     sources = {
         source["source_ref"]: source for source in enhancement.source_snapshot_json
     }
+    if result.get("schema_version") == "1.4":
+        from .reader_targets import snapshot_targets
+        targets = {t["target_id"]: t for t in snapshot_targets(enhancement.source_snapshot_json)}
+        result["identity"] = {key: enhancement.source_manifest_json[key] for key in (
+            "document_id", "document_content_hash", "contract_id", "contract_hash")}
+        for item in result["explanations"]:
+            target = targets[item["target_id"]]
+            item.update({key: target[key] for key in (
+                "kind", "item_id", "contract_id", "contract_hash", "document_id", "document_content_hash", "original_text")})
     for category in (
         "overview",
         "key_impacts",
         "obligations",
         "funding_and_timing",
         "uncertain_language",
+        "glossary",
+        "summary",
+        "explanations",
     ):
         for item in result.get(category, []):
+            if category == "glossary":
+                target = next(
+                    (t for s in sources.values() for t in s.get("glossary_targets", [])
+                     if t["definition_id"] == item["definition_id"]), None,
+                )
+                if target is None:
+                    continue
+                item["contract_id"] = target["contract_id"]
+                item["term"] = target["term"]
+                item["definition"] = target["definition"]
             if item.get("source_quotes"):
                 item["cited_sources"] = []
                 for quote in item["source_quotes"]:
@@ -90,7 +112,7 @@ def _expanded_result(enhancement: BillEnhancement):
                     "start_char": sources[source_ref].get("start_char"),
                     "end_char": sources[source_ref].get("end_char"),
                 }
-                for source_ref in item["source_refs"]
+                for source_ref in item.get("source_refs", [])
                 if source_ref in sources
             ]
     return result

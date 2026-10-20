@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from .display_text import normalize_reader_fragment
+from .federal_clauses import _quoted_block_ranges
 from .reader_renderer import render_reader_claim
 from .synopsis import structured_synopsis
 from .types import (
@@ -45,11 +46,12 @@ _OPERATIVE_CATEGORIES = {"requirements", "amendment_operations", "applicability"
 _EXPLICIT_PURPOSE_RE = re.compile(
     r"\b(?:the\s+purposes?\s+of\s+(?:this|the)\s+Act\s+(?:is|are)|"
     r"It\s+is\s+the\s+purpose\s+of\s+(?:this|the)\s+Act)\s+to\s+"
-    r"(?P<purpose>[^.;]{1,1000})[.;]",
+    r"(?P<purpose>[^.;]{1,1000})[.;]"
+    r"|\bthe\s+purposes\s+of\s+(?:this|the)\s+Act\s+are\s*[—:-]\s*"
+    r"(?P<listed_purpose>\(1\)\s+to\s+[^.]{1,8000})\."
+    r"(?=\s*(?:$|SEC\.|SECTION\b|TITLE\b|SUBTITLE\b))",
     re.IGNORECASE,
 )
-_QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
-_QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
 
 
 @dataclass
@@ -161,14 +163,27 @@ def _standalone_line(item: IdentifiedClaim) -> _LineDraft | ExtractionWarning:
 
 def _explicit_purpose_line(
     sections: Sequence[StructuralSection],
+    source_text: str | None,
 ) -> _LineDraft | None:
+    excluded = _quoted_block_ranges(source_text) if source_text is not None else ()
     candidates: dict[int, tuple[StructuralSection, re.Match[str]]] = {}
     for section in sections:
         for match in _EXPLICIT_PURPOSE_RE.finditer(section.span.text):
-            prefix = section.span.text[: match.start()]
-            if prefix.rfind(_QUOTED_BLOCK_START) > prefix.rfind(_QUOTED_BLOCK_END):
+            listed = match.group("listed_purpose")
+            if listed is not None:
+                numbers = [int(n) for n in re.findall(r"\((\d+)\)\s+to\b", listed)]
+                if len(numbers) < 2 or numbers != list(range(1, len(numbers) + 1)):
+                    continue
+                if "[[QUOTED_BLOCK_" in listed:
+                    continue
+            if source_text is None and any(
+                left <= match.start() < right
+                for left, right in _quoted_block_ranges(section.span.text)
+            ):
                 continue
             start = section.span.start_char + match.start()
+            if any(left <= start < right for left, right in excluded):
+                continue
             current = candidates.get(start)
             if current is None or len(section.path) > len(current[0].path):
                 candidates[start] = (section, match)
@@ -177,7 +192,11 @@ def _explicit_purpose_line(
 
     start = min(candidates)
     section, match = candidates[start]
-    purpose = normalize_reader_fragment(match.group("purpose")).strip().rstrip(".")
+    purpose = match.group("purpose")
+    if purpose is None:
+        purpose = re.sub(r"\(\d+\)\s+(?=to\b)", "", match.group("listed_purpose"))
+        purpose = re.sub(r"^to\s+", "", purpose)
+    purpose = normalize_reader_fragment(purpose).strip().rstrip(".")
     if not purpose:
         return None
     evidence_text = match.group(0)
@@ -264,7 +283,7 @@ def build_reader_brief(
     rendered_by_claim: dict[int, RenderedReaderClaim] = {}
     renderable_claims = []
     for claim in claims:
-        if any(
+        if not claim.rule_id.startswith(("financial.grant_source.", "coverage.source.")) and claim.category != "definitions" and any(
             span.start_char < c.span.end_char
             and c.span.start_char < span.end_char
             and (
@@ -414,7 +433,7 @@ def build_reader_brief(
             )
         )
 
-    purpose_line = _explicit_purpose_line(sections)
+    purpose_line = _explicit_purpose_line(sections, source_text)
     if (
         purpose_line is None
         and source_text is not None

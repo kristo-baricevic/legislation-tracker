@@ -34,6 +34,11 @@ vi.mock("@/lib/api", () => ({
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
   },
   trackTopic: vi.fn(),
+  trackBill: vi.fn().mockResolvedValue({}),
+  untrackBill: vi.fn().mockResolvedValue(undefined),
+  capturePersonalizedScope: vi.fn(() => ({})),
+  isPersonalizedScopeCurrent: vi.fn(() => true),
+  subscribePersonalizedChanges: vi.fn(() => () => {}),
   untrackTopic: vi.fn(),
   createSavedBillSearch: vi.fn(),
   getSavedBillSearches: vi.fn().mockResolvedValue({ count: 0, results: [] }),
@@ -42,6 +47,37 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillsPage", () => {
+  it("selects a status stage and clears it without retaining the old page", async () => {
+    searchState.query = "page=3&session=119";
+    render(<BillsPage />);
+    const user = userEvent.setup();
+    const status = await screen.findByRole("combobox", { name: "Status" });
+    await screen.findByRole("option", { name: "Passed one chamber" });
+    await user.selectOptions(status, "stage:first_chamber");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ status: "stage:first_chamber", page: 1 })));
+    await user.selectOptions(status, "");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ status: undefined, page: 1 })));
+  });
+
+  it("keeps a legacy URL status visible until the reader clears it", async () => {
+    searchState.query = "status=House";
+    render(<BillsPage />);
+    const status = await screen.findByRole("combobox", { name: "Status" });
+    expect(status).toHaveValue("House");
+    expect(screen.getByRole("option", { name: "Saved filter: House" })).toBeVisible();
+  });
+
+  it("lets signed-in readers follow and unfollow directly from a bill card", async () => {
+    const api = await import("@/lib/api");
+    vi.mocked(api.getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getBills).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 881, jurisdiction: "federal", session: 119, bill_number: "HR 7744", title: "DHS funding", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }] });
+    render(<BillsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Follow" }));
+    expect(await screen.findByRole("button", { name: "Unfollow" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Unfollow" }));
+    expect(await screen.findByRole("button", { name: "Follow" })).toHaveAttribute("aria-pressed", "false");
+  });
   it("shows search results as cards with highlights and full-bill links", async () => {
     vi.mocked(getBills).mockResolvedValue({ count: 1, next: null, previous: null, results: [{
       id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "Rural health grants",
@@ -192,7 +228,7 @@ describe("BillsPage", () => {
       expect(screen.getByLabelText("Session (Congress)")).toHaveValue("120");
       expect(screen.getByLabelText("Bill ID")).toHaveValue("9");
       expect(screen.getByLabelText("Bill # (contains)")).toHaveValue("S 9");
-      expect(screen.getByLabelText("Status (contains)")).toHaveValue("Filed");
+      expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("Filed");
       expect(screen.getByLabelText("Sponsor")).toHaveValue("Jones");
       expect(screen.getByLabelText("Topic contains (fuzzy)")).toHaveValue("energy");
       expect(screen.getByRole("searchbox", { name: "Full-text search" })).toHaveValue("grants");

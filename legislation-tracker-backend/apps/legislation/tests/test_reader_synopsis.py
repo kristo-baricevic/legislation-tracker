@@ -21,6 +21,28 @@ def extract(text):
     return result
 
 
+REPEAL_TEXT = """SEC. 1. Short title
+This Act may be cited as the Restoring Essential Healthcare Act.
+SEC. 2. Repealing prohibition on Medicaid payments to certain entities
+Section 71113 of Public Law 119–21 is repealed, and, in the case of any items or services furnished as medical assistance under a State plan (or a waiver of such plan) under title XIX of the Social Security Act (42 U.S.C. 1396 et seq.) by a prohibited entity (as defined in subsection (b)(1) of such section 71113) during the period beginning on the date of enactment of Public Law 119–21 and ending on the date of enactment of this section, payment for such items and services shall be made as if such section 71113 had not been enacted into law."""
+
+
+def test_repeal_synopsis_preserves_medicaid_payment_scope_and_period():
+    result = extract(REPEAL_TEXT)
+    synopsis = result.contract_json["orientation"]["purpose_clause"]
+    assert synopsis is not None
+    for phrase in ("Medicaid", "certain entities", "119–21", "between", "enactment"):
+        assert phrase in synopsis
+    assert len(synopsis.split()) < 100
+    assert any(e.field_path == "orientation.purpose_clause" for e in result.evidence)
+
+
+def test_repeal_heading_without_operative_repeal_cannot_claim_repeal():
+    text = REPEAL_TEXT.replace("is repealed", "is not repealed")
+    synopsis = extract(text).contract_json["orientation"]["purpose_clause"]
+    assert synopsis is None or not synopsis.startswith("Repeals")
+
+
 def test_full_hr1589_has_a_cited_synopsis_of_paths_conditions_and_money():
     case = json.loads(
         (Path(__file__).parent / "fixtures/reader_evals/hr1589-119-ih.json").read_text()

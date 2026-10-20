@@ -14,6 +14,7 @@ import {
 } from "@/lib/contracts";
 import { BillBrief } from "./bill-brief";
 import { FinancialLedger } from "./financial-ledger";
+import { ReaderIdentityProvider } from "./reader-explanation";
 
 function LegacyContractSection({ contract }: { contract: BillContractItem }) {
   const j = contract.contract_json;
@@ -289,7 +290,7 @@ function V21ContractSection({ contract, bill }: { contract: BillContractSummary;
   }
 
   return (
-    <>
+    <ReaderIdentityProvider value={{ contractId: contract.id, contractHash: contract.contract_hash, documentId: contract.document }}>
       <BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={showLineItemMoney} />
       <div id="money-in-this-bill">
         <FinancialLedger
@@ -301,7 +302,7 @@ function V21ContractSection({ contract, bill }: { contract: BillContractSummary;
           downloadUrl={document?.download_url}
         />
       </div>
-    </>
+    </ReaderIdentityProvider>
   );
 }
 

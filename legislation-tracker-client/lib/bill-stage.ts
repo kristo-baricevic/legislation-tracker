@@ -1,7 +1,7 @@
 // Where a bill is on its path to becoming law, in plain words.
 //
 // Bill.status is not a controlled vocabulary. In production it is the latest
-// Congress.gov action sentence cut to 100 characters ("Referred to the House
+// Congress.gov action sentence ("Referred to the House
 // Committee on Energy and Commerce."); fixtures use short codes ("passed_house").
 // stageFor() reads either and returns null when it cannot tell, so callers can
 // fall back to showing the original text instead of guessing.

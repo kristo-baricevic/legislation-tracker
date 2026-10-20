@@ -402,7 +402,12 @@ def _generate_contract_for_bill_impl(bill_id):
     contract_json = build_legacy_metadata_contract(bill)
     new_hash = contract_hash_from_dict(contract_json)
     latest = bill.latest_contract
+    if latest and latest.document_id is not None:
+        return {"bill_id": bill.id, "contract_id": latest.id, "unchanged": True}
     if latest and latest.contract_hash == new_hash:
+        Bill.objects.filter(pk=bill.pk, latest_contract_id=latest.pk).update(
+            processing_status=ProcessingStatus.PROCESSING
+        )
         enqueue_topic_update(bill=bill)
         return {
             "bill_id": bill.id,
@@ -411,6 +416,10 @@ def _generate_contract_for_bill_impl(bill_id):
         }
 
     with transaction.atomic():
+        bill = Bill.objects.select_for_update().get(pk=bill.pk)
+        latest = bill.latest_contract
+        if latest and latest.document_id is not None:
+            return {"bill_id": bill.id, "contract_id": latest.id, "unchanged": True}
         contract, contract_created = BillContract.objects.get_or_create(
             bill=bill,
             document__isnull=True,
@@ -422,11 +431,9 @@ def _generate_contract_for_bill_impl(bill_id):
             },
         )
         bill.latest_contract = contract
-        if bill.processing_status != ProcessingStatus.COMPLETE:
-            bill.processing_status = ProcessingStatus.COMPLETE
-            bill.save(update_fields=["latest_contract", "processing_status"])
-        else:
-            bill.save(update_fields=["latest_contract"])
+        # Metadata is a temporary fallback, never proof of completed analysis.
+        bill.processing_status = ProcessingStatus.PROCESSING
+        bill.save(update_fields=["latest_contract", "processing_status"])
 
         if contract_created:
             record_bill_change(
@@ -707,7 +714,16 @@ def _generate_contract_impl(
             promoted = False
         if promoted:
             locked_bill.latest_contract = contract
-            locked_bill.processing_status = ProcessingStatus.COMPLETE
+            locked_bill.processing_status = (
+                ProcessingStatus.FAILED
+                if (
+                    settings.LEGAL_NLP_V21_WRITE_ENABLED
+                    and (extraction_result.fallback_reason is not None or not contract_json.get("line_items"))
+                )
+                or "incomplete_amendment_extraction"
+                in extraction_metadata.get("warnings", [])
+                else ProcessingStatus.COMPLETE
+            )
             locked_bill.save(update_fields=["latest_contract", "processing_status"])
         now = timezone.now()
         locked_document.contract_generated_at = now
@@ -1207,7 +1223,11 @@ def _finish_enhancement_attempt(
     with transaction.atomic():
         identity = BillEnhancementAttempt.objects.select_related("enhancement").filter(pk=attempt_id).first()
         source_first = identity is not None and identity.enhancement.output_schema_version == "2.0-source-first"
-        if source_first:
+        fenced_publication = source_first or (
+            identity is not None and (bool(identity.enhancement.source_manifest_json.get("glossary"))
+                                     or identity.enhancement.output_schema_version == "1.4")
+        )
+        if fenced_publication:
             # Match service lock ordering. Hold source/credential rows until the
             # publication commits so revocation or a version change cannot race it.
             Bill.objects.select_for_update().get(pk=identity.enhancement.bill_id)
@@ -1228,7 +1248,7 @@ def _finish_enhancement_attempt(
         enhancement = BillEnhancement.objects.select_for_update().get(
             pk=attempt.enhancement_id
         )
-        if source_first and attempt_status == BillEnhancementAttempt.Status.SUCCEEDED:
+        if fenced_publication and attempt_status == BillEnhancementAttempt.Status.SUCCEEDED:
             _, _, publication_failure = _worker_preflight(attempt)
             if publication_failure or not attempt.lease_expires_at or attempt.lease_expires_at <= now:
                 attempt_status = BillEnhancementAttempt.Status.FAILED
@@ -1406,6 +1426,41 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
 
     try:
         provider = get_provider(attempt.enhancement.provider)
+        if preflight.output_schema_version == "1.4":
+            from .enhancements.reader_batches import execute_reader_batches
+
+            def reader_checkpoint(completed, completed_calls):
+                attempt.refresh_from_db()
+                _, _, changed = _worker_preflight(attempt)
+                if changed:
+                    raise ProviderError(changed, usage=completed.usage)
+                now = timezone.now()
+                updated = BillEnhancementAttempt.objects.filter(
+                    pk=attempt.pk, status=BillEnhancementAttempt.Status.RUNNING,
+                    run_token=run_token, lease_expires_at__gt=now,
+                ).update(
+                    input_tokens=completed.usage.input_tokens, output_tokens=completed.usage.output_tokens,
+                    total_tokens=completed.usage.total_tokens, provider_response_id=completed.response_id,
+                    resolved_model=completed.resolved_model,
+                    citation_resolution_json={"reader": {"completed_calls": completed_calls,
+                                                        "total_calls": 1 + len(preflight.reader_batches)}},
+                    lease_expires_at=now + timedelta(seconds=max(
+                        settings.LLM_ENHANCEMENT_RUN_LEASE_SECONDS,
+                        settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS + 30)),
+                )
+                if not updated:
+                    raise ProviderError("outcome_unknown", outcome_unknown=True, usage=completed.usage)
+
+            result = execute_reader_batches(preflight, provider, api_key, reader_checkpoint)
+            validated = validate_enhancement_output(
+                result.output, preflight.source_snapshot, expected_version="1.4")
+            persisted = _finish_enhancement_attempt(
+                attempt_id=attempt_id, run_token=run_token,
+                attempt_status=BillEnhancementAttempt.Status.SUCCEEDED,
+                usage=result.usage, result_json=validated, provider_response_id=result.response_id,
+                resolved_model=result.resolved_model, citation_resolution=result.citation_resolution)
+            attempt.refresh_from_db()
+            return _terminal_task_result(persisted=persisted, status=attempt.status, category=attempt.failure_category or None)
         if preflight.output_schema_version == "2.0-source-first":
             from .enhancements.source_first_worker import execute_source_first, step_usage
             try:
@@ -1420,11 +1475,16 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
                 usage=step_usage(attempt.pk), result_json=analysis.output)
             attempt.refresh_from_db()
             return _terminal_task_result(persisted=persisted, status=attempt.status, category=attempt.failure_category or None)
-        provider_result = provider.enhance_bill(
-            api_key=api_key,
-            request=preflight,
-            timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
-        )
+        try:
+            provider_result = provider.enhance_bill(
+                api_key=api_key,
+                request=preflight,
+                timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
+            )
+        except ProviderError as error:
+            error.validation_detail = {**error.validation_detail, "stage": "main_analysis"}
+            error.citation_resolution = {**error.citation_resolution, "failed_stage": "main_analysis"}
+            raise
 
         def before_repair(audit):
             # Recheck credentials/source/feature before a second paid request.
@@ -1461,6 +1521,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
                 )
 
         repair_method = getattr(provider, "repair_citations", None)
+        from .enhancements.source_packet import canonical_json_bytes
         provider_result = resolve_citations(
             provider_result,
             attempt.enhancement.source_snapshot_json,
@@ -1478,10 +1539,48 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             max_request_bytes=min(
                 settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
                 settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
-                preflight.estimated_input_tokens,
+                len(canonical_json_bytes(preflight.request_envelope)),
             ),
         )
+        if preflight.glossary_batches:
+            from .enhancements.glossary import execute_glossary_batches
+
+            def glossary_checkpoint(completed, batch_index):
+                attempt.refresh_from_db()
+                _, _, failure = _worker_preflight(attempt)
+                if failure:
+                    raise ProviderError(failure, usage=completed.usage)
+                now = timezone.now()
+                audit = {
+                    **completed.citation_resolution,
+                    "glossary": {
+                        "completed_batches": batch_index,
+                        "total_batches": len(preflight.glossary_batches),
+                    },
+                }
+                updated = BillEnhancementAttempt.objects.filter(
+                    pk=attempt.pk, status=BillEnhancementAttempt.Status.RUNNING,
+                    run_token=run_token, lease_expires_at__gt=now,
+                ).update(
+                    citation_resolution_json=audit,
+                    input_tokens=completed.usage.input_tokens,
+                    output_tokens=completed.usage.output_tokens,
+                    total_tokens=completed.usage.total_tokens,
+                    provider_response_id=completed.response_id,
+                    resolved_model=completed.resolved_model,
+                    lease_expires_at=now + timedelta(seconds=max(
+                        settings.LLM_ENHANCEMENT_RUN_LEASE_SECONDS,
+                        settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS + 30,
+                    )),
+                )
+                if not updated:
+                    raise ProviderError("outcome_unknown", outcome_unknown=True, usage=completed.usage)
+
+            provider_result = execute_glossary_batches(
+                provider_result, preflight, provider, api_key, glossary_checkpoint,
+            )
     except ProviderError as exc:
+        from .enhancements.diagnostics import provider_validation_diagnostic
         if exc.category in {"invalid_credentials", "model_access_denied"}:
             _invalidate_rejected_credential(attempt)
         elif exc.category == "quota_exhausted":
@@ -1497,7 +1596,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             run_token=run_token,
             attempt_status=terminal_status,
             failure_category=exc.category,
-            failure_detail=diagnostic(exc.validation_code)
+            failure_detail=provider_validation_diagnostic(exc)
             if exc.category == "invalid_output"
             else {},
             usage=exc.usage,
@@ -1516,6 +1615,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             provider_result.output,
             attempt.enhancement.source_snapshot_json,
             expected_version=attempt.enhancement.output_schema_version,
+            aggregate_glossary=bool(preflight.glossary_batches),
         )
     except ValidationError as error:
         persisted = _finish_enhancement_attempt(
@@ -1545,7 +1645,8 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
         resolved_model=provider_result.resolved_model,
         citation_resolution=provider_result.citation_resolution,
     )
-    return _terminal_task_result(persisted=persisted, status="succeeded")
+    attempt.refresh_from_db()
+    return _terminal_task_result(persisted=persisted, status=attempt.status, category=attempt.failure_category or None)
 
 
 @shared_task(autoretry_for=())

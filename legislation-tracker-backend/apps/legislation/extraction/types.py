@@ -4,7 +4,7 @@ from enum import StrEnum
 V2_SCHEMA_VERSION = "2.0-legal-nlp"
 V21_SCHEMA_VERSION = "2.1-legal-nlp"
 V2_EXTRACTOR_VERSION = "federal-rules-2.0.0"
-V21_EXTRACTOR_VERSION = "federal-rules-2.1.14"
+V21_EXTRACTOR_VERSION = "federal-rules-2.1.22"
 
 # Compatibility aliases for the immutable 2.0 renderer.
 SCHEMA_VERSION = V2_SCHEMA_VERSION
@@ -46,6 +46,7 @@ class FinancialAction(StrEnum):
     PENALTY = "penalty"
     FEE_EXEMPTION = "fee_exemption"
     ACCOUNT_RULE = "account_rule"
+    SOURCE_RULE = "source_rule"
     APPROPRIATION = "appropriation"
     AUTHORIZATION = "authorization"
     ALLOCATION = "allocation"

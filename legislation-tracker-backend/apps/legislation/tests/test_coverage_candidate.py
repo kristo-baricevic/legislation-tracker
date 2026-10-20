@@ -27,7 +27,8 @@ def prepare():
 def result(text):
     return ProviderResult(
         output={
-            "schema_version": "1.2",
+            "schema_version": "1.3",
+            "glossary": [],
             "overview": [],
             "key_impacts": [],
             "obligations": [],

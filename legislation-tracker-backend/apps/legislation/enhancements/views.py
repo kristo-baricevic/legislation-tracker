@@ -69,6 +69,33 @@ def _is_stale(enhancement, bill) -> bool:
     return current.request_fingerprint != enhancement.request_fingerprint
 
 
+def _source_compatible(enhancement, bill) -> bool:
+    from .source_packet import _marked_active_document, _stored_document, _text_hash
+    document = _marked_active_document(bill) or _stored_document(bill)
+    manifest = enhancement.source_manifest_json
+    if not document or manifest.get("document_id") != document.pk:
+        return False
+    if manifest.get("document_content_hash") != _text_hash(document.extracted_text or document.raw_text or ""):
+        return False
+    if enhancement.output_schema_version == "1.4":
+        contract = bill.latest_contract
+        return bool(contract and contract.document_id == document.pk
+                    and manifest.get("contract_id") == contract.pk
+                    and manifest.get("contract_hash") == contract.contract_hash)
+    return enhancement.output_schema_version in {"1.1", "1.2", "1.3"}
+
+
+def _active_reader_payload(user, bill):
+    for saved in BillEnhancement.objects.filter(
+        user=user, bill=bill, status=BillEnhancement.Status.SUCCEEDED,
+    ).exclude(result_json=None).prefetch_related(ATTEMPT_PREFETCH).order_by("-created_at", "-id"):
+        if _source_compatible(saved, bill):
+            payload = enhancement_payload(saved, detail=True)
+            payload["source_compatible"] = True
+            return payload
+    return None
+
+
 class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
@@ -125,6 +152,8 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
                 "aggregate_budget": preflight.source_manifest.get("budget"),
+                "glossary_coverage": preflight.source_manifest.get("glossary"),
+                "reader_coverage": preflight.source_manifest.get("reader"),
                 "source_coverage": preflight.source_manifest.get("coverage"),
                 "unresolved_unit_ids": preflight.source_manifest.get("unresolved_unit_ids", []),
                 "max_output_includes_reasoning": True,
@@ -188,6 +217,8 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
             return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
         payload = enhancement_payload(enhancement, detail=True)
         payload["stale"] = _is_stale(enhancement, bill)
+        payload["source_compatible"] = _source_compatible(enhancement, bill)
+        payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
 
 
@@ -202,6 +233,8 @@ class BillEnhancementDetailView(PrivateEnhancementMixin, APIView):
         )
         payload = enhancement_payload(enhancement, detail=True)
         payload["stale"] = _is_stale(enhancement, bill)
+        payload["source_compatible"] = _source_compatible(enhancement, bill)
+        payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
 
 

@@ -312,6 +312,24 @@ def test_metadata_contract_generation_remains_legacy():
 
     assert contract.schema_version == "1.1-deterministic"
     assert contract.contract_json["schema_version"] == "1.1-deterministic"
+    bill.refresh_from_db()
+    assert bill.processing_status != ProcessingStatus.COMPLETE
+
+
+@pytest.mark.django_db
+def test_late_metadata_job_does_not_replace_document_analysis():
+    bill = Bill.objects.create(jurisdiction="federal", session=119,
+        bill_number="HR 999", title="Test", status="Introduced")
+    document = BillDocument.objects.create(bill=bill, version_label="Introduced")
+    contract = BillContract.objects.create(bill=bill, document=document,
+        schema_version="2.1-legal-nlp", contract_hash="document-analysis", contract_json={})
+    bill.latest_contract = contract
+    bill.processing_status = ProcessingStatus.COMPLETE
+    bill.save()
+    tasks.generate_contract_for_bill(bill.id)
+    bill.refresh_from_db()
+    assert bill.latest_contract_id == contract.id
+    assert bill.processing_status == ProcessingStatus.COMPLETE
 
 
 @pytest.mark.django_db
