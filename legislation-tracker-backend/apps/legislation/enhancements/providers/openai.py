@@ -402,6 +402,20 @@ class OpenAIEnhancementProvider:
                 resolved_model=resolved_model,
             )
         output_text = _value(response, "output_text", "")
+        # The SDK convenience property concatenates commentary and final text.
+        # Only an explicitly marked final answer can disambiguate those phases;
+        # never salvage an arbitrary JSON object from malformed model output.
+        final_messages = [item for item in (_value(response, "output", []) or [])
+                          if _value(item, "type") == "message"
+                          and _value(item, "phase") == "final_answer"]
+        if final_messages:
+            output_text = "".join(
+                _value(content, "text", "")
+                for item in final_messages
+                for content in (_value(item, "content", []) or [])
+                if _value(content, "type") == "output_text"
+                and isinstance(_value(content, "text"), str)
+            )
         try:
             output = json.loads(output_text)
         except (TypeError, ValueError) as error:

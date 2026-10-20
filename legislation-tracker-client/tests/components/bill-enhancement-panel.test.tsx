@@ -359,13 +359,17 @@ describe("BillEnhancementPanel", () => {
     const attempt = {
       id: 12, sequence: 1, status: "failed" as const, credential_revision: 2,
       estimated_input_tokens: 600, usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
-      resolved_model: "gpt-5.6-luna", failure_category: "invalid_output", retry_allowed: false,
+      resolved_model: "gpt-5.6-luna", failure_category: "invalid_output", retry_allowed: true,
       failure_detail: { code: "citation_quote_not_found", message: "A cited quote does not exactly match its source text.", path: "/glossary/0/source_quotes/0/quote", stage: "glossary_batch" as const, batch_index: 2 },
       started_at: null, completed_at: null, created_at: "2026-08-21T00:00:00Z",
     };
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({ status: "failed", result: null, latest_attempt: attempt, attempts: [attempt] }));
-    render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-    expect(await screen.findByText(attempt.failure_detail.message)).toBeVisible();
+    render(<><div id="failure-controls" data-testid="failure-controls" /><BillEnhancementPanel billId={10} jurisdiction="federal" controlsTargetId="failure-controls" /></>);
+    const controls = screen.getByTestId("failure-controls");
+    expect(await within(controls).findByText(attempt.failure_detail.message)).toBeVisible();
+    await userEvent.click(within(controls).getByRole("button", { name: "Retry AI enhancement" }));
+    expect(within(controls).getByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
+    expect(createBillEnhancement).not.toHaveBeenCalled();
     expect(screen.getByText(attempt.failure_detail.path)).toBeVisible();
     expect(screen.getByText("Stage: Glossary batch 3")).toBeVisible();
   });
@@ -501,6 +505,32 @@ describe("BillEnhancementPanel", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("leaves Enhancing state when polling returns a failed validation and offers an explicit retry", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
+      vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
+      vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({ status: "running", result: null, poll_after_seconds: 1 }));
+      vi.mocked(getBillEnhancement).mockResolvedValue(enhancementPayload({ status: "failed", result: null,
+        latest_attempt: {
+          id: 12, sequence: 1, status: "failed", credential_revision: 2,
+          estimated_input_tokens: 600, usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
+          resolved_model: "gpt-6-luna", failure_category: "invalid_output", retry_allowed: true,
+          failure_detail: { code: "citation_quote_not_found", message: "The cited quote does not match.", path: "/explanations/0" },
+          started_at: null, completed_at: null, created_at: "2026-10-20T00:00:00Z",
+        },
+      }));
+      render(<><div id="poll-controls" data-testid="poll-controls" /><BillEnhancementPanel billId={10} jurisdiction="federal" controlsTargetId="poll-controls" /></>);
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(screen.getByRole("button", { name: "Enhancing…" })).toBeDisabled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(screen.queryByRole("button", { name: "Enhancing…" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Retry AI enhancement" })).toBeEnabled();
+      expect(within(screen.getByTestId("poll-controls")).getByRole("alert")).toHaveTextContent("The cited quote does not match.");
+      expect(createBillEnhancement).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
 
   it("loads logical enhancement history and opens an older result", async () => {

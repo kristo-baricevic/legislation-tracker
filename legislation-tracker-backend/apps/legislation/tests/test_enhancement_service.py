@@ -184,10 +184,12 @@ def test_create_rejects_non_federal_bill_without_creating_an_attempt(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("failure_category", ["provider_rate_limited", "invalid_output"])
 def test_terminal_attempt_requires_explicit_eligible_retry(
     enhancement_owner,
     source_bill,
     enhancement_settings,
+    failure_category,
 ):
     with enhancement_settings:
         credential = _valid_credential(enhancement_owner)
@@ -199,7 +201,7 @@ def test_terminal_attempt_requires_explicit_eligible_retry(
         )
         attempt = created.attempt
         attempt.status = attempt.Status.FAILED
-        attempt.failure_category = "provider_rate_limited"
+        attempt.failure_category = failure_category
         attempt.save(update_fields=["status", "failure_category"])
         created.enhancement.status = created.enhancement.Status.FAILED
         created.enhancement.save(update_fields=["status"])

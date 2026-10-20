@@ -430,6 +430,7 @@ export default function BillEnhancementPanel({
   const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
     : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
   const hasSavedReader = Boolean(activeReader?.result);
+  const failed = Boolean(enhancement && ["failed", "refused", "outcome_unknown"].includes(enhancement.status));
   return (
     <>
       <ControlsSlot targetId={controlsTargetId}>
@@ -439,6 +440,12 @@ export default function BillEnhancementPanel({
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
           {isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance with AI"}
         </button>}
+        {failed && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
+          <p>AI enhancement did not complete. Your original analysis is unchanged.</p>
+          {enhancement?.latest_attempt?.failure_detail?.message && <p>{enhancement.latest_attempt.failure_detail.message}</p>}
+          <p>{retryable ? "You can retry after reviewing and confirming the API usage again." : "See AI metadata below for the failure details and any required settings changes."}</p>
+        </div>}
+        {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
       </ControlsSlot>
     <section aria-label="AI metadata" className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
       <h2 className="text-lg font-semibold">AI metadata</h2>
@@ -476,7 +483,6 @@ export default function BillEnhancementPanel({
         </p>
         {enhancement.latest_attempt?.failure_detail ? (
           <div className="mt-2 text-sm text-slate-700 dark:text-green-500">
-            <p>{enhancement.latest_attempt.failure_detail.message}</p>
             {enhancement.latest_attempt.failure_detail.stage && <p className="mt-1 text-xs">Stage: {enhancement.latest_attempt.failure_detail.stage === "main_analysis"
               ? "Bill analysis"
               : enhancement.latest_attempt.failure_detail.batch_index != null
@@ -567,7 +573,6 @@ export default function BillEnhancementPanel({
           )}
         </details>
       )}
-      {error && <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-400">{error}</p>}
       {signedIn && selectedHistory && <section className="mt-4 border-t pt-4" aria-label="Selected historical analysis">
         <button type="button" className="underline" onClick={() => setSelectedHistory(null)}>Close historical analysis</button>
         <p className="mt-2 text-sm">Historical analysis only; this does not change the bill page.</p>

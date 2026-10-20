@@ -569,3 +569,27 @@ def test_malformed_completed_output_is_invalid_output():
     assert captured.value.category == "invalid_output"
     assert captured.value.response_id == "resp_test_123"
     assert captured.value.resolved_model == "gpt-5.6-luna-2026-08-01"
+
+
+def test_parses_explicit_final_answer_without_concatenating_commentary():
+    response = _completed_response()
+    final_text = response.output_text
+    response.output = [SimpleNamespace(type="message", phase=phase, content=[
+        SimpleNamespace(type="output_text", text=text)
+    ]) for phase, text in [("commentary", '{"draft":true}'), ("final_answer", final_text)]]
+    response.output_text = '{"draft":true}' + final_text
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
+    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    assert result.output == json.loads(final_text)
+
+
+def test_does_not_guess_between_multiple_final_json_objects():
+    response = _completed_response()
+    response.output = [SimpleNamespace(type="message", phase="final_answer", content=[
+        SimpleNamespace(type="output_text", text=response.output_text)
+    ])] * 2
+    response.output_text *= 2
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
+    with pytest.raises(ProviderError) as caught:
+        provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    assert caught.value.category == "invalid_output"

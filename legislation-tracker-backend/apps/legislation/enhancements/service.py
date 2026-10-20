@@ -18,6 +18,9 @@ ACTIVE_STATUSES = {
     BillEnhancementAttempt.Status.RUNNING,
 }
 USER_RETRYABLE_FAILURES = {
+    # Invalid output remains unpublished and terminal for automatic workers,
+    # but the user can explicitly confirm a new paid attempt.
+    "invalid_output",
     "credential_changed",
     "credential_disabled",
     "encryption_error",
