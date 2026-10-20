@@ -41,6 +41,10 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
         assert len(p.reader_batches[0].source_snapshot) == 1
         assert len(snapshot_targets(p.reader_batches[0].source_snapshot)) == 8
         assert p.source_manifest["budget"]["maximum_calls"] == 3
+        wire_source = p.request_envelope["source_packet"]["sources"][0]
+        assert "citation_passages" in wire_source
+        assert "quoted_text" not in wire_source  # Do not send the text twice.
+        assert wire_source["citation_passages"][0]["quote_id"] == "p0001"
         c.contract_hash = "new-contract"
         c.save()
         assert build_enhancement_preflight(source_bill).source_fingerprint != p.source_fingerprint
@@ -64,13 +68,13 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
             if not targets:
                 s = request.source_snapshot[0]
                 output["summary"] = [{"text": "Requires a report within 90 days.",
-                    "source_quotes": [{"source_ref": s["source_ref"], "quote": s["quoted_text"]}]}]
+                    "source_quotes": [{"source_ref": s["source_ref"], "quote_id": "p0001"}]}]
             for s in request.source_snapshot:
                 for t in s.get("reader_targets", []):
                     output["explanations"].append({"target_id": t["target_id"],
                         "status": "explained", "text": "Publish a report within 90 days.",
                         "unresolved_reason": None,
-                        "source_quotes": [{"source_ref": s["source_ref"], "quote": s["quoted_text"]}]})
+                        "source_quotes": [{"source_ref": s["source_ref"], "quote_id": "p0001"}]})
             if targets and mode == "missing":
                 output["explanations"].pop()
             if targets and mode == "revoked":

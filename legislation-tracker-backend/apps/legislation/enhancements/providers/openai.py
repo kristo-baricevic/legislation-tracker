@@ -158,7 +158,8 @@ class OpenAIEnhancementProvider:
         schema = PROVIDER_OUTPUT_SCHEMA
         if request.request_envelope.get("output_schema_version") == "1.4":
             from ..reader_targets import READER_SCHEMA
-            schema = READER_SCHEMA
+            from ..reader_citations import READER_ID_SCHEMA, READER_PROMPT_VERSION
+            schema = READER_ID_SCHEMA if request.request_envelope.get("prompt_version") == READER_PROMPT_VERSION else READER_SCHEMA
         elif request.request_envelope.get("coverage_candidate_version") == "2":
             from ..coverage_contract import response_schema
 

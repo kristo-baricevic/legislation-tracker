@@ -34,6 +34,18 @@ entailment**. Human review of the generated wording remains necessary. The froze
 H.R. 7583 policy/wage fixture verifies that complete thresholds, formulas and
 effective dates reach the model; it does not certify a future model response.
 
+New requests use the `reader-2` prompt/source-packet identity. The provider selects
+`source_ref` and `quote_id` from server-supplied, verbatim citation passages instead
+of transcribing quotation text. The server resolves those IDs against the pinned
+source snapshot and then applies the existing source/target/evidence checks. Unknown
+IDs, unsupported targets, and model-supplied quote text are rejected. Repeated
+passages that cannot be located uniquely remain visible as context but are not
+selectable citations. Full context is preserved without sending a second copy.
+Published results remain schema 1.4 with ordinary quoted citations, so existing
+readers and saved results remain compatible. Confirmation fingerprints and request
+budgets include this new protocol; older confirmations must be refreshed. There
+are no extra model repair calls, automatic paid retries, or automatic regeneration.
+
 No backfill is needed. Compatible 1.1–1.3 summaries and explanations can be selected
 as the AI reading version without regeneration, and 1.3 glossary refinements remain
 usable. They replace the narrative area, not the complete financial ledger.
