@@ -33,6 +33,30 @@ when the source packet is truncated. Every summary sentence needs supporting quo
 """
 
 
+def _output_fits(sources, *, summary=False):
+    """Plan for full-length prose plus twelve citations per item and JSON.
+
+    Use a conservative byte estimate (not the usual four characters per token),
+    with headroom. This is a planning estimate, not a guarantee about generation;
+    provider truncation still fails closed and never triggers unconfirmed calls.
+    """
+    from .source_packet import canonical_json_bytes
+    quote = {"source_ref": max((s["source_ref"] for s in sources), key=len, default="src_0001"),
+             "quote_id": "p00000000"}
+    output = {"schema_version": READER_VERSION, "summary": [], "explanations": []}
+    if summary:
+        output["summary"] = [{"text": "x" * 600, "source_quotes": [quote] * 12}] * 4
+    else:
+        output["explanations"] = [
+            {"target_id": t["target_id"], "status": "explained", "text": "x" * 900,
+             "unresolved_reason": None, "source_quotes": [quote] * 12}
+            for t in snapshot_targets(sources)
+        ]
+    # Reasoning also consumes the provider's output budget when enabled.
+    fraction = .75 if settings.LLM_ENHANCEMENT_REASONING_EFFORT == "none" else .5
+    return len(canonical_json_bytes(output)) <= settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS * fraction
+
+
 def build_reader_preflight(document):
     from .source_packet import select_document_sources, _request_envelope, _within_limits, canonical_json_bytes, PreflightUnavailable, _text_hash
     from .types import EnhancementPreflight
@@ -56,7 +80,7 @@ def build_reader_preflight(document):
     main = envelope(main_sources, summary=True)
     main["source_packet"]["coverage"] = selected_envelope["source_packet"]["coverage"]
     main_bytes = canonical_json_bytes(main)
-    if not _within_limits(main_bytes):
+    if not _within_limits(main_bytes) or not _output_fits(main_sources, summary=True):
         raise PreflightUnavailable("Summary request exceeds configured limits", reason="request_too_large")
     all_targets = build_reader_targets(document)
     batches, pending, excluded = [], [], []
@@ -90,7 +114,11 @@ def build_reader_preflight(document):
         if not _within_limits(canonical_json_bytes(envelope([source]))):
             excluded.append({"target_id": target["target_id"], "reason": "complete_context_exceeds_limit"})
             continue
-        if pending and (len(pending) >= 8 or not _within_limits(canonical_json_bytes(envelope(packed(pending + [source]))))):
+        if not _output_fits([source]):
+            raise PreflightUnavailable("Reader output allowance cannot fit one complete explanation", reason="request_too_large")
+        if pending and (len(pending) >= 8
+                        or not _output_fits(packed(pending + [source]))
+                        or not _within_limits(canonical_json_bytes(envelope(packed(pending + [source]))))):
             batches.append(packed(pending))
             pending = []
         pending.append(source)
