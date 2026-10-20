@@ -1,6 +1,7 @@
 """Confirmed, bounded requests for in-place reader explanations."""
 import hashlib
 import copy
+import math
 from dataclasses import replace
 
 from django.conf import settings
@@ -33,7 +34,7 @@ when the source packet is truncated. Every summary sentence needs supporting quo
 """
 
 
-def _output_fits(sources, *, summary=False):
+def _output_allowance(sources, *, summary=False):
     """Plan for full-length prose plus twelve citations per item and JSON.
 
     Use a conservative byte estimate (not the usual four characters per token),
@@ -54,7 +55,11 @@ def _output_fits(sources, *, summary=False):
         ]
     # Reasoning also consumes the provider's output budget when enabled.
     fraction = .75 if settings.LLM_ENHANCEMENT_REASONING_EFFORT == "none" else .5
-    return len(canonical_json_bytes(output)) <= settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS * fraction
+    return max(8000, math.ceil(len(canonical_json_bytes(output)) / fraction / 1000) * 1000)
+
+
+def _output_fits(sources, *, summary=False):
+    return _output_allowance(sources, summary=summary) <= settings.LLM_READER_MAX_OUTPUT_TOKENS
 
 
 def build_reader_preflight(document):
@@ -68,7 +73,8 @@ def build_reader_preflight(document):
         value = _request_envelope(document.bill, sources, truncated=summary_truncated if summary else False)
         value.update(output_schema_version=READER_VERSION, prompt_version=READER_PROMPT_VERSION,
                      source_packet_version=READER_PROMPT_VERSION, instructions=INSTRUCTIONS,
-                     output_schema=READER_ID_SCHEMA, citation_resolution={"max_repair_calls": 0})
+                     output_schema=READER_ID_SCHEMA, citation_resolution={"max_repair_calls": 0},
+                     max_output_tokens=_output_allowance(sources, summary=summary))
         value["source_packet"]["quote_layout"] = "verbatim_citation_passages"
         for wire, source in zip(value["source_packet"]["sources"], sources, strict=True):
             wire.pop("quoted_text")
@@ -137,7 +143,7 @@ def build_reader_preflight(document):
                                          "excluded": excluded, "max_calls": settings.LLM_READER_MAX_CALLS})
     budget = {"maximum_calls": 1 + len(batches),
               "maximum_input": len(main_bytes) + sum(len(canonical_json_bytes(e)) for e in envelopes),
-              "maximum_output": (1 + len(batches)) * settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS}
+              "maximum_output": sum(e["max_output_tokens"] for e in [main, *envelopes])}
     manifest = {**identity, "source_kind": "reader_targets", "truncated": summary_truncated,
                 "coverage": selected_envelope["source_packet"]["coverage"],
                 "reader": {"total_count": len(all_targets), "selected_count": len(all_targets) - len(excluded),

@@ -36,11 +36,14 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
         assert p.output_schema_version == "1.4"
         assert p.source_manifest["reader"]["selected_count"] == 10
         assert p.source_manifest["reader"]["unavailable_count"] == 0
-        assert len(p.reader_batches) == 4
+        assert len(p.reader_batches) == 2
         # Shared enclosing text appears once per request, not once per target.
         assert len(p.reader_batches[0].source_snapshot) == 1
-        assert len(snapshot_targets(p.reader_batches[0].source_snapshot)) == 3
-        assert p.source_manifest["budget"]["maximum_calls"] == 5
+        assert len(snapshot_targets(p.reader_batches[0].source_snapshot)) == 8
+        assert p.source_manifest["budget"]["maximum_calls"] == 3
+        assert p.reader_batches[0].request_envelope['max_output_tokens'] > 8000
+        assert p.source_manifest['budget']['maximum_output'] == sum(
+            r.request_envelope['max_output_tokens'] for r in (p, *p.reader_batches))
         wire_source = p.request_envelope["source_packet"]["sources"][0]
         assert "citation_passages" in wire_source
         assert "quoted_text" not in wire_source  # Do not send the text twice.
@@ -93,8 +96,8 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
     a.enhancement.refresh_from_db()
     if mode == "success":
         assert outcome["status"] == "succeeded"
-        assert len(requests) == 5
-        assert a.total_tokens == 75
+        assert len(requests) == 3
+        assert a.total_tokens == 45
         payload = enhancement_payload(a.enhancement, detail=True)
         assert len(payload["result"]["explanations"]) == 10
         assert payload["result"]["explanations"][0]["contract_id"] == c.pk
@@ -125,9 +128,9 @@ def test_source_compatibility_does_not_depend_on_execution_format(source_bill):
 def test_output_allowance_splits_batches_without_losing_targets(source_bill, enhancement_settings):
     from django.test import override_settings
     install_reader(source_bill)
-    with enhancement_settings, override_settings(LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=8000):
+    with enhancement_settings, override_settings(LLM_READER_MAX_OUTPUT_TOKENS=8000):
         small = build_enhancement_preflight(source_bill)
-    with enhancement_settings, override_settings(LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=16000):
+    with enhancement_settings, override_settings(LLM_READER_MAX_OUTPUT_TOKENS=24000):
         large = build_enhancement_preflight(source_bill)
     assert len(small.reader_batches) > len(large.reader_batches)
     small_ids = [t['target_id'] for b in small.reader_batches for t in snapshot_targets(b.source_snapshot)]
@@ -135,13 +138,14 @@ def test_output_allowance_splits_batches_without_losing_targets(source_bill, enh
     assert small_ids == large_ids == [f'line_item:line-{i}' for i in range(10)]
     assert small.source_manifest['reader']['unavailable_count'] == 0
     assert small.request_fingerprint != large.request_fingerprint
-    assert small.source_manifest['budget']['maximum_output'] == (1 + len(small.reader_batches)) * 8000
+    assert small.source_manifest['budget']['maximum_output'] == sum(
+        r.request_envelope['max_output_tokens'] for r in (small, *small.reader_batches))
 
 
 @pytest.mark.django_db
 def test_impossible_output_budget_rejected_before_paid_calls(source_bill, enhancement_settings):
     from django.test import override_settings
     install_reader(source_bill)
-    with enhancement_settings, override_settings(LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=100):
+    with enhancement_settings, override_settings(LLM_READER_MAX_OUTPUT_TOKENS=100):
         with pytest.raises(PreflightUnavailable):
             build_enhancement_preflight(source_bill)

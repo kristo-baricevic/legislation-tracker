@@ -26,6 +26,19 @@ class FakeResponses:
         return self.result
 
 
+def test_reader_uses_confirmed_per_request_output_budget():
+    response = _completed_response()
+    response.output_text = json.dumps({'schema_version': '1.4', 'summary': [], 'explanations': []})
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    request = _request()
+    request.output_schema_version = '1.4'
+    request.prompt_version = 'reader-2'
+    request.request_envelope['max_output_tokens'] = 20000
+    provider.enhance_bill(api_key='test', request=request, timeout_seconds=30)
+    assert responses.calls[0]['max_output_tokens'] == 20000
+
+
 @pytest.mark.parametrize("text,reason,position", [
     ('{"secret": "private"\n "x": 1}', "missing_comma", 22),
     ("", "empty_text", 0),

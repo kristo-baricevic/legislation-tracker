@@ -144,6 +144,7 @@ LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
     default=8000,
 )
 # Entire reader plan is confirmed before any calls; never silently truncate it.
+LLM_READER_MAX_OUTPUT_TOKENS = env.int("LLM_READER_MAX_OUTPUT_TOKENS", default=24000)
 LLM_READER_MAX_CALLS = env.int("LLM_READER_MAX_CALLS", default=64)
 LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS = env.int(
     "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS",

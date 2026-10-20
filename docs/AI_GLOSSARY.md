@@ -50,11 +50,16 @@ Reader batching checks output space as well as input size: full-length explanati
 JSON fields, and up to twelve citation IDs per item are included in a conservative
 byte-based estimate, with 25% headroom (50% when reasoning is enabled). This is not
 a guarantee against provider truncation. Smaller output allowances produce smaller
-batches, without dropping targets or clipping source context. The complete call and
-output budget is confirmed before execution; plans exceeding the configured call
-ceiling or unable to fit the summary are rejected before any paid calls. Increasing
-batch count changes the confirmation fingerprint. Truncated output is still rejected;
-there are no automatic paid retries or silent increases to token allowances.
+batches, without dropping targets or clipping source context. Each request receives
+an allowance sized to its planned output, rounded to 1,000 tokens with an 8,000-token
+floor and a configurable `LLM_READER_MAX_OUTPUT_TOKENS` ceiling (default 24,000).
+Up to eight items are packed when both input and output fit. Summary and smaller
+batches need less allowance; the confirmation sums the actual per-request limits,
+and the provider uses those same pinned limits instead of the generic 8,000 cap.
+The complete call and output budget is confirmed before execution; plans exceeding
+the configured call ceiling or unable to fit the summary are rejected before paid
+calls. Budget changes change the confirmation fingerprint. Truncated output is
+still rejected; there are no automatic paid retries or unconfirmed budget increases.
 
 No backfill is needed. Compatible 1.1–1.3 summaries and explanations can be selected
 as the AI reading version without regeneration, and 1.3 glossary refinements remain

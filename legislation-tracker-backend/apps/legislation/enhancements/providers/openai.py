@@ -360,7 +360,10 @@ class OpenAIEnhancementProvider:
                     separators=(",", ":"),
                     ensure_ascii=False,
                 ),
-                max_output_tokens=min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+                max_output_tokens=request.request_envelope["max_output_tokens"]
+                if getattr(request, "output_schema_version", None) == "1.4"
+                   and getattr(request, "prompt_version", None) == "reader-2"
+                else min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
                 if schema_name.startswith("source_first_")
                 else settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
                 reasoning={"effort": request.reasoning_effort},
