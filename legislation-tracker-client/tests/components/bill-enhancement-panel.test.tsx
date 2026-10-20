@@ -112,6 +112,14 @@ function enhancementPayload(
 }
 
 describe("BillEnhancementPanel", () => {
+  it("loads saved status without waiting for or building a paid-request estimate", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getBillEnhancementEstimate).mockReturnValue(new Promise(() => {}));
+    vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
+    render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
+    expect(await screen.findByRole("button", { name: "AI-enhanced" })).toBeVisible();
+    expect(getBillEnhancementEstimate).not.toHaveBeenCalled();
+  });
   it("keeps only the primary control at the top and metadata below the bill", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
@@ -133,7 +141,7 @@ describe("BillEnhancementPanel", () => {
     const top = screen.getByTestId("top-controls");
     await userEvent.click(await within(top).findByRole("button", { name: "Enhance with AI" }));
     expect(within(top).queryByRole("button", { name: "Original" })).not.toBeInTheDocument();
-    expect(within(top).getByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
+    expect(await within(top).findByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
     expect(createBillEnhancement).not.toHaveBeenCalled();
   });
   beforeEach(() => {
@@ -263,7 +271,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
     vi.mocked(getBillEnhancementEstimate)
       .mockResolvedValueOnce(estimate)
-      .mockResolvedValueOnce(refreshedEstimate);
+      .mockResolvedValue(refreshedEstimate);
     vi.mocked(createBillEnhancement).mockRejectedValueOnce(
       new ApiError("preflight_changed", 409),
     );
@@ -601,7 +609,7 @@ describe("BillEnhancementPanel", () => {
     });
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-
+    await userEvent.click(await screen.findByRole("button", { name: "Enhance with AI" }));
     expect(await screen.findByText(/no stored bill text/i)).toBeVisible();
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });
@@ -617,7 +625,7 @@ describe("BillEnhancementPanel", () => {
     });
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-
+    await userEvent.click(await screen.findByRole("button", { name: "Enhance with AI" }));
     expect(await screen.findByText(/available only for federal bills/i)).toBeVisible();
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });

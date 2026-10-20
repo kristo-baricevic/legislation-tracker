@@ -62,11 +62,19 @@ def _service_error(exc: EnhancementServiceError):
 
 
 def _is_stale(enhancement, bill) -> bool:
-    try:
-        current = build_enhancement_preflight(bill)
-    except PreflightUnavailable:
-        return True
-    return current.request_fingerprint != enhancement.request_fingerprint
+    # Display freshness must never rebuild every prompt on page load or polling.
+    # Exact request identity is still checked by estimate/create and the worker.
+    from .reader_batches import reader_execution_settings
+    from .reader_citations import READER_PROMPT_VERSION
+    return not (
+        _source_compatible(enhancement, bill)
+        and enhancement.output_schema_version == "1.4"
+        and enhancement.prompt_version == READER_PROMPT_VERSION
+        and enhancement.provider == settings.LLM_ENHANCEMENT_PROVIDER
+        and enhancement.requested_model == settings.LLM_ENHANCEMENT_MODEL
+        and enhancement.reasoning_effort == settings.LLM_ENHANCEMENT_REASONING_EFFORT
+        and enhancement.source_manifest_json.get("execution_settings") == reader_execution_settings()
+    )
 
 
 def _source_compatible(enhancement, bill) -> bool:

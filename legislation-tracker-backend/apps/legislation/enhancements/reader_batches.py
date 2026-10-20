@@ -34,6 +34,14 @@ when the source packet is truncated. Every summary sentence needs supporting quo
 """
 
 
+def reader_execution_settings():
+    return {name: getattr(settings, name) for name in (
+        "LLM_READER_MAX_OUTPUT_TOKENS", "LLM_READER_MAX_CALLS",
+        "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS", "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
+        "LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS",
+    )}
+
+
 def _output_allowance(sources, *, summary=False):
     """Plan for full-length prose plus twelve citations per item and JSON.
 
@@ -140,11 +148,13 @@ def build_reader_preflight(document):
                 "document_version_label": document.version_label}
     # Include exclusion decisions, identities, and the configured total-call ceiling.
     request_bytes = canonical_json_bytes({"main": main, "batches": envelopes, "identity": identity,
+                                         "execution_settings": reader_execution_settings(),
                                          "excluded": excluded, "max_calls": settings.LLM_READER_MAX_CALLS})
     budget = {"maximum_calls": 1 + len(batches),
               "maximum_input": len(main_bytes) + sum(len(canonical_json_bytes(e)) for e in envelopes),
               "maximum_output": sum(e["max_output_tokens"] for e in [main, *envelopes])}
-    manifest = {**identity, "source_kind": "reader_targets", "truncated": summary_truncated,
+    manifest = {**identity, "execution_settings": reader_execution_settings(),
+                "source_kind": "reader_targets", "truncated": summary_truncated,
                 "coverage": selected_envelope["source_packet"]["coverage"],
                 "reader": {"total_count": len(all_targets), "selected_count": len(all_targets) - len(excluded),
                            "unavailable_count": len(excluded), "unavailable": excluded, "batch_count": len(batches)},

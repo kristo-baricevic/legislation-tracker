@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import SourceFirstAnalysis from "./source-first-analysis";
 
@@ -205,17 +205,21 @@ export default function BillEnhancementPanel({
   const [historyPage, setHistoryPage] = useState(1);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const generation = useRef(0);
+  useEffect(() => subscribePersonalizedChanges(change => {
+    if (change.kind === "revalidate") return;
+    generation.current += 1;
+    setSignedIn(null);
+    setEnhancement(null);
+    setSessionRevision(value => value + 1);
+  }), []);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<"create" | "retry" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isFederal = jurisdiction.trim().toLowerCase() === "federal";
   const { setEnhancement: publishGlossary } = useAiGlossary();
-  useEffect(() => subscribePersonalizedChanges(change => {
-    if (change.kind === "session") {
-      setSignedIn(false);
-      setEnhancement(null);
-    }
-  }), []);
   useEffect(() => {
     if (!signedIn || !featureAvailable) publishGlossary(null);
     else if (enhancement?.active_reader !== undefined) publishGlossary(enhancement.active_reader);
@@ -228,6 +232,7 @@ export default function BillEnhancementPanel({
 
   useEffect(() => {
     let active = true;
+    generation.current += 1;
     setSignedIn(null);
     setFeatureAvailable(null);
     setEstimate(null);
@@ -238,6 +243,8 @@ export default function BillEnhancementPanel({
     setError(null);
     setConfirming(null);
     setLoading(false);
+    setPreparing(false);
+    setSubmitting(false);
 
     async function load() {
       if (Number.isNaN(billId)) {
@@ -259,12 +266,8 @@ export default function BillEnhancementPanel({
 
       setLoading(true);
       try {
-        const [nextEstimate, latest] = await Promise.all([
-          getBillEnhancementEstimate(billId),
-          getLatestBillEnhancement(billId),
-        ]);
+        const latest = await getLatestBillEnhancement(billId);
         if (!active) return;
-        setEstimate(nextEstimate);
         setEnhancement(latest);
       } catch (reason) {
         if (!active) return;
@@ -278,8 +281,30 @@ export default function BillEnhancementPanel({
     void load();
     return () => {
       active = false;
+      generation.current += 1;
     };
-  }, [billId, isFederal]);
+  }, [billId, isFederal, sessionRevision]);
+
+  async function prepareEnhancement() {
+    const owner = generation.current;
+    setPreparing(true);
+    setError(null);
+    try {
+      const nextEstimate = await getBillEnhancementEstimate(billId);
+      if (owner !== generation.current) return;
+      setEstimate(nextEstimate);
+      if (nextEstimate.can_enhance) {
+        const sameRequest = enhancement?.request_fingerprint === nextEstimate.request_fingerprint;
+        setConfirming(sameRequest && enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
+      }
+    } catch (reason) {
+      if (owner !== generation.current) return;
+      if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
+      else setError(reason instanceof Error ? reason.message : "Could not prepare AI enhancement.");
+    } finally {
+      if (owner === generation.current) setPreparing(false);
+    }
+  }
 
   useEffect(() => {
     if (signedIn !== true || featureAvailable !== true || !isFederal) return;
@@ -347,17 +372,21 @@ export default function BillEnhancementPanel({
   }, [billId, enhancementId, pollDelaySeconds, shouldPoll]);
 
   async function selectHistoryItem(item: BillEnhancement) {
+    const owner = generation.current;
     setError(null);
     try {
       const selected = await getBillEnhancement(billId, item.id);
+      if (owner !== generation.current) return;
       setSelectedHistory(selected);
     } catch (reason) {
+      if (owner !== generation.current) return;
       if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
       else setError(reason instanceof Error ? reason.message : "Could not load the selected enhancement.");
     }
   }
 
   async function submitEnhancement() {
+    const owner = generation.current;
     if (!estimate || !confirming) return;
     const confirmation = confirmationFromEstimate(estimate);
     if (!confirmation || !enhancement && confirming === "retry") return;
@@ -367,6 +396,7 @@ export default function BillEnhancementPanel({
       const updated = confirming === "retry" && enhancement
         ? await retryBillEnhancement(billId, enhancement.id, confirmation)
         : await createBillEnhancement(billId, confirmation);
+      if (owner !== generation.current) return;
       setEnhancement(updated);
       setHistoryPage(1);
       setHistory((current) => current ? {
@@ -378,6 +408,7 @@ export default function BillEnhancementPanel({
       } : current);
       setConfirming(null);
     } catch (reason) {
+      if (owner !== generation.current) return;
       const refreshableConflict = reason instanceof ApiError && reason.status === 409;
       if (refreshableConflict) {
         setConfirming(null);
@@ -386,10 +417,12 @@ export default function BillEnhancementPanel({
             getBillEnhancementEstimate(billId),
             getLatestBillEnhancement(billId),
           ]);
+          if (owner !== generation.current) return;
           setEstimate(nextEstimate);
           setEnhancement(latest);
           setError("The bill or credential changed. Review the refreshed estimate and confirm again.");
         } catch (refreshReason) {
+          if (owner !== generation.current) return;
           if (refreshReason instanceof ApiError && refreshReason.status === 401) setSignedIn(false);
           else setError(refreshReason instanceof Error ? refreshReason.message : "Could not refresh AI enhancement.");
         }
@@ -397,7 +430,7 @@ export default function BillEnhancementPanel({
         setError(reason instanceof Error ? reason.message : "Could not start AI enhancement.");
       }
     } finally {
-      setSubmitting(false);
+      if (owner === generation.current) setSubmitting(false);
     }
   }
 
@@ -435,10 +468,10 @@ export default function BillEnhancementPanel({
     <>
       <ControlsSlot targetId={controlsTargetId}>
         {hasSavedReader ? <ReaderModeSwitch /> : <button type="button"
-          disabled={!estimate?.can_enhance || Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
-          onClick={() => setConfirming(retryable && !canStartNewIdentity ? "retry" : "create")}
+          disabled={preparing || Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
+          onClick={() => void prepareEnhancement()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance with AI"}
+          {preparing ? "Preparing AI estimate…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance with AI"}
         </button>}
         {failed && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
           <p>AI enhancement did not complete. Your original analysis is unchanged.</p>
@@ -453,9 +486,9 @@ export default function BillEnhancementPanel({
       {estimate && !estimate.can_enhance && (
         <EnhancementUnavailable reason={estimate.unavailable_reason} />
       )}
-      {hasSavedReader && estimate?.can_enhance && enhancement && !isActive && (retryable || canStartNewIdentity) && (
-        <button type="button" onClick={() => setConfirming(retryable && !canStartNewIdentity ? "retry" : "create")} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
-          {canStartNewIdentity ? "Enhance current version" : "Retry AI enhancement"}
+      {hasSavedReader && enhancement && !isActive && (retryable || canStartNewIdentity) && (
+        <button type="button" disabled={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
+          {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : "Retry AI enhancement"}
         </button>
       )}
       {isActive && <p role="status" className="mt-4 text-sm text-slate-700 dark:text-green-500">The confirmed request is {enhancement.status}. This panel will update automatically.</p>}

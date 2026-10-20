@@ -149,3 +149,24 @@ def test_impossible_output_budget_rejected_before_paid_calls(source_bill, enhanc
     with enhancement_settings, override_settings(LLM_READER_MAX_OUTPUT_TOKENS=100):
         with pytest.raises(PreflightUnavailable):
             build_enhancement_preflight(source_bill)
+
+
+@pytest.mark.django_db
+def test_status_freshness_does_not_build_request_plan(source_bill, enhancement_settings, monkeypatch):
+    from types import SimpleNamespace
+    from django.test import override_settings
+    from apps.legislation.enhancements.views import _is_stale
+    install_reader(source_bill)
+    with enhancement_settings:
+        p = build_enhancement_preflight(source_bill)
+        saved = SimpleNamespace(source_manifest_json=p.source_manifest, output_schema_version=p.output_schema_version,
+            request_fingerprint=p.request_fingerprint, prompt_version=p.prompt_version, provider=p.provider,
+            requested_model=p.requested_model, reasoning_effort=p.reasoning_effort)
+        def forbidden(*args, **kwargs):
+            pytest.fail('Reading saved status must not rebuild the paid request plan')
+        monkeypatch.setattr('apps.legislation.enhancements.views.build_enhancement_preflight', forbidden)
+        assert not _is_stale(saved, source_bill)
+        with override_settings(LLM_READER_MAX_OUTPUT_TOKENS=12000):
+            assert _is_stale(saved, source_bill)
+        source_bill.latest_contract.contract_hash = 'changed'
+        assert _is_stale(saved, source_bill)

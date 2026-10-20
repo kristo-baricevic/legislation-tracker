@@ -61,6 +61,13 @@ the configured call ceiling or unable to fit the summary are rejected before pai
 calls. Budget changes change the confirmation fingerprint. Truncated output is
 still rejected; there are no automatic paid retries or unconfirmed budget increases.
 
+Reading saved AI status and polling do not build the request plan. Freshness uses
+the pinned document/contract hashes and execution settings; exact fingerprints are
+still validated before paid execution. The UI builds the complete cost estimate
+only when Enhance/Retry is clicked, then requires confirmation. Window-focus
+revalidation is not an account change and does not invalidate in-flight private
+requests; actual session or tracking changes retain their ownership guards.
+
 No backfill is needed. Compatible 1.1–1.3 summaries and explanations can be selected
 as the AI reading version without regeneration, and 1.3 glossary refinements remain
 usable. They replace the narrative area, not the complete financial ledger.

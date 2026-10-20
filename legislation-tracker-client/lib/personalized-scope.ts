@@ -45,7 +45,7 @@ function readTransition(epoch: string | null) {
 
 function change(kind: PersonalizedChange["kind"], persist = false) {
   if (kind === "tracking") interestGeneration += 1;
-  else sessionGeneration += 1;
+  else if (kind === "session") sessionGeneration += 1;
   if (persist && typeof window !== "undefined") {
     const token = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
     const epoch = kind === "tracking" ? token : transition ? `changing:${transitionExpires}:${token}` : `stable:${token}`;

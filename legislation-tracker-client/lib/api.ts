@@ -49,6 +49,7 @@ let bootstrappedCsrfToken: string | null = null;
 let refreshInFlight: { scope: PersonalizedScope; promise: Promise<boolean>; controller: AbortController } | null = null;
 const AUTH_REFRESH_LOCK = "legislation-tracker-auth-refresh";
 subscribePersonalizedChanges(change => {
+  if (change.kind === "revalidate") return;
   refreshInFlight?.controller.abort();
   refreshInFlight = null;
   if (change.kind !== "tracking") bootstrappedCsrfToken = null;
