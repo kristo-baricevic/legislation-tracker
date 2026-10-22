@@ -9,19 +9,21 @@ function Evidence({ url }: { url: string }) {
 }
 
 export default function ContributorExplorer({ representativeId, period, refreshToken }: { representativeId: number; period: number; refreshToken?: string }) {
-  const [data, setData] = useState<Connections | null>(null);
+  const [loaded, setLoaded] = useState<{ scope: string; data: Connections } | null>(null);
   const [donor, setDonor] = useState<{ id: number; name: string }>();
   const [member, setMember] = useState<{ id: number; name: string; snapshot?: string }>();
   const [donorPage, setDonorPage] = useState(0), [memberPage, setMemberPage] = useState(0);
   const [retry, setRetry] = useState(0), [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const scope = JSON.stringify([representativeId, period, donor?.id, donorPage, memberPage]);
+  const data = loaded?.scope === scope ? loaded.data : null;
   const loadedScope = useRef("");
   useEffect(() => {
     const controller = new AbortController();
     const scope = JSON.stringify([representativeId, period, donor?.id, donorPage, memberPage]);
     setLoading(loadedScope.current !== scope); setError("");
     getConnections(representativeId, period, 0, controller.signal, donor?.id, donorPage, memberPage)
-      .then(result => { if (!controller.signal.aborted) { loadedScope.current = scope; setData(result); } })
+      .then(result => { if (!controller.signal.aborted) { loadedScope.current = scope; setLoaded({ scope, data: result }); } })
       .catch(() => { if (!controller.signal.aborted) setError("Could not load campaign connections."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();

@@ -4,6 +4,47 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import ContributorExplorer from "@/app/components/ContributorExplorer";
 
+it("hides the previous page after a failed next-page request and retries the requested page", async () => {
+  let fail = true;
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    const offset = Number(new URL(url).searchParams.get("donor_cursor"));
+    if (offset && fail) return new Response("unavailable", { status: 503 });
+    return Response.json({ finance_status: "partial", donor_count: 21, related_count: 0, count: 0,
+      next_cursor: null, next_donor_cursor: offset ? null : 20, next_related_cursor: null, bills: [], related_representatives: [],
+      donors: [{ id: offset + 1, name: `PAC ${offset + 1}`, amount: "100", source_url: "https://www.fec.gov/" }] });
+  }));
+  render(<ContributorExplorer representativeId={1} period={2026} />);
+  await screen.findByRole("button", { name: "PAC 1" });
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByRole("alert");
+  expect(screen.queryByRole("button", { name: "PAC 1" })).not.toBeInTheDocument();
+  expect(screen.queryByText(/21–21 of/)).not.toBeInTheDocument();
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "Retry connections" }));
+  expect(await screen.findByRole("button", { name: "PAC 21" })).toBeVisible();
+});
+
+it("never attributes old recipients to a newly selected donor when loading fails", async () => {
+  let fail = true;
+  const donors = [1, 2].map(id => ({ id, name: `PAC ${id}`, amount: "100", source_url: "https://www.fec.gov/" }));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    const selected = new URL(url).searchParams.get("contributor");
+    if (selected === "2" && fail) return new Response("unavailable", { status: 503 });
+    return Response.json({ finance_status: "partial", donors, donor_count: 2, related_count: 1, count: 0,
+      next_cursor: null, next_donor_cursor: null, next_related_cursor: null, bills: [],
+      related_representatives: selected ? [{ id: Number(selected), name: `Recipient ${selected}`, amount: "100", source_url: "https://www.fec.gov/" }] : [] });
+  }));
+  render(<ContributorExplorer representativeId={1} period={2026} />);
+  await userEvent.click(await screen.findByRole("button", { name: "PAC 1" }));
+  await screen.findByRole("button", { name: "Recipient 1" });
+  await userEvent.click(screen.getByRole("button", { name: "PAC 2" }));
+  await screen.findByRole("alert");
+  expect(screen.queryByRole("button", { name: "Recipient 1" })).not.toBeInTheDocument();
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "Retry connections" }));
+  expect(await screen.findByRole("button", { name: "Recipient 2" })).toBeVisible();
+});
+
 it("keeps the selected contributor and controls stable during a background update", async () => {
   let pending = false;
   let finish: ((value: Response) => void) | undefined;
@@ -55,10 +96,10 @@ it("moves forward and backward when there is more than one contributor page", as
   }));
   render(<ContributorExplorer representativeId={1} period={2026} />);
   await screen.findByRole("button", { name: "PAC 1" });
-  const pagination = within(screen.getByRole("navigation", { name: "Contributor connections pages" }));
-  await userEvent.click(pagination.getByRole("button", { name: "Next" }));
+  const pagination = () => within(screen.getByRole("navigation", { name: "Contributor connections pages" }));
+  await userEvent.click(pagination().getByRole("button", { name: "Next" }));
   expect(await screen.findByRole("button", { name: "PAC 21" })).toBeVisible();
-  expect(pagination.getByRole("button", { name: "Next" })).toBeDisabled();
-  await userEvent.click(pagination.getByRole("button", { name: "Prev" }));
+  expect(pagination().getByRole("button", { name: "Next" })).toBeDisabled();
+  await userEvent.click(pagination().getByRole("button", { name: "Prev" }));
   expect(await screen.findByRole("button", { name: "PAC 1" })).toBeVisible();
 });

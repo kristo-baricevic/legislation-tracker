@@ -90,6 +90,8 @@ services:
 
   research-worker:
     build: ./legislation-tracker-backend
+    volumes:
+      - document_media:/app/local_media
     restart: unless-stopped
     command: celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -l info
     env_file:

@@ -24,6 +24,12 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
+  it.each([["D", "democrat"], ["R", "republican"]])("uses structured party %s for plain-name recommendation cards", async (party, theme) => {
+    mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Jane Doe", bioguide_id: "A000001", score: .4, reasons: [], topic_activity_evidence: { ...activity, representative: { ...activity.representative, name: "Jane Doe", party } } }], activity_as_of: activity.captured_at }));
+    render(<RepresentativeRecommendations renderName={member => <button>{member.name} profile</button>} />);
+    await screen.findByRole("button", { name: "Jane Doe profile" });
+    expect(screen.getByRole("article")).toHaveAttribute("data-party", theme);
+  });
   it("expires cached recommendations after five minutes", async () => {
     mockRequests(() => Response.json(page));
     const view = render(<BillRecommendations onOpenBill={() => true} />);

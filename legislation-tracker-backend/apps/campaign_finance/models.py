@@ -29,7 +29,13 @@ class RepresentativeCandidate(models.Model):
             list(Representative.objects.select_for_update().filter(pk__in=affected).order_by("pk"))
             super().save(*args, **kwargs)
             if old is None or old != {k: getattr(self, k) for k in old}:
-                FinanceSnapshot.objects.filter(representative_id__in=affected).update(active=False, invalidated=True)
+                snapshots = FinanceSnapshot.objects.filter(representative_id__in=affected)
+                if (old and old["verified"] and self.verified and self.evidence_url
+                        and all(old[key] == getattr(self, key) for key in ("representative_id", "candidate_id", "evidence_url"))
+                        and set(old["periods"]).issubset(self.periods)):
+                    # Adding a newly verified period does not revoke earlier proof.
+                    snapshots = snapshots.exclude(period__in=old["periods"])
+                snapshots.update(active=False, invalidated=True)
 
 
 class CampaignCommittee(models.Model):

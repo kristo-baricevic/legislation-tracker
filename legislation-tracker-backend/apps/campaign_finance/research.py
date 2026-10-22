@@ -85,7 +85,12 @@ def process_finance(work):
                 if matched and fec_id != matched:
                     continue
                 candidate, _ = CandidateIdentity.objects.get_or_create(fec_id=fec_id, defaults={"name": str(item.get("name", ""))[:255], "office": item.get("office", ""), "state": item.get("state", "")})
-                RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "verified": fec_id == matched, "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"})
+                mapping, created = RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "verified": fec_id == matched, "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"})
+                # Only fresh current-period proof extends a verified mapping.
+                # Never promote unverified historical periods as a side effect.
+                if not created and fec_id == matched and mapping.verified and mapping.evidence_url and run.period not in mapping.periods:
+                    mapping.periods = sorted({*mapping.periods, run.period})
+                    mapping.save(update_fields=["periods"])
             if matched and resolve_candidate(run.representative_id, run.period).status == "verified":
                 run.sections["finance"] = {"status": "running", "reason": ""}
                 run.status = "running"

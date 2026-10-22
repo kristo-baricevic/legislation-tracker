@@ -10,6 +10,17 @@ from apps.legislation.models import BillTopic
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def test_plain_name_member_evidence_includes_authoritative_party():
+    from apps.congress.topic_activity import representative_topic_activity
+    cache.clear()
+    rep = representative()
+    rep.name = "Jane Doe"
+    rep.party = "D"
+    rep.save()
+    evidence = representative_topic_activity(rep.id)
+    assert evidence["representative"]["party"] == "D"
+
+
 def test_repeat_group_does_not_inflate_intersection_mass():
     from apps.congress.topic_activity import representative_topic_activity
 
@@ -341,7 +352,7 @@ def test_catalog_recovers_after_cold_build_gate_is_released():
     rep = representative()
     capture = timezone.now()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v2:{DEFAULT_POLICY.version}:{day}"
+    key = f"representative-topic-activity:v3:{DEFAULT_POLICY.version}:{day}"
     assert cache.add(key + ":gate", "synthetic-other-builder", timeout=30)
     with pytest.raises(RecommendationError):
         representative_activity_catalog(captured_at=capture)

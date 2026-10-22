@@ -82,7 +82,7 @@ def process_research(work):
         current = fenced_work(work)
         if current is None:
             return {"status": "superseded"}
-        Representative.objects.select_for_update().get(pk=rep.pk)
+        rep = Representative.objects.select_for_update().get(pk=rep.pk)
         if not is_latest_run(run):
             return {"status": "superseded"}
         # Recheck source approval under lock before publishing fetched content.
@@ -91,7 +91,8 @@ def process_research(work):
         bio = save_official_excerpt(rep, official_text, bio_policy) if official_text and bio_policy else None
         bio = bio or (save_excerpt(rep, excerpt) if excerpt else None)
         if not bio:
-            bio = RepresentativeBiography.objects.filter(representative=rep).order_by("-id").first() or save_official_biography(rep)
+            previous = RepresentativeBiography.objects.filter(representative=rep).order_by("-id").first()
+            bio = previous if previous and previous.evidence.get("kind") != "official_service_facts" else save_official_biography(rep)
         portrait = save_portrait(rep, depiction, prepared=prepared, policy=photo_policy) if source_error != "identity_mismatch" and not photo_error else None
         run.sections = {"biography": {"status": "succeeded", "reason": source_error, "revision": bio.pk}, "photo": {"status": "succeeded" if portrait else "not_available", "reason": photo_error}}
         if not getattr(settings, "FEC_API_KEY", ""):

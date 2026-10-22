@@ -373,7 +373,7 @@ def _build_catalog(captured_at, policy, deadline):
     _checkpoint(deadline, database=True)
     roster = list(
         Representative.objects.values(
-            "id", "bioguide_id", "name", "is_current", "chamber", "state"
+            "id", "bioguide_id", "name", "is_current", "chamber", "state", "party"
         )
     )
     _checkpoint(deadline, database=True)
@@ -730,7 +730,7 @@ def representative_activity_catalog(*, captured_at=None, policy=None):
     if capture > now or now.timestamp() - capture.timestamp() >= 300:
         raise RecommendationError()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v2:{policy.version}:{day}"
+    key = f"representative-topic-activity:v3:{policy.version}:{day}"
     cached = cache_call("get", key)
     if (
         cached

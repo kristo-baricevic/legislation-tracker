@@ -25,8 +25,8 @@ def save_official_biography(rep):
     if rep.party:
         text += f" The member's recorded party is {rep.party}."
     digest = hashlib.sha256(text.encode()).hexdigest()
-    previous = RepresentativeBiography.objects.filter(representative=rep, source__provider="congress", source__content_hash=digest).first()
-    if previous:
+    previous = RepresentativeBiography.objects.filter(representative=rep).select_related("source").order_by("-id").first()
+    if previous and previous.evidence.get("kind") == "official_service_facts" and previous.source.content_hash == digest:
         return previous
     source = ResearchSource.objects.create(provider="congress", url=f"https://bioguide.congress.gov/search/bio/{rep.bioguide_id}", content_hash=hashlib.sha256(text.encode()).hexdigest(), attribution="Biographical Directory of the United States Congress")
     return RepresentativeBiography.objects.create(representative=rep, source=source, text=text, evidence={"kind": "official_service_facts", "bioguide_id": rep.bioguide_id})

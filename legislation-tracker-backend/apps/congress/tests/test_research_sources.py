@@ -4,6 +4,39 @@ from apps.congress.models import Representative
 pytestmark = pytest.mark.django_db
 
 
+def test_refresh_updates_generated_biography_and_deduplicates_unchanged_facts(settings):
+    from datetime import timedelta
+    from django.utils import timezone
+    from django.contrib.auth import get_user_model
+    from apps.research.services import request_research
+    from apps.research.tasks import process_research
+    from apps.research.models import RepresentativeBiography
+    settings.CONGRESS_API_KEY = ""
+    settings.FEC_API_KEY = ""
+    settings.LEGISLATOR_WIKIPEDIA_ENABLED = False
+    rep = Representative.objects.create(bioguide_id="T000099", name="Test Person", chamber="house", state="NY", district="3", party="D", is_current=True)
+    user = get_user_model().objects.create_user(username="refresh")
+    def refresh():
+        run = request_research(rep.pk, 2026, user.pk)
+        work = run.work_item
+        work.status = "processing"; work.dispatch_token = "lease"; work.lease_expires_at = timezone.now() + timedelta(minutes=5); work.save()
+        process_research(work)
+        run.refresh_from_db()
+        return RepresentativeBiography.objects.get(pk=run.sections["biography"]["revision"])
+    original = refresh()
+    rep.is_current = False
+    rep.save()
+    updated = refresh()
+    assert "was a U.S. representative" in updated.text
+    assert original.pk != updated.pk
+    assert refresh().pk == updated.pk
+    rep.is_current = True
+    rep.save()
+    refresh()
+    from apps.research.views import saved_research
+    assert "is a U.S. representative" in saved_research(rep, 2026)["biography"]["text"]
+
+
 def test_official_facts_biography_is_saved_without_external_key():
     from apps.research.biographies import save_official_biography
     from apps.research.models import RepresentativeBiography

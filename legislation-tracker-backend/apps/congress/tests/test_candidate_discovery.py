@@ -29,6 +29,38 @@ def test_historical_period_does_not_use_current_district_as_proof():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("matches", [True, False])
+def test_existing_verified_mapping_extends_only_after_fresh_match(monkeypatch, matches):
+    from datetime import datetime, timedelta, UTC
+    from django.utils import timezone
+    from django.contrib.auth import get_user_model
+    from apps.congress.models import Representative
+    from apps.research.services import request_research
+    from apps.campaign_finance.research import process_finance
+    from apps.campaign_finance.models import CandidateIdentity, RepresentativeCandidate
+    from apps.campaign_finance.identity import resolve_candidate
+    now = datetime(2028, 6, 1, tzinfo=UTC)
+    monkeypatch.setattr(timezone, "now", lambda: now)
+    rep = Representative.objects.create(bioguide_id="O000172", name="Alexandria Ocasio-Cortez", chamber="house", state="NY", district="14", is_current=True)
+    identity = CandidateIdentity.objects.create(fec_id="H8NY15148", name=rep.name, office="H", state="NY")
+    mapping = RepresentativeCandidate.objects.create(representative=rep, candidate=identity, periods=[2026], verified=True, evidence_url="https://www.fec.gov/data/candidate/H8NY15148/")
+    from apps.research.models import ResearchRun
+    from apps.campaign_finance.models import FinanceSnapshot
+    previous_run = ResearchRun.objects.create(representative=rep, period=2026, status="partial")
+    snapshot = FinanceSnapshot.objects.create(representative=rep, period=2026, run=previous_run, candidate_ids=[identity.pk], active=True)
+    run = request_research(rep.pk, 2028, get_user_model().objects.create_user(username="reader").pk)
+    work = run.work_item
+    work.status = "processing"; work.dispatch_token = "lease"; work.lease_expires_at = now + timedelta(minutes=5); work.save()
+    monkeypatch.setattr("apps.campaign_finance.research.get_page", lambda *args: {"results": [candidate(district="14" if matches else "13")], "pagination": {"pages": 1}})
+    process_finance(work)
+    mapping.refresh_from_db()
+    assert mapping.periods == ([2026, 2028] if matches else [2026])
+    assert resolve_candidate(rep.pk, 2028).status == ("verified" if matches else "not_found")
+    snapshot.refresh_from_db()
+    assert snapshot.active and not snapshot.invalidated
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("found", [True, False])
 def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, found):
     from datetime import timedelta
