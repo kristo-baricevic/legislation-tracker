@@ -1027,6 +1027,10 @@ def _retry_delay(attempt_count):
 def _http_throttle_delay(exc):
     """429 is a temporary source cooldown, not a broken document attempt."""
     from email.utils import parsedate_to_datetime
+    from apps.campaign_finance.fec_client import FECError
+    if isinstance(exc, FECError) and exc.status_code == 429:
+        seconds = exc.retry_after_seconds if exc.retry_after_seconds is not None else 900
+        return timedelta(seconds=max(1, min(seconds, 365 * 86400)))
     response = getattr(exc, "response", None)
     if not isinstance(exc, requests.HTTPError) or response is None or response.status_code != 429:
         return None
@@ -1260,6 +1264,10 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 )
                 requeued = True
             elif isinstance(exc, DocumentValidationError) or (
+                work_item.kind == "representative_research" and (
+                    isinstance(exc, ValueError) or getattr(exc, "status_code", None) in {400, 401, 403, 404, 422}
+                )
+            ) or (
                 throttle_delay is None and work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
             ):
                 work_item.status = IngestionWorkStatus.DEAD

@@ -5,6 +5,19 @@ import { beforeEach, expect, it, vi } from "vitest";
 import RepresentativeResearch from "@/app/components/RepresentativeResearch";
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
+
+it("shows official totals and partial contributors while the scan continues", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.includes("contributors")) return Response.json({ status: "collecting", results: [{ id: 1, name: "Example PAC", amount: "125.25", type: "committee", committee: "Campaign", source_url: "https://www.fec.gov/" }], count: 1, next_cursor: null });
+    return Response.json({ ...empty, status: "running", snapshot: "draft", run: { id: "run", status: "running", sections: {} }, finance_progress: { collecting: true, pages_loaded: 4, streams_completed: 2, streams_total: 7, totals_loaded: 1, official_totals: [{ committee: "Campaign", source_url: "https://www.fec.gov/", records: [{ receipts: "1200.25", disbursements: "300.50", coverage_start_date: "2025-01-01", coverage_end_date: "2026-06-30" }] }] } });
+  }));
+  render(<RepresentativeResearch representativeId={1} />);
+  expect(await screen.findByText("$1,200.25")).toBeVisible();
+  expect(screen.getByText("$300.50")).toBeVisible();
+  expect(await screen.findByText("Example PAC")).toBeVisible();
+  expect(screen.getByText(/4 pages loaded/)).toBeVisible();
+  expect(screen.getByText(/Partial results.*still being collected/)).toBeVisible();
+});
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes("csrf")) return new Response(JSON.stringify({ csrf_token: "test" }), { status: 200 });
@@ -28,22 +41,20 @@ it("shows stored biography when refresh has failed", async () => {
   expect(screen.getByRole("button", { name: "Refresh research" })).toBeEnabled();
 });
 
-it("selects saved finance history and independently filters legislative dates", async () => {
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    const path = new URL(url, "http://localhost");
-    if (path.pathname.endsWith("research-snapshots/")) return Response.json({ count: 1, next_cursor: null, results: [{ id: "old", published_at: "2026-01-01T12:00:00Z", active: false, coverage: "partial" }] });
-    if (path.pathname.endsWith("connections/")) return Response.json({ notice: "Recorded activity, not endorsement.", finance_status: "partial", count: 1, next_cursor: null, next_donor_cursor: null, next_related_cursor: null, donors: [], related_representatives: [], bills: [{ id: 2, number: "HR 2", title: path.searchParams.get("snapshot") === "old" && path.searchParams.get("legislative_start") === "2024-01-01" ? "Earlier activity" : "Current activity", relations: ["Sponsored"], votes: [], topics: [] }] });
-    return Response.json(empty);
+it("reloads open connections when refreshed research publishes a new snapshot", async () => {
+  let snapshot = "old";
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("csrf")) return Response.json({ csrf_token: "test" });
+    if (init?.method === "POST") { snapshot = "new"; return Response.json({ id: "run", status: "partial", sections: {} }); }
+    if (url.includes("research-snapshots")) return Response.json({ results: [], count: 0, next_cursor: null });
+    if (url.includes("contributors")) return Response.json({ results: [], count: 0, next_cursor: null, status: "partial" });
+    if (url.includes("connections")) return Response.json({ notice: snapshot === "old" ? "Older connections" : "Updated connections", finance_status: "partial", donors: [{ id: 1, name: snapshot === "old" ? "Older connections" : "Updated connections", amount: "100", source_url: "https://www.fec.gov/" }], related_representatives: [], bills: [], next_cursor: null, next_donor_cursor: null, next_related_cursor: null });
+    return Response.json({ ...empty, status: "partial", snapshot });
   }));
   render(<RepresentativeResearch representativeId={1} />);
-  await userEvent.click(screen.getByRole("button", { name: "Explore connections ▾" }));
-  expect(await screen.findByText("HR 2: Current activity")).toBeVisible();
-  await userEvent.selectOptions(await screen.findByLabelText("Finance snapshot"), "old");
-  await userEvent.clear(screen.getByLabelText("Legislative start"));
-  await userEvent.type(screen.getByLabelText("Legislative start"), "2024-01-01");
-  await userEvent.clear(screen.getByLabelText("Legislative end"));
-  await userEvent.type(screen.getByLabelText("Legislative end"), "2024-12-31");
-  await userEvent.click(screen.getByRole("button", { name: "Apply dates" }));
-  expect(await screen.findByText("HR 2: Earlier activity")).toBeVisible();
-  expect(screen.queryByText("HR 2: Current activity")).not.toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Explore connections ▾" }));
+  expect(await screen.findByText("Older connections")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Refresh research" }));
+  expect(await screen.findByText("Updated connections")).toBeVisible();
+  expect(screen.queryByText("Older connections")).not.toBeInTheDocument();
 });

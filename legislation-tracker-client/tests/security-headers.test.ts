@@ -16,6 +16,9 @@ describe("Next document security headers", () => {
     assert.match(headers.get("Content-Security-Policy") ?? "", /object-src 'none'/);
     assert.match(headers.get("Content-Security-Policy") ?? "", /frame-ancestors 'none'/);
     assert.match(headers.get("Content-Security-Policy") ?? "", /img-src 'self' data: blob: https:/);
+    const apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").origin;
+    const imagePolicy = (headers.get("Content-Security-Policy") ?? "").split(";").find(part => part.trim().startsWith("img-src"));
+    assert.ok(imagePolicy?.split(/\s+/).includes(apiOrigin));
     assert.equal(headers.get("X-Content-Type-Options"), "nosniff");
     assert.equal(headers.get("Referrer-Policy"), "strict-origin-when-cross-origin");
     assert.equal(headers.get("Permissions-Policy"), "camera=(), microphone=(), geolocation=()")

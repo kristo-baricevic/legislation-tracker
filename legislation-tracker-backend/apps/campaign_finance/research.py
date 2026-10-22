@@ -2,16 +2,18 @@ import hashlib
 import json
 import re
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Case, When, Value, IntegerField
 from django.utils import timezone
 from apps.congress.models import Representative
 from apps.research.models import ResearchRun
-from apps.research.tasks import fenced_work, continue_work
-from .identity import resolve_candidate
+from apps.research.tasks import fenced_work, continue_work, is_latest_run
+from .identity import resolve_candidate, candidate_search_name, verified_match
 from .models import CandidateIdentity, RepresentativeCandidate, CampaignCommittee, CandidateCommittee, Contributor, ContributorIdentity, FinanceSnapshot, FinanceResearchCheckpoint, FinanceTransaction
 from .normalization import normalize_receipt, normalize_refund
 from .fec_client import get_page, receipt_parameters
 from .snapshots import reconciliation
+
+FILTERED_SCHEDULES = ("totals", "a_11b", "a_11c", "b_20b", "b_20c", "a_11ai", "b_20a")
 
 
 def persist_page(checkpoint, page):
@@ -20,7 +22,7 @@ def persist_page(checkpoint, page):
     if digest in checkpoint.page_hashes:
         raise ValueError("repeated_page")
     for raw in page["results"]:
-        row = (normalize_refund if checkpoint.schedule == "b" else normalize_receipt)(raw)
+        row = (normalize_refund if checkpoint.schedule.startswith("b") else normalize_receipt)(raw)
         if row["committee_id"] != checkpoint.committee_id:
             raise ValueError("recipient_mismatch")
         identity = ContributorIdentity.objects.filter(provider_key=row["identity_key"]).first()
@@ -48,17 +50,18 @@ def process_finance(work):
     run = ResearchRun.objects.select_related("representative").get(pk=work.payload_json["run_id"])
     identity = resolve_candidate(run.representative_id, run.period)
     snapshot = FinanceSnapshot.objects.filter(run=run).first()
-    checkpoint = snapshot.checkpoints.filter(complete=False).select_related("committee", "snapshot").first() if snapshot else None
+    priority = Case(*[When(schedule=name, then=Value(i)) for i, name in enumerate(FILTERED_SCHEDULES)], default=Value(10), output_field=IntegerField())
+    checkpoint = snapshot.checkpoints.filter(complete=False).select_related("committee", "snapshot").order_by(priority, "pk").first() if snapshot else None
     phase = work.payload_json.get("finance_phase", "committees")
     candidates = identity.candidate_ids
     index = work.payload_json.get("candidate_index", 0)
     if identity.status != "verified":
         # Name search supplies review candidates, never automatic links.
-        page = get_page("candidates/search/", {"q": run.representative.name, "state": run.representative.state, "office": "S" if run.representative.chamber == "senate" else "H", "cycle": run.period, "per_page": 100}) if identity.status == "not_found" else None
+        page = get_page("candidates/search/", {"q": candidate_search_name(run.representative), "state": run.representative.state, "office": "S" if run.representative.chamber == "senate" else "H", "cycle": run.period, "per_page": 100}) if identity.status == "not_found" else None
     elif phase == "committees" and index < len(candidates):
         page = get_page(f"candidate/{candidates[index]}/committees/", {"cycle": run.period, "per_page": 100, "page": work.payload_json.get("committee_page", 1)})
     elif checkpoint:
-        page = get_page(f"committee/{checkpoint.committee_id}/totals/", {"cycle": run.period, "per_page": 100}) if checkpoint.schedule == "totals" else get_page(f"schedules/schedule_{checkpoint.schedule}/", receipt_parameters(checkpoint.committee_id, run.period, checkpoint.cursor, checkpoint.schedule))
+        page = get_page(f"committee/{checkpoint.committee_id}/totals/", {"cycle": run.period, "per_page": 100}) if checkpoint.schedule == "totals" else get_page(f"schedules/schedule_{checkpoint.schedule[0]}/", receipt_parameters(checkpoint.committee_id, run.period, checkpoint.cursor, checkpoint.schedule))
     else:
         page = None
     with transaction.atomic():
@@ -66,23 +69,40 @@ def process_finance(work):
         if current is None:
             return {"status": "superseded"}
         Representative.objects.select_for_update().get(pk=run.representative_id)
+        if not is_latest_run(run):
+            return {"status": "superseded"}
         if resolve_candidate(run.representative_id, run.period) != identity:
             continue_work(current, "finance")
             return {"status": "identity_changed"}
         if identity.status != "verified":
-            for item in (page or {}).get("results", []):
+            rows = (page or {}).get("results", [])
+            year = timezone.now().year
+            matched = verified_match(run.representative, rows, run.period, year + year % 2) if page and page["pagination"].get("pages", 1) <= 1 else None
+            for item in rows:
                 fec_id = item.get("candidate_id", "")
                 if not re.fullmatch(r"[HS]\d[A-Z]{2}\d{5}", fec_id):
                     continue
+                if matched and fec_id != matched:
+                    continue
                 candidate, _ = CandidateIdentity.objects.get_or_create(fec_id=fec_id, defaults={"name": str(item.get("name", ""))[:255], "office": item.get("office", ""), "state": item.get("state", "")})
-                RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/"})
+                RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "verified": fec_id == matched, "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"})
+            if matched and resolve_candidate(run.representative_id, run.period).status == "verified":
+                run.sections["finance"] = {"status": "running", "reason": ""}
+                run.status = "running"
+                run.save(update_fields=["sections", "status"])
+                continue_work(current, "finance")
+                return {"status": "running"}
             run.sections["finance"] = {"status": "needs_review", "reason": "candidate_identity_requires_verification"}
             run.status, run.finished_at = "needs_review", timezone.now()
+            if page is not None and not rows:
+                run.sections["finance"] = {"status": "not_available", "reason": "candidate_not_found"}
+                run.status = "partial"
             run.save(update_fields=["sections", "status", "finished_at"])
             return {"status": run.status}
         if snapshot is None:
-            snapshot = FinanceSnapshot.objects.create(run=run, representative=run.representative, period=run.period, candidate_ids=candidates)
-        if snapshot.candidate_ids != candidates:
+            snapshot = FinanceSnapshot.objects.create(run=run, representative=run.representative, period=run.period, candidate_ids=candidates, normalization_version="fec-2-filtered")
+        snapshot.refresh_from_db()
+        if snapshot.invalidated or snapshot.candidate_ids != candidates:
             raise ValueError("identity_changed_during_research")
         if phase == "committees" and index < len(candidates):
             for item in page["results"]:
@@ -91,7 +111,12 @@ def process_finance(work):
                     continue
                 committee, _ = CampaignCommittee.objects.update_or_create(fec_id=committee_id, defaults={"name": str(item.get("name", committee_id))[:255]})
                 CandidateCommittee.objects.update_or_create(candidate_id=candidates[index], committee=committee, period=run.period, defaults={"designation": item["designation"], "source_url": f"https://www.fec.gov/data/committee/{committee_id}/"})
-                for schedule in ("a", "b", "totals"):
+                link = {"candidate_id": candidates[index], "committee_id": committee_id, "designation": item["designation"], "source_url": f"https://www.fec.gov/data/candidate/{candidates[index]}/?cycle={run.period}"}
+                if link not in snapshot.committee_links:
+                    snapshot.committee_links = [*snapshot.committee_links, link]
+                    snapshot.save(update_fields=["committee_links"])
+                # Never change the query underneath a previously saved cursor.
+                for schedule in (FILTERED_SCHEDULES if snapshot.normalization_version == "fec-2-filtered" else ("a", "b", "totals")):
                     FinanceResearchCheckpoint.objects.get_or_create(snapshot=snapshot, committee=committee, schedule=schedule)
             page_number = current.payload_json.get("committee_page", 1)
             if page_number < page["pagination"].get("pages", 1):
@@ -105,8 +130,8 @@ def process_finance(work):
             if checkpoint.schedule == "totals":
                 # Whitelist aggregate fields; never persist contributor contact
                 # information or raw provider payloads.
-                fields = ("coverage_start_date", "coverage_end_date", "individual_itemized_contributions", "individual_unitemized_contributions", "political_party_committee_contributions", "other_political_committee_contributions", "contribution_refunds")
-                checkpoint.source_totals = {"records": [{key: row.get(key) for key in fields} for row in page["results"]], "source_url": f"https://www.fec.gov/data/committee/{checkpoint.committee_id}/?cycle={run.period}"}
+                fields = ("coverage_start_date", "coverage_end_date", "receipts", "disbursements", "individual_itemized_contributions", "individual_unitemized_contributions", "political_party_committee_contributions", "other_political_committee_contributions", "contribution_refunds")
+                checkpoint.source_totals = {"committee": checkpoint.committee.name, "records": [{key: row.get(key) for key in fields} for row in page["results"]], "source_url": f"https://www.fec.gov/data/committee/{checkpoint.committee_id}/?cycle={run.period}"}
                 checkpoint.complete = page["pagination"].get("pages", 1) <= 1
                 if not checkpoint.complete:
                     raise ValueError("ambiguous_committee_totals")

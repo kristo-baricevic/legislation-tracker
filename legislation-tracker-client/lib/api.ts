@@ -934,6 +934,7 @@ export interface RepresentativesPage {
 }
 
 export async function getRepresentatives(params?: {
+  search?: string;
   state?: string;
   chamber?: string;
   is_current?: boolean;
@@ -942,6 +943,7 @@ export async function getRepresentatives(params?: {
 }): Promise<RepresentativesPage> {
   const sp = new URLSearchParams();
   if (params?.state) sp.set("state", params.state);
+  if (params?.search?.trim()) sp.set("search", params.search.trim());
   if (params?.chamber) sp.set("chamber", params.chamber);
   if (params?.is_current != null) sp.set("is_current", String(params.is_current));
   if (params?.page != null) sp.set("page", String(params.page));
@@ -1092,6 +1094,11 @@ export interface TrackedLegislatorItem {
   id: number;
   representative: RepresentativeItem;
   created_at: string;
+  card?: {
+    biography: { text: string; source: { url: string; attribution: string; license: string } } | null;
+    portrait: { url: string; source: { url: string; attribution: string; license: string } } | null;
+    latest_bill: { id: number; title: string; bill_number: string; introduced_at: string; session: number } | null;
+  };
 }
 
 export interface TrackingSummary {

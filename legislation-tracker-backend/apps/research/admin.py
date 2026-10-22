@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ResearchRun, RepresentativeBiography, RepresentativePortrait, ResearchSource
+from .models import ResearchRun, RepresentativeBiography, RepresentativePortrait, ResearchSource, ResearchSourcePolicy
 
 
 class ResearchReadOnlyAdmin(admin.ModelAdmin):
@@ -13,3 +13,9 @@ class ResearchReadOnlyAdmin(admin.ModelAdmin):
 
 for model in (ResearchRun, RepresentativeBiography, RepresentativePortrait, ResearchSource):
     admin.site.register(model, ResearchReadOnlyAdmin)
+
+
+@admin.register(ResearchSourcePolicy)
+class ResearchSourcePolicyAdmin(admin.ModelAdmin):
+    list_display = ["representative", "kind", "url", "approved"]
+    list_filter = ["kind", "approved"]

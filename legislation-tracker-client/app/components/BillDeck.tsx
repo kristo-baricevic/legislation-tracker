@@ -9,6 +9,7 @@ import RecommendationsPreview from "./RecommendationsPreview";
 import { focusRecommendationFallback } from "@/lib/recommendation-focus";
 import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges } from "@/lib/api";
 import LegislatorName from "./LegislatorName";
+import TrackedLegislators from "./TrackedLegislators";
 import styles from "./bill-deck.module.css";
 
 import BillCard, { readable } from "./BillCard";
@@ -127,6 +128,7 @@ export default function BillDeck() {
         footer={signedIn && tracking ? <button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}
       />)}</div>
     </section>}
+    {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}
     <RecommendationsPreview renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
     {ready && <IngestionTelemetryLive key={`${signedIn}:${Boolean(tracking?.is_staff)}`} />}
     {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}

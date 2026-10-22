@@ -37,7 +37,8 @@ def test_page_replay_does_not_double_count_receipts():
     assert snapshot.transactions.get().amount == Decimal("150")
 
 
-def test_finance_read_hides_individual_names_without_release_approval(settings):
+@pytest.mark.parametrize("kind", ["contribution", "refund"])
+def test_finance_read_includes_individual_contributions_without_a_publication_flag(settings, kind):
     from apps.campaign_finance.models import FinanceSnapshot, CampaignCommittee, Contributor, FinanceTransaction
     from apps.research.services import request_research
     from rest_framework.test import APIClient
@@ -46,12 +47,21 @@ def test_finance_read_hides_individual_names_without_release_approval(settings):
     run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username="test").pk)
     snapshot = FinanceSnapshot.objects.create(run=run, representative=rep, period=2026, active=True)
     committee = CampaignCommittee.objects.create(fec_id="C00000001", name="Campaign")
-    donor = Contributor.objects.create(name="Private donor", kind="individual")
-    FinanceTransaction.objects.create(snapshot=snapshot, source_key="1", committee=committee, contributor=donor, amount=100, kind="contribution", source_url="https://www.fec.gov/")
-    response = APIClient().get(f"/api/representatives/{rep.pk}/contributors/?period=2026")
+    donor = Contributor.objects.create(name="Example individual", kind="individual")
+    for number in range(21):
+        FinanceTransaction.objects.create(snapshot=snapshot, source_key=str(number), committee=committee, contributor=donor, amount=100, kind=kind, source_url="https://www.fec.gov/")
+    response = APIClient().get(f"/api/representatives/{rep.pk}/contributors/?period=2026&kind={kind}")
     assert response.status_code == 200
-    assert response.data["count"] == 0
-    assert "Private donor" not in response.content.decode()
+    assert response.data["count"] == 21
+    assert response.data["next_cursor"] == 20
+    assert response.data["individuals_visible"] is True
+    assert response.data["results"][0]["name"] == "Example individual"
+    assert response.data["results"][0]["type"] == "individual"
+    assert response.data["results"][0]["amount"] == "100.00"
+    second = APIClient().get(f"/api/representatives/{rep.pk}/contributors/?period=2026&kind={kind}&cursor=20").data
+    assert len(second["results"]) == 1
+    assert second["next_cursor"] is None
+    assert second["results"][0]["id"] not in {row["id"] for row in response.data["results"]}
 
 
 def test_refunds_are_separate_disbursements_not_negative_donations():

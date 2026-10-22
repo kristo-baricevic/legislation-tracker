@@ -25,6 +25,29 @@ together. Provider backoff uses the durable queue's retry policy; exhausted work
 is dead-lettered. Existing lease recovery handles a disappearing worker. Refresh
 starts a new whole-period scan, not an incremental timestamp-only scan.
 
+### Progressive finance loading
+
+New scans (`fec-2-filtered`) fetch official committee totals first, followed by
+Form 3 party/other committee contributions (11B/11C) and their refunds (20B/20C),
+then individual contributions (11AI) and refunds (20A). Each filtered stream has
+its own durable cursor. This avoids downloading unrelated spending, loans, and
+transfers. Individual and committee contribution records are both displayed with their
+amounts, dates, and FEC source links. Addresses and contact details are not stored.
+
+The research API includes page/group progress and official totals with their
+reported dates. The UI distinguishes those official totals from the incomplete
+donor records. Until the first scan finishes, contributor and connection reads
+can preview the latest valid running draft, labeled `collecting`. Draft previews
+do not become published history and are hidden if revoked, superseded, or failed.
+A refresh keeps the previously published snapshot visible until the replacement
+finishes. Preview connections bypass the shared cache.
+
+Legacy scans keep their original cursors and query scopes. Priority filtered
+streams may be added to an unfinished legacy snapshot without resetting its
+existing streams; duplicate source records are checked, not counted twice.
+Refreshes still rescan the reporting period to capture amendments and deletions:
+incremental cross-snapshot reuse is not implemented by this change.
+
 ## Candidate verification
 
 FEC candidate search creates **unverified suggestions**, never a name-only join.
@@ -35,8 +58,9 @@ Click Refresh research afterward. Multiple candidate IDs can belong to a member.
 Revocation through the admin save path invalidates active results. Do not use bulk
 SQL/update/delete to change identity mappings: those bypass publication locks.
 
-The current implementation deliberately requires staff verification for every new
-mapping; automatic official crosswalk verification is not implemented.
+For the current reporting period, a unique exact normalized-name match with the
+same office, state, and House district can be verified automatically. Ambiguous
+matches and historical periods still require staff verification.
 
 ## Finance interpretation
 
@@ -56,23 +80,30 @@ mapping; automatic official crosswalk verification is not implemented.
   scans and unresolved excluded records do not establish a complete accounting.
   No per-donor net amount or donor-to-topic dollar allocation is inferred.
 
-`FEC_INDIVIDUAL_PUBLICATION_ENABLED` defaults to False. Before enabling it, obtain
-review of the intended use under [FEC sale/use guidance](https://www.fec.gov/updates/sale-or-use-contributor-information/).
-Do not collect addresses or contact details, offer outreach tools, or assume an
-exception applies. Committee data can be displayed independently.
+Individual and committee contributions are visible without a publication flag.
+The former `FEC_INDIVIDUAL_PUBLICATION_ENABLED` setting is no longer used.
+Shared-contributor connections require verified committee identifiers; identical
+individual names do not establish that two records refer to the same person.
 
 ## Sources, photos, and retention
 
 Biographies retain excerpt/fact evidence, source hash/revision, attribution and
 license. Wikimedia excerpts are not an independent fact-check. Portraits use
-identity-matched Congress.gov HTTPS image URLs and preserve attribution; this
-release does not download/rehost pictures or accept arbitrary source URLs.
-Rehosting/image decoding and official-site HTML scraping remain deferred pending
-source-specific reuse/robots decisions. Saved sources and historical snapshots
+identity-matched Congress.gov HTTPS image URLs and preserve attribution.
+Source-specific approved policies permit bounded official-site biography
+extraction and sanitized portrait storage; arbitrary URLs are not accepted.
+Portrait serving rechecks the source approval. Saved sources and historical snapshots
 are retained indefinitely; provider keys and donor contact fields are never
 persisted in evidence. No raw-provider-payload endpoint is exposed.
 
 ## Connections
+
+The dashboard includes tracked-legislator cards with saved biography, portrait,
+affiliation, and the latest dated primary-sponsored bill by introduction date.
+These facts are loaded with tracking data; displaying a card never starts research.
+The representatives directory supports token-based name search combined with
+state and chamber filters. Profile modals put the photo in the avatar, omit
+empty election/service sections, and initially show five introduced bills.
 
 Connections mean a contribution to a campaign whose member has recorded bill
 activity—not endorsement of each topic or evidence of influence. Votes include

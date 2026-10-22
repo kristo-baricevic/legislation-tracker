@@ -69,6 +69,9 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             return qs
         params = query.validated_data
 
+        for token in params.get("search", "").split():
+            qs = qs.filter(name__icontains=token)
+
         state = params.get("state")
         if state:
             qs = qs.filter(state=state)

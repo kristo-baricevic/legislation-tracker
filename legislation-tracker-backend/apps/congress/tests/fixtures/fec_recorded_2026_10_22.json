@@ -1,0 +1,103 @@
+{
+  "captured_at": "2026-10-22",
+  "source": "https://api.open.fec.gov/v1/",
+  "redactions": "Only normalization fields retained; individual recipient names removed. Not a full scan.",
+  "committee_receipts": {
+    "results": [
+      {
+        "sub_id": "4073020261539698430",
+        "committee_id": "C00639591",
+        "contributor_id": "C00028860",
+        "contributor_name": "AMERICAN FEDERATION OF TEACHERS COPE",
+        "entity_type": "PAC",
+        "line_number": "11C",
+        "contribution_receipt_amount": 5000,
+        "contribution_receipt_date": "2026-06-26",
+        "transaction_id": "45777892",
+        "file_number": 1994262,
+        "image_number": "202607159875259752",
+        "amendment_indicator": "A",
+        "memo_code": null,
+        "memoed_subtotal": false,
+        "conduit_committee_id": null,
+        "filing_form": "F3"
+      },
+      {
+        "sub_id": "4073020261539698432",
+        "committee_id": "C00639591",
+        "contributor_id": "C00003251",
+        "contributor_name": "THE NEA FUND FOR CHILDREN & PUBLIC EDUCATION",
+        "entity_type": "PAC",
+        "line_number": "11C",
+        "contribution_receipt_amount": 2000,
+        "contribution_receipt_date": "2026-06-20",
+        "transaction_id": "45555528",
+        "file_number": 1994262,
+        "image_number": "202607159875259752",
+        "amendment_indicator": "A",
+        "memo_code": null,
+        "memoed_subtotal": false,
+        "conduit_committee_id": null,
+        "filing_form": "F3"
+      }
+    ],
+    "pagination": {
+      "count": 11,
+      "is_count_exact": true,
+      "last_indexes": {
+        "last_contribution_receipt_date": "2026-06-20",
+        "last_index": "4073020261539698432"
+      },
+      "pages": 6,
+      "per_page": 2
+    }
+  },
+  "refunds": {
+    "results": [
+      {
+        "sub_id": "4073020261539939107",
+        "committee_id": "C00639591",
+        "entity_type": "IND",
+        "line_number": "20A",
+        "transaction_id": "500664067",
+        "file_number": 1994262,
+        "image_number": "202607159875260942",
+        "amendment_indicator": "A",
+        "memo_code": null,
+        "memoed_subtotal": false,
+        "filing_form": "F3",
+        "recipient_committee_id": null,
+        "disbursement_amount": 300,
+        "disbursement_date": "2026-06-30",
+        "recipient_name": "Individual (redacted)"
+      },
+      {
+        "sub_id": "4073020261539939100",
+        "committee_id": "C00639591",
+        "entity_type": "IND",
+        "line_number": "20A",
+        "transaction_id": "500663972",
+        "file_number": 1994262,
+        "image_number": "202607159875260940",
+        "amendment_indicator": "A",
+        "memo_code": null,
+        "memoed_subtotal": false,
+        "filing_form": "F3",
+        "recipient_committee_id": null,
+        "disbursement_amount": 100,
+        "disbursement_date": "2026-06-30",
+        "recipient_name": "Individual (redacted)"
+      }
+    ],
+    "pagination": {
+      "count": 383,
+      "is_count_exact": true,
+      "last_indexes": {
+        "last_disbursement_date": "2026-06-30",
+        "last_index": "4073020261539939100"
+      },
+      "pages": 192,
+      "per_page": 2
+    }
+  }
+}

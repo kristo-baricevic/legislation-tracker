@@ -15,6 +15,15 @@ def test_official_facts_biography_is_saved_without_external_key():
     assert RepresentativeBiography.objects.get().source.url == "https://bioguide.congress.gov/search/bio/T000001"
 
 
+def test_excerpt_preserves_abbreviations_and_reuses_unchanged_revision():
+    from apps.research.biographies import save_excerpt
+    rep = Representative.objects.create(bioguide_id="T000081", name="Jane Doe", chamber="senate", state="NY")
+    excerpt = {"text": "Dr. Jane Doe is a U.S. senator. She served New York. This is an unfinished", "observed_revision_url": "https://en.wikipedia.org/w/index.php?oldid=1", "observed_revision_id": 1, "attribution": "Wikipedia contributors", "license": "CC BY-SA 4.0", "wikidata_id": "Q1"}
+    saved = save_excerpt(rep, excerpt)
+    assert saved.text == "Dr. Jane Doe is a U.S. senator. She served New York."
+    assert save_excerpt(rep, excerpt).pk == saved.pk
+
+
 @pytest.mark.parametrize("url", ["http://localhost/a.png", "https://congress.gov.evil.test/a", "https://www.congress.gov@evil.test/a", "https://www.congress.gov/img/member/../a", "https://www.congress.gov/img/member/a.svg"])
 def test_portrait_rejects_untrusted_urls(url):
     from apps.research.portraits import official_portrait_url

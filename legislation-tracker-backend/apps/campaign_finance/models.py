@@ -24,11 +24,12 @@ class RepresentativeCandidate(models.Model):
         # never race with a worker publishing a snapshot under that identity.
         from apps.congress.models import Representative
         with transaction.atomic():
-            Representative.objects.select_for_update().get(pk=self.representative_id)
-            old = type(self).objects.filter(pk=self.pk).values("verified", "periods", "candidate_id", "evidence_url").first() if self.pk else None
+            old = type(self).objects.filter(pk=self.pk).values("representative_id", "verified", "periods", "candidate_id", "evidence_url").first() if self.pk else None
+            affected = {self.representative_id, old["representative_id"] if old else self.representative_id}
+            list(Representative.objects.select_for_update().filter(pk__in=affected).order_by("pk"))
             super().save(*args, **kwargs)
-            if old and old != {k: getattr(self, k) for k in old}:
-                FinanceSnapshot.objects.filter(representative_id=self.representative_id).update(active=False, invalidated=True)
+            if old is None or old != {k: getattr(self, k) for k in old}:
+                FinanceSnapshot.objects.filter(representative_id__in=affected).update(active=False, invalidated=True)
 
 
 class CampaignCommittee(models.Model):
@@ -68,6 +69,7 @@ class FinanceSnapshot(models.Model):
     coverage = models.CharField(max_length=32, default="partial")
     totals = models.JSONField(default=dict)
     candidate_ids = models.JSONField(default=list)
+    committee_links = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     published_at = models.DateTimeField(null=True)
     normalization_version = models.CharField(max_length=24, default="fec-1")
@@ -106,3 +108,9 @@ class FinanceResearchCheckpoint(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["snapshot", "committee", "schedule"], name="finance_checkpoint_schedule_uniq")]
+
+
+class ConnectionRevision(models.Model):
+    """Database-triggered generation, including bulk ingestion mutations."""
+    generation = models.PositiveBigIntegerField(default=0)
+    epoch = models.UUIDField(default=uuid.uuid4)
