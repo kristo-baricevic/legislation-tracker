@@ -311,6 +311,21 @@ def test_catalog_busy_expiry_and_failure_do_not_publish_partial_data():
             representative_activity_catalog()
 
 
+def test_catalog_larger_than_single_cache_record_retains_all_members():
+    from unittest.mock import patch
+    from django.utils import timezone
+    from apps.congress.topic_activity import representative_activity_catalog
+
+    cache.clear()
+    now = timezone.now()
+    catalog = {"captured_at": now.isoformat(), "expires_at": now.timestamp() + 300,
+               "representatives": {str(i): {"evidence": "x" * 100_000, "id": i} for i in range(180)}}
+    with patch("apps.congress.topic_activity._build_catalog", return_value=catalog) as build:
+        assert representative_activity_catalog() == catalog
+        assert representative_activity_catalog() == catalog
+        assert build.call_count == 1
+
+
 def test_catalog_recovers_after_cold_build_gate_is_released():
     from zoneinfo import ZoneInfo
 
@@ -326,7 +341,7 @@ def test_catalog_recovers_after_cold_build_gate_is_released():
     rep = representative()
     capture = timezone.now()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v1:{DEFAULT_POLICY.version}:{day}"
+    key = f"representative-topic-activity:v2:{DEFAULT_POLICY.version}:{day}"
     assert cache.add(key + ":gate", "synthetic-other-builder", timeout=30)
     with pytest.raises(RecommendationError):
         representative_activity_catalog(captured_at=capture)
@@ -337,4 +352,9 @@ def test_catalog_recovers_after_cold_build_gate_is_released():
         recovered["representatives"][str(rep.id)]["activity"]["representative"]["id"]
         == rep.id
     )
-    assert cache.get(key) == recovered
+    assert representative_activity_catalog(captured_at=capture) == recovered
+    # Eviction must rebuild rather than silently omit a representative.
+    manifest = cache.get(key)
+    cache.delete(next(iter(manifest["members"].values())))
+    cache.delete(key + ":gate")
+    assert representative_activity_catalog(captured_at=capture) == recovered

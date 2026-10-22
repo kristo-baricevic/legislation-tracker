@@ -730,14 +730,21 @@ def representative_activity_catalog(*, captured_at=None, policy=None):
     if capture > now or now.timestamp() - capture.timestamp() >= 300:
         raise RecommendationError()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v1:{policy.version}:{day}"
+    key = f"representative-topic-activity:v2:{policy.version}:{day}"
     cached = cache_call("get", key)
     if (
         cached
         and now.timestamp() < cached["expires_at"]
         and cached["captured_at"] <= now.isoformat()
     ):
-        return cached
+        # Publish a manifest only after all member records have been stored.
+        # Missing/evicted records must never become a partial ranking catalog.
+        members = cache_call("get_many", list(cached["members"].values()))
+        if all(member_key in members for member_key in cached["members"].values()):
+            return {**cached["metadata"], "representatives": {
+                rep_id: members[member_key]
+                for rep_id, member_key in cached["members"].items()
+            }}
     token = secrets.token_hex(16)
     if not cache_call("add", key + ":gate", token, timeout=30):
         raise RecommendationError()
@@ -745,13 +752,29 @@ def representative_activity_catalog(*, captured_at=None, policy=None):
     try:
         with read_snapshot():
             result = _build_catalog(capture, policy, deadline)
-        result = bounded_json(result, 16 * 1024 * 1024)
+        metadata = bounded_json({name: value for name, value in result.items() if name != "representatives"}, 16 * 1024 * 1024)
+        members = {}
+        for rep_id, item in result["representatives"].items():
+            _checkpoint(deadline)
+            member_key = f"{key}:{token}:member:{rep_id}"
+            members[member_key] = bounded_json(item, 16 * 1024 * 1024)
         if time.monotonic() >= deadline or cache_call("get", key + ":gate") != token:
             raise RecommendationError()
         remaining = int(result["expires_at"] - timezone.now().timestamp())
         if remaining <= 0:
             raise RecommendationError()
-        cache_call("set", key, result, timeout=remaining)
+        failed = cache_call("set_many", members, timeout=remaining)
+        if failed:
+            raise RecommendationError()
+        if time.monotonic() >= deadline or cache_call("get", key + ":gate") != token:
+            raise RecommendationError()
+        manifest = {
+            "captured_at": metadata["captured_at"],
+            "expires_at": metadata["expires_at"],
+            "metadata": metadata,
+            "members": {rep_id: f"{key}:{token}:member:{rep_id}" for rep_id in result["representatives"]},
+        }
+        cache_call("set", key, manifest, timeout=remaining)
         return result
     except RecommendationError:
         raise
