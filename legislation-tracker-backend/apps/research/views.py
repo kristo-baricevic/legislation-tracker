@@ -13,13 +13,6 @@ from .services import request_research, validate_period
 
 class ResearchQuery(StrictQuerySerializer):
     period = serializers.IntegerField(required=False)
-    snapshot = serializers.UUIDField(required=False)
-    cursor = serializers.IntegerField(min_value=0, default=0)
-    sort = serializers.ChoiceField(choices=["amount", "date", "name"], default="amount")
-    contributor = serializers.IntegerField(min_value=1, required=False)
-    donor_cursor = serializers.IntegerField(min_value=0, default=0)
-    related_cursor = serializers.IntegerField(min_value=0, default=0)
-    kind = serializers.ChoiceField(choices=["contribution", "refund"], default="contribution")
 
     def validate_period(self, value):
         try:
@@ -28,13 +21,40 @@ class ResearchQuery(StrictQuerySerializer):
             raise serializers.ValidationError(str(exc)) from exc
 
 
+class ContributorsQuery(ResearchQuery):
+    snapshot = serializers.UUIDField(required=False)
+    cursor = serializers.IntegerField(min_value=0, default=0)
+    sort = serializers.ChoiceField(choices=["amount", "date", "name"], default="amount")
+    kind = serializers.ChoiceField(choices=["contribution", "refund"], default="contribution")
+
+
+class SnapshotsQuery(ResearchQuery):
+    cursor = serializers.IntegerField(min_value=0, default=0)
+
+
+class ConnectionsQuery(ResearchQuery):
+    snapshot = serializers.UUIDField(required=False)
+    cursor = serializers.IntegerField(min_value=0, default=0)
+    contributor = serializers.IntegerField(min_value=1, required=False)
+    donor_cursor = serializers.IntegerField(min_value=0, default=0)
+    related_cursor = serializers.IntegerField(min_value=0, default=0)
+    legislative_start = serializers.DateField(required=False)
+    legislative_end = serializers.DateField(required=False)
+
+    def validate(self, data):
+        start, end = data.get("legislative_start"), data.get("legislative_end")
+        if bool(start) != bool(end) or (start and start > end):
+            raise serializers.ValidationError("Provide both legislative dates, with start on or before end.")
+        return data
+
+
 class StartQuery(StrictQuerySerializer):
     period = serializers.IntegerField()
     validate_period = ResearchQuery.validate_period
 
 
-def parameters(request):
-    query = ResearchQuery(data=request.query_params)
+def parameters(request, serializer=ResearchQuery):
+    query = serializer(data=request.query_params)
     query.is_valid(raise_exception=True)
     data = query.validated_data
     year = timezone.now().year
@@ -95,7 +115,7 @@ class ContributorsView(APIView):
     def get(self, request, representative_id):
         from django.conf import settings
         get_object_or_404(Representative, pk=representative_id)
-        data = parameters(request)
+        data = parameters(request, ContributorsQuery)
         qs = FinanceSnapshot.objects.filter(representative_id=representative_id, period=data["period"], invalidated=False)
         if data.get("snapshot"):
             snapshot = get_object_or_404(qs.filter(published_at__isnull=False), pk=data["snapshot"])
@@ -118,5 +138,21 @@ class ConnectionsView(APIView):
     def get(self, request, representative_id):
         from apps.campaign_finance.connections import get_connections
         get_object_or_404(Representative, pk=representative_id)
-        params = parameters(request)
-        return Response(get_connections(representative_id, params["period"], params["cursor"], params.get("contributor"), params["donor_cursor"], params["related_cursor"]))
+        params = parameters(request, ConnectionsQuery)
+        snapshot_id = params.pop("snapshot", None)
+        snapshot = None
+        if snapshot_id:
+            snapshot = get_object_or_404(FinanceSnapshot, pk=snapshot_id, representative_id=representative_id, period=params["period"], invalidated=False, published_at__isnull=False)
+        return Response(get_connections(representative_id, snapshot=snapshot, **params))
+
+
+class SnapshotsView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, representative_id):
+        get_object_or_404(Representative, pk=representative_id)
+        params = parameters(request, SnapshotsQuery)
+        rows = FinanceSnapshot.objects.filter(representative_id=representative_id, period=params["period"], invalidated=False, published_at__isnull=False).order_by("-published_at", "-pk")
+        offset, count = params["cursor"], rows.count()
+        return Response({"count": count, "next_cursor": offset + 20 if offset + 20 < count else None, "results": [{"id": str(row.pk), "published_at": row.published_at, "active": row.active, "coverage": row.coverage} for row in rows[offset:offset + 20]]})

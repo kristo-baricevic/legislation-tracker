@@ -31,7 +31,9 @@ def test_memo_and_unknown_receipts_are_not_presented_as_donations():
     base = dict(sub_id="1", committee_id="C00000001", contributor_name="A", contribution_receipt_amount=100, contribution_receipt_date="2026-01-01", line_number="11C", entity_type="PAC", contributor_id="C00000002")
     assert normalize_receipt(base)["kind"] == "contribution"
     assert normalize_receipt({**base, "memo_code": "X"})["effective"] is False
-    assert normalize_receipt({**base, "line_number": "13A"})["kind"] == "other_receipt"
+    loan = normalize_receipt({**base, "line_number": "13A"})
+    assert loan["kind"] == "candidate_loan"
+    assert loan["effective"] is False
     assert normalize_receipt({**base, "contribution_receipt_amount": -25})["kind"] == "adjustment"
 
 

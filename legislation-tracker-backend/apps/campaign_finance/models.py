@@ -88,6 +88,7 @@ class FinanceTransaction(models.Model):
     effective = models.BooleanField(default=True)
     exclusion_reason = models.CharField(max_length=64, blank=True)
     filing_id = models.CharField(max_length=64, blank=True)
+    source_metadata = models.JSONField(default=dict)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["snapshot", "source_key"], name="finance_snapshot_record_unique")]

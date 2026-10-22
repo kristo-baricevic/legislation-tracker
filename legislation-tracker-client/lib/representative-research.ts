@@ -14,4 +14,11 @@ async function read<T>(id: number, path: string, signal?: AbortSignal): Promise<
 export const getResearch = (id: number, period: number, signal?: AbortSignal) => read<Research>(id, `research/?period=${period}`, signal);
 export const startResearch = (id: number, period: number, signal?: AbortSignal) => authPost<ResearchRun>(`/api/representatives/${id}/research/`, { period }, { signal });
 export const getContributors = (id: number, period: number, snapshot: string, cursor: number, sort: string, signal?: AbortSignal, kind = "contribution") => read<Contributors>(id, `contributors/?period=${period}&snapshot=${encodeURIComponent(snapshot)}&cursor=${cursor}&sort=${sort}&kind=${kind}`, signal);
-export const getConnections = (id: number, period: number, cursor: number, signal?: AbortSignal, contributor?: number, donorCursor = 0, relatedCursor = 0) => read<Connections>(id, `connections/?period=${period}&cursor=${cursor}&donor_cursor=${donorCursor}&related_cursor=${relatedCursor}${contributor ? `&contributor=${contributor}` : ""}`, signal);
+export type FinanceHistory = { count: number; next_cursor: number | null; results: { id: string; published_at: string; active: boolean; coverage: string }[] };
+export const getFinanceHistory = (id: number, period: number, cursor: number, signal?: AbortSignal) => read<FinanceHistory>(id, `research-snapshots/?period=${period}&cursor=${cursor}`, signal);
+export const getConnections = (id: number, period: number, cursor: number, signal?: AbortSignal, contributor?: number, donorCursor = 0, relatedCursor = 0, filters: { snapshot?: string; legislative_start?: string; legislative_end?: string } = {}) => {
+  const query = new URLSearchParams({ period: String(period), cursor: String(cursor), donor_cursor: String(donorCursor), related_cursor: String(relatedCursor) });
+  if (contributor) query.set("contributor", String(contributor));
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  return read<Connections>(id, `connections/?${query}`, signal);
+};

@@ -27,7 +27,7 @@ def persist_page(checkpoint, page):
         if identity is None:
             donor = Contributor.objects.create(name=row["name"], kind=row["contributor_kind"])
             identity = ContributorIdentity.objects.create(provider_key=row["identity_key"], contributor=donor, verified=row["verified"])
-        fields = {key: row[key] for key in ("amount", "date", "kind", "source_url", "effective", "exclusion_reason", "filing_id")}
+        fields = {key: row[key] for key in ("amount", "date", "kind", "source_url", "effective", "exclusion_reason", "filing_id", "source_metadata")}
         saved, created = FinanceTransaction.objects.get_or_create(snapshot=checkpoint.snapshot, source_key=row["source_key"], defaults={"committee": checkpoint.committee, "contributor": identity.contributor, **fields})
         if not created and (saved.contributor_id != identity.contributor_id or any(getattr(saved, key) != value for key, value in fields.items())):
             # An upstream revision during a scan cannot silently change an

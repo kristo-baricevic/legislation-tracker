@@ -77,7 +77,16 @@ persisted in evidence. No raw-provider-payload endpoint is exposed.
 Connections mean a contribution to a campaign whose member has recorded bill
 activity—not endorsement of each topic or evidence of influence. Votes include
 their question and recorded position; withdrawn cosponsorship is labeled.
-Legislative activity currently uses the selected reporting period's dates.
+Legislative activity defaults to the selected reporting period's dates, with
+independent inclusive start/end controls. The finance period remains visible.
+The Finance snapshot selector lists published, non-invalidated snapshots and can
+load older history. Explicit historical snapshots use each related member's
+latest valid snapshot published at or before the selected snapshot's timestamp,
+not today's active financial records. Missing historical research is not zero.
+`research-snapshots/?period=...&cursor=...` paginates this history; connections
+accept `snapshot`, `legislative_start`, and `legislative_end`. Both dates are
+required together. Each route rejects unsupported filters rather than ignoring
+them. Identity-revoked snapshots cannot be selected.
 The view queries current relational data without a time-based cache.
 
 ## Verification and remaining release work
@@ -95,8 +104,16 @@ backend suite also runs against disposable PostgreSQL, including concurrent
 request joining. No live research run or migration of the user's running stack was done
 during implementation.
 
-Before production release: run a credentialed FEC smoke test; expand recorded-provider fixtures for amended/deleted
-filings and conduit reconciliation. Snapshot-pinned historical graph browsing,
-and separate legislative scope selection are still pending. Contributor pages
+On 2026-10-22, bounded credentialed reads verified House and Senate candidate
+search, an authorized House committee, Schedule A keyset cursor shape, committee
+contribution normalization, an empty Schedule B scope, and committee totals.
+No live candidate mapping was approved and no whole-period scan was launched.
+This smoke test does not verify nonempty live refund handling or amendment
+reconciliation. Synthetic refresh tests cover changed/deleted records across
+snapshots, without asserting that upstream scans are atomic. Evidence metadata
+retains original filing/transaction/line identifiers, never contact fields.
+
+Before production release: expand recorded-provider fixtures for amended/deleted
+filings, nonempty refunds, and conduit reconciliation. Contributor pages
 retain their published snapshot through refresh; identity revocation invalidates
 historical snapshots as well. Shared representative expansion is paginated.
