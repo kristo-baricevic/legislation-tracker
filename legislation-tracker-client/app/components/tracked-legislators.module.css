@@ -18,4 +18,9 @@
 .latest a { font-size: .9rem; line-height: 1.4; }
 .card a:hover { text-decoration: underline; }
 .sources summary { cursor: pointer; }
+.topics { display: flex; flex-wrap: wrap; gap: .4rem; }
+.pill { padding: .3rem .65rem; border: 1px solid var(--line); border-radius: 999px; background: var(--wash); color: var(--ink); font-size: .78rem; line-height: 1.3; }
+.actions { margin-top: auto; display: flex; justify-content: flex-end; }
+.similar { font-size: .8rem; line-height: 1.4; color: var(--muted); }
+.similar a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .row:focus-visible, .card a:focus-visible, .sources summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }

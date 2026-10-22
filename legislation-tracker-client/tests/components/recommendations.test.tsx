@@ -113,10 +113,16 @@ describe("recommendation rows", () => {
     expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument();
   });
   it("renders representative reasons through the profile adapter", async () => {
-    mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Member One", bioguide_id: "A000001", score: .4, reasons: [{ kind: "followed_topic", topic_id: 1, name: "Health", shared_topics: [], channel_evidence: {} }], topic_activity_evidence: activity }], activity_as_of: activity.captured_at }));
+    mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Member One", bioguide_id: "A000001", score: .4, reasons: [{ kind: "followed_topic", topic_id: 1, name: "Health", shared_topics: [], channel_evidence: {} }, { kind: "followed_representative_activity", representative_id: 2, name: "Other member", shared_topics: [{ id: 1, name: "Health", slug: "health" }, { id: 2, name: "Energy", slug: "energy" }], channel_evidence: {} }], topic_activity_evidence: activity }], activity_as_of: activity.captured_at }));
     render(<RepresentativeRecommendations renderName={member => <button>{member.name} profile</button>} />);
     expect(await screen.findByRole("button", { name: "Member One profile" })).toBeVisible();
-    expect(screen.getByLabelText("Why recommended")).toHaveTextContent("Recorded sponsorship or active cosponsorship in Health");
+    expect(screen.getAllByRole("link", { name: "Health" })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/bills?topic_id=1");
+    expect(screen.getByRole("link", { name: "Energy" })).toHaveAttribute("href", "/bills?topic_id=2");
+    expect(screen.getByRole("link", { name: "Other member" })).toHaveAttribute("href", "/representatives/2");
+    expect(screen.getByText("Similar to")).toBeVisible();
+    expect(screen.getByRole("img", { name: "Member One" })).toHaveAttribute("src", "https://www.congress.gov/img/member/a000001_200.jpg");
+    expect(screen.queryByText(/Recorded sponsorship or active cosponsorship in/)).not.toBeInTheDocument();
   });
   it("keeps activity window and uncertainty separate from the selected Congress", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(activity)));
