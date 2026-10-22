@@ -92,9 +92,16 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"], throttle_classes=[BiographyThrottle])
     def biography(self, request, pk=None):
         representative = self.get_object()
-        if getattr(request, "biography_cache_unavailable", False):
-            return Response(unavailable_biography("cache_unavailable"))
-        return Response(representative_biography(representative))
+        from apps.research.models import RepresentativeBiography
+        saved = RepresentativeBiography.objects.filter(
+            representative=representative, source__provider="wikipedia"
+        ).order_by("-id").first()
+        if saved is None:
+            return Response(unavailable_biography("not_researched"))
+        result = unavailable_biography(None)
+        result.update(saved.evidence.get("source_snapshot", {}))
+        result.update(status="available", text=saved.text)
+        return Response(result)
 
     @action(detail=True, methods=["get"], url_path="topic-activity")
     def topic_activity(self, request, pk=None):

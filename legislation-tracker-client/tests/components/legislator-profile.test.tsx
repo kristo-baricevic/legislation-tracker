@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (this: HTMLDialogElement) { this.removeAttribute("open"); });
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const path = String(input);
-    const data = path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
+    const data = path.includes("/research/") ? { status: "partial", period: 2026, run: null, portrait: null, snapshot: null, biography: { text: biography.text, source: { url: biography.page_url, attribution: biography.attribution, license: biography.license, fetched_at: biography.fetched_at } } } : path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
     return new Response(JSON.stringify(data));
   }));
 });
@@ -85,9 +85,9 @@ it("opens factual sections by ID, loads votes lazily, and suppresses unsafe sour
   const dialog = await screen.findByRole("dialog", { name: "First Member" });
   expect(within(dialog).getByText("Latest stored affiliation")).toBeInTheDocument();
   expect(within(dialog).getByText(/2023.*2027/)).toBeInTheDocument();
-  expect(within(dialog).getByText(/Verified campaign finance data is not connected/)).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Refresh research" })).toBeInTheDocument();
   expect(await within(dialog).findByText("A factual Wikipedia excerpt.")).toBeInTheDocument();
-  expect(within(dialog).getByText(/Article revision observed/)).toBeInTheDocument();
+  expect(within(dialog).getByRole("link", { name: "Wikipedia contributors" })).toHaveAttribute("href", biography.page_url);
   expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path).includes("voting-record"))).toBe(false);
   await user.click(within(dialog).getByRole("button", { name: "Show voting record" }));
   expect(await within(dialog).findByText("Absent (source wording)")).toBeInTheDocument();

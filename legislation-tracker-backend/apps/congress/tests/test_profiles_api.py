@@ -172,7 +172,7 @@ def test_biography_disabled_is_public_and_has_no_upstream_calls(monkeypatch):
     response = APIClient().get(f"/api/representatives/{representative.id}/biography/")
     assert response.status_code == 200
     assert response.json()["status"] == "unavailable"
-    assert response.json()["reason"] == "provider_disabled"
+    assert response.json()["reason"] == "not_researched"
 
 
 def test_introduced_bills_use_sponsor_id_and_safe_public_source_projection():
@@ -348,7 +348,7 @@ def test_biography_cache_failure_in_throttle_returns_unavailable_without_network
     monkeypatch.setattr("apps.congress.biography._snapshot", forbidden)
     response = APIClient().get(f"/api/representatives/{representative.id}/biography/")
     assert response.status_code == 200
-    assert response.json()["reason"] == "cache_unavailable"
+    assert response.json()["reason"] == "not_researched"
 
 
 def test_public_topic_activity_wrapper_is_strict_and_preserves_helper_contract(

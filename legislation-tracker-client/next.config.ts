@@ -24,7 +24,7 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  distDir: process.env.E2E_ISOLATED_BUILD === "1" ? ".next-source-first-e2e" : ".next",
+  distDir: process.env.E2E_RESEARCH_BUILD === "1" ? ".next-research-e2e" : process.env.E2E_ISOLATED_BUILD === "1" ? ".next-source-first-e2e" : ".next",
   output: "standalone",
   async headers() {
     return [

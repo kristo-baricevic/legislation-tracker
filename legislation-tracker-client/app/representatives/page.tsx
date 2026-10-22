@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import LegislatorName from "../components/LegislatorName";
+import RepresentativeResearch from "../components/RepresentativeResearch";
 import {
   getMyTracking,
   getBillFilterOptions,
@@ -228,6 +229,7 @@ function RepresentativesTable() {
                     <th className="truncate p-3 font-semibold text-ink">Chamber</th>
                     <th className="truncate p-3 font-semibold text-ink">Party</th>
                     <th className="truncate p-3 font-semibold text-ink">District</th>
+                    <th className="p-3 font-semibold text-ink">Research</th>
                     {hasAccount && (
                       <th className="truncate p-3 font-semibold text-ink">Tracking</th>
                     )}
@@ -245,7 +247,8 @@ function RepresentativesTable() {
                       <td className="truncate p-3">{rep.state}</td>
                       <td className="truncate p-3 capitalize">{rep.chamber}</td>
                       <td className="truncate p-3">{rep.party}</td>
-                      <td className="truncate p-3">{rep.district ?? "—"}</td>
+                      <td className="p-3">{rep.district ?? "—"}</td>
+                      <td className="p-3"><RepresentativeResearch representativeId={rep.id} compact /></td>
                       {hasAccount && (
                         <td className="p-3">
                           <button

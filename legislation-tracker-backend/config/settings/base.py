@@ -27,6 +27,8 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default=INSECURE_DEFAULT_SECRET_KEY)
 
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
+FEC_API_KEY = env("FEC_API_KEY", default="")
+FEC_INDIVIDUAL_PUBLICATION_ENABLED = env.bool("FEC_INDIVIDUAL_PUBLICATION_ENABLED", default=False)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -47,6 +49,8 @@ INSTALLED_APPS = [
     "apps.changelog",
     "apps.ingestion",
     "apps.accounts",
+    "apps.research",
+    "apps.campaign_finance",
 ]
 
 MIDDLEWARE = [

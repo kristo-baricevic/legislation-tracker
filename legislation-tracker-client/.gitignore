@@ -41,3 +41,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.next-source-first-e2e/
+/.next-research-e2e/
