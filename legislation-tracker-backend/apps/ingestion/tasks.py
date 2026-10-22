@@ -1027,6 +1027,10 @@ def _retry_delay(attempt_count):
 def _http_throttle_delay(exc):
     """429 is a temporary source cooldown, not a broken document attempt."""
     from email.utils import parsedate_to_datetime
+    from apps.campaign_finance.fec_client import FECError
+    if isinstance(exc, FECError) and exc.status_code == 429:
+        seconds = exc.retry_after_seconds if exc.retry_after_seconds is not None else 900
+        return timedelta(seconds=max(1, min(seconds, 365 * 86400)))
     response = getattr(exc, "response", None)
     if not isinstance(exc, requests.HTTPError) or response is None or response.status_code != 429:
         return None
@@ -1065,7 +1069,7 @@ def dispatch_ingestion_work(batch_size=100):
         IngestionWorkItem.objects.select_for_update().order_by("id").first()
         in_flight = IngestionWorkItem.objects.filter(
             status=IngestionWorkStatus.DISPATCHED
-        ).count()
+        ).exclude(kind="representative_research").count()
         capacity = max(MAX_DISPATCHED_INGESTION_WORK - in_flight, 0)
         candidates = []
         if capacity:
@@ -1075,10 +1079,20 @@ def dispatch_ingestion_work(batch_size=100):
                     status=IngestionWorkStatus.PENDING,
                     available_at__lte=now,
                 )
+                .exclude(kind="representative_research")
                 .order_by(_work_dispatch_priority(), "available_at", "id")[
                     : min(batch_size, capacity)
                 ]
             )
+        research_in_flight = IngestionWorkItem.objects.filter(
+            kind="representative_research", status__in=["dispatched", "processing"]
+        ).count()
+        # Separate admission budget: research cannot occupy bill-processing slots.
+        if research_in_flight < 1:
+            candidates.extend(IngestionWorkItem.objects.select_for_update(skip_locked=True).filter(
+                kind="representative_research", status=IngestionWorkStatus.PENDING,
+                available_at__lte=now,
+            ).order_by("available_at", "id")[:1])
         for work_item in candidates:
             work_item.status = IngestionWorkStatus.DISPATCHED
             work_item.lease_expires_at = now + WORK_LEASE_DURATION
@@ -1093,13 +1107,14 @@ def dispatch_ingestion_work(batch_size=100):
                     "updated_at",
                 ]
             )
-            leased_items.append((work_item.id, work_item.dispatch_token))
+            leased_items.append((work_item.id, work_item.dispatch_token, work_item.kind))
 
     dispatched = 0
-    for work_item_id, dispatch_token in leased_items:
+    for work_item_id, dispatch_token, kind in leased_items:
         try:
             result = process_ingestion_work_item.apply_async(
-                args=[work_item_id, dispatch_token]
+                args=[work_item_id, dispatch_token],
+                **({"queue": "research"} if kind == "representative_research" else {}),
             )
         except Exception as exc:
             # Leave it ready for the next dispatcher pass instead of dropping it.
@@ -1249,6 +1264,10 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 )
                 requeued = True
             elif isinstance(exc, DocumentValidationError) or (
+                work_item.kind == "representative_research" and (
+                    isinstance(exc, ValueError) or getattr(exc, "status_code", None) in {400, 401, 403, 404, 422}
+                )
+            ) or (
                 throttle_delay is None and work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
             ):
                 work_item.status = IngestionWorkStatus.DEAD
@@ -1394,6 +1413,9 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
 def _process_durable_work(work_item):
     """Run one durable pipeline stage without publishing another broker message."""
     payload = work_item.payload_json
+    if work_item.kind == "representative_research":
+        from apps.research.tasks import process_research
+        return process_research(work_item)
     if work_item.kind == WORK_KIND_BILL:
         bill_key_str = payload.get("bill_key")
         if not bill_key_str:

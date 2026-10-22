@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (this: HTMLDialogElement) { this.removeAttribute("open"); });
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const path = String(input);
-    const data = path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
+    const data = path.includes("/research/") ? { status: "partial", period: 2026, run: null, portrait: { url: "https://www.congress.gov/img/member/test.jpg", source: { url: "https://www.congress.gov", attribution: "Member portrait", fetched_at: "2026-10-10" } }, snapshot: null, biography: { text: biography.text, source: { url: biography.page_url, attribution: biography.attribution, license: biography.license, fetched_at: biography.fetched_at } } } : path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
     return new Response(JSON.stringify(data));
   }));
 });
@@ -83,11 +83,16 @@ it("opens factual sections by ID, loads votes lazily, and suppresses unsafe sour
   const opener = screen.getByRole("link", { name: "First Member" });
   await user.click(opener);
   const dialog = await screen.findByRole("dialog", { name: "First Member" });
-  expect(within(dialog).getByText("Latest stored affiliation")).toBeInTheDocument();
-  expect(within(dialog).getByText(/2023.*2027/)).toBeInTheDocument();
-  expect(within(dialog).getByText(/Verified campaign finance data is not connected/)).toBeInTheDocument();
+  expect(within(dialog).getByText(/Senate · VT · Independent/)).toBeInTheDocument();
+  const portrait = await within(dialog).findByRole("img", { name: "First Member portrait" });
+  expect(portrait.closest("header")).not.toBeNull();
+  expect(within(dialog).getAllByRole("img")).toHaveLength(1);
+  expect(within(dialog).queryByText("Elections")).not.toBeInTheDocument();
+  expect(within(dialog).queryByText("Bioguide ID: S000033")).not.toBeInTheDocument();
+  expect(within(dialog).queryByText("Stored voting coverage and service-window checks")).not.toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Refresh research" })).toBeInTheDocument();
   expect(await within(dialog).findByText("A factual Wikipedia excerpt.")).toBeInTheDocument();
-  expect(within(dialog).getByText(/Article revision observed/)).toBeInTheDocument();
+  expect(within(dialog).getByRole("link", { name: "Wikipedia contributors" })).toHaveAttribute("href", biography.page_url);
   expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path).includes("voting-record"))).toBe(false);
   await user.click(within(dialog).getByRole("button", { name: "Show voting record" }));
   expect(await within(dialog).findByText("Absent (source wording)")).toBeInTheDocument();
@@ -97,6 +102,30 @@ it("opens factual sections by ID, loads votes lazily, and suppresses unsafe sour
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(opener).toHaveFocus();
   expect(document.body.style.overflow).toBe("");
+});
+
+it("keeps all introduced bills accessible behind the short preview and handles a broken portrait", async () => {
+  const originalFetch = global.fetch;
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).includes("/sponsored-bills/")) return new Response(JSON.stringify({
+      count: 7, next: null, previous: null,
+      results: Array.from({ length: 7 }, (_, i) => ({ ...bill, id: i + 20, title: `Preview bill ${i + 1}` })),
+    }));
+    return originalFetch(input, init);
+  }));
+  render(page());
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("link", { name: "First Member" }));
+  const dialog = await screen.findByRole("dialog", { name: "First Member" });
+  await within(dialog).findByRole("link", { name: "Preview bill 1" });
+  expect(within(dialog).queryByRole("link", { name: "Preview bill 6" })).toBeNull();
+  await user.click(within(dialog).getByRole("button", { name: "Show more bills" }));
+  expect(within(dialog).getByRole("link", { name: "Preview bill 7" })).toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "Show fewer bills" }));
+  expect(within(dialog).queryByRole("link", { name: "Preview bill 6" })).toBeNull();
+  fireEvent.error(within(dialog).getByRole("img", { name: "First Member portrait" }));
+  expect(within(dialog).queryByRole("img")).toBeNull();
+  expect(within(dialog).getByRole("heading", { name: "First Member" })).toBeInTheDocument();
 });
 
 it("keeps bill→profile nesting in one stack, with unique titles and rollback close", async () => {

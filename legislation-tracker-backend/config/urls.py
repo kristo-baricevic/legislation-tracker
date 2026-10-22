@@ -104,6 +104,7 @@ urlpatterns = [
         name="llm-settings-validate",
     ),
     path("api/ingestion/", include("apps.ingestion.urls")),
+    path("api/representatives/", include("apps.research.urls")),
     path(
         "api/bills/<int:bill_id>/changes/",
         BillChangeTimelineView.as_view(),

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import LegislatorName from "../components/LegislatorName";
+import RepresentativeResearch from "../components/RepresentativeResearch";
 import {
   getMyTracking,
   getBillFilterOptions,
@@ -43,6 +44,12 @@ function RepresentativesTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stateFilter, setStateFilter] = useState<string>("");
+  const [name, setName] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearch(name.trim()); setPageNum(1); }, 250);
+    return () => clearTimeout(timer);
+  }, [name]);
   const [chamberFilter, setChamberFilter] = useState<string>("");
   const [pageNum, setPageNum] = useState(1);
   const [hasAccount, setHasAccount] = useState(false);
@@ -64,6 +71,7 @@ function RepresentativesTable() {
     setLoading(true);
     setError(null);
     getRepresentatives({
+      search: search || undefined,
       state: stateFilter || undefined,
       chamber: chamberFilter || undefined,
       page: pageNum,
@@ -80,7 +88,7 @@ function RepresentativesTable() {
     return () => {
       cancelled = true;
     };
-  }, [stateFilter, chamberFilter, pageNum]);
+  }, [search, stateFilter, chamberFilter, pageNum]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +175,12 @@ function RepresentativesTable() {
 
         <div className="mb-4 tracker-panel">
           <div className="responsive-field-grid">
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Search by name
+              <input type="search" value={name} maxLength={200} placeholder="Name"
+                className="rounded border border-control bg-background px-3 py-2 text-ink"
+                onChange={event => setName(event.target.value)} />
+            </label>
             <SelectField
               label="State"
               value={stateFilter}
@@ -217,7 +231,7 @@ function RepresentativesTable() {
         {!loading && page && (
           <>
             <p className="mb-4 text-muted">
-              {page.count} representative{page.count !== 1 ? "s" : ""} (ingested from bills/votes)
+              {page.count ? <>{page.count} representative{page.count !== 1 ? "s" : ""}</> : "No representatives found."}
             </p>
             <div className="tracker-table" role="region" aria-label="Representative results" tabIndex={0}>
               <table className="w-full table-fixed text-left">
@@ -228,6 +242,7 @@ function RepresentativesTable() {
                     <th className="truncate p-3 font-semibold text-ink">Chamber</th>
                     <th className="truncate p-3 font-semibold text-ink">Party</th>
                     <th className="truncate p-3 font-semibold text-ink">District</th>
+                    <th className="p-3 font-semibold text-ink">Research</th>
                     {hasAccount && (
                       <th className="truncate p-3 font-semibold text-ink">Tracking</th>
                     )}
@@ -245,7 +260,8 @@ function RepresentativesTable() {
                       <td className="truncate p-3">{rep.state}</td>
                       <td className="truncate p-3 capitalize">{rep.chamber}</td>
                       <td className="truncate p-3">{rep.party}</td>
-                      <td className="truncate p-3">{rep.district ?? "—"}</td>
+                      <td className="p-3">{rep.district ?? "—"}</td>
+                      <td className="p-3"><RepresentativeResearch representativeId={rep.id} compact /></td>
                       {hasAccount && (
                         <td className="p-3">
                           <button

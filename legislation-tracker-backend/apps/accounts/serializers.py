@@ -129,10 +129,15 @@ class TrackedTopicSerializer(serializers.ModelSerializer):
 
 class TrackedLegislatorSerializer(serializers.ModelSerializer):
     representative = RepresentativeSerializer(read_only=True)
+    card = serializers.SerializerMethodField()
+
+    def get_card(self, obj):
+        from .legislator_cards import card_facts
+        return card_facts(obj.representative)
 
     class Meta:
         model = TrackedLegislator
-        fields = ["id", "representative", "created_at"]
+        fields = ["id", "representative", "created_at", "card"]
 
 
 class TrackingFeedEntrySerializer(serializers.ModelSerializer):

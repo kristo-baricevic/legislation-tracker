@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import RepresentativeResearch from "../../components/RepresentativeResearch";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
@@ -204,6 +205,7 @@ function RepresentativeDetailContent() {
               <p className="mt-1 text-slate-600 dark:text-green-600">{representative.party} · {representative.state}{representative.district ? `-${representative.district}` : ""} · {representative.chamber} · Congress {congress}</p>
             </header>
             <InsightCards insight={insight} />
+            <RepresentativeResearch representativeId={representative.id} />
             <section className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20">
               <h2 className="text-lg font-semibold">Roll-call coverage</h2>
               <p className="mt-1 text-sm">{insight.coverage_complete ? "Complete official roll-call coverage." : `Partial coverage — ${insight.coverage_reason ?? "source status is unavailable"}`}</p>

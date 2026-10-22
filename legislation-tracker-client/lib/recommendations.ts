@@ -40,7 +40,7 @@ export interface PassageCounts {
 }
 export interface RepresentativeTopicActivity {
   schema_version: "representative-topic-activity-v1"; policy_version: string;
-  representative: { id: number; bioguide_id: string; name: string; chamber: string; state: string; is_current: boolean };
+  representative: { id: number; bioguide_id: string; name: string; chamber: string; state: string; party?: string; is_current: boolean };
   captured_at: string;
   window: { start_date: string; end_date_exclusive: string; timezone: string; months: number };
   policy: { topic_share: string; minimum_observations: number; minimum_topic_observations: number; minimum_tag_coverage: string };

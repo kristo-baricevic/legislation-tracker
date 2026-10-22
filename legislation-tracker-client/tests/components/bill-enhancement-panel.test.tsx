@@ -376,7 +376,7 @@ describe("BillEnhancementPanel", () => {
     const controls = screen.getByTestId("failure-controls");
     expect(await within(controls).findByText(attempt.failure_detail.message)).toBeVisible();
     await userEvent.click(within(controls).getByRole("button", { name: "Retry AI enhancement" }));
-    expect(within(controls).getByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
+    expect(await within(controls).findByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
     expect(createBillEnhancement).not.toHaveBeenCalled();
     expect(screen.getByText(attempt.failure_detail.path)).toBeVisible();
     expect(screen.getByText("Stage: Glossary batch 3")).toBeVisible();

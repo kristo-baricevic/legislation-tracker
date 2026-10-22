@@ -15,6 +15,7 @@ CHAMBER_CHOICES = ("house", "senate")
 
 
 class RepresentativeListQuerySerializer(PaginatedQuerySerializer):
+    search = serializers.CharField(required=False, allow_blank=True, max_length=200)
     state = serializers.RegexField(
         regex=r"^[A-Za-z]{2}$",
         required=False,

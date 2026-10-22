@@ -6,6 +6,22 @@ import IngestionTelemetryLive from "@/app/components/IngestionTelemetryLive";
 import { authGet, authPost } from "@/lib/api";
 vi.mock("@/lib/api", () => ({ authGet: vi.fn(), authPost: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.useRealTimers(); });
+it("collapses the dashboard without losing its scope or triggering requests", async () => {
+    render(<IngestionTelemetryLive />);
+    const user = userEvent.setup();
+    const congress = screen.getByRole("spinbutton", { name: "Congress" });
+    await user.clear(congress);
+    await user.type(congress, "118");
+    await user.click(screen.getByRole("button", { name: "Collapse legislation ingestion" }));
+    expect(screen.getByRole("heading", { name: "Legislation ingestion" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Start discovery and ingestion" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "Expand legislation ingestion" }));
+    expect(screen.getByRole("spinbutton", { name: "Congress" })).toHaveValue(118);
+    expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeVisible();
+    expect(authGet).not.toHaveBeenCalled();
+    expect(authPost).not.toHaveBeenCalled();
+});
 it("makes no automatic requests, keeps unknown counts unavailable and never starts on refresh", async () => {
     const user = userEvent.setup();
     render(<IngestionTelemetryLive />);

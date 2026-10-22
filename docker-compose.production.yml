@@ -88,6 +88,27 @@ services:
     volumes:
       - document_media:/app/local_media
 
+  research-worker:
+    build: ./legislation-tracker-backend
+    volumes:
+      - document_media:/app/local_media
+    restart: unless-stopped
+    command: celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -l info
+    env_file:
+      - ${ENV_FILE:-.env.production}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DATABASE_URL: postgresql://${POSTGRES_USER:-legislation}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-legislation}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   beat:
     build: ./legislation-tracker-backend
     restart: unless-stopped

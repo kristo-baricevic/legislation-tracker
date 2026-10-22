@@ -40,6 +40,8 @@ type Readiness = {
     reason?: string | null;
 };
 export default function IngestionTelemetryLive() {
+    const [expanded, setExpanded] = React.useState(true);
+    const contentId = React.useId();
     const [scope, setScope] = React.useState("119");
     const [telemetry, setTelemetry] = React.useState<Telemetry | null>(null);
     const [readiness, setReadiness] = React.useState<Readiness | null>(null);
@@ -123,7 +125,12 @@ export default function IngestionTelemetryLive() {
     const otherStates = [...new Set(rows.map(row => row.status))].filter(status => !["pending", "dispatched", "processing", "blocked", "dead", "succeeded"].includes(status));
     return <section aria-labelledby="live-telemetry-title" className={dashboard.dashboard}>
       <div className={dashboard.header}>
-        <div><h2 id="live-telemetry-title">Legislation ingestion</h2><p>Bring bills from Congress.gov into the tracker.</p></div>
+        <h2 id="live-telemetry-title">Legislation ingestion</h2>
+        <button type="button" className={dashboard.secondary} aria-expanded={expanded} aria-controls={contentId} aria-label={expanded ? "Collapse legislation ingestion" : "Expand legislation ingestion"} onClick={() => setExpanded(value => !value)}>{expanded ? "Collapse ▴" : "Expand ▾"}</button>
+      </div>
+      <div id={contentId} hidden={!expanded}>
+      <div className={dashboard.header}>
+        <p>Bring bills from Congress.gov into the tracker.</p>
         <div className={dashboard.actions}>
           <label>Congress <input type="number" min="1" max="200" step="1" value={scope} disabled={busy} onChange={event => { epoch.current++; setScope(event.target.value); setTelemetry(null); setReadiness(null); setRequestKey(null); setAcceptedRunId(null); setNotice(""); }}/></label>
           <button className={dashboard.secondary} disabled={busy} onClick={() => void refresh()}>{busy ? "Working…" : "Refresh telemetry"}</button>
@@ -162,5 +169,6 @@ export default function IngestionTelemetryLive() {
         <p>Refresh reads stored status; it does not scan Congress.gov or enqueue work. Retrying Start uses the same request key to avoid duplicate discovery.</p>
         <button className={dashboard.secondary} disabled={busy || !requestKey || !acceptedRunId || telemetry?.discovery_run?.id !== acceptedRunId || !["succeeded", "failed", "unknown"].includes(telemetry.discovery_run.status)} onClick={() => { setRequestKey(null); setAcceptedRunId(null); setNotice("New request prepared. Start explicitly when ready."); }}>Prepare a new discovery request</button>
       </details>
+      </div>
     </section>;
 }

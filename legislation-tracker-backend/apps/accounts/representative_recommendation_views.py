@@ -218,7 +218,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             if item["topic__slug"] != FALLBACK_TOPIC
         }
         fingerprint = hashlib.sha256(json.dumps([topics, reps], sort_keys=True).encode()).hexdigest()
-        key = f"representative-recommendations:v1:user:{request.user.pk}"
+        key = f"representative-recommendations:v2:user:{request.user.pk}"
         cached = cache_call("get", key)
         if cached and cached["fingerprint"] == fingerprint:
             return Response(cached["data"])

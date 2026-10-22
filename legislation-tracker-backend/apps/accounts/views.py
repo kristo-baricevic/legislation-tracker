@@ -420,9 +420,10 @@ class TrackingSummaryView(APIView):
             "bill__sponsor",
         )
         topics = TrackedTopic.objects.filter(user=request.user).select_related("topic")
-        legislators = TrackedLegislator.objects.filter(
+        from .legislator_cards import with_card_facts
+        legislators = with_card_facts(TrackedLegislator.objects.filter(
             user=request.user
-        ).select_related("representative")
+        ).select_related("representative"))
         return Response(
             {
                 "bills": TrackedBillSerializer(bills, many=True).data,
