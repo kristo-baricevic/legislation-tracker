@@ -49,7 +49,7 @@ describe("unified reader", () => {
     useEffect(() => setEnhancement(saved), [setEnhancement]);
     return <ReaderIdentityProvider value={identity}>
       <ReaderModeSwitch />
-      <h2>What this bill does</h2>
+      <h2>Summary</h2>
       <ReaderSummary><p>Original summary.</p></ReaderSummary>
       <ReaderExplanation kind="financial_item" itemId="fine" original="A fine of $1,000 applies." />
       <ReaderExplanation kind="financial_item" itemId="authorization" original="Authorizes such sums as necessary." />

@@ -9,7 +9,7 @@ from .citations import citation_spans
 from .diagnostics import output_error
 from .reader_targets import READER_SCHEMA, validate_reader_explanations
 
-READER_PROMPT_VERSION = "reader-3"
+READER_PROMPT_VERSION = "reader-6-brief-wire"
 READER_ID_SCHEMA = copy.deepcopy(READER_SCHEMA)
 for category in ("summary", "explanations"):
     READER_ID_SCHEMA["properties"][category]["items"]["properties"]["source_quotes"]["items"] = {
@@ -62,8 +62,48 @@ def citation_passages(source):
     return passages
 
 
+def bounded_reader_schema(sources, targets, catalogs):
+    """Make required target outcomes and valid citation pairs decoder constraints."""
+    schema = copy.deepcopy(READER_ID_SCHEMA)
+    schema["properties"]["summary"]["maxItems"] = 2
+    schema["properties"]["summary"]["items"]["properties"]["text"].update(maxLength=300, pattern=r"[.!?]$")
+    if not targets:
+        return schema
+    properties = {}
+    for target in targets:
+        quotes = []
+        for source in sources:
+            if not any(t["target_id"] == target["target_id"] for t in source.get("reader_targets", [])):
+                continue
+            ids = [p["quote_id"] for p in catalogs[source["source_ref"]] if p["quote_id"]]
+            if ids:
+                quotes.append({"type": "object", "additionalProperties": False,
+                    "required": ["source_ref", "quote_id"], "properties": {
+                        "source_ref": {"type": "string", "enum": [source["source_ref"]]},
+                        "quote_id": {"type": "string", "enum": ids}}})
+        explained, unresolved = copy.deepcopy(READER_ID_SCHEMA["properties"]["explanations"]["items"]["anyOf"])
+        if target.get("kind") == "line_item":
+            explained["properties"]["text"].update(maxLength=400, pattern=r"[.!?]$")
+        for variant in (explained, unresolved):
+            variant["properties"]["target_id"] = {"type": "string", "enum": [target["target_id"]]}
+        if quotes:
+            explained["properties"]["source_quotes"]["items"] = {"anyOf": quotes}
+        properties[target["target_id"]] = {"anyOf": [explained, unresolved]} if quotes else unresolved
+    schema["properties"]["explanations"] = {"type": "object", "additionalProperties": False,
+        "required": list(properties), "properties": properties}
+    return schema
+
+
 def resolve_reader_citations(output, targets, sources):
     """Resolve only IDs from this immutable request, then run all existing checks."""
+    output = copy.deepcopy(output)
+    if isinstance(output.get("explanations"), dict):
+        Draft202012Validator(bounded_reader_schema(sources, targets,
+            {s["source_ref"]: citation_passages(s) for s in sources})).validate(output)
+        mapping = output["explanations"]
+        if set(mapping) != {t["target_id"] for t in targets} or any(not isinstance(v, dict) or v.get("target_id") != k for k, v in mapping.items()):
+            raise output_error("reader_coverage_incomplete", ["explanations"])
+        output["explanations"] = list(mapping.values())
     Draft202012Validator(READER_ID_SCHEMA).validate(output)
     catalogs = {
         source["source_ref"]: {p["quote_id"]: p["text"] for p in citation_passages(source)

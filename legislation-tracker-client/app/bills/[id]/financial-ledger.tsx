@@ -13,33 +13,26 @@ import type {
 import { financialPurpose, readablePath } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
 import { ReaderExplanation, useReaderExplanation } from "./reader-explanation";
+import { financialGlossary } from "@/lib/financial-glossary";
+import { ProvisionType } from "./provision-type";
 
-function FinancialExplanation({ item }: { item: LegalNlpFinancialItem }) {
+function FinancialExplanation({ item, contractId, number, textUrl, downloadUrl }: {
+  item: LegalNlpFinancialItem; contractId: number; number: number; textUrl?: string | null; downloadUrl?: string | null;
+}) {
   const enhanced = useReaderExplanation("financial_item", item.id, item.display_text);
+  const notes = <div className="mb-3 space-y-2 text-sm">
+    <p className="font-semibold">{pathLabel(item)}</p>
+    {(item.source_account || item.destination_account) && <dl className="space-y-2">
+      {item.source_account && <div><dt className="font-semibold">From</dt><dd>{item.source_account}</dd></div>}
+      {item.destination_account && <div><dt className="font-semibold">To</dt><dd>{item.destination_account}</dd></div>}
+    </dl>}
+  </div>;
   return <>
     {!enhanced && <p className="mt-1 text-lg font-semibold leading-7 text-slate-950 dark:text-green-200">{financialPurpose(item)}</p>}
-    <ReaderExplanation kind="financial_item" itemId={item.id} original={item.display_text} />
+    <ReaderExplanation kind="financial_item" itemId={item.id} original={item.display_text} details={notes} citationNumber={number}
+      citation={<SourceEvidence contractId={contractId} financialItemId={item.id} textUrl={textUrl} downloadUrl={downloadUrl} annotations={notes} number={number} />} />
   </>;
 }
-
-const actionLabels: Record<FinancialAction, string> = {
-  fee: "Application or processing fee",
-  surcharge: "Surcharge",
-  penalty: "Fine or penalty",
-  fee_exemption: "Fee exemption",
-  account_rule: "Account and availability rule",
-  appropriation: "Appropriation",
-  authorization: "Authorization",
-  allocation: "Allocation",
-  transfer: "Transfer",
-  rescission: "Rescission",
-  reduction: "Reduction",
-  cancellation: "Cancellation",
-  set_aside: "Set-aside",
-  limitation: "Limitation",
-  other_explicit: "Other explicit financial provision",
-  source_rule: "Financial rule (see full wording)",
-};
 
 interface FinancialLedgerProps {
   contractId: number;
@@ -166,7 +159,7 @@ export function FinancialLedger({
             Financial action
             <select value={action} onChange={(event) => setAction(event.target.value as FinancialAction | "")} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
               <option value="">All actions</option>
-              {Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(financialGlossary).map(([value, term]) => <option key={value} value={value}>{term.label}</option>)}
             </select>
           </label>
           <label className="text-sm font-semibold text-slate-800 dark:text-green-300">
@@ -195,22 +188,16 @@ export function FinancialLedger({
 
         {items.length > 0 && (
           <ol className="mt-4 divide-y divide-slate-300 border-y border-slate-300 dark:divide-green-900 dark:border-green-900">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <li key={item.id} className="grid gap-3 py-5 md:grid-cols-[11rem_minmax(0,1fr)]">
                 <div>
-                  <p className="font-semibold text-slate-950 dark:text-green-300">{actionLabels[item.financial_action]}</p>
+                  <ProvisionType action={item.financial_action} />
                   {formatAmount(item) && <p className="mt-2 font-sans text-sm font-semibold text-slate-800 dark:text-green-200">{formatAmount(item)}</p>}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">What the money is for</p>
-                  <FinancialExplanation item={item} />
-                  <p className="mt-2 font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-green-700">{pathLabel(item)}</p>
+                  <FinancialExplanation item={item} contractId={contractId} number={(page - 1) * 25 + index + 1} textUrl={textUrl} downloadUrl={downloadUrl} />
                   {item.fiscal_years.length > 0 && <p className="mt-2 text-sm text-slate-600 dark:text-green-600">Fiscal {item.fiscal_years.join(", ")}</p>}
-                  {(item.source_account || item.destination_account) && <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-                    {item.source_account && <div><dt className="font-semibold text-slate-600 dark:text-green-600">From</dt><dd>{item.source_account}</dd></div>}
-                    {item.destination_account && <div><dt className="font-semibold text-slate-600 dark:text-green-600">To</dt><dd>{item.destination_account}</dd></div>}
-                  </dl>}
-                  <SourceEvidence contractId={contractId} financialItemId={item.id} textUrl={textUrl} downloadUrl={downloadUrl} />
                 </div>
               </li>
             ))}

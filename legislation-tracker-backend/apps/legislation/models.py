@@ -156,6 +156,7 @@ class BillContract(models.Model):
     )
     schema_version = models.CharField(max_length=20, default="1.0")
     contract_json = models.JSONField(default=dict)
+    reader_copy = models.JSONField(default=dict, blank=True)
     contract_hash = models.CharField(max_length=64, db_index=True)
     computed_at = models.DateTimeField(auto_now_add=True)
 

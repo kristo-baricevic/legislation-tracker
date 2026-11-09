@@ -9,6 +9,7 @@ from typing import Any
 from rest_framework import serializers
 
 from .models import Bill, BillContract
+from .extraction.reader_language import reader_text, projection
 
 READER_SCHEMA_VERSION = "2.1-legal-nlp"
 DEFAULT_PAGE_SIZE = 25
@@ -79,6 +80,10 @@ def _item_by_id(
             {query_field: ["Unknown contract-local item ID."]}
         )
     return item
+
+
+def _line_inventory(contract, payload, item_id):
+    return projection(contract)["groups"] if item_id.startswith("brief-") else _array(payload, "line_items")
 
 
 def _valid_section(payload: dict[str, Any], section_id: str) -> None:
@@ -166,7 +171,7 @@ def _public_definition(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def reader_items_page(
-    contract: BillContract, *, page: int, page_size: int
+    contract: BillContract, *, page: int, page_size: int, grouped: bool = False
 ) -> dict[str, Any]:
     from .serializers import ReaderLineItemPublicSerializer
 
@@ -179,7 +184,7 @@ def reader_items_page(
             {"page_size": [f"Ensure this value is at most {MAX_PAGE_SIZE}."]}
         )
     payload = _contract_json(contract)
-    lines = _array(payload, "line_items")
+    lines = projection(contract)["groups"] if grouped else _array(payload, "line_items")
     financial_items = _array(payload, "financial_items")
     timeline_items = _array(payload, "timeline_items")
     definitions = _array(payload, "definitions")
@@ -215,6 +220,7 @@ def reader_items_page(
                 )
             }
             | {
+                "reader_text": line["reader_text"] if grouped else reader_text(contract, line),
                 "exact_financial_count": sum(
                     item_id in financial_by_id for item_id in financial_refs
                 ),
@@ -293,7 +299,7 @@ def financial_items_page(
     items = _array(payload, "financial_items")
     if line_item_id is not None:
         line = _item_by_id(
-            _array(payload, "line_items"), line_item_id, query_field="line_item_id"
+            _line_inventory(contract, payload, line_item_id), line_item_id, query_field="line_item_id"
         )
         references = set(line.get("exact_financial_refs") or [])
         items = [item for item in items if item.get("id") in references]
@@ -336,7 +342,7 @@ def timeline_items_page(
     items = _array(payload, "timeline_items")
     if line_item_id is not None:
         line = _item_by_id(
-            _array(payload, "line_items"), line_item_id, query_field="line_item_id"
+            _line_inventory(contract, payload, line_item_id), line_item_id, query_field="line_item_id"
         )
         references = set(line.get("timeline_refs") or [])
         items = [item for item in items if item.get("id") in references]
@@ -374,7 +380,7 @@ def definition_items_page(
         item_id for line in lines for item_id in (line.get("definition_refs") or [])
     }
     if line_item_id is not None:
-        line = _item_by_id(lines, line_item_id, query_field="line_item_id")
+        line = _item_by_id(_line_inventory(contract, payload, line_item_id), line_item_id, query_field="line_item_id")
         references = set(line.get("definition_refs") or [])
         items = [item for item in items if item.get("id") in references]
     elif unlinked is not None:
@@ -412,7 +418,8 @@ def contract_evidence_page(
             {"non_field_errors": ["Provide exactly one supported item ID."]}
         )
     query_field, category, item_id = selected[0]
-    item = _item_by_id(_array(payload, category), item_id, query_field=query_field)
+    inventory = projection(contract)["groups"] if category == "line_items" and item_id.startswith("brief-") else _array(payload, category)
+    item = _item_by_id(inventory, item_id, query_field=query_field)
     paths = item.get("evidence_paths")
     if (
         not isinstance(paths, list)

@@ -131,7 +131,7 @@ export default function ReaderGuideMockupPage() {
             </aside>
           </div>
           <nav className={styles.jumpNav} aria-label="Guide sections">
-            <a href="#changes">What changes</a>
+            <a href="#changes">What this bill does</a>
             <a href="#money">Where the money goes</a>
             <a href="#votes">Votes</a>
             <a href="#source">Source text</a>

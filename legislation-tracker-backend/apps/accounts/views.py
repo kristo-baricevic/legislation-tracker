@@ -149,7 +149,7 @@ class SessionLoginView(APIView):
         response = Response(
             {
                 "authenticated": True,
-                "user": {"email": serializer.user.email},
+                "user": {"email": serializer.user.email, "is_superuser": serializer.user.is_superuser},
             }
         )
         _set_token_cookies(
@@ -175,7 +175,7 @@ class SessionStatusView(APIView):
         return Response(
             {
                 "authenticated": True,
-                "user": {"email": request.user.email},
+                "user": {"email": request.user.email, "is_superuser": request.user.is_superuser},
             }
         )
 

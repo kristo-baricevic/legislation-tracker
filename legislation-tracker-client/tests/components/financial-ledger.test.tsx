@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FinancialLedger } from "@/app/bills/[id]/financial-ledger";
-import { getFinancialItems } from "@/lib/api";
+import { getFinancialItems, getContractEvidence } from "@/lib/api";
 import type { LegalNlpFinancialItem } from "@/lib/contracts";
 import { isLegalNlpFinancialItem } from "@/lib/contracts";
 
@@ -37,6 +37,25 @@ function item(id: string, financial_action: LegalNlpFinancialItem["financial_act
 
 describe("FinancialLedger", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("keeps raw funding accounts and section references in the source popover", async () => {
+    const record = { ...item("technical-help", "limitation", "limit"), amount: "2", amount_type: "percentage" as const, currency: null,
+      display_text: "Up to 2% of remaining funding may pay for technical help.",
+      source_account: "the total amount appropriated and not reserved under section 4 or subsection (d)",
+      destination_account: "technical assistance account" };
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 1, next: null, previous: null, results: [record] });
+    vi.mocked(getContractEvidence).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
+    render(<FinancialLedger contractId={12} totalCount={1} />);
+    expect(await screen.findByText(record.display_text)).toBeVisible();
+    expect(screen.getByRole("button", { name: "What does Limitation mean?" })).toBeVisible();
+    expect(screen.queryByText(record.source_account)).not.toBeInTheDocument();
+    expect(screen.queryByText(record.destination_account)).not.toBeInTheDocument();
+    expect(screen.queryByText("Sec. 4: Funding")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Read bill text" }));
+    expect(screen.getByText(record.source_account)).toBeVisible();
+    expect(screen.getByText(record.destination_account)).toBeVisible();
+    expect(screen.getByText("Sec. 4: Funding")).toBeVisible();
+  });
 
   it("replaces pages and retries the failed previous page rather than advancing", async () => {
     const user = userEvent.setup();

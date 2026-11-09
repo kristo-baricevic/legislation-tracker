@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from django.db.models import Q
 
 from django.utils import timezone
 from rest_framework import viewsets
@@ -21,7 +22,7 @@ from .profile_api import (
     ProfileVoteQuerySerializer,
     recorded_vote_data,
 )
-from .profiles import recorded_votes, representative_profile, vote_coverage
+from .profiles import recorded_votes, representative_profile, vote_coverage, vote_topic_summary
 from .serializers import (
     BillCosponsorSerializer,
     CommitteeMembershipSerializer,
@@ -42,7 +43,7 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
     authentication_classes = []
     permission_classes = [AllowAny]
     serializer_class = RepresentativeSerializer
-    queryset = Representative.objects.all().order_by("state", "name")
+    queryset = Representative.objects.all().order_by("state", "name", "id")
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -57,7 +58,7 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             query_serializer = RepresentativeInsightQuerySerializer
         elif self.action == "compare":
             query_serializer = RepresentativeCompareQuerySerializer
-        elif self.action == "profile":
+        elif self.action in {"profile", "vote_summary"}:
             query_serializer = ProfileQuerySerializer
         elif self.action == "voting_record":
             query_serializer = ProfileVoteQuerySerializer
@@ -78,11 +79,25 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         chamber = params.get("chamber")
         if chamber:
             qs = qs.filter(chamber=chamber)
+        party = params.get("party")
+        if party:
+            aliases = {"D": ("D", "Democrat", "Democratic"), "R": ("R", "Republican"), "I": ("I", "ID", "Independent")}
+            party_query = Q()
+            for alias in aliases[party]:
+                party_query |= Q(party__iexact=alias)
+            qs = qs.filter(party_query)
         if "is_current" in self.request.query_params:
             qs = qs.filter(is_current=params["is_current"])
         else:
             qs = qs.filter(is_current=True)
         return qs
+
+    @action(detail=True, methods=["get"])
+    def card(self, request, pk=None):
+        from apps.accounts.legislator_cards import card_facts, with_card_facts
+        representative = self.get_object()
+        representative = with_card_facts(Representative.objects.filter(pk=representative.pk), prefix="").get()
+        return Response(card_facts(representative))
 
     @action(detail=True, methods=["get"])
     def profile(self, request, pk=None):
@@ -142,6 +157,15 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )
         return response
+
+    @action(detail=True, methods=["get"], url_path="vote-summary")
+    def vote_summary(self, request, pk=None):
+        query = ProfileQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response(vote_topic_summary(
+            self.get_object(), query.validated_data["congress"],
+            query.validated_data.get("chamber"),
+        ))
 
     @action(detail=True, methods=["get"])
     def insights(self, request, pk=None):

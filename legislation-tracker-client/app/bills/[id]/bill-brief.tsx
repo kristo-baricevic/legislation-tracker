@@ -15,7 +15,6 @@ import type {
   LegalNlpDefinitionItem,
   LegalNlpLineItem,
   LegalNlpSectionPathItem,
-  LegalNlpSectionSupplement,
   LegalNlpTimelinePublicItem,
   LegalNlpV21ContractSummary,
 } from "@/lib/contracts";
@@ -26,8 +25,9 @@ import {
   readerOverview,
 } from "@/lib/reader-guide";
 import { SourceEvidence } from "./source-evidence";
-import { buildGlossary, legalDefinition, type GlossaryEntry } from "@/lib/glossary";
-import { ReaderExplanation, ReaderIdentityProvider, ReaderSummary, LegacyReaderChanges } from "./reader-explanation";
+import { changeCopy } from "@/lib/reader-copy";
+import { buildGlossary, isReferenceOnlyDefinition, legalDefinition, type GlossaryEntry } from "@/lib/glossary";
+import { ReaderExplanation, ReaderIdentityProvider, ReaderSummary, LegacyReaderChanges, useSummaryCitationCount } from "./reader-explanation";
 
 interface BillBriefProps {
   bill: BillDetailSummary;
@@ -45,10 +45,6 @@ function withoutDuplicateTitle(value: string, title: string): string {
     return paragraphs.slice(1).join("\n\n").trim();
   }
   return value.trim();
-}
-
-function pathKey(path: LegalNlpSectionPathItem[]): string {
-  return JSON.stringify(path);
 }
 
 function pathLabel(path: LegalNlpSectionPathItem[]): string {
@@ -156,11 +152,12 @@ function LinkedDefinitionDetails({ contractId, item, document }: { contractId: n
   );
 }
 
-function ReaderItem({ contractId, item, document, onShowAllFinancial, sourceNumber }: { contractId: number; item: LegalNlpLineItem; document: BillDocument | null; onShowAllFinancial: (lineItemId: string) => void; sourceNumber: number }) {
+function ReaderItem({ contractId, item, document, onShowAllFinancial, sourceNumber, hideHeading }: { contractId: number; item: LegalNlpLineItem; document: BillDocument | null; onShowAllFinancial: (lineItemId: string) => void; sourceNumber: number; hideHeading?: boolean }) {
+  const copy = changeCopy(item);
   return (
-    <li className="border-t border-slate-200 py-4 first:border-t-0 dark:border-green-900/70">
-      <ReaderExplanation kind="line_item" itemId={item.id} original={item.display_text} fallback={cleanLegislativeText(item.display_text)} citation={<SourceEvidence number={sourceNumber} contractId={contractId} lineItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} />} />
-      {item.effect && !item.display_text.includes(item.effect) && <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-green-300">{cleanLegislativeText(item.effect)}</p>}
+    <li className="py-3">
+      <ReaderExplanation citationNumber={sourceNumber} hideHeading={hideHeading} heading={copy.title} kind="line_item" itemId={item.id} original={item.display_text} fallback={copy.text} renderCitation={annotations => <SourceEvidence annotations={annotations} number={sourceNumber} contractId={contractId} lineItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} />} details={<>
+      <p className="text-xs">{pathLabel(item.section_path)}</p>
       {item.exact_financial_preview.length > 0 && (
         <div className="mt-3 border-l-2 border-emerald-600 pl-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-green-600">Money in this exact provision · {item.exact_financial_count}</p>
@@ -178,6 +175,8 @@ function ReaderItem({ contractId, item, document, onShowAllFinancial, sourceNumb
         </div>
       )}
       <LinkedDefinitionDetails contractId={contractId} item={item} document={document} />
+      </>} />
+      {item.effect && !item.display_text.includes(item.effect) && <p className="mt-2 leading-7 text-slate-700 dark:text-green-300">{cleanLegislativeText(item.effect)}</p>}
     </li>
   );
 }
@@ -190,28 +189,29 @@ import { useAiGlossary } from "./ai-glossary-context";
 import { ReaderTabBar, ReaderTabPanel, useReaderTabs } from "./reader-tabs";
 import { SourcePopover } from "./source-popover";
 
-export function GlossaryEntryView({ entry, contractId, document }: { entry: GlossaryEntry; contractId: number; document: BillDocument | null }) {
+export function GlossaryEntryView({ entry, contractId, document, number = 1 }: { entry: GlossaryEntry; contractId: number; document: BillDocument | null; number?: number }) {
   const { enhancement } = useAiGlossary();
+  if (entry.sources.every(isReferenceOnlyDefinition)) return null;
   const result = enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement.result : null;
   const refined = result && result.schema_version !== "2.0-source-first" && result.schema_version !== "1.4"
     ? result.glossary?.find(item => item.contract_id === contractId && item.cited_sources.length > 0 &&
       entry.sources.some(source => source.id === item.definition_id && source.term === item.term && source.definition === item.definition))
     : undefined;
-  return <div className="border-l-2 border-slate-300 pl-3 dark:border-green-800">
-    <dt className="font-semibold text-slate-950 dark:text-green-300">{entry.term}</dt>
-    <dd className="mt-1 text-slate-700 dark:text-green-200">{result?.schema_version === "1.4"
-      ? <ReaderExplanation kind="definition" itemId={entry.sources[0].id} original={entry.sources[0].display_text || entry.sources[0].definition} fallback={entry.explanation} />
-      : refined?.text ?? entry.explanation}</dd>
-    {refined && <dd className="text-xs text-slate-500">AI explanation · private</dd>}
-    <dd className="mt-1 text-xs text-slate-500 dark:text-green-500">Used in: {entry.scopes.join("; ") || "See source section"}</dd>
-    <dd><SourcePopover label="View legal definition">
+  const notes = <>
+      <p className="text-xs text-slate-500 dark:text-green-500">Used in: {entry.scopes.join("; ") || "See source section"}</p>
       <p className="mt-2 text-slate-700 dark:text-green-200">{legalDefinition(entry.sources[0])}</p>
       {refined?.source_quotes?.map((quote, index) => <blockquote key={index} className="mt-2 border-l pl-2">{quote.quote}</blockquote>)}
       {entry.sources.map(item => <div key={item.id}>
       <p className="mt-1 text-xs text-slate-500 dark:text-green-500">{pathLabel(item.section_path)}</p>
       <SourceEvidence contractId={contractId} definitionItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} />
       </div>)}
-    </SourcePopover></dd>
+  </>;
+  const citation = <SourcePopover number={number} label="View legal definition">{notes}</SourcePopover>;
+  return <div>
+    <dt className="font-semibold text-slate-950 dark:text-green-300">{entry.term}</dt>
+    <dd className="mt-1 text-slate-700 dark:text-green-200">{result?.schema_version === "1.4"
+      ? <ReaderExplanation kind="definition" itemId={entry.sources[0].id} original={entry.sources[0].display_text || entry.sources[0].definition} fallback={entry.explanation} details={notes} citation={citation} citationNumber={number} />
+      : <>{refined?.text ?? entry.explanation}{citation}</>}</dd>
   </div>;
 }
 
@@ -258,7 +258,7 @@ function KeyTerms({ document, contractId, totalCount }: { document: BillDocument
   }, [navigation?.active, open, loaded, loading, error, totalCount, load]);
 
   if (totalCount === 0) return navigation ? <p className="p-4">No key terms were identified in this version.</p> : null;
-  const entries = buildGlossary(items);
+  const entries = buildGlossary(items.filter(item => !isReferenceOnlyDefinition(item)));
   return (
     <section className="border-t border-slate-300 px-4 py-4 dark:border-green-900">
       {navigation ? <h3 className="text-lg font-semibold">Key terms{loaded ? ` (${entries.length})` : ""}</h3> : <button type="button" aria-expanded={open} onClick={() => { const next = !open; setOpen(next); if (next && !loaded && !loading) void load(); }} className="inline-flex cursor-pointer items-center gap-2 text-base font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:text-green-400">
@@ -269,10 +269,10 @@ function KeyTerms({ document, contractId, totalCount }: { document: BillDocument
       </button>}
       {open && (
         <div className="mt-3">
-          <p className="mb-4 text-sm text-slate-600 dark:text-green-600">Brief explanations for reading this bill. Legal definitions contain the complete criteria; meanings can differ by section.</p>
           {loading && items.length === 0 && <p className="text-sm text-slate-600 dark:text-green-600">Loading key terms…</p>}
           {error && <div role="alert" className="text-sm text-red-700 dark:text-red-300"><p>{error}</p><button type="button" disabled={loading} onClick={() => void load()} className="mt-2 border border-current px-2 py-1 font-semibold">Retry key terms</button></div>}
-          <dl className="space-y-4">{entries.map(entry => <GlossaryEntryView key={entry.sources[0].id} entry={entry} contractId={contractId} document={document} />)}</dl>
+          {loaded && !entries.length && <p className="text-sm text-slate-600 dark:text-green-600">No key terms to show.</p>}
+          <dl className="space-y-4">{entries.map((entry, index) => <GlossaryEntryView key={entry.sources[0].id} entry={entry} contractId={contractId} document={document} number={index + 1} />)}</dl>
         </div>
       )}
     </section>
@@ -280,11 +280,11 @@ function KeyTerms({ document, contractId, totalCount }: { document: BillDocument
 }
 
 function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSummary; contract: LegalNlpV21ContractSummary; onShowAllFinancial: (lineItemId: string) => void }) {
+  const coverageNumber = useSummaryCitationCount() + 1;
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [items, setItems] = useState<LegalNlpLineItem[]>([]);
-  const [supplements, setSupplements] = useState<Map<string, LegalNlpSectionSupplement>>(new Map());
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [requestedPage, setRequestedPage] = useState(1);
@@ -301,16 +301,11 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
     setReaderError(null);
     setRequestedPage(targetPage);
     try {
-      const response = await getReaderItems(contract.id, { page: targetPage, pageSize: 6 });
+      const response = await getReaderItems(contract.id, { page: targetPage, pageSize: 6, grouped: true });
       if (readerRequest.current !== activeRequest) return;
       const readableItems = response.results.filter(isReaderReady);
       setItems(readableItems);
       setReaderCount(response.count);
-      setSupplements(() => {
-        const next = new Map<string, LegalNlpSectionSupplement>();
-        for (const supplement of response.section_supplements) next.set(supplement.section_id, supplement);
-        return next;
-      });
       setPage(targetPage);
       setHasMore(Boolean(response.next));
       if (navigate) {
@@ -357,20 +352,17 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
   const fallbackOverview = contract.orientation.purpose_clause
     ?? document?.reader_summary
     ?? readerOverview(bill.jurisdiction, bill.status, bill.topics.map((topic) => topic.name));
-  const grouped = items.reduce<Array<{ key: string; path: LegalNlpSectionPathItem[]; items: LegalNlpLineItem[] }>>((groups, item) => {
-    const key = pathKey(item.section_path);
-    const previous = groups.at(-1);
-    if (previous?.key === key) previous.items.push(item);
-    else groups.push({ key, path: item.section_path, items: [item] });
-    return groups;
-  }, []);
+  const changes = items.filter(item => item.kind !== "purpose" && !/^This Act may be cited as\b/.test(changeCopy(item).text));
 
   return (
     <>
     <section className="mb-6 rounded-lg border border-slate-300 bg-white p-2 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
       <div className="p-4 sm:p-5">
-        <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">What this bill does</h2>
-        <ReaderSummary>{sourceLabel ? (
+        <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">Summary</h2>
+        <ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-4 space-y-3">
+          <p className="text-base leading-7">{contract.reader_brief.summary}{contract.reader_brief.source_id && <SourceEvidence contractId={contract.id} lineItemId={contract.reader_brief.source_id} textUrl={document?.text_url} downloadUrl={document?.download_url} number={1} />}</p>
+          {contract.reader_brief.money && <p className="text-base leading-7"><span className="font-semibold">Money: </span>{contract.reader_brief.money}</p>}
+        </div> : sourceLabel ? (
           <div className="mt-4">
             <p className="text-sm font-semibold text-slate-700 dark:text-green-500">{sourceLabel}{bill.summary_action_date ? ` · ${bill.summary_action_date}` : ""}</p>
             {preview && !summary && <p className="mt-2 w-full whitespace-pre-line text-base leading-7 text-slate-900 dark:text-green-100">{preview}</p>}
@@ -383,7 +375,6 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
           {contract.orientation.purpose_clause && contract.orientation.purpose_line_item_id && <SourceEvidence contractId={contract.id} lineItemId={contract.orientation.purpose_line_item_id} textUrl={document?.text_url} downloadUrl={document?.download_url} label="Read synopsis source text" />}
           {!contract.orientation.purpose_clause && document?.reader_summary && <a href={`/documents/${document.id}`} className="mt-2 inline-block underline">Read summary source text</a>}
         </div>}</ReaderSummary>
-        {bill.congress_gov_url && <a href={bill.congress_gov_url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-semibold text-blue-900 underline dark:text-green-400">View on Congress.gov</a>}
       </div>
 
       <div className="border-y border-slate-300 bg-slate-50/70 p-4 dark:border-green-900 dark:bg-black/20 sm:p-5">
@@ -394,25 +385,17 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
             </Link>
           ))}
         </div>
-        {document?.text_url && <Link href={`/documents/${document.id}`} className="mt-3 inline-block text-sm font-semibold text-blue-900 underline dark:text-green-400">Read full bill text</Link>}
       </div>
     </section>
     <ReaderTabBar />
     <ReaderTabPanel tab="changes">
       <div className="p-4 sm:p-5">
-        <h3 ref={readerHeading} tabIndex={-1} className="mb-3 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">What changes</h3>
-        <aside className="mb-4 text-sm leading-6 text-slate-700 dark:text-green-300" aria-label="About this breakdown">
-          <p>{contract.coverage_note}</p>
-        </aside>
+        <h3 ref={readerHeading} tabIndex={-1} className="mb-3 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">What this bill does<SourcePopover number={coverageNumber} label="Analysis coverage"><p>{contract.coverage_note}</p></SourcePopover></h3>
         <LegacyReaderChanges>
           <div className="mt-4" aria-busy={readerLoading}>
-            <p className="text-sm leading-6 text-slate-600 dark:text-green-600">In bill order. Read the source for the exact legal wording.</p>
             {readerLoading && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading bill provisions…</p>}
             {readerError && <div role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300"><p>{readerError}</p><button type="button" onClick={() => void loadReader(requestedPage, true)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill provisions</button></div>}
-            <div className="mt-4 flex flex-col gap-4">{grouped.map((group, index) => {
-              const section = supplements.get(group.items[0].section_id);
-              return <section key={`${group.key}-${index}`} className="rounded-lg border border-slate-300 p-5 dark:border-green-800"><h4 className="font-sans text-sm font-semibold text-slate-700 dark:text-green-500">{pathLabel(group.path)}</h4>{section && (section.section_financial_count > 0 || section.section_timeline_count > 0) && <p className="mt-1 text-xs text-slate-500 dark:text-green-700">{section.section_financial_count > 0 ? `Money in this section: ${section.section_financial_count}` : ""}{section.section_financial_count > 0 && section.section_timeline_count > 0 ? " · " : ""}{section.section_timeline_count > 0 ? `Deadlines in this section: ${section.section_timeline_count}` : ""}</p>}<ol>{group.items.map((item) => <ReaderItem key={item.id} sourceNumber={(page - 1) * 6 + items.indexOf(item) + 1} contractId={contract.id} item={item} document={document} onShowAllFinancial={onShowAllFinancial} />)}</ol></section>;
-            })}</div>
+            <ul className="mt-2 list-none">{changes.map((item, index) => <ReaderItem key={item.id} hideHeading={index > 0 && changeCopy(changes[index - 1]).title === changeCopy(item).title} sourceNumber={(page - 1) * 6 + items.indexOf(item) + coverageNumber + 1} contractId={contract.id} item={item} document={document} onShowAllFinancial={onShowAllFinancial} />)}</ul>
             {!readerLoading && !readerError && !items.length && <p className="mt-4">No readable provisions on this page. Use Next to continue if more pages are available.</p>}
             {readerCount > 0 && <nav aria-label="Bill provision pages" className="mt-5 flex flex-wrap items-center justify-center gap-4">
               <button type="button" disabled={readerLoading || page === 1} onClick={() => void loadReader(page - 1, true)} className="rounded border border-slate-500 px-3 py-2 text-sm font-semibold disabled:opacity-40">Prev</button>

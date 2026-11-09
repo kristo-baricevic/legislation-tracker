@@ -152,20 +152,20 @@ describe("VotingRecord", () => {
     expect(screen.getByRole("heading", { name: "No — 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Present — 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Not voting — 1" })).toBeVisible();
-    expect(screen.getAllByText(/Representative (Adams|Garcia|Baker|Chen|Diaz)/)).toHaveLength(5);
-    expect(screen.getAllByText("Representative Adams")[0].compareDocumentPosition(
-      screen.getAllByText("Representative Garcia")[0],
+    expect(screen.getAllByRole("link", { name: /Representative (Adams|Garcia|Baker|Chen|Diaz)/ })).toHaveLength(5);
+    expect(screen.getByRole("link", { name: "Representative Adams" }).compareDocumentPosition(
+      screen.getByRole("link", { name: "Representative Garcia" }),
     ) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.getByText(/Reported yes total 3 differs from 2 returned member records/)).toBeVisible();
 
     await user.type(screen.getByRole("searchbox", { name: "Search members" }), "Garcia");
-    expect(screen.getByText("Representative Garcia")).toBeVisible();
-    expect(screen.queryByText("Representative Adams")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Representative Garcia" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Representative Adams" })).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByRole("combobox", { name: "Party" }), "Democratic");
     await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "CA");
-    expect(screen.getByText("Representative Garcia")).toBeVisible();
-    expect(screen.queryByText("Representative Chen")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Representative Garcia" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Representative Chen" })).not.toBeInTheDocument();
   });
 
   it("keeps pagination, errors, and retry ownership in the parent", async () => {

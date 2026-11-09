@@ -5,15 +5,15 @@ from apps.research.models import RepresentativeBiography, RepresentativePortrait
 from apps.research.portraits import may_serve_portrait
 
 
-def with_card_facts(queryset):
+def with_card_facts(queryset, prefix="representative__"):
     return queryset.prefetch_related(
-        Prefetch("representative__representativebiography_set",
+        Prefetch(f"{prefix}representativebiography_set",
                  queryset=RepresentativeBiography.objects.select_related("source").order_by("-id")[:1],
                  to_attr="card_bios"),
-        Prefetch("representative__representativeportrait_set",
+        Prefetch(f"{prefix}representativeportrait_set",
                  queryset=RepresentativePortrait.objects.select_related("source").order_by("-id")[:1],
                  to_attr="card_photos"),
-        Prefetch("representative__sponsored_bills",
+        Prefetch(f"{prefix}sponsored_bills",
                  queryset=Bill.objects.filter(introduced_at__isnull=False).order_by(F("introduced_at").desc(), "-id")[:1],
                  to_attr="card_bills"),
     )

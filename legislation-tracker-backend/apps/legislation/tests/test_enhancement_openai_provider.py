@@ -27,6 +27,23 @@ class FakeResponses:
         return self.result
 
 
+def test_reader_transmits_confirmed_bounded_schema_not_generic_schema():
+    from apps.legislation.enhancements.reader_citations import bounded_reader_schema
+    response = _completed_response()
+    response.output_text = json.dumps({'schema_version': '1.4', 'summary': [], 'explanations': {}})
+    responses = FakeResponses(result=response)
+    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
+    request = _request()
+    request.output_schema_version = '1.4'
+    request.request_envelope.update(output_schema_version='1.4', prompt_version=READER_PROMPT_VERSION, max_output_tokens=8000,
+        output_schema=bounded_reader_schema([], [{'target_id': 'line_item:one', 'kind': 'line_item'}], {}))
+    provider.enhance_bill(api_key='test', request=request, timeout_seconds=30)
+    wire = responses.calls[0]['text']['format']['schema']['properties']
+    assert wire['summary']['maxItems'] == 2
+    assert wire['explanations']['required'] == ['line_item:one']
+    assert wire['explanations']['additionalProperties'] is False
+
+
 @pytest.mark.parametrize("prompt_version", ["reader-2", READER_PROMPT_VERSION])
 def test_reader_uses_confirmed_per_request_output_budget(prompt_version):
     response = _completed_response()

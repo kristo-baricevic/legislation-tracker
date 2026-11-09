@@ -40,6 +40,10 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
         # Shared enclosing text appears once per request, not once per target.
         assert len(p.reader_batches[0].source_snapshot) == 1
         assert len(snapshot_targets(p.reader_batches[0].source_snapshot)) == 8
+        rules = p.reader_batches[0].request_envelope["source_packet"]["target_citations"]
+        assert {r["target_id"] for r in rules} == {t["target_id"] for t in snapshot_targets(p.reader_batches[0].source_snapshot)}
+        assert all(r["allowed_source_refs"] == [p.reader_batches[0].source_snapshot[0]["source_ref"]] for r in rules)
+        assert all(r["own_evidence"] for r in rules)
         assert p.source_manifest["budget"]["maximum_calls"] == 3
         assert p.reader_batches[0].request_envelope['max_output_tokens'] > 8000
         assert p.source_manifest['budget']['maximum_output'] == sum(
@@ -135,7 +139,9 @@ def test_output_allowance_splits_batches_without_losing_targets(source_bill, enh
     assert len(small.reader_batches) > len(large.reader_batches)
     small_ids = [t['target_id'] for b in small.reader_batches for t in snapshot_targets(b.source_snapshot)]
     large_ids = [t['target_id'] for b in large.reader_batches for t in snapshot_targets(b.source_snapshot)]
-    assert small_ids == large_ids == [f'line_item:line-{i}' for i in range(10)]
+    assert small_ids == large_ids
+    assert len(set(small_ids)) == 10
+    assert [t['facts']['item']['member_ids'] for b in small.reader_batches for t in snapshot_targets(b.source_snapshot)] == [[f'line-{i}'] for i in range(10)]
     assert small.source_manifest['reader']['unavailable_count'] == 0
     assert small.request_fingerprint != large.request_fingerprint
     assert small.source_manifest['budget']['maximum_output'] == sum(

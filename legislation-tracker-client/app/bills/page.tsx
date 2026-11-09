@@ -1,6 +1,5 @@
 "use client";
 import BillCard from "../components/BillCard";
-import BillDeckModal from "../components/BillDeckModal";
 import styles from "../components/bill-deck.module.css";
 import { STAGES } from "@/lib/bill-stage";
 
@@ -25,7 +24,6 @@ import {
   capturePersonalizedScope,
   isPersonalizedScopeCurrent,
   subscribePersonalizedChanges,
-  type BillListItem,
   type BillsPage,
   type TopicItem,
   type SavedBillSearch,
@@ -55,7 +53,6 @@ function sortFromParams(params: URLSearchParams): BillSort {
 
 function BillsCatalog() {
   const [layout, setLayout] = useState<"grid" | "list">("grid");
-  const [selectedBill, setSelectedBill] = useState<BillListItem | null>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
   const [page, setPage] = useState<BillsPage | null>(null);
@@ -502,7 +499,6 @@ function BillsCatalog() {
 
   return (
     <div className="tracker-page min-h-[calc(100vh-4rem)] font-sans">
-      {selectedBill && <BillDeckModal key={selectedBill.id} bill={selectedBill} onClose={() => setSelectedBill(null)} />}
       <div className="w-full">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="tracker-heading text-ink">
@@ -517,11 +513,6 @@ function BillsCatalog() {
         </div>
 
         <div className="mb-6 tracker-panel">
-          <p className="mb-3 text-sm text-muted">
-            Search and filters apply automatically. Topic: use <strong>dropdown</strong> for
-            an exact tag, or <strong>topic contains</strong> for a fuzzy match
-            (not both).
-          </p>
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Full-text search</span>
@@ -579,7 +570,7 @@ function BillsCatalog() {
                   setPageNum(1);
                   setStatusFilter(event.target.value);
                 }}
-                className="min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink"
+                className="min-h-10 min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink"
               >
                 <option value="">All statuses</option>
                 {statusFilter && !STATUS_OPTIONS.some(option => option.value === statusFilter) && (
@@ -620,7 +611,7 @@ function BillsCatalog() {
               />
             </label>
           </div>
-          <div className="mt-4 border-t border-line pt-3 text-sm">
+          {(selectedTopic || !hasAccount || trackingError) && <div className="mt-4 border-t border-line pt-3 text-sm">
             {hasAccount ? (
               selectedTopic ? (
                 <div className="flex flex-wrap items-center gap-3">
@@ -640,11 +631,7 @@ function BillsCatalog() {
                         : "Track topic"}
                   </button>
                 </div>
-              ) : (
-                <p className="text-muted">
-                  Select an exact topic to track it.
-                </p>
-              )
+              ) : null
             ) : (
               <Link
                 href="/login"
@@ -656,7 +643,7 @@ function BillsCatalog() {
             {trackingError && (
               <p className="mt-2 text-red-700 dark:text-red-300">{trackingError}</p>
             )}
-          </div>
+          </div>}
           {hasAccount && (
             <div className="mt-4 border-t border-line pt-3 text-sm">
               <div className="flex flex-wrap items-center gap-3">
@@ -768,8 +755,8 @@ function BillsCatalog() {
               </div>
               {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
                 <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" tabIndex={0}>
-                  {page.results.map(bill => <BillCard key={bill.id} bill={bill} onOpen={() => setSelectedBill(bill)}
-                    footer={<div className="flex flex-wrap items-center gap-3"><Link href={`/bills/${bill.id}`}>Open full bill page</Link>{hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button onClick={() => setTrackingRefresh(value => value + 1)}>Load follow status</button> : <Link href="/login">Log in to follow</Link>}</div>} />)}
+                  {page.results.map(bill => <BillCard key={bill.id} bill={bill}
+                    footer={<div className="flex flex-wrap items-center gap-3">{hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button onClick={() => setTrackingRefresh(value => value + 1)}>Load follow status</button> : <Link href="/login">Log in to follow</Link>}</div>} />)}
                 </div>}
             </div>
             <div className="mt-4 flex flex-wrap gap-3">

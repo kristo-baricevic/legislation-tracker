@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
-import LegislatorName from "../components/LegislatorName";
 import RepresentativeResearch from "../components/RepresentativeResearch";
+import RepresentativeAvatar from "./representative-avatar";
 import {
   getMyTracking,
   getBillFilterOptions,
@@ -14,8 +14,6 @@ import {
   type RepresentativeItem,
   untrackLegislator,
 } from "@/lib/api";
-
-const PAGE_SIZE = 20;
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -37,8 +35,10 @@ const CHAMBER_OPTIONS: SelectOption[] = [
 ];
 
 function RepresentativesTable() {
+  const [view, setView] = useState<"avatars" | "table">("avatars");
   const [page, setPage] = useState<{
     count: number;
+    next: string | null;
     results: RepresentativeItem[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,11 +47,23 @@ function RepresentativesTable() {
   const [name, setName] = useState("");
   const [search, setSearch] = useState("");
   useEffect(() => {
-    const timer = setTimeout(() => { setSearch(name.trim()); setPageNum(1); }, 250);
+    if (search === name.trim()) return;
+    const timer = setTimeout(() => { resetResults(); setSearch(name.trim()); }, 250);
     return () => clearTimeout(timer);
-  }, [name]);
+  }, [name, search]);
   const [chamberFilter, setChamberFilter] = useState<string>("");
+  const [partyFilter, setPartyFilter] = useState("");
   const [pageNum, setPageNum] = useState(1);
+  const [retry, setRetry] = useState(0);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const inFlight = useRef(true);
+  function resetResults() {
+    inFlight.current = true;
+    setPage(null);
+    setPageNum(1);
+    setError(null);
+    setLoading(true);
+  }
   const [hasAccount, setHasAccount] = useState(false);
   const [trackedLegislatorIds, setTrackedLegislatorIds] = useState<number[]>([]);
   const [trackingLegislatorId, setTrackingLegislatorId] = useState<number | null>(
@@ -68,27 +80,46 @@ function RepresentativesTable() {
 
   useEffect(() => {
     let cancelled = false;
+    inFlight.current = true;
     setLoading(true);
     setError(null);
     getRepresentatives({
       search: search || undefined,
       state: stateFilter || undefined,
       chamber: chamberFilter || undefined,
+      party: partyFilter || undefined,
       page: pageNum,
     })
       .then((data) => {
-        if (!cancelled) setPage(data);
+        if (!cancelled) setPage(previous => {
+          if (pageNum === 1 || !previous) return data;
+          const ids = new Set(previous.results.map(rep => rep.id));
+          return { ...data, results: [...previous.results, ...data.results.filter(rep => !ids.has(rep.id))] };
+        });
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load representatives");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { inFlight.current = false; setLoading(false); }
       });
     return () => {
       cancelled = true;
     };
-  }, [search, stateFilter, chamberFilter, pageNum]);
+  }, [search, stateFilter, chamberFilter, partyFilter, pageNum, retry]);
+
+  useEffect(() => {
+    if (!sentinel.current || !page?.next || loading || error || name.trim() !== search) return;
+    let active = true;
+    const observer = new IntersectionObserver(entries => {
+      if (active && entries.some(entry => entry.isIntersecting) && !inFlight.current) {
+        inFlight.current = true;
+        setPageNum(number => number + 1);
+      }
+    }, { rootMargin: "300px" });
+    observer.observe(sentinel.current);
+    return () => { active = false; observer.disconnect(); };
+  }, [page, loading, error, name, search, view]);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,11 +153,6 @@ function RepresentativesTable() {
     };
   }, []);
 
-  const hasNext =
-    page &&
-    page.results.length === PAGE_SIZE &&
-    page.count > pageNum * PAGE_SIZE;
-
   async function toggleLegislatorTracking(representativeId: number) {
     const isTracked = trackedLegislatorIds.includes(representativeId);
     setTrackingLegislatorId(representativeId);
@@ -159,26 +185,18 @@ function RepresentativesTable() {
           <h1 className="tracker-heading text-ink">
             Representatives
           </h1>
-          <Link
-            href="/"
-            className="cursor-pointer text-ink underline hover:text-ink"
-          >
-            ← Dashboard
-          </Link>
-          <Link
-            href="/representatives/compare"
-            className="cursor-pointer text-ink underline hover:text-ink"
-          >
-            Compare two representatives
-          </Link>
+          <button type="button" onClick={() => setView(current => current === "avatars" ? "table" : "avatars")}
+            className="shrink-0 cursor-pointer rounded-full border border-control px-4 py-2 text-sm font-semibold text-ink hover:bg-wash">
+            {view === "avatars" ? "Table view" : "Avatar view"}
+          </button>
         </div>
 
         <div className="mb-4 tracker-panel">
-          <div className="responsive-field-grid">
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Search by name
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block min-w-0 text-sm text-muted">
+              <span className="mb-1 block">Search by name</span>
               <input type="search" value={name} maxLength={200} placeholder="Name"
-                className="rounded border border-control bg-background px-3 py-2 text-ink"
+                className="h-10 w-full rounded border border-control bg-paper px-2 py-1 text-base text-ink"
                 onChange={event => setName(event.target.value)} />
             </label>
             <SelectField
@@ -186,7 +204,8 @@ function RepresentativesTable() {
               value={stateFilter}
               options={STATE_OPTIONS}
               onChange={(value) => {
-                setPageNum(1);
+                if (value === stateFilter) return;
+                resetResults();
                 setStateFilter(value);
               }}
             />
@@ -195,10 +214,14 @@ function RepresentativesTable() {
               value={chamberFilter}
               options={CHAMBER_OPTIONS}
               onChange={(value) => {
-                setPageNum(1);
+                if (value === chamberFilter) return;
+                resetResults();
                 setChamberFilter(value);
               }}
             />
+            <SelectField label="Party" value={partyFilter}
+              options={[{ value: "", label: "All" }, { value: "D", label: "Democrat" }, { value: "R", label: "Republican" }, { value: "I", label: "Independent" }]}
+              onChange={value => { if (value !== partyFilter) { resetResults(); setPartyFilter(value); } }} />
           </div>
         </div>
 
@@ -220,20 +243,29 @@ function RepresentativesTable() {
           </div>
         )}
 
-        {error && (
+        {error && !page && (
           <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             {error}
+            <button type="button" className="ml-3 underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button>
           </div>
         )}
 
-        {loading && <p className="text-muted">Loading…</p>}
+        {loading && !page && <p role="status" className="text-muted">Loading…</p>}
 
-        {!loading && page && (
+        {page && (
           <>
             <p className="mb-4 text-muted">
               {page.count ? <>{page.count} representative{page.count !== 1 ? "s" : ""}</> : "No representatives found."}
             </p>
-            <div className="tracker-table" role="region" aria-label="Representative results" tabIndex={0}>
+            {view === "avatars" ? <ul aria-label="Representatives" className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {page.results.map(rep => <RepresentativeAvatar key={rep.id} rep={rep} congress={currentCongress}>
+                {hasAccount && <button type="button" aria-pressed={trackedLegislatorIds.includes(rep.id)} aria-label={`${trackedLegislatorIds.includes(rep.id) ? "Untrack" : "Track"} ${rep.name}`}
+                  onClick={() => toggleLegislatorTracking(rep.id)} disabled={trackingLegislatorId !== null}
+                  className={`mt-auto cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold disabled:opacity-50 ${trackedLegislatorIds.includes(rep.id) ? "border-ink bg-ink text-background" : "border-control text-ink hover:bg-wash"}`}>
+                  {trackingLegislatorId === rep.id ? "Saving…" : trackedLegislatorIds.includes(rep.id) ? "✓ Tracked" : "+ Track"}
+                </button>}
+              </RepresentativeAvatar>)}
+            </ul> : <div className="tracker-table" role="region" aria-label="Representative results" tabIndex={0}>
               <table className="w-full table-fixed text-left">
                 <thead>
                   <tr className="border-b border-line bg-wash">
@@ -255,7 +287,7 @@ function RepresentativesTable() {
                       className="border-b border-line hover:bg-wash"
                     >
                       <td className="truncate p-3 font-medium">
-                        {currentCongress === null ? <Link href={`/representatives/${rep.id}`}>{rep.name}</Link> : <LegislatorName id={rep.id} name={rep.name} congress={currentCongress} />}
+                        <Link href={`/representatives/${rep.id}${currentCongress ? `?congress=${currentCongress}` : ""}`}>{rep.name}</Link>
                       </td>
                       <td className="truncate p-3">{rep.state}</td>
                       <td className="truncate p-3 capitalize">{rep.chamber}</td>
@@ -267,7 +299,7 @@ function RepresentativesTable() {
                           <button
                             type="button"
                             onClick={() => toggleLegislatorTracking(rep.id)}
-                            disabled={trackingLegislatorId === rep.id}
+                            disabled={trackingLegislatorId !== null}
                             className="cursor-pointer border border-control px-3 py-1.5 text-sm font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {trackingLegislatorId === rep.id
@@ -282,26 +314,11 @@ function RepresentativesTable() {
                   ))}
                 </tbody>
               </table>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {pageNum > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setPageNum((p) => p - 1)}
-                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
-                >
-                  Previous
-                </button>
-              )}
-              {hasNext && (
-                <button
-                  type="button"
-                  onClick={() => setPageNum((p) => p + 1)}
-                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
-                >
-                  Next
-                </button>
-              )}
+            </div>}
+            <div ref={sentinel} className="mt-6 min-h-10 text-center text-sm text-muted">
+              {loading && <p role="status">Loading more representatives…</p>}
+              {error && <div role="alert"><p>{error}</p><button type="button" className="mt-2 cursor-pointer underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button></div>}
+              {!loading && !error && !page.next && page.results.length > 0 && <p>All {page.count} representatives shown</p>}
             </div>
           </>
         )}

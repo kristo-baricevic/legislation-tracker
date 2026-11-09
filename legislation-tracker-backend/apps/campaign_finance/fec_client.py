@@ -44,7 +44,7 @@ def receipt_parameters(committee_id, period, cursor, schedule="a"):
 
 
 def get_page(path, params):
-    if not re.fullmatch(r"(?:candidates/search/|candidate/[HSP]\d[A-Z]{2}\d{5}/committees/|schedules/schedule_[ab]/|committee/C\d{8}/totals/)", path):
+    if not re.fullmatch(r"(?:candidates/search/|candidate/[HSP]\d[A-Z]{2}\d{5}/committees/|schedules/schedule_[ab]/|schedules/schedule_e/by_candidate/|committee/C\d{8}/totals/)", path):
         raise ValueError("invalid_endpoint")
     key = getattr(settings, "FEC_API_KEY", "")
     if not key:

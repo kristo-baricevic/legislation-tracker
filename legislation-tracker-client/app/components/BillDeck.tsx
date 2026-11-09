@@ -97,11 +97,9 @@ export default function BillDeck() {
     } catch { if (isPersonalizedScopeCurrent(scope)) setFollowError("Your follow preference was not saved. Please try again."); }
     finally { if (isPersonalizedScopeCurrent(scope)) setPending(null); }
   }
-  const reset = () => { setQuery(""); setTopic(""); setSponsor(""); setState(""); setStatus(""); };
   return <div className={styles.deck}>
     <header className={styles.heading}>
-      <div><h1 data-dashboard-heading tabIndex={-1}>Your legislation, in view.</h1><p>Follow the bills that matter to you. Read what’s happening, and what changed.</p></div>
-      <Link href="/topics" className={styles.link}>Manage followed topics</Link>
+      <h1 data-dashboard-heading tabIndex={-1}>Follow the bills that matter to you.</h1>
     </header>
     <div className={styles.filters}>
       <label>Search bills<input type="search" placeholder="Title or bill number" value={query} onChange={event => setQuery(event.target.value)} /></label>
@@ -111,8 +109,6 @@ export default function BillDeck() {
       <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{stageOptions.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}{statuses.map(value => <option key={value} value={`raw:${value}`}>{readable(value)}</option>)}</select></label>
       <label>Sort bills<select value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></select></label>
     </div>
-    <div className={styles.resultLine}><p role="status">{visible.length} {visible.length === 1 ? "bill" : "bills"} in view</p><button onClick={reset}>Clear filters</button></div>
-    <details className={styles.about}><summary>About this data</summary><p>Sponsor state comes from each representative’s latest stored record, so it can differ from the state they represented when a bill was introduced. Sponsors without a stored record have no state.</p></details>
     {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}

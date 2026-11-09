@@ -121,7 +121,7 @@ def _within_limits(request_bytes: bytes) -> bool:
     )
 
 
-def select_document_sources(bill, text: str, version_label: str, *, glossary_targets=()):
+def select_document_sources(bill, text: str, version_label: str, *, glossary_targets=(), envelope_transform=None):
     """Select complete sections, never a prefix of an operative condition group."""
     from .source_sections import document_groups, section_coverage
 
@@ -152,6 +152,8 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
         envelope = _request_envelope(
             bill, sources, truncated=len(selected) != len(groups), coverage=coverage
         )
+        if envelope_transform is not None:
+            envelope = envelope_transform(sources, envelope)
         return sources, envelope, canonical_json_bytes(envelope)
 
     full = envelope_for(range(len(groups)))

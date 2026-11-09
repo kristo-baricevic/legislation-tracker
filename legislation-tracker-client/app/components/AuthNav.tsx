@@ -9,6 +9,10 @@ export default function AuthNav() {
   const router = useRouter();
   const pathname = usePathname();
   const [hasSession, setHasSession] = useState(false);
+  const linkState = (href: string) => {
+    const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+    return { "aria-current": active ? "page" as const : undefined, className: `cursor-pointer border-b-2 py-1 hover:text-ink ${active ? "border-current font-semibold" : "border-transparent"}` };
+  };
 
   useEffect(() => {
     let active = true;
@@ -37,18 +41,18 @@ export default function AuthNav() {
 
   return (
     <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 font-sans text-sm text-ink">
-      <Link href="/" className="cursor-pointer hover:text-ink">
+      <Link href="/" {...linkState("/")}>
         Home
       </Link>
-      <Link href="/bills" className="cursor-pointer hover:text-ink">
+      <Link href="/bills" {...linkState("/bills")}>
         Bills
       </Link>
-      <Link href="/topics" className="cursor-pointer hover:text-ink">
+      <Link href="/topics" {...linkState("/topics")}>
         Topics
       </Link>
       <Link
         href="/representatives"
-        className="cursor-pointer hover:text-ink"
+        {...linkState("/representatives")}
       >
         Representatives
       </Link>
@@ -56,7 +60,7 @@ export default function AuthNav() {
         <>
           <Link
             href="/settings"
-            className="cursor-pointer hover:text-ink hover:underline"
+            {...linkState("/settings")}
           >
             Settings
           </Link>
@@ -72,13 +76,13 @@ export default function AuthNav() {
         <>
           <Link
             href="/login"
-            className="cursor-pointer hover:text-ink hover:underline"
+            {...linkState("/login")}
           >
             Log in
           </Link>
           <Link
             href="/signup"
-            className="cursor-pointer hover:text-ink hover:underline"
+            {...linkState("/signup")}
           >
             Sign up
           </Link>

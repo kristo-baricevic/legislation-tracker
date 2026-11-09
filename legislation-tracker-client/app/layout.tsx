@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Atkinson_Hyperlegible_Next, Literata } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
 import ProfileExperience from "./components/ProfileExperience";
-import { THEME_STORAGE_KEY } from "../lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,7 +39,7 @@ export default function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
-  const themeInitScript = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var t=localStorage.getItem(k);if(t==='dark')document.documentElement.classList.add('dark');else document.documentElement.classList.remove('dark');}catch(e){}})();`;
+  const themeInitScript = `document.documentElement.classList.remove('dark');document.documentElement.style.colorScheme='light';`;
 
   return (
     <html lang="en" suppressHydrationWarning>

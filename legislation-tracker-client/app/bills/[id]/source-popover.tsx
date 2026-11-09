@@ -88,6 +88,6 @@ export function SourcePopover({ children, number = 1, onOpen, label }: { childre
       className="fixed z-[100] overflow-y-auto rounded-lg border border-slate-300 bg-white p-4 text-sm text-slate-900 shadow-xl dark:border-green-700 dark:bg-slate-950 dark:text-green-100">
       <div className="mb-3 flex items-center justify-between"><strong>Source {number}</strong><button type="button" aria-label="Close source" onClick={() => { setPosition(null); trigger.current?.focus(); }} className="rounded px-2 py-1">✕</button></div>
       <SourceAncestors.Provider value={[...ancestors, id]}>{children}</SourceAncestors.Provider>
-    </div>, document.body)}
+    </div>, trigger.current?.closest("dialog") ?? document.body)}
   </>;
 }

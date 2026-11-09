@@ -1,3 +1,8 @@
+function renderExpanded() {
+    const view = render(<IngestionTelemetryLive />);
+    fireEvent.click(screen.getByRole("button", { name: "Expand legislation ingestion" }));
+    return view;
+}
 import React from "react";
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,8 +11,15 @@ import IngestionTelemetryLive from "@/app/components/IngestionTelemetryLive";
 import { authGet, authPost } from "@/lib/api";
 vi.mock("@/lib/api", () => ({ authGet: vi.fn(), authPost: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.useRealTimers(); });
-it("collapses the dashboard without losing its scope or triggering requests", async () => {
+it("starts collapsed with no automatic requests", () => {
     render(<IngestionTelemetryLive />);
+    expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Start discovery and ingestion" })).not.toBeInTheDocument();
+    expect(authGet).not.toHaveBeenCalled();
+    expect(authPost).not.toHaveBeenCalled();
+});
+it("collapses the dashboard without losing its scope or triggering requests", async () => {
+    renderExpanded();
     const user = userEvent.setup();
     const congress = screen.getByRole("spinbutton", { name: "Congress" });
     await user.clear(congress);
@@ -24,7 +36,7 @@ it("collapses the dashboard without losing its scope or triggering requests", as
 });
 it("makes no automatic requests, keeps unknown counts unavailable and never starts on refresh", async () => {
     const user = userEvent.setup();
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     expect(authGet).not.toHaveBeenCalled();
     expect(authPost).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
@@ -39,7 +51,7 @@ it("makes no automatic requests, keeps unknown counts unavailable and never star
 });
 it("starts discovery without first requesting telemetry", async () => {
     vi.mocked(authPost).mockResolvedValue({ run_id: "first-start", status: "pending" });
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     await userEvent.setup().click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
     expect(authGet).not.toHaveBeenCalled();
     expect(authPost).toHaveBeenCalledWith("/api/ingestion/poll-congress/", expect.objectContaining({ congress: 119, jurisdiction: "federal", idempotency_key: expect.any(String) }));
@@ -47,7 +59,7 @@ it("starts discovery without first requesting telemetry", async () => {
 });
 it("shows a compact pipeline table with diagnostics collapsed", async () => {
     vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-15T12:00:00Z", counts_by_kind_and_status: [{ kind: "bill_versions", status: "pending", count: 8 }, { kind: "bill_versions", status: "processing", count: 2 }], recent_work_states: [], discovery_run: null });
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     await userEvent.setup().click(screen.getByRole("button", { name: "Refresh telemetry" }));
     expect(screen.getByRole("table", { name: "Pipeline work items" })).toHaveTextContent("Bill text versions");
     expect(screen.getByText("Source & technical details").closest("details")).not.toHaveAttribute("open");
@@ -56,7 +68,7 @@ it("shows a compact pipeline table with diagnostics collapsed", async () => {
 it("expires ready counts locally without making another network request", async () => {
     vi.useFakeTimers();
     vi.mocked(authGet).mockImplementation(async (path) => path.includes("source-readiness") ? { available: true, missing_unqueued_metadata: 11, age_seconds: 299, complete: true } : { observed_at: "2026-10-09T18:00:00Z", counts_by_kind_and_status: [], stale_leases: 0, discovery_run: null, recent_work_states: [] });
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh telemetry" })); });
     expect(screen.getByText("11", { exact: true })).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(2000); });
@@ -69,7 +81,7 @@ it("distinguishes discovery from work status and reuses the start request key", 
     const user = userEvent.setup();
     vi.mocked(authGet).mockImplementation(async (path) => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null, reason: "Incomplete" } : { observed_at: "2026-10-09T18:00:00Z", last_discovery_completed_at: null, last_successful_work_item_at: "2026-10-09T17:00:00Z", counts_by_kind_and_status: [{ kind: "bill", status: "pending", count: 4 }], stale_leases: 0, discovery_run: null, recent_work_states: [] });
     vi.mocked(authPost).mockResolvedValue({ run_id: "run-1", status: "pending" });
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     const start = await screen.findByRole("button", { name: "Start discovery and ingestion" });
     expect(start).toBeEnabled();
@@ -85,7 +97,7 @@ it("requires the accepted run identity before preparing a new request", async ()
     let runId = "unrelated";
     vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-09T18:00:00Z", counts_by_kind_and_status: [], recent_work_states: [], discovery_run: { id: runId, status: "succeeded" } });
     vi.mocked(authPost).mockResolvedValue({ run_id: "accepted", status: "pending" });
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     await user.click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
@@ -100,7 +112,7 @@ it("ignores a start completion after unmount", async () => {
     vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-09T18:00:00Z", counts_by_kind_and_status: [], recent_work_states: [], discovery_run: null });
     let resolve!: (value: unknown) => void;
     vi.mocked(authPost).mockImplementation(() => new Promise(done => { resolve = done; }));
-    const view = render(<IngestionTelemetryLive />);
+    const view = renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     await user.click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
     view.unmount();
@@ -119,7 +131,7 @@ it("keeps incremental readiness separate from historical gaps and renders basis 
         discovery_basis: { cursor_at: "2026-10-09T18:00:00Z", from_date_time: "2026-10-09T17:55:00Z" },
         discovery_checked_completed_at: "2026-10-09T18:10:00Z",
     } : { observed_at: "2026-10-09T18:10:00Z", counts_by_kind_and_status: [], recent_work_states: [], discovery_run: null });
-    render(<IngestionTelemetryLive />);
+    renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     const ready = screen.getByRole("heading", { name: "Ready for incremental discovery" }).parentElement!;
     const gaps = screen.getByRole("heading", { name: "Missing unqueued metadata" }).parentElement!;

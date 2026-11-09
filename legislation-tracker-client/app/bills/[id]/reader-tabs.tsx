@@ -1,21 +1,22 @@
 "use client";
 
-import { createContext, useCallback, useContext, useId, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useId, type ReactNode } from "react";
+import { useUrlTab } from "@/lib/use-url-tab";
 
-const tabs = { changes: "What changes", money: "Money", votes: "Votes & sponsor", terms: "Key terms", versions: "Versions" };
+const tabs = { changes: "What this bill does", money: "Money", votes: "Votes & sponsor", terms: "Key terms", versions: "Versions" };
 type Tab = keyof typeof tabs;
 const Navigation = createContext<{ active: Tab; select: (tab: Tab) => void; id: string } | null>(null);
 const PanelVisible = createContext(true);
 export function useReaderPanelVisible() { return useContext(PanelVisible); }
 
 export function ReaderTabsProvider({ children }: { children: ReactNode }) {
-  const [active, setActive] = useState<Tab>("changes");
+  const [active, setActive] = useUrlTab<Tab>(tabs, "changes");
   const id = useId();
   const select = useCallback((tab: Tab) => {
     setActive(tab);
     // Also covers links inside a panel that hide their own focused control.
     document.getElementById(`${id}-${tab}-tab`)?.focus({ preventScroll: true });
-  }, [id]);
+  }, [id, setActive]);
   return <Navigation.Provider value={{ active, select, id }}>{children}</Navigation.Provider>;
 }
 

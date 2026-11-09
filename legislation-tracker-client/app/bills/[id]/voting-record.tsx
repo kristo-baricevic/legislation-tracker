@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import type { VoteDetailItem, VoteListItem, VoteRecordItem } from "@/lib/api";
-import LegislatorName from "../../components/LegislatorName";
+import RepresentativeAvatarBadge from "../../components/RepresentativeAvatarBadge";
 
 interface VotingRecordProps {
+  headingHref?: string;
   votes: VoteListItem[];
   selectedVote: VoteDetailItem | null;
   loadingVoteId: number | null;
@@ -90,6 +92,7 @@ function VotePagination({
 }
 
 export function VotingRecord({
+  headingHref,
   votes,
   selectedVote,
   loadingVoteId,
@@ -146,7 +149,7 @@ export function VotingRecord({
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none" aria-labelledby="voting-record-heading">
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-4 dark:border-green-900 dark:bg-black/20">
         <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Congressional record</p>
-        <h2 id="voting-record-heading" className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">Voting record</h2>
+        <h2 id="voting-record-heading" className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">{headingHref ? <Link href={headingHref}>Voting record ↗</Link> : "Voting record"}</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">Select a roll call to see every returned member record. Positions are reported as received; filters only change what is displayed.</p>
       </header>
       <div className="p-4">
@@ -200,11 +203,10 @@ export function VotingRecord({
               return (
                 <section key={group} className="mt-5" aria-label={`${groupLabels[group]} positions`}>
                   <h4 className="text-base font-semibold text-slate-900 dark:text-green-300">{groupLabels[group]} — {records.length}</h4>
-                  <ul className="mt-2 divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
+                  <ul className="mt-2 flex flex-wrap gap-3">
                     {records.map((record) => (
-                      <li key={record.representative.id} className="flex flex-wrap justify-between gap-2 p-3 text-sm">
-                        <span className="font-medium text-slate-900 dark:text-green-100">{selectedVote.congress == null ? record.representative.name : <LegislatorName id={record.representative.id} name={record.representative.name} congress={selectedVote.congress} chamber={selectedVote.chamber === "house" || selectedVote.chamber === "senate" ? selectedVote.chamber : undefined} />}</span>
-                        <span className="text-slate-600 dark:text-green-600">{record.representative.party || "Party not reported"} · {record.representative.state || "State not reported"}{record.representative.district ? `-${record.representative.district}` : ""} · {record.position}</span>
+                      <li key={record.representative.id}>
+                        <RepresentativeAvatarBadge id={record.representative.id} name={record.representative.name} representative={record.representative} congress={selectedVote.congress} notes={[`${record.representative.party || "Party not reported"} · ${record.representative.state || "State not reported"}${record.representative.district ? `-${record.representative.district}` : ""}`, `Vote: ${record.raw_position || record.position}`]} />
                       </li>
                     ))}
                   </ul>

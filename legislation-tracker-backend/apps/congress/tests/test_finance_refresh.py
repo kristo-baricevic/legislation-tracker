@@ -19,11 +19,15 @@ def test_amendment_and_deleted_record_replace_current_scan_not_history(settings,
     RepresentativeCandidate.objects.create(representative=rep, candidate=candidate, periods=[2026], verified=True, evidence_url="https://www.fec.gov/data/candidate/H0NY00001/")
     current_records = []
     def page(path, params):
+        if path == "schedules/schedule_e/by_candidate/":
+            return {"results": [], "pagination": {"pages": 1}}
         if path.endswith("/committees/"):
             return {"results": [{"committee_id": "C00000001", "name": "Campaign", "designation": "P"}], "pagination": {"pages": 1}}
         if path.endswith("/totals/") or path == "schedules/schedule_b/" or params.get("last_index"):
             return {"results": [], "pagination": {}}
         assert path == "schedules/schedule_a/"
+        if params.get("line_number") != "F3-11C":
+            return {"results": [], "pagination": {}}
         return {"results": current_records, "pagination": {"last_indexes": {"last_index": "next", "last_contribution_receipt_date": "2026-01-01"}}}
     monkeypatch.setattr("apps.campaign_finance.research.get_page", page)
     monkeypatch.setattr("apps.ingestion.tasks.dispatch_ingestion_work.delay", lambda: None)
@@ -31,7 +35,7 @@ def test_amendment_and_deleted_record_replace_current_scan_not_history(settings,
         nonlocal current_records
         current_records = records
         run = request_research(rep.pk, 2026, user.pk)
-        for _ in range(15):
+        for _ in range(30):
             process_ingestion_work_item.apply(args=[run.work_item_id]).get()
             run.refresh_from_db()
             if run.status not in {"queued", "running"}:

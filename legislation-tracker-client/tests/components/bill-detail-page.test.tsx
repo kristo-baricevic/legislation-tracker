@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,7 @@ const routeState = vi.hoisted(() => ({ id: "10" }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: routeState.id }),
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 vi.mock("next/link", () => ({
@@ -49,6 +50,46 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillDetailPage", () => {
+  it("keeps the existing summary through a progress-check failure and refreshes on the next tick", async () => {
+    const value = await getBill(10);
+    const initial = { ...value, processing_status: "processing", summary_preview: "Initial sourced summary." };
+    vi.mocked(getBill).mockResolvedValue(initial);
+    vi.useFakeTimers();
+    let view: ReturnType<typeof render> | undefined;
+    try {
+      await act(async () => { view = render(<BillDetailPage />); });
+      vi.mocked(getBill).mockRejectedValueOnce(new Error("temporarily unavailable"));
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(screen.getByText("Initial sourced summary.")).toBeVisible();
+      expect(screen.getByText(/Could not check progress/)).toBeVisible();
+      const completed = { ...value, processing_status: "complete", summary_preview: "Completed sourced summary." };
+      vi.mocked(getBill).mockResolvedValue(completed);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(screen.getByText("Completed sourced summary.")).toBeVisible();
+      const unexpected = { ...value, summary_preview: "Unexpected polling after completion." };
+      vi.mocked(getBill).mockResolvedValue(unexpected);
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+      expect(screen.getByText("Completed sourced summary.")).toBeVisible();
+    } finally { view?.unmount(); vi.useRealTimers(); }
+  });
+  it("refreshes an unfinished bill into its completed summary without navigation", async () => {
+    const value = await getBill(10);
+    vi.mocked(getBill).mockResolvedValue({ ...value, processing_status: "processing" });
+    let view: ReturnType<typeof render>;
+    // Wait for the initial request and the resulting polling effect to commit
+    // before simulating a return to the window.
+    await act(async () => { view = render(<BillDetailPage />); });
+    await screen.findByRole("heading", { name: "HR 10 · Congress 119" });
+    expect(screen.getByText(/Preparing this bill/)).toBeVisible();
+    const completed = { ...value, processing_status: "complete", summary_preview: "This bill protects children in foster care." };
+    vi.mocked(getBill).mockResolvedValue(completed);
+    try {
+      // Returning to an unfinished bill should also refresh immediately.
+      await act(async () => { window.dispatchEvent(new Event("focus")); });
+      expect(screen.getByText("This bill protects children in foster care.")).toBeVisible();
+      expect(screen.queryByText(/Preparing this bill/)).not.toBeInTheDocument();
+    } finally { view!.unmount(); }
+  });
   it.each([
     { jurisdiction: "federal", session: 121, label: "Congress 121" },
     { jurisdiction: "california", session: 2025, label: "Session 2025" },
@@ -58,6 +99,30 @@ describe("BillDetailPage", () => {
     render(<BillDetailPage />);
     expect(await screen.findByRole("heading", { name: `HR 10 · ${label}` })).toBeVisible();
   });
+  it("keeps the bill source destinations together in the page header", async () => {
+    const value = await getBill(10);
+    vi.mocked(getBill).mockResolvedValue({ ...value, congress_gov_url: "https://www.congress.gov/bill/119th-congress/house-bill/10" });
+    render(<BillDetailPage />);
+    const links = await screen.findByRole("navigation", { name: "Bill source links" });
+    expect(within(links).getByRole("link", { name: "Congress.gov" })).toHaveAttribute("href", "https://www.congress.gov/bill/119th-congress/house-bill/10");
+    expect(within(links).getByRole("link", { name: "Full bill text" })).toHaveAttribute("href", "/documents/9");
+    expect(links.closest("header")).toContainElement(screen.getByRole("heading", { name: "HR 10 · Congress 119" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Versions" }));
+    const versions = screen.getByRole("tabpanel", { name: "Versions" });
+    expect(within(versions).getByRole("heading", { name: "Bill versions" })).toBeVisible();
+    expect(within(versions).getByRole("link", { name: "Read text" })).toHaveAttribute("href", "/documents/9");
+    expect(screen.getAllByRole("link").filter(link => link.getAttribute("href") === "https://www.congress.gov/bill/119th-congress/house-bill/10")).toHaveLength(1);
+  });
+
+  it("does not offer unavailable bill sources", async () => {
+    const value = await getBill(10);
+    vi.mocked(getBill).mockResolvedValue({ ...value, documents: [] });
+    render(<BillDetailPage />);
+    await screen.findByRole("heading", { name: "HR 10 · Congress 119" });
+    expect(screen.queryByRole("link", { name: "Full bill text" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Congress.gov" })).not.toBeInTheDocument();
+  });
+
   it("shows a short stage and the complete latest action separately", async () => {
     const value = await getBill(10);
     const action = "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of provisions within their respective jurisdictions.";
@@ -230,7 +295,7 @@ describe("BillDetailPage", () => {
 
     await user.click(screen.getByRole("button", { name: "View voting record" }));
     await waitFor(() => expect(getVote).toHaveBeenCalledWith(33));
-    expect(await screen.findByText("Voting Representative")).toBeVisible();
+    expect(await screen.findByRole("link", { name: "Voting Representative" })).toBeVisible();
   });
 
   it("does not treat different analysis runs as different bill text versions", async () => {
@@ -292,7 +357,7 @@ describe("BillDetailPage", () => {
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
     expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "What changes" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "What this bill does" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("tab", { name: "Votes & sponsor" }));
     expect(screen.getByText("Loading vote history…")).toBeVisible();
     expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1, view: "summary" });
@@ -334,7 +399,7 @@ describe("BillDetailPage", () => {
       name: "View voting record",
     });
     await user.click(viewPositions);
-    expect(await screen.findByText("Voting Representative")).toBeVisible();
+    expect(await screen.findByRole("link", { name: "Voting Representative" })).toBeVisible();
 
     vi.mocked(getVote).mockRejectedValueOnce(new Error("Vote detail unavailable"));
     await user.click(viewPositions);
@@ -342,7 +407,7 @@ describe("BillDetailPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not load member positions. Try again.",
     );
-    expect(screen.queryByText("Voting Representative")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Voting Representative" })).not.toBeInTheDocument();
     expect(viewPositions).toBeEnabled();
   });
 
@@ -422,14 +487,14 @@ describe("BillDetailPage", () => {
     await user.click(buttons[0]);
     await user.click(buttons[1]);
     resolveSecond(secondVote);
-    expect(await screen.findByText("Second Vote Representative")).toBeVisible();
+    expect(await screen.findByRole("link", { name: "Second Vote Representative" })).toBeVisible();
 
     await act(async () => {
       resolveFirst(firstVote);
       await firstRequest;
     });
-    expect(screen.queryByText("First Vote Representative")).not.toBeInTheDocument();
-    expect(screen.getByText("Second Vote Representative")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "First Vote Representative" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Second Vote Representative" })).toBeVisible();
   });
 
   it("clears selected member positions when the vote history page changes", async () => {
@@ -477,13 +542,13 @@ describe("BillDetailPage", () => {
     await user.click(
       await screen.findByRole("button", { name: "View voting record" }),
     );
-    expect(await screen.findByText("Voting Representative")).toBeVisible();
+    expect(await screen.findByRole("link", { name: "Voting Representative" })).toBeVisible();
 
     await user.click(
       screen.getByRole("button", { name: "Next vote history page" }),
     );
     expect(await screen.findByText(/roll call 16: Failed/)).toBeVisible();
-    expect(screen.queryByText("Voting Representative")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Voting Representative" })).not.toBeInTheDocument();
   });
 
   it("keeps technical contract history hidden while paging through votes", async () => {

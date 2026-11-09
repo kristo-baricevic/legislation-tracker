@@ -5,6 +5,7 @@ import type { EnhancementCitedSource, ReaderExplanationItem } from "@/lib/api";
 import { compatibleReader, resolveReaderExplanation, type ReaderIdentity } from "@/lib/reader-enhancements";
 import { useAiGlossary } from "./ai-glossary-context";
 import { SourcePopover } from "./source-popover";
+import { explanationParagraphs } from "@/lib/reader-copy";
 
 const Identity = createContext<ReaderIdentity | null>(null);
 export const ReaderIdentityProvider = Identity.Provider;
@@ -14,23 +15,44 @@ export function useReaderExplanation(kind: ReaderExplanationItem["kind"], itemId
   return resolveReaderExplanation(enhancement, useContext(Identity), kind, itemId, original);
 }
 
-function Evidence({ sources, documentId }: { sources: EnhancementCitedSource[]; documentId: number }) {
-  return <span>
-    {sources.map((source, index) => <SourcePopover key={index} number={index + 1}>
+function Evidence({ sources, documentId, notes, number = 1 }: { sources: EnhancementCitedSource[]; documentId: number; notes?: ReactNode; number?: number }) {
+  return <SourcePopover number={number}>
+    {notes}
+    {sources.map((source, index) => <div key={index} className="mb-4 last:mb-0">
       <blockquote className="whitespace-pre-wrap text-slate-700 dark:text-green-300">{source.quoted_text}</blockquote>
       <a className="underline" href={`/documents/${documentId}${source.start_char != null && source.end_char != null ? `?start=${source.start_char}&end=${source.end_char}` : ""}`}>Read bill text</a>
-    </SourcePopover>)}
-  </span>;
+    </div>)}
+  </SourcePopover>;
 }
 
-export function ReaderExplanation({ kind, itemId, original, fallback = original, citation }: {
-  kind: ReaderExplanationItem["kind"]; itemId: string; original: string; fallback?: string; citation?: ReactNode;
+export function ReaderExplanation({ kind, itemId, original, fallback = original, citation, heading, details, renderCitation, hideHeading, citationNumber }: {
+  kind: ReaderExplanationItem["kind"]; itemId: string; original: string; fallback?: string; citation?: ReactNode; heading?: string; details?: ReactNode;
+  renderCitation?: (notes: ReactNode) => ReactNode;
+  hideHeading?: boolean;
+  citationNumber?: number;
 }) {
   const item = useReaderExplanation(kind, itemId, original);
+  if (heading) {
+    const paragraphs = explanationParagraphs(item?.text ?? fallback);
+    const source = item ? <Evidence sources={item.cited_sources} documentId={item.document_id} notes={details} number={citationNumber} /> : renderCitation?.(details) ?? citation;
+    return <>
+      {!hideHeading && <h4 className="mb-2 text-lg font-semibold text-slate-950 dark:text-green-200">{heading}</h4>}
+      <p className="leading-7 text-slate-800 dark:text-green-100">{paragraphs.join(" ")}{source}</p>
+    </>;
+  }
   if (!item) return <p className="leading-7 text-slate-900 dark:text-green-100">{fallback}{citation}</p>;
   return <div>
-    <p className="leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence sources={item.cited_sources} documentId={item.document_id} /></p>
+    <p className="leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence sources={item.cited_sources} documentId={item.document_id} notes={details} number={citationNumber} /></p>
   </div>;
+}
+
+export function useSummaryCitationCount() {
+  const { enhancement } = useAiGlossary();
+  const identity = useContext(Identity);
+  const legacy = useLegacyReader();
+  const result = compatibleReader(enhancement, identity);
+  if (legacy?.overview.length && identity?.documentId != null) return legacy.overview.length;
+  return result?.summary.length && result.summary.every(item => item.cited_sources.length) ? result.summary.length : 1;
 }
 
 export function ReaderSummary({ children }: { children: ReactNode }) {
@@ -38,13 +60,16 @@ export function ReaderSummary({ children }: { children: ReactNode }) {
   const identity = useContext(Identity);
   const legacy = useLegacyReader();
   const result = compatibleReader(enhancement, identity);
+  // Older saved prose may contain clipped sentences. Never present those as
+  // the brief while a corrected, source-bound analysis is being refreshed.
+  if (result?.summary.some(item => !/[.!?]$/.test(item.text.trim()))) return <>{children}</>;
   if (legacy?.overview.length && identity?.documentId != null) return <div className="mt-4 space-y-3">
-    {legacy.overview.map((item, index) => <p key={index} className="w-full text-base leading-7">{item.text}<Evidence sources={item.cited_sources} documentId={identity.documentId!} /></p>)}
+    {legacy.overview.map((item, index) => <p key={index} className="w-full text-base leading-7">{item.text}<Evidence number={index + 1} sources={item.cited_sources} documentId={identity.documentId!} /></p>)}
   </div>;
   if (!result?.summary.length || result.summary.some(item => !item.cited_sources.length)) return <>{children}</>;
   return <div className="mt-4">
     {result.summary.map((item, index) => <div key={index}>
-      <p className="w-full text-base leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence sources={item.cited_sources} documentId={result.identity.document_id} /></p>
+      <p className="w-full text-base leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence number={index + 1} sources={item.cited_sources} documentId={result.identity.document_id} /></p>
     </div>)}
   </div>;
 }
@@ -72,12 +97,12 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
   const current = Math.min(page, totalPages);
   return <div>
     {enhancement?.coverage_notice && <p className="mb-3 text-sm text-amber-800 dark:text-amber-300">{enhancement.coverage_notice}</p>}
-    <p className="mb-4 text-sm text-slate-600 dark:text-green-500">Saved AI explanation. Switch to Original to browse every extracted provision; the complete money ledger remains below.</p>
-    <ul className="flex flex-col gap-4">{rows.slice((current - 1) * 6, current * 6).map((item, index) => <li key={`${current}-${index}`} className="rounded-lg border border-slate-300 p-5 dark:border-green-800">
-      <p className="mb-2 text-sm font-semibold text-slate-600 dark:text-green-500">{item.label}</p>
-      <p className="w-full leading-7">{item.text}</p>
-      <Evidence sources={item.cited_sources} documentId={identity.documentId!} />
-    </li>)}</ul>
+    <ul>{rows.slice((current - 1) * 6, current * 6).map((item, index) => {
+      const paragraphs = explanationParagraphs(item.text);
+      return <li key={`${current}-${index}`} className="border-b border-slate-200 py-5 last:border-b-0 dark:border-green-900/70">
+        {paragraphs.map((text, index) => <p key={index} className="mt-2 w-full leading-7">{text}{index === paragraphs.length - 1 && <Evidence sources={item.cited_sources} documentId={identity.documentId!} />}</p>)}
+      </li>;
+    })}</ul>
     {totalPages > 1 && <nav aria-label="AI explanation pages" className="mt-4 flex items-center justify-center gap-4">
       <button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
       <span>Page {current} of {totalPages}</span>

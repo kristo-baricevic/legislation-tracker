@@ -77,6 +77,19 @@ function line(number: number): LegalNlpLineItem {
 }
 
 describe("BillBrief", () => {
+  it("groups consecutive provisions under one heading without orphan annotations after pagination", async () => {
+    vi.mocked(getReaderItems).mockResolvedValue({ count: 3, next: null, previous: null, results: [line(1), line(2), line(3)], section_supplements: [] });
+    const { container } = render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
+    await screen.findByText("Requires action 3.");
+    expect(screen.getAllByRole("heading", { name: "Part 1" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Analysis coverage" }).closest("h3")).toHaveTextContent("What this bill does");
+    expect(screen.getByRole("navigation", { name: "Bill provision pages" }).querySelectorAll("button")).toHaveLength(2);
+    for (const citation of screen.getAllByRole("button", { name: "Read bill text" })) {
+      expect(citation.closest("p")).toHaveTextContent(/Requires action/);
+    }
+    expect(container.querySelector("ol")).toBeNull();
+    expect(screen.queryByText("Details")).not.toBeInTheDocument();
+  });
   it("does not publish a partial glossary count when a later page fails", async () => {
     const user = userEvent.setup();
     const terms = hr7583Definitions as LegalNlpDefinitionItem[];
@@ -92,8 +105,8 @@ describe("BillBrief", () => {
     expect(screen.queryAllByRole("term")).toHaveLength(0);
     fail = false;
     await user.click(screen.getByRole("button", {name: "Retry key terms"}));
-    expect(await screen.findByRole("button", {name: "Key terms (30)"})).toBeVisible();
-    expect(screen.getAllByRole("term")).toHaveLength(30);
+    expect(await screen.findByRole("button", {name: "Key terms (21)"})).toBeVisible();
+    expect(screen.getAllByRole("term")).toHaveLength(21);
   });
   it("loads all H.R. 7583 glossary pages before counting distinct meanings", async () => {
     const user = userEvent.setup();
@@ -104,12 +117,31 @@ describe("BillBrief", () => {
     }));
     render(<BillBrief bill={bill} contractSummary={{...contract, reader_stats: {...contract.reader_stats!, definition_item_count: 33}}} onShowAllFinancial={() => undefined}/>);
     await user.click(screen.getByRole("button", {name: "Key terms"}));
-    expect(await screen.findByRole("button", {name: "Key terms (30)"})).toBeVisible();
-    expect(screen.getAllByRole("term")).toHaveLength(30);
+    expect(await screen.findByRole("button", {name: "Key terms (21)"})).toBeVisible();
+    expect(screen.getAllByRole("term")).toHaveLength(21);
     expect(screen.getAllByText("Commission", {exact: true})).toHaveLength(1);
-    expect(screen.getAllByText("worker", {exact: true})).toHaveLength(3);
+    expect(screen.getAllByText("worker", {exact: true})).toHaveLength(2);
     expect(screen.getByText("A federal contract worth more than $500,000 to buy property or services, including construction.")).toBeVisible();
   });
+  it("omits reference-only terms and counts only useful explanations", async () => {
+    const records = [
+      { id: "defined", source_id: "defined", section_id: "sec-3", section_label: "Sec. 3", section_path: [{ level: "section" as const, label: "Sec. 3", heading: "Definitions" }],
+        term: "Secretary", definition: "the Secretary of Education", definition_type: "means" as const, display_text: "Secretary means the Secretary of Education." },
+      { id: "external", source_id: "external", section_id: "sec-3", section_label: "Sec. 3", section_path: [{ level: "section" as const, label: "Sec. 3", heading: "Definitions" }],
+        term: "Tribal College or University", definition: "the meaning given the term in section 316(b)(3) of the Higher Education Act of 1965", definition_type: "means" as const, display_text: "Tribal College or University has the meaning given in another law." },
+    ];
+    vi.mocked(getDefinitionItems).mockResolvedValue({ count: 2, next: null, previous: null, results: records });
+    render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
+    await userEvent.click(screen.getByRole("button", { name: "Key terms" }));
+    expect(await screen.findByRole("button", { name: "Key terms (1)" })).toBeVisible();
+    expect(screen.getByText("Secretary", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Tribal College or University")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Defined in another law/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Used in:/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "View legal definition" }));
+    expect(screen.getByText(/Used in: Sec. 3: Definitions/)).toBeVisible();
+  });
+
   it("shows linked and unlinked definitions in the complete key terms list", async () => {
     const user = userEvent.setup();
     const terms = Array.from({ length: 12 }, (_, index) => ({
@@ -143,15 +175,18 @@ describe("BillBrief", () => {
     expect(await screen.findByText("The Secretary shall act.")).toBeVisible();
     expect(getContractEvidence).toHaveBeenCalledWith(12, expect.objectContaining({lineItemId:"line-1"}));
   });
-  it("discloses omitted definitions even when no key terms remain", () => {
+  it("keeps omitted-definition coverage available even when no key terms remain", async () => {
     const notice = "Some definitions are too long to display; read their full wording in the bill text.";
     render(<BillBrief bill={bill} contractSummary={{ ...contract, coverage_note: notice, reader_stats: { ...contract.reader_stats!, definition_item_count: 0 } }} onShowAllFinancial={() => undefined} />);
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Analysis coverage" }));
     expect(screen.getByText(notice)).toBeVisible();
-    expect(screen.getByRole("link", { name: "Read full bill text" })).toHaveAttribute("href", "/documents/4");
+    expect(screen.queryByRole("link", { name: "Read full bill text" })).not.toBeInTheDocument();
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getContractEvidence).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
     vi.mocked(getReaderItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [], section_supplements: [] });
     vi.mocked(getDefinitionItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
     vi.mocked(getTimelineItems).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
@@ -162,12 +197,12 @@ describe("BillBrief", () => {
     vi.mocked(getOfficialSummary).mockResolvedValue({ summary: "Rural Health Act\n\nCreates grants for rural hospitals.\n\nRequires annual reports.", summary_source: "crs", summary_action_date: "2026-08-20", summary_version_code: "Introduced in House", summary_last_updated_at: "2026-08-21T00:00:00Z" });
     render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
 
-    expect(screen.getByRole("heading", { name: "What this bill does" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Summary" })).toBeVisible();
     expect(screen.getByText(/Official CRS summary/)).toBeVisible();
     expect(screen.getByText("Creates grants for rural hospitals.")).toBeVisible();
     expect(screen.queryByText("Requires annual reports.")).not.toBeInTheDocument();
     expect(getOfficialSummary).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: "View on Congress.gov" })).toHaveAttribute("href", bill.congress_gov_url);
+    expect(screen.queryByRole("link", { name: "View on Congress.gov" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Read full official summary" }));
     expect(await screen.findByText("Requires annual reports.", { exact: false })).toBeVisible();
@@ -239,7 +274,7 @@ describe("BillBrief", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("Requires action 13.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
-    await waitFor(() => expect(getReaderItems).toHaveBeenLastCalledWith(12, { page: 3, pageSize: 6 }));
+    await waitFor(() => expect(getReaderItems).toHaveBeenLastCalledWith(12, { page: 3, pageSize: 6, grouped: true }));
   });
 
   it("opens scoped money, timeline, and definition details for one provision", async () => {
@@ -317,6 +352,9 @@ describe("BillBrief", () => {
       />,
     );
     await screen.findByText("Requires action 1.");
+
+    expect(screen.queryByText("Money in this exact provision · 4")).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Read bill text" })[0]);
 
     await user.click(screen.getByRole("button", { name: "Show all 4 money items" }));
     expect(onShowAllFinancial).toHaveBeenCalledWith("line-1");

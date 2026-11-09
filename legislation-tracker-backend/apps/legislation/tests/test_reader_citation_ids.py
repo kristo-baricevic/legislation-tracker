@@ -47,6 +47,26 @@ def test_passages_retain_all_whitespace_and_stay_within_quote_limit():
     assert any(p["quote_id"] is None for p in passages)  # Repeated text is not guessed.
 
 
+def test_wire_schema_requires_every_target_and_rejects_wrong_source_pairs():
+    from apps.legislation.enhancements.reader_citations import bounded_reader_schema
+    from jsonschema import Draft202012Validator
+    target, source, output = packet()
+    item = output["explanations"][0]
+    item["source_quotes"] = [{"source_ref": "src_0001", "quote_id": "p0001"}]
+    output["explanations"] = {target["target_id"]: item}
+    schema = bounded_reader_schema([source], [target], {"src_0001": citation_passages(source)})
+    Draft202012Validator(schema).validate(output)
+    assert resolve_reader_citations(output, [target], [source])["explanations"][0]["target_id"] == target["target_id"]
+    item["source_quotes"][0]["source_ref"] = "src_9999"
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(output)
+    output["explanations"] = {}
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(output)
+    with pytest.raises(ValidationError):
+        resolve_reader_citations(output, [target], [source])
+
+
 def test_summary_uses_the_same_id_resolution():
     _, source, output = packet()
     output["explanations"] = []

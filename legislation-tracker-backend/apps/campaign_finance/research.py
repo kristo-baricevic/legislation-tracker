@@ -12,6 +12,8 @@ from .models import CandidateIdentity, RepresentativeCandidate, CampaignCommitte
 from .normalization import normalize_receipt, normalize_refund
 from .fec_client import get_page, receipt_parameters
 from .snapshots import reconciliation
+from .models import OutsideSpendingScan
+from .outside import persist_outside_page
 
 FILTERED_SCHEDULES = ("totals", "a_11b", "a_11c", "b_20b", "b_20c", "a_11ai", "b_20a")
 
@@ -53,13 +55,20 @@ def process_finance(work):
     priority = Case(*[When(schedule=name, then=Value(i)) for i, name in enumerate(FILTERED_SCHEDULES)], default=Value(10), output_field=IntegerField())
     checkpoint = snapshot.checkpoints.filter(complete=False).select_related("committee", "snapshot").order_by(priority, "pk").first() if snapshot else None
     phase = work.payload_json.get("finance_phase", "committees")
+    if phase == "receipts" and snapshot and not snapshot.outside_scans.exists():
+        phase = "outside_setup"
     candidates = identity.candidate_ids
     index = work.payload_json.get("candidate_index", 0)
+    outside_scan = snapshot.outside_scans.filter(complete=False).order_by("candidate_id").first() if snapshot else None
     if identity.status != "verified":
         # Name search supplies review candidates, never automatic links.
         page = get_page("candidates/search/", {"q": candidate_search_name(run.representative), "state": run.representative.state, "office": "S" if run.representative.chamber == "senate" else "H", "cycle": run.period, "per_page": 100}) if identity.status == "not_found" else None
     elif phase == "committees" and index < len(candidates):
         page = get_page(f"candidate/{candidates[index]}/committees/", {"cycle": run.period, "per_page": 100, "page": work.payload_json.get("committee_page", 1)})
+    elif phase == "outside" and outside_scan:
+        page = get_page("schedules/schedule_e/by_candidate/", {"candidate_id": outside_scan.candidate_id, "cycle": run.period, "per_page": 100, "page": outside_scan.page, "sort": "committee_id"})
+    elif phase in {"outside", "outside_setup"}:
+        page = None
     elif checkpoint:
         page = get_page(f"committee/{checkpoint.committee_id}/totals/", {"cycle": run.period, "per_page": 100}) if checkpoint.schedule == "totals" else get_page(f"schedules/schedule_{checkpoint.schedule[0]}/", receipt_parameters(checkpoint.committee_id, run.period, checkpoint.cursor, checkpoint.schedule))
     else:
@@ -129,7 +138,20 @@ def process_finance(work):
             else:
                 current.payload_json.update(candidate_index=index + 1, committee_page=1)
                 if index + 1 == len(candidates):
-                    current.payload_json["finance_phase"] = "receipts"
+                    current.payload_json["finance_phase"] = "outside"
+                    for candidate in candidates:
+                        OutsideSpendingScan.objects.get_or_create(snapshot=snapshot, candidate_id=candidate)
+            continue_work(current, "finance")
+        elif phase == "outside_setup":
+            for candidate in candidates:
+                OutsideSpendingScan.objects.get_or_create(snapshot=snapshot, candidate_id=candidate)
+            current.payload_json["finance_phase"] = "outside"
+            continue_work(current, "finance")
+        elif phase == "outside":
+            if outside_scan:
+                persist_outside_page(outside_scan, page)
+            else:
+                current.payload_json["finance_phase"] = "receipts"
             continue_work(current, "finance")
         elif checkpoint:
             if checkpoint.schedule == "totals":

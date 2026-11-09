@@ -48,7 +48,7 @@ class BillDetailQuerySerializer(StrictQuerySerializer):
 
 
 class ReaderItemsQuerySerializer(PaginatedQuerySerializer):
-    pass
+    grouped = serializers.BooleanField(required=False, default=False)
 
 
 class FinancialItemsQuerySerializer(PaginatedQuerySerializer):
@@ -332,6 +332,7 @@ class TimelinePreviewPublicSerializer(serializers.Serializer):
 
 
 class ReaderLineItemPublicSerializer(serializers.Serializer):
+    reader_text = serializers.CharField(required=False, allow_blank=False, max_length=8000)
     id = serializers.CharField(allow_blank=False, max_length=255)
     source_id = serializers.CharField(allow_blank=False, max_length=255)
     section_id = serializers.CharField(allow_blank=False, max_length=255)
@@ -470,6 +471,7 @@ class BillContractSerializer(serializers.ModelSerializer):
 
 
 class BillContractSummarySerializer(serializers.ModelSerializer):
+    reader_brief = serializers.SerializerMethodField()
     document_version_label = serializers.CharField(
         source="document.version_label", read_only=True
     )
@@ -489,6 +491,7 @@ class BillContractSummarySerializer(serializers.ModelSerializer):
             "coverage_note",
             "orientation",
             "reader_stats",
+            "reader_brief",
         ]
 
     @staticmethod
@@ -517,6 +520,10 @@ class BillContractSummarySerializer(serializers.ModelSerializer):
 
     def get_reader_stats(self, obj):
         return self._reader_value(obj, "reader_stats", ReaderStatsPublicSerializer)
+
+    def get_reader_brief(self, obj):
+        from .extraction.reader_language import projection
+        return projection(obj)["brief"] if obj.schema_version == "2.1-legal-nlp" else None
 
 
 class BillListSerializer(serializers.ModelSerializer):

@@ -7,6 +7,21 @@ from apps.legislation.tests.test_enhancement_source_packet import (
 )
 
 
+def test_source_selection_accounts_for_final_wire_overhead(settings):
+    from types import SimpleNamespace
+    bill = SimpleNamespace(id=1, jurisdiction="federal", session=119, bill_number="HR 1", title="Test", status="Introduced", introduced_at=None)
+    text = "SEC. 1. REPORTS\nThe Secretary shall report.\nSEC. 2. REVIEWS\nThe agency shall review."
+    def transform(sources, envelope):
+        envelope["wire_overhead"] = "x" * (50000 * len(sources))
+        return envelope
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 90000
+    settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 90000
+    sources, envelope, wire = source_packet.select_document_sources(bill, text, "Introduced", envelope_transform=transform)
+    assert len(wire) <= 90000
+    assert envelope["source_packet"]["truncated"]
+    assert len(sources) == 1
+
+
 def test_contents_entries_do_not_count_as_supplied_operative_sections():
     from apps.legislation.enhancements.source_sections import document_groups
 

@@ -12,7 +12,7 @@ def validate_period(period):
     return period
 
 
-def request_research(representative_id: int, period: int, user_id: int) -> ResearchRun:
+def request_research(representative_id: int, period: int, user_id: int, *, refresh=True) -> ResearchRun:
     validate_period(period)
     with transaction.atomic():
         Representative.objects.select_for_update().get(pk=representative_id)
@@ -20,7 +20,12 @@ def request_research(representative_id: int, period: int, user_id: int) -> Resea
         existing = ResearchRun.objects.filter(representative_id=representative_id, period=period, status__in=["queued", "running"]).first()
         if existing:
             return existing
+        if not refresh:
+            from apps.campaign_finance.models import FinanceSnapshot
+            saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False, published_at__isnull=False).select_related("run").first()
+            if saved:
+                return saved.run
         run = ResearchRun.objects.create(representative_id=representative_id, period=period, requester_id=user_id)
-        run.work_item = enqueue_ingestion_work(kind="representative_research", dedupe_key=str(run.pk), source_updated_at=run.created_at, payload_json={"run_id": str(run.pk)})
+        run.work_item = enqueue_ingestion_work(kind="representative_research", dedupe_key=str(run.pk), source_updated_at=run.created_at, payload_json={"run_id": str(run.pk), "refresh": refresh})
         run.save(update_fields=["work_item"])
         return run

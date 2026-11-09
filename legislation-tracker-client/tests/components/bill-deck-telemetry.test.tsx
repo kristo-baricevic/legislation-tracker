@@ -49,7 +49,8 @@ it("keeps the live telemetry panel visible without exposing samples or starting 
   await screen.findByRole("heading", { name: "Your collection starts with a bill" });
   expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Legislation ingestion" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Start discovery and ingestion" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByLabelText("Show ingestion telemetry preview")).not.toBeInTheDocument();
   expect(authGet).not.toHaveBeenCalled();
   expect(authPost).not.toHaveBeenCalled();
@@ -62,6 +63,7 @@ it("shows real telemetry to staff on refresh without requiring sample mode", asy
     : { observed_at: "2026-10-15T12:00:00Z", last_discovery_completed_at: null, last_successful_work_item_at: null, counts_by_kind_and_status: [{ kind: "bill", status: "pending", count: 17 }], stale_leases: 0, discovery_run: null, recent_work_states: [] });
   const user = userEvent.setup();
   render(<BillDeck />);
+  await user.click(await screen.findByRole("button", { name: "Expand legislation ingestion" }));
   await user.click(await screen.findByRole("button", { name: "Refresh telemetry" }));
   expect(screen.getByRole("heading", { name: "Queued" }).parentElement).toHaveTextContent("17");
   expect(screen.queryByLabelText("Show ingestion telemetry preview")).not.toBeInTheDocument();

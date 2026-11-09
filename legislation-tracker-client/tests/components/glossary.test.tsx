@@ -1,13 +1,20 @@
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import definitions from "../fixtures/hr7583-definitions.json";
-import { buildGlossary } from "../../lib/glossary";
+import { buildGlossary, isReferenceOnlyDefinition } from "../../lib/glossary";
 import type { LegalNlpDefinitionItem } from "../../lib/contracts";
 import { render, screen } from "@testing-library/react";
 import { GlossaryEntryView } from "../../app/bills/[id]/bill-brief";
 
 describe("H.R. 7583 glossary", () => {
   const source = definitions as LegalNlpDefinitionItem[];
+  it("omits bare references without discarding definitions with their own criteria", () => {
+    const reference = { ...source[0], definition: "the meaning given in section 101 of the Education Act of 1965" };
+    expect(isReferenceOnlyDefinition(reference)).toBe(true);
+    expect(isReferenceOnlyDefinition({ ...reference, definition: reference.definition + ", except private colleges" })).toBe(false);
+    expect(isReferenceOnlyDefinition({ ...reference, definition: "a public college, including a college with the meaning given in section 101" })).toBe(false);
+    expect(buildGlossary([reference])).toHaveLength(1); // Source inventory is not deleted.
+  });
   it.each(["includes", "excludes"] as const)("preserves %s in explanations and legal text", async definition_type => {
     const item = { ...source[0], term: "eligible worker", definition_type, definition: "an independent contractor" };
     const entry = buildGlossary([item])[0];

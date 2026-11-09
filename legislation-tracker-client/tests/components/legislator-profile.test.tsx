@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (this: HTMLDialogElement) { this.removeAttribute("open"); });
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const path = String(input);
-    const data = path.includes("/research/") ? { status: "partial", period: 2026, run: null, portrait: { url: "https://www.congress.gov/img/member/test.jpg", source: { url: "https://www.congress.gov", attribution: "Member portrait", fetched_at: "2026-10-10" } }, snapshot: null, biography: { text: biography.text, source: { url: biography.page_url, attribution: biography.attribution, license: biography.license, fetched_at: biography.fetched_at } } } : path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
+    const data = path.includes("/research/") ? { status: "partial", period: 2026, run: null, portrait: { url: "https://www.congress.gov/img/member/test.jpg", source: { url: "https://www.congress.gov", attribution: "Member portrait", fetched_at: "2026-10-10" } }, snapshot: null, biography: { text: biography.text, source: { url: biography.page_url, attribution: biography.attribution, license: biography.license, fetched_at: biography.fetched_at } } } : path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/vote-summary/") ? { scope: { congress: 119, chamber: null }, totals: { yes: 26, no: 1, present: 0, not_voting: 1, other: 0 }, topics: [{ id: 9, name: "Education", yes: 26, no: 1 }] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
     return new Response(JSON.stringify(data));
   }));
 });
@@ -86,46 +86,90 @@ it("opens factual sections by ID, loads votes lazily, and suppresses unsafe sour
   expect(within(dialog).getByText(/Senate · VT · Independent/)).toBeInTheDocument();
   const portrait = await within(dialog).findByRole("img", { name: "First Member portrait" });
   expect(portrait.closest("header")).not.toBeNull();
-  expect(within(dialog).getAllByRole("img")).toHaveLength(1);
+  expect(within(dialog).getAllByRole("img", { name: /portrait/ })).toHaveLength(1);
   expect(within(dialog).queryByText("Elections")).not.toBeInTheDocument();
   expect(within(dialog).queryByText("Bioguide ID: S000033")).not.toBeInTheDocument();
   expect(within(dialog).queryByText("Stored voting coverage and service-window checks")).not.toBeInTheDocument();
-  expect(within(dialog).getByRole("button", { name: "Refresh research" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Research First Member" })).toBeInTheDocument();
   expect(await within(dialog).findByText("A factual Wikipedia excerpt.")).toBeInTheDocument();
-  expect(within(dialog).getByRole("link", { name: "Wikipedia contributors" })).toHaveAttribute("href", biography.page_url);
-  expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path).includes("voting-record"))).toBe(false);
-  await user.click(within(dialog).getByRole("button", { name: "Show voting record" }));
-  expect(await within(dialog).findByText("Absent (source wording)")).toBeInTheDocument();
-  expect(within(dialog).getByText("Bill link unavailable")).toBeInTheDocument();
+  expect(within(dialog).getByRole("region", { name: "Bills introduced" })).toBeInTheDocument();
+  expect(within(within(dialog).getByRole("heading", { name: "First Member" })).getByRole("link")).toHaveAttribute("href", "/representatives/1?congress=119&tab=bills");
+  expect(within(dialog).queryByText("Topic activity ▾")).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole("table")).not.toBeInTheDocument();
+  expect(within(dialog).getByRole("tab", { name: "Bills" })).toHaveAttribute("aria-selected", "true");
+  expect(within(dialog).queryByRole("combobox", { name: "Reporting period" })).not.toBeInTheDocument();
+  expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path).includes("vote-summary"))).toBe(false);
+  await user.click(within(dialog).getByRole("tab", { name: "Votes" }));
+  expect(await within(dialog).findByRole("region", { name: "Yes votes" })).toHaveTextContent("Education26");
+  expect(within(dialog).getByRole("region", { name: "No votes" })).toHaveTextContent("Education1");
+  expect(within(dialog).queryByText("0 present · 1 not voting · 0 other")).not.toBeInTheDocument();
+  expect(within(dialog).getByRole("link", { name: "Full voting record ↗" })).toHaveAttribute("href", "/representatives/1?congress=119&tab=votes");
+  expect(within(dialog).queryByText("On the motion")).not.toBeInTheDocument();
   expect(dialog.querySelector('a[href^="javascript:"]')).toBeNull();
+  await user.keyboard("{ArrowRight}");
+  expect(within(dialog).getByRole("tab", { name: "Campaign funding" })).toHaveFocus();
+  expect(within(within(dialog).getByRole("heading", { name: "First Member" })).getByRole("link")).toHaveAttribute("href", "/representatives/1?congress=119&tab=funding");
+  expect(within(dialog).getByRole("combobox", { name: "Reporting period" })).toBeVisible();
+  await user.keyboard("{Home}");
+  expect(within(dialog).getByRole("tab", { name: "Bills" })).toHaveFocus();
+  expect(within(dialog).getByRole("tabpanel", { name: "Bills" })).toBeVisible();
   fireEvent(dialog, new Event("cancel", { bubbles: false, cancelable: true }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(opener).toHaveFocus();
   expect(document.body.style.overflow).toBe("");
 });
 
-it("keeps all introduced bills accessible behind the short preview and handles a broken portrait", async () => {
+it("retains service-fact summaries in the modal", async () => {
   const originalFetch = global.fetch;
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    if (String(input).includes("/sponsored-bills/")) return new Response(JSON.stringify({
-      count: 7, next: null, previous: null,
-      results: Array.from({ length: 7 }, (_, i) => ({ ...bill, id: i + 20, title: `Preview bill ${i + 1}` })),
-    }));
+    const response = await originalFetch(input, init);
+    if (!String(input).includes("/research/")) return response;
+    const data = await response.json();
+    return Response.json({ ...data, biography: { ...data.biography, kind: "official_service_facts", text: "A saved service summary." } });
+  }));
+  render(page());
+  await userEvent.click(screen.getByRole("link", { name: "First Member" }));
+  expect(await screen.findByText("A saved service summary.")).toBeVisible();
+});
+
+it("appends horizontal bill pages, retains cards on failure, retries, and stops at the end", async () => {
+  const originalFetch = global.fetch;
+  let fail = true;
+  let pageTwoCalls = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).includes("/sponsored-bills/")) {
+      const second = new URL(String(input), "http://localhost").searchParams.get("page") === "2";
+      if (second) {
+        pageTwoCalls++;
+        if (fail) throw new Error("offline");
+      }
+      return Response.json({
+        count: 7, next: second ? null : "http://localhost/api/representatives/1/sponsored-bills/?congress=119&page=2", previous: null,
+        results: (second ? [4, 5, 6] : [0, 1, 2, 3, 4]).map(i => ({ ...bill, id: i + 20, title: `Preview bill ${i + 1}` })),
+      });
+    }
     return originalFetch(input, init);
   }));
   render(page());
   const user = userEvent.setup();
   await user.click(screen.getByRole("link", { name: "First Member" }));
   const dialog = await screen.findByRole("dialog", { name: "First Member" });
-  await within(dialog).findByRole("link", { name: "Preview bill 1" });
-  expect(within(dialog).queryByRole("link", { name: "Preview bill 6" })).toBeNull();
-  await user.click(within(dialog).getByRole("button", { name: "Show more bills" }));
-  expect(within(dialog).getByRole("link", { name: "Preview bill 7" })).toBeInTheDocument();
-  await user.click(within(dialog).getByRole("button", { name: "Show fewer bills" }));
-  expect(within(dialog).queryByRole("link", { name: "Preview bill 6" })).toBeNull();
+  await within(dialog).findByRole("button", { name: "Preview bill 1" });
+  const row = within(dialog).getByRole("region", { name: "Bills introduced" });
+  Object.defineProperties(row, { scrollWidth: { value: 1800 }, clientWidth: { value: 700 }, scrollLeft: { value: 1000, writable: true } });
+  expect(within(dialog).queryByRole("button", { name: "Show more bills" })).toBeNull();
+  fireEvent.scroll(row); fireEvent.scroll(row);
+  await within(dialog).findByRole("button", { name: "Retry introduced bills" });
+  expect(pageTwoCalls).toBe(1);
+  expect(within(dialog).getByRole("button", { name: "Preview bill 1" })).toBeVisible();
+  fail = false;
+  await user.click(within(dialog).getByRole("button", { name: "Retry introduced bills" }));
+  expect(await within(dialog).findByRole("button", { name: "Preview bill 7" })).toBeVisible();
+  expect(within(dialog).getAllByRole("button", { name: "Preview bill 5" })).toHaveLength(1);
+  fireEvent.scroll(row);
+  expect(pageTwoCalls).toBe(2);
   fireEvent.error(within(dialog).getByRole("img", { name: "First Member portrait" }));
-  expect(within(dialog).queryByRole("img")).toBeNull();
-  expect(within(dialog).getByRole("heading", { name: "First Member" })).toBeInTheDocument();
+  expect(within(dialog).queryByRole("img", { name: "First Member portrait" })).toBeNull();
 });
 
 it("keeps bill→profile nesting in one stack, with unique titles and rollback close", async () => {
@@ -133,7 +177,7 @@ it("keeps bill→profile nesting in one stack, with unique titles and rollback c
   const user = userEvent.setup();
   await user.click(screen.getByRole("link", { name: "First Member" }));
   const parent = await screen.findByRole("dialog", { name: "First Member" });
-  const introduced = await within(parent).findByRole("link", { name: "Introduced legislation" });
+  const introduced = await within(parent).findByRole("button", { name: "Introduced legislation" });
   await user.click(introduced);
   const child = await screen.findByRole("dialog", { name: "Introduced legislation" });
   expect(parent.getAttribute("aria-labelledby")).not.toBe(child.getAttribute("aria-labelledby"));
@@ -250,7 +294,7 @@ it("uses the current bill owner fallback after its row disappears", async () => 
   const root = await screen.findByRole("dialog", { name: "Introduced legislation" });
   await user.click(await within(root).findByRole("link", { name: "First Member" }));
   const profileDialog = await screen.findByRole("dialog", { name: "First Member" });
-  await user.click(await within(profileDialog).findByRole("link", { name: "Different introduced bill" }));
+  await user.click(await within(profileDialog).findByRole("button", { name: "Different introduced bill" }));
   await screen.findByRole("dialog", { name: "Different introduced bill" });
   view.rerender(<Fixture show={false} />);
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

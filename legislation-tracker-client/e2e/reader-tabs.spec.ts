@@ -19,12 +19,12 @@ test("reader tabs retain the summary, page all money, and open exact source popo
   }
   await expect(ledger.locator("ol > li")).toHaveCount(1);
   await expect(ledger.getByText("$101,000", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "What changes" }).click();
+  await page.getByRole("tab", { name: "What this bill does" }).click();
   await expect(ledger).not.toBeVisible();
   await expect(summary).toBeVisible();
   await page.getByRole("tab", { name: "Money", exact: true }).click();
   await expect(ledger.getByText("Page 5 of 5", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "What changes" }).click();
+  await page.getByRole("tab", { name: "What this bill does" }).click();
   const line = page.getByRole("tabpanel").getByRole("button", { name: "Read bill text", exact: true }).first();
   await line.click();
   await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).not.toBeEmpty();
@@ -37,7 +37,7 @@ test("reader tabs retain the summary, page all money, and open exact source popo
   await expect(page.getByRole("heading", { name: "Voting record" })).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
   await expect(page.getByRole("heading", { name: "Bill documents" })).toBeVisible();
-  await page.getByRole("tab", { name: "What changes" }).click();
+  await page.getByRole("tab", { name: "What this bill does" }).click();
   await page.screenshot({ path: testInfo.outputPath("reader-tabs-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(summary).toBeVisible();
@@ -65,6 +65,7 @@ test("a keyboard reader can jump to scoped money and return to the changes tab",
   const response = await request.get(`${process.env.E2E_API_URL}/api/bills/?bill_number=HR%20E2E`);
   const bill = (await response.json()).results.find((item: { bill_number: string }) => item.bill_number === "HR E2E");
   await page.goto(`/bills/${bill.id}`);
+  await page.getByRole("button", { name: "Read bill text", exact: true }).first().click();
   const jump = page.getByRole("button", { name: "Show all 4 money items" });
   await jump.focus();
   await page.keyboard.press("Enter");
@@ -72,6 +73,7 @@ test("a keyboard reader can jump to scoped money and return to the changes tab",
   await expect(tab).toBeFocused();
   await expect(page.getByRole("heading", { name: "Money in this provision" })).toBeVisible();
   await page.keyboard.press("ArrowLeft");
-  await expect(page.getByRole("tab", { name: "What changes" })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "What this bill does" })).toBeFocused();
+  await page.getByRole("button", { name: "Read bill text", exact: true }).first().click();
   await expect(jump).toBeVisible();
 });

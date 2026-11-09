@@ -44,3 +44,90 @@
 .connections li { border-left: 2px solid currentColor; margin-block: 1rem; padding-left: 1rem; display: grid; gap: .5rem; }
 .pill { display: inline-block; border: 1px solid currentColor; border-radius: 2rem; padding: .15rem .6rem; margin: .2rem; font-size: .85rem; }
 @media (max-width: 480px) { .bio { flex-direction: column; } }
+.cardControls { text-align: right; }
+.cardControls button.researchButton { cursor: pointer; border: 1px solid #536b60; border-radius: 999px; padding: .4rem .85rem; background: #273b36; color: #f5f7f4; font-size: .8rem; font-weight: 600; }
+.cardControls button.researchButton:hover:not(:disabled) { background: #364f45; }
+.cardControls button:disabled { opacity: .6; cursor: wait; }
+.cardControls button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.cardControls p { margin-top: .4rem; font-size: .8rem; color: var(--muted); }
+.fundingToolbar, .contributorToolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.fundingToolbar label, .contributorToolbar label { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: var(--muted); }
+.funding select, .funding button { border-color: var(--line); background: var(--paper); color: var(--foreground); font-size: .8rem; }
+.funding select:focus { outline: none; box-shadow: none; }
+.funding select:focus-visible { border-color: var(--focus); }
+.fundingToolbar { flex-wrap: nowrap; }
+.fundingToolbar select { width: 8rem; }
+.fundingToolbar label, .recordTabs button { white-space: nowrap; }
+.fundingLoadStatus { height: 1.3rem; font-size: .75rem; color: var(--muted); }
+.fundingContent { min-height: 37rem; }
+.modalFunding > .fundingContent { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.modalFunding .fundingContent > :not(.contributors) { flex-shrink: 0; }
+.fundingToolbar > button { background: var(--wash); }
+.funding { min-height: 44rem; }
+.fundingToolbar > button { min-width: 8rem; }
+.cardControls button.researchButton { min-width: 7rem; }
+.totalsSource { display: flex; justify-content: flex-end; margin: .75rem 0 .35rem; font-size: .75rem; color: var(--muted); }
+.funding .totalsSource a { text-decoration: none; }
+.fundingTotals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 0 0 1.5rem; }
+.fundingTotals > div { background: var(--wash); padding: 1rem 1.15rem; border-radius: 10px; }
+.fundingTotals > div:first-child { background: #bdcec3; color: #273b36; }
+:global(html.dark) .fundingTotals > div:first-child { background: #496356; color: #f3f6f1; }
+.fundingTotals dt { font-size: .8rem; }
+.fundingTotals dd { margin: .35rem 0 0; font-size: clamp(1.1rem, 3vw, 1.7rem); font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.kindSwitch { display: flex; gap: .2rem; padding: .2rem; background: var(--wash); border-radius: 8px; }
+.funding .kindSwitch button { border: 0; background: transparent; padding: .45rem .7rem; }
+.funding .kindSwitch button[aria-pressed="true"] { background: var(--foreground); color: var(--paper); }
+.donorList { list-style: none; padding: 0; margin: .75rem 0; max-height: 22rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.donorList li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .8rem .5rem; border-bottom: 1px solid var(--line); }
+.donorList li:last-child { border-bottom: 0; }
+.donorIdentity { min-width: 0; display: grid; gap: .2rem; }
+.funding .donorIdentity a { font-size: .8rem; font-weight: 550; text-decoration: none; overflow-wrap: anywhere; }
+.funding .donorIdentity a:hover { text-decoration: underline; }
+.donorIdentity time { font-size: .75rem; color: var(--muted); }
+.donorList strong { flex-shrink: 0; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.donorPagination { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .5rem 0; }
+.donorPagination span { font-size: .75rem; color: var(--muted); }
+.collecting { display: inline-block; font-size: .75rem; color: var(--muted); margin-top: .5rem; }
+.contributors { position: relative; }
+.listStatus { min-height: 1.3rem; margin-top: .4rem; font-size: .75rem; color: var(--muted); }
+.contributors .collecting { position: absolute; right: 0; top: 2.8rem; margin: 0; }
+.donorList { height: 22rem; margin-top: .25rem; }
+.emptyRecords { position: absolute; top: 7rem; left: 1rem; color: var(--muted); font-size: .85rem; }
+.donorList:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.panel.modalFunding { height: 100%; min-height: 0; margin: 0; padding-top: .5rem; display: flex; flex-direction: column; overflow: hidden; }
+.modalFunding > :not(.contributors) { flex-shrink: 0; }
+.modalFunding .totalsSource { margin: .2rem 0; }
+.modalFunding .fundingTotals { margin-bottom: .5rem; }
+.modalFunding .fundingTotals > div { padding: .45rem .75rem; }
+.modalFunding .fundingTotals dd { margin-top: .1rem; font-size: 1.2rem; }
+.modalFunding .contributors { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.modalFunding .contributors > :not(.donorList) { flex-shrink: 0; }
+.modalFunding .donorList { flex: 1; min-height: 0; height: auto; max-height: none; margin-bottom: .25rem; }
+.modalFunding .donorPagination { padding: .25rem 0; }
+.modalFunding .listStatus { min-height: 1rem; margin-top: 0; font-size: .7rem; }
+.modalFunding .donorList li { padding-block: .45rem; }
+@media (max-width: 480px) { .fundingTotals > div { padding: .8rem; } .donorList li { gap: .5rem; } }
+.recordTabs { display: flex; gap: .25rem; padding: .3rem 0; }
+.recordTabs button { padding: .35rem .65rem; border: 0; border-radius: .35rem; background: transparent; color: inherit; cursor: pointer; font-size: .8rem; }
+.recordTabs button[aria-pressed="true"] { background: var(--ink, #293e38); color: var(--background, #fff); }
+.outsideSpending { min-height: 0; }
+.donorList li.scrollSentinel { height: 1px; padding: 0; border: 0; }
+.spenderIdentity { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; min-width: 0; }
+.spenderIdentity > a { min-width: 0; overflow-wrap: anywhere; }
+.positionPill { display: inline-flex; align-items: center; flex-shrink: 0; padding: .2rem .6rem; border-radius: 999px; font-size: .7rem; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.supports { background: #e1ebe3; color: #315641; }
+.opposes { background: #f2e3df; color: #82483e; }
+.yearPill { background: var(--wash); color: var(--muted); }
+:global(html.dark) .supports { background: #314c3c; color: #d8ebdc; }
+:global(html.dark) .opposes { background: #573b35; color: #f3dcd5; }
+.donationPie { min-height: 0; }
+.pieHeading { display: flex; align-items: center; gap: .4rem; margin: .35rem 0 .7rem; font-size: .75rem; }
+.pieHeading h3 { margin: 0; font-size: .9rem; }
+.pieHeading > a { margin-left: auto; text-decoration: underline; }
+.pieLayout { display: flex; gap: 1.5rem; align-items: center; }
+.pieDisc { width: 125px; aspect-ratio: 1; border-radius: 50%; flex-shrink: 0; }
+.pieLegend { padding: 0; margin: 0; list-style: none; flex: 1; }
+.pieLegend li { display: grid; grid-template-columns: .65rem 1fr auto 2.5rem; gap: .5rem; align-items: center; padding: .35rem 0; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.pieLegend li > :last-child { text-align: right; }
+.pieSwatch { width: .65rem; height: .65rem; border-radius: .15rem; }
+@media (max-width: 500px) { .pieLayout { gap: .65rem; } .pieDisc { width: 80px; } .pieLegend li { gap: .25rem; font-size: .65rem; } }

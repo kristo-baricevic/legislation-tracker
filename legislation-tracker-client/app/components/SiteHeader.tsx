@@ -1,6 +1,5 @@
 import Link from "next/link";
 import AuthNav from "./AuthNav";
-import ThemeToggle from "./ThemeToggle";
 
 export default function SiteHeader() {
   return (
@@ -13,7 +12,6 @@ export default function SiteHeader() {
           Legislation Tracker
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <ThemeToggle />
           <AuthNav />
         </div>
       </div>

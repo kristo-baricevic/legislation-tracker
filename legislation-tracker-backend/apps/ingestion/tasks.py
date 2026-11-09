@@ -1398,7 +1398,14 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                     "updated_at",
                 ]
             )
-    if requeued:
+    if work_item.kind == "representative_research":
+        try:
+            # Page continuations must not wait behind the bill ingestion queue.
+            # The dispatcher still enforces the single research admission slot.
+            dispatch_ingestion_work.apply_async(kwargs={"batch_size": 0}, queue="research")
+        except Exception:
+            logger.exception("Could not wake research dispatcher; periodic dispatch will recover")
+    elif requeued:
         try:
             dispatch_ingestion_work.delay()
         except Exception:
@@ -1406,6 +1413,7 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 "process_ingestion_work_item: could not dispatch revised work_item=%s",
                 work_item_id,
             )
+    if requeued:
         return {"work_item_id": work_item_id, "status": "requeued"}
     return {"work_item_id": work_item_id, "status": "succeeded"}
 
