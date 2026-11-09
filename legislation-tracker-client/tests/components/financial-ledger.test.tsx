@@ -48,6 +48,7 @@ describe("FinancialLedger", () => {
     await screen.findByText("appropriation provision first");
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("authorization provision last")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Money in this bill" })).toHaveFocus();
     expect(screen.queryByText("appropriation provision first")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Prev" }));
     await user.click(await screen.findByRole("button", { name: "Retry money provisions" }));

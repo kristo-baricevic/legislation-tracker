@@ -91,8 +91,9 @@ export function FinancialLedger({
   const [filters, setFilters] = useState<{ action: FinancialAction | ""; year: number | null }>({ action: "", year: null });
   const requestId = useRef(0);
   const requestedPage = useRef(1);
+  const heading = useRef<HTMLHeadingElement>(null);
 
-  async function load(targetPage: number) {
+  async function load(targetPage: number, navigate = false) {
     requestedPage.current = targetPage;
     const activeRequest = ++requestId.current;
     setLoading(true);
@@ -112,6 +113,10 @@ export function FinancialLedger({
       setFilteredCount(response.count);
       setPage(targetPage);
       setHasMore(Boolean(response.next));
+      if (navigate && !heading.current?.closest("[hidden]")) {
+        heading.current?.focus({ preventScroll: true });
+        heading.current?.scrollIntoView?.({ block: "start" });
+      }
     } catch {
       if (activeRequest === requestId.current) {
         setError("Could not load money provisions. Try again.");
@@ -149,7 +154,7 @@ export function FinancialLedger({
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none" aria-labelledby={`money-${contractId}`}>
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-4 dark:border-green-900 dark:bg-black/20">
         <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Financial provisions</p>
-        <h2 id={`money-${contractId}`} className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">{lineItemId ? "Money in this provision" : "Money in this bill"}</h2>
+        <h2 ref={heading} tabIndex={-1} id={`money-${contractId}`} className="mt-1 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">{lineItemId ? "Money in this provision" : "Money in this bill"}</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">
           Every recognized financial provision is listed here with its amount, purpose, timing, and source text. This is not a CBO cost estimate and does not combine provisions into a spending total.
         </p>
@@ -182,7 +187,7 @@ export function FinancialLedger({
         {error && (
           <div role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
             <p>{error}</p>
-            <button type="button" disabled={loading} onClick={() => void load(requestedPage.current)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
+            <button type="button" disabled={loading} onClick={() => void load(requestedPage.current, true)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
           </div>
         )}
         {loading && items.length === 0 && <p aria-live="polite" className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading money provisions…</p>}
@@ -212,9 +217,9 @@ export function FinancialLedger({
           </ol>
         )}
         {filteredCount > 0 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
-          <button type="button" disabled={loading || page <= 1} onClick={() => void load(page - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
+          <button type="button" disabled={loading || page <= 1} onClick={() => void load(page - 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
           <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}{loading ? " · Loading…" : ""}</span>
-          <button type="button" disabled={loading || !hasMore} onClick={() => void load(page + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
+          <button type="button" disabled={loading || !hasMore} onClick={() => void load(page + 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
         </nav>}
       </div>
     </section>

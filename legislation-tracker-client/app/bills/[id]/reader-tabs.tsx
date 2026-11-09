@@ -1,14 +1,21 @@
 "use client";
 
-import { createContext, useContext, useId, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useId, useState, type ReactNode } from "react";
 
 const tabs = { changes: "What changes", money: "Money", votes: "Votes & sponsor", terms: "Key terms", versions: "Versions" };
 type Tab = keyof typeof tabs;
 const Navigation = createContext<{ active: Tab; select: (tab: Tab) => void; id: string } | null>(null);
+const PanelVisible = createContext(true);
+export function useReaderPanelVisible() { return useContext(PanelVisible); }
 
 export function ReaderTabsProvider({ children }: { children: ReactNode }) {
-  const [active, select] = useState<Tab>("changes");
+  const [active, setActive] = useState<Tab>("changes");
   const id = useId();
+  const select = useCallback((tab: Tab) => {
+    setActive(tab);
+    // Also covers links inside a panel that hide their own focused control.
+    document.getElementById(`${id}-${tab}-tab`)?.focus({ preventScroll: true });
+  }, [id]);
   return <Navigation.Provider value={{ active, select, id }}>{children}</Navigation.Provider>;
 }
 
@@ -38,5 +45,5 @@ export function ReaderTabBar() {
 export function ReaderTabPanel({ tab, children }: { tab: Tab; children: ReactNode }) {
   const nav = useReaderTabs();
   if (!nav) return <>{children}</>;
-  return <section role="tabpanel" id={`${nav.id}-${tab}-panel`} aria-labelledby={`${nav.id}-${tab}-tab`} hidden={nav.active !== tab} tabIndex={0}>{children}</section>;
+  return <PanelVisible.Provider value={nav.active === tab}><section role="tabpanel" id={`${nav.id}-${tab}-panel`} aria-labelledby={`${nav.id}-${tab}-tab`} hidden={nav.active !== tab} tabIndex={0}>{children}</section></PanelVisible.Provider>;
 }

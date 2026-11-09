@@ -49,6 +49,15 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillDetailPage", () => {
+  it.each([
+    { jurisdiction: "federal", session: 121, label: "Congress 121" },
+    { jurisdiction: "california", session: 2025, label: "Session 2025" },
+  ])("labels the actual legislative scope without invalid ordinals: $label", async ({ jurisdiction, session, label }) => {
+    const value = await getBill(10);
+    vi.mocked(getBill).mockResolvedValue({ ...value, jurisdiction, session });
+    render(<BillDetailPage />);
+    expect(await screen.findByRole("heading", { name: `HR 10 · ${label}` })).toBeVisible();
+  });
   it("shows a short stage and the complete latest action separately", async () => {
     const value = await getBill(10);
     const action = "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of provisions within their respective jurisdictions.";
@@ -199,7 +208,7 @@ describe("BillDetailPage", () => {
     render(<BillDetailPage />);
     await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
-    expect(await screen.findByRole("heading", { name: "HR 10 · 119th Congress" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "HR 10 · Congress 119" })).toBeVisible();
     expect(screen.getByText("A public bill")).toBeVisible();
     expect(screen.getByRole("link", { name: "Log in to track this bill" })).toHaveAttribute(
       "href",
@@ -270,7 +279,7 @@ describe("BillDetailPage", () => {
     const { rerender } = render(<BillDetailPage />);
     await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
-    await screen.findByRole("heading", { name: "HR 10 · 119th Congress" });
+    await screen.findByRole("heading", { name: "HR 10 · Congress 119" });
     expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
 
     vi.mocked(getBill).mockResolvedValueOnce(nextBill);
@@ -279,7 +288,7 @@ describe("BillDetailPage", () => {
     routeState.id = "11";
     rerender(<BillDetailPage />);
 
-    expect(await screen.findByRole("heading", { name: "HR 11 · 119th Congress" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "HR 11 · Congress 119" })).toBeVisible();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
     expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();

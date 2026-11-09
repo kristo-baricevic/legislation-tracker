@@ -240,7 +240,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         <div className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
-              {bill.bill_number} · {bill.session}th Congress
+              {bill.bill_number} · {bill.jurisdiction === "federal" ? "Congress" : "Session"} {bill.session}
             </h1>
             {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-2xl font-semibold text-slate-800 dark:text-green-200">{bill.title}</p>}
             <p className="mt-2 text-sm text-slate-600 dark:text-green-500">{stageFor(bill.status)?.label ?? bill.status}</p>
