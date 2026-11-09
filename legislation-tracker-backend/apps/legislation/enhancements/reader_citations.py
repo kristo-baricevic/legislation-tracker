@@ -9,8 +9,9 @@ from .citations import citation_spans
 from .diagnostics import output_error
 from .reader_targets import READER_SCHEMA, validate_reader_explanations
 
-READER_PROMPT_VERSION = "reader-6-brief-wire"
+READER_PROMPT_VERSION = "reader-7-full-source-review"
 READER_ID_SCHEMA = copy.deepcopy(READER_SCHEMA)
+READER_ID_SCHEMA["properties"].pop("source_review")
 for category in ("summary", "explanations"):
     READER_ID_SCHEMA["properties"][category]["items"]["properties"]["source_quotes"]["items"] = {
         "type": "object", "additionalProperties": False,

@@ -1,0 +1,482 @@
+SEC. 1. Short title; table of contents
+(a) Short title.—This Act may be cited as the Strong American Wood Act.
+(b) Table of contents.—The table of contents for this Act is as follows:
+TITLE I Incentives and Research
+SEC. 101. Expansion of carbon oxide sequestration credit to include solid carbon capture facilities
+(a) In general.—Section 45Q(c)(1) of the Internal Revenue Code of 1986 is amended—
+(1) in subparagraph (B)(iii), by striking or at the end,
+(2) in subparagraph (C)(ii), by striking the period at the end and inserting , or, and
+(3) by adding at the end the following new subparagraph:
+[[QUOTED_BLOCK_START]]
+(D) in the case of a solid carbon capture facility, any carbon which—
+(i) is captured in solid form by carbon capture equipment, and
+(ii) is measured at the source of capture and verified at the point of disposal, injection, or utilization.
+.
+[[QUOTED_BLOCK_END]]
+(b) Solid carbon capture facility.—Section 45Q(e) of such Code is amended by adding at the end the following new paragraph:
+[[QUOTED_BLOCK_START]]
+(6) Solid carbon capture facility.—
+(A) In general.—The term solid carbon capture facility means any facility which uses carbon capture equipment to capture carbon in solid form.
+(B) Other terms.—With respect to a facility described in subparagraph (A)—
+(i) the term capture means, with respect to carbon, the process which enables disposal, injection, or utilization of such carbon, and
+(ii) the term carbon capture equipment means any equipment used at such facility.
+.
+[[QUOTED_BLOCK_END]]
+(c) Conforming amendment.—Section 45Q(d) of such Code is amended by striking or direct air capture facility in the matter preceding paragraph (1) and inserting , direct air capture facility, or solid carbon capture facility.
+(d) Effective date.—The amendments made by this section shall apply to carbon captured after the date of the enactment of this Act.
+SEC. 102. Credit for mass timber buildings
+(a) In general.—Subpart D of part IV of subchapter A of chapter 1 of the Internal Revenue Code of 1986 is amended by adding at the end the following new section:
+[[QUOTED_BLOCK_START]]
+SEC. 45BB. Credit for mass timber buildings
+(a) In general.—For purposes of section 38, the mass timber buildings credit determined under this section for any taxable year is an amount equal to the sum of the amounts determined under subsection (b) with respect to each qualified mass timber building placed in service by the taxpayer during the taxable year in the course of the trade or business of the taxpayer.
+(b) Per building amount.—
+(1) In general.—The amount determined under this subsection with respect to any qualified mass timber building shall be equal to $85 for each metric ton of carbon dioxide stored in the load-bearing structural components of such building which consist of mass timber.
+(2) Inflation adjustment.—In the case of any taxable year beginning in a calendar year after 2027, there shall be substituted for the dollar amount in paragraph (1) an amount equal to the product of— The amount determined under the preceding sentence shall be rounded to the nearest cent.
+(A) such dollar amount, multiplied by
+(B) the inflation adjustment factor for such calendar year determined under section 43(b)(3)(B) for such calendar year, determined by substituting 2026 for 1990.
+(c) Qualified mass timber building.—For purposes of this section—
+(1) In general.—The term qualified mass timber building means any building—
+(A) the construction of which begins before January 1, 2036, and
+(B) which meets the requirements of paragraph (2).
+(2) Requirements.—A building meets the requirements of this paragraph if—
+(A) not less than 65 percent of the load-bearing structural components of such building consist of mass timber, or
+(B) not less than 100 metric tons of carbon dioxide is stored in the load-bearing structural components of such building which consist of mass timber.
+(d) Mass timber.—For purposes of this section, the term mass timber means engineered wood products made from solid wood pieces into large structural pieces under controlled conditions. Such term shall not include any engineered wood product unless such product is produced in the United States (as defined in section 638(1)) or a possession of the United States (as defined in section 638(2)).
+(e) Special rules.—
+(1) Credit reduced for tax-exempt bonds.—Rules similar to the rules under section 45(b)(3) shall apply for purposes of this section.
+(2) Restrictions relating to prohibited foreign entities.—No credit shall be determined under subsection (a) for any taxable year if the taxpayer is—
+(A) a specified foreign entity (as defined in section 7701(a)(51)(B)), or
+(B) a foreign-influenced entity (as defined in section 7701(a)(51)(D), determined without regard to clause (i)(II) thereof).
+(f) Increased credit amount for qualified mass timber buildings.—
+(1) In general.—In the case of any qualified mass timber building which satisfies the requirements of paragraph (2), the amount of the credit determined under subsection (a) shall be equal to such amount (determined without regard to this sentence) multiplied by 5.
+(2) Requirements.—The requirements described in this paragraph are that, with respect to any qualified mass timber building the construction of which begins on or after the date that is 60 days after the Secretary publishes guidance with respect to the requirements of paragraphs (3)(A) and (4)—
+(A) subject to subparagraph (B) of paragraph (3), the taxpayer satisfies the requirements under subparagraph (A) of such paragraph with respect to such building, and
+(B) the taxpayer satisfies the requirements under paragraph (4) with respect to the construction of such building.
+(3) Prevailing wage requirements.—
+(A) In general.—The requirements described in this subparagraph with respect to any qualified mass timber building are that the taxpayer shall ensure that any laborers and mechanics employed by the taxpayer or any contractor or subcontractor in the construction of such building shall be paid wages at rates not less than the prevailing rates for construction of a similar character in the locality in which such building is located as most recently determined by the Secretary of Labor, in accordance with subchapter IV of chapter 31 of title 40, United States Code.
+(B) Correction and penalty related to failure to satisfy wage requirements.—Rules similar to the rules of section 45(b)(7)(B) shall apply.
+(4) Apprenticeship requirements.—Rules similar to the rules of section 45(b)(8) shall apply.
+(g) Regulations.—The Secretary shall issue such regulations or other guidance as may be necessary or appropriate to carry out the purposes of this section.
+.
+[[QUOTED_BLOCK_END]]
+(b) Credit made part of general business credit.—Section 38(b) of such Code is amended by striking plus at the end of paragraph (40), by striking the period at the end of paragraph (41) and inserting , plus, and by adding at the end the following new paragraph:
+[[QUOTED_BLOCK_START]]
+(42) the mass timber buildings credit determined under section 45BB.
+.
+[[QUOTED_BLOCK_END]]
+(c) Clerical amendment.—The table of sections for subpart D of part IV of subchapter A of chapter 1 of such Code is amended by adding at the end the following new item:
+[[QUOTED_BLOCK_START]]
+.
+[[QUOTED_BLOCK_END]]
+(d) Effective date.—The amendments made by this section shall apply to buildings placed in service in taxable years beginning after December 31, 2026.
+SEC. 103. Establishment of emissions rate for fuels derived from biomass for purposes of clean fuel production credit
+(a) In general.—Section 45Z(b)(1)(B) of the Internal Revenue Code of 1986 is amended—
+(1) in clause (i), by striking and (v) and inserting (v), and (vi), and
+(2) by adding at the end the following new clause:
+[[QUOTED_BLOCK_START]]
+(vi) Biomass.—Except as provided in clause (v), in the case of any transportation fuel which is derived from biomass (as defined in subsection (d)(5)(B)(ii)), the emissions rate for such fuel shall be zero.
+.
+[[QUOTED_BLOCK_END]]
+(b) Effective date.—The amendments made by this section shall apply to emissions rates published for transportation fuel produced after the date of the enactment of this Act.
+SEC. 104. Reinstatement of investment and production credits for open- and closed-loop biomass facilities
+(a) Investment credit.—Section 48(a) of the Internal Revenue Code of 1986 is amended—
+(1) by redesignating paragraph (16) as paragraph (17), and
+(2) by inserting after paragraph (15) the following new paragraph:
+[[QUOTED_BLOCK_START]]
+(16) Application of credit to certain biomass facilities.—
+(A) In general.—In the case of any qualified property (as defined in paragraph (5)(D)) which is part of a specified biomass facility—
+(i) such property shall be treated as energy property for purposes of this section, and
+(ii) the energy percentage with respect to such property is 30 percent.
+(B) Specified biomass facility.—For purposes of this paragraph, the term specified biomass facility means any facility—
+(i) described in paragraph (2) or (3) of section 45(d), and
+(ii) the construction of which begins after the date of the enactment of this paragraph.
+.
+[[QUOTED_BLOCK_END]]
+(b) Production credit.—
+(1) Application to new biomass facilities.—Section 45(d) of such Code is amended—
+(A) in paragraphs (2) and (3), by inserting or after the date of the enactment of the Strong American Wood Act, after January 1, 2025, each place it appears, and
+(B) in paragraph (3)(A)(ii), by inserting , or after the date of the enactment of the Strong American Wood Act after January 1, 2025.
+(2) Termination of certain limitations.—Section 45(b)(4) of such Code is amended by adding at the end the following new subparagraph:
+[[QUOTED_BLOCK_START]]
+(C) Termination.—Subparagraphs (A) and (B) shall not apply to any facility described in paragraph (2) or (3) of subsection (d) the construction of which begins after the date of the enactment of the Strong American Wood Act.
+.
+[[QUOTED_BLOCK_END]]
+(c) Effective date.—The amendments made by this section shall apply to facilities the construction of which begins after the date of the enactment of this Act.
+SEC. 105. Renewable biomass definition
+Section 211(o)(1)(I) of the Clean Air Act (42 U.S.C. 7545(o)(1)(I)) is amended—
+(1) by striking clause (ii) and inserting the following:
+[[QUOTED_BLOCK_START]]
+(ii) Materials generated from manufacturing forest products or wood products, including wood residuals, paper residuals, sawdust, wood, wood chips, shavings, bark, sanderdust, and trimmings.
+;
+[[QUOTED_BLOCK_END]]
+(2) by striking clause (iv) and inserting the following:
+[[QUOTED_BLOCK_START]]
+(iv) Trees, shrubs, and parts of trees or shrubs, including slash and storm debris, from—
+(I) non-Federal land;
+(II) National Forest System land;
+(III) public lands (as defined in section 103 of the Federal Land Policy and Management Act of 1976); or
+(IV) land belonging to an Indian tribe or an Indian individual, that is held in trust by the United States or subject to a restriction against alienation imposed by the United States.
+; and
+[[QUOTED_BLOCK_END]]
+(3) by striking clause (v) and inserting the following:
+[[QUOTED_BLOCK_START]]
+(v) Vegetation obtained from—
+(I) within 100 feet of a building, public infrastructure, or other area regularly occupied by people; or
+(II) within the wildland-urban interface (as defined in section 101 of the Healthy Forests Restoration Act of 2003 (16 U.S.C. 6512)).
+.
+[[QUOTED_BLOCK_END]]
+SEC. 106. Establishment of the Build America Fund
+(a) In general.—There is established in the Treasury of the United States a fund to be known as the Build America Fund (in this Act referred to as the Fund). The Secretary of the Treasury shall, not later than 180 days after the date of the enactment of this section, transfer to the Fund from the general fund of the Treasury an amount equal to 95 percent of the sum of the amounts received in the general fund that are attributable to antidumping and countervailing duties collected on imports of softwood lumber between January 1, 2017, and the September 30th of the year preceding the year in which section was enacted, including duties assessed pursuant to any finding under United States antidumping or countervailing duty law.
+(b) Subsequent transfers of amounts.—The Secretary of the Treasury shall, at the end of each fiscal year beginning in the year of the date of the enactment of this section, transfer to the Fund from the general fund of the Treasury an amount equal to 95 percent of the sum of the amounts received in the general fund that are attributable to duties collected on imports of softwood lumber during such fiscal year, including duties assessed pursuant to any finding under United States antidumping or countervailing duty law.
+(c) Use of amounts in the Fund.—
+(1) In general.—The Secretary of the Treasury shall—
+(A) use 95 percent of any deposit of amounts in the Fund to carry out the grant program established under section 107; and
+(B) use 5 percent of any deposit of amounts to promote the domestic softwood lumber industry both domestically and internationally to reduce reliance on foreign products and expand markets for American wood products, as determined by the Commission established under subsection (d).
+(2) Availability of amounts.—Amounts in the Fund shall, notwithstanding any other provision of law, remain available until expended.
+(d) Establishment of Domestic Timber Commission.—
+(1) In general.—Not later than 180 days after the date of the enactment of this section the Secretary of the Treasury shall establish a Domestic Timber Commission (in this Act referred to at the Commission) comprised of the following:
+(A) 4 members to be appointed by the Secretary of the Treasury who are citizens of the United States and who are actively engaged in, or represent, the United States lumber, timber, or forestry industry. Each member shall—
+(i) represent entities primarily engaged in domestic production, processing, or sale of lumber, timber, or forestry products within the United States;
+(ii) represent entities that are headquartered in the United States; and
+(iii) act in the exclusive interests of the United States lumber, timber, and forestry industries.
+(B) 4 members to be appointed by the Secretary of the Treasury based on recommendations of members provided by the Chief of the United States Forest Service with each member residing in a different regions of the United States, as determined by the Secretary of the Treasury.
+(2) Vacancies.—Any vacancy in the Commission shall be filled in the same manner in which the original appointment was made.
+(3) Compensation.—Members of the Commission shall serve without compensation.
+(4) Duties.—The Commission shall by affirmative vote of a three-fourths majority vote of the members determine how the amount described in subsection (c)(1)(B) shall be used to promote the domestic softwood lumber industry, including the use of residuals and low value timber, both domestically and internationally to reduce reliance on foreign products and expand markets for American wood products.
+(5) Consultation by Secretary.—The Secretary, or his designee, shall from time to time but at least annually, meet and consult with the Commission on the policies and mechanisms being used to promote the domestic softwood lumber industry both domestically and internationally to reduce reliance on foreign products and expand markets for American wood products.
+(e) Softwood lumber defined.—In this section, the term softwood lumber means products described in the scope of the Anti-Dumping and Countervailing Duty orders on certain softwood lumber from Canada published on January 3, 2018, consistent with determinations by the administering authority or U.S. International Trade Commission pursuant to section 751 or section 781 of the Tariff Act of 1930, as amended and part 351 of title 19, Code of Federal Regulations, and includes products classified under chapter 44 of the harmonized tariff schedule.
+SEC. 107. Grants to promote the building of single-family housing using domestically-sourced timber
+(a) In general.—Not later than 180 days after the Secretary of the Treasury transfers amounts from the general fund to the Fund under section 106(a), the Secretary of the Treasury shall establish a grant program, and issue a notice of funding announcement, to provide amounts on a competitive basis to State housing finance agencies to establish and operate revolving funds to promote the construction of single-family housing using domestically-sourced timber.
+(b) Number of grants each year.—
+(1) In general.—The Secretary shall award at least 1 grant under this section in each fiscal year following the date of the enactment of this Act.
+(2) In cases of insufficient amounts.—If in any fiscal year the balance of unobligated amounts in the Fund is insufficient to award a grant in the minimum amount specified in paragraph (1), the Secretary shall, in the succeeding fiscal year, award a grant not later than 180 days after sufficient amounts are available.
+(c) Grant amounts.—
+(1) In general.—If the Secretary is awarding a grant to a State housing finance agency under this section and such State housing finance agency has not previously been awarded a grant under this section, then the amount of such grant shall be not less than $100,000,000 and not greater than $200,000,000.
+(2) Additional grants.—If the Secretary has previously awarded a grant to a particular State housing finance agency under this section and is awarding another grant to such State housing finance agency under this section then the amount of such grant shall be not less than $20,000,000 and not greater than $50,000,000.
+(d) Requirements for additional grants.—A State housing finance agency that has received a grant under this section may only be awarded another grant under this section if—
+(1) not fewer than 5 years have elapsed since the date the State housing finance agency was first awarded a grant under this section; and
+(2) the State housing finance agency has demonstrated, as determined by the Secretary—
+(A) substantial deployment of the amounts provided with the first grant the State housing finance agency was awarded under this section;
+(B) operation of a revolving fund as required under this section; and
+(C) measurable increases in housing starts supported by domestically-sourced timber.
+(e) Applications.—
+(1) In general.—To receive a grant under this section, a State housing finance agency shall submit to the Secretary an application at such time and in such manner as the Secretary determines appropriate.
+(2) Requirements.—A State housing finance agency shall include in any application the following information pertaining to the State in which they were established:
+(A) The homeowner vacancy rate, as most recently reported by the Director of the Census Bureau.
+(B) The number of housing units per 1,000 residents, measured using the most recent population and housing unit estimates as reported by the Director of the Census Bureau.
+(C) The net housing unit growth relative to population growth, measured over a multi-year period, as determined by the Secretary.
+(D) The estimated housing unit shortfall within the State, as determined using a methodology disclosed by the State housing finance agency and deemed reasonable by the Secretary.
+(E) The median price of a single home in the State.
+(f) Use of grant amounts.—
+(1) In general.—A State housing finance agency shall use any amounts awarded under this section to establish and operate a revolving fund.
+(2) Use of amounts in revolving fund.—
+(A) In general.—A State housing finance agency shall use the amounts in the revolving fund established under subsection (a) solely to provide repayable loans, including down payment and closing cost assistance loans, loan guarantees, and credit enhancement products to persons constructing or purchasing single family homes using domestically-sourced lumber in a manner that complies with the requirements described in paragraph (3).
+(B) Requirement.—Each repayable loan, loan guarantee, and credit enhancement product provided under subparagraph (A) shall be structured with a legal obligation of repayment.
+(3) Additional requirements.—A State housing finance agency shall ensure that each single-family home assisted by amounts from the revolving fund such State housing finance agency established under paragraph (1) are—
+(A) sold to eligible homebuyers;
+(B) constructed using domestically-sourced wood products—
+(i) using only domestic lumber for all structural wood framing components; and
+(ii) to the maximum extent practicable as determined by the Secretary, using only domestically-sourced or domestically-manufactured wood products for non-structural components such as cabinets, shelving, interior door, and trim;
+(C) offered for sale at a price that does not exceed the median sales price of a home in the applicable metropolitan statistical area, where such home is to be located, as determined using the most recent data available from the Director of the Census Bureau or another data source approved by the Secretary; and
+(D) constructed by eligible housing developers who shall provide the State housing finance agency with access to such financial records, documents, and information as the agency determines necessary to verify compliance with this section and to ensure that funds are used solely for eligible purposes.
+(g) Report.—Not later than 5 years after the date of the enactment of this Act, the Secretary shall submit to the Committee on Banking, Housing, and Urban Affairs of the Senate and the Committee on Financial Services of the House of Representatives a report which shall contain—
+(1) the number of homes constructed using amounts provided to State housing finance agencies;
+(2) the median sales price of homes constructed using amounts provided to State housing finance agencies;
+(3) the total amount of domestically-sourced timber, measured in board feet, used in homes constructed using amounts provided to State housing finance agencies; and
+(4) an assessment of funding needs, including any recommendations regarding the authorization of additional funds for the Secretary to carry out the program.
+(h) Definitions.—In this section:
+(1) Area median income.—The term area median income means the median household income for the area in which the household is located, as determined by the Secretary of the Treasury.
+(2) Eligible homebuyer.—The term eligible homebuyer means a person whose household income does not exceed 250 percent of the area median income for the applicable metropolitan statistical area or nonmetropolitan area, as determined by the Secretary of the Treasury.
+(3) Eligible housing developer.—The term eligible housing developer means—
+(A) a person or entity who—
+(i) is duly organized and duly authorized to conduct business under the laws of the State in which the project is located; and
+(ii) demonstrates experience and capacity to carry out residential construction or development activities; or
+(B) any United States citizen or citizens who—
+(i) own, or will own at completion, the property on which the eligible housing is to be constructed;
+(ii) are authorized under the laws of the State in which the project is located to act as an owner-builder or otherwise obtain the necessary building permits for the construction of a dwelling intended for their own occupancy as a principal residence; and
+(iii) assume responsibility for managing or performing the construction of such dwelling, including by directly contracting with licensed subcontractors as required under State law.
+(4) Single-family home.—The term single-family home means a structure—
+(A) designed and used as a single dwelling unit for one household; and
+(B) on its own parcel of land.
+(5) State housing finance agency.—The term State housing finance agency means any public body, agency, or instrumentality established under State law and authorized to finance activities designed to develop housing and related facilities.
+(6) Structural wood framing component.—The term structural wood framing component means, dimensional lumber, structural panels, and primary engineered wood members including—
+(A) load-bearing exterior and interior wall studs, plates, and headers;
+(B) floor joists, rim joists, beams, and girders;
+(C) roof rafters, trusses, ridge members, and structural blocking; and
+(D) structural wood sheathing and subflooring panels used to transfer loads to the structural system of the home.
+SEC. 108. Defining plant biostimulants
+(a) In general.—Section 2 of the Federal Insecticide, Fungicide, and Rodenticide Act (7 U.S.C. 136) is amended—
+(1) by striking subsection (v) and inserting the following:
+[[QUOTED_BLOCK_START]]
+(v) Plant regulator.—
+(1) In general.—The term plant regulator means any substance or mixture of substances intended, through physiological action, for accelerating or retarding the rate of growth or rate of maturation, or for otherwise altering the behavior, of plants or the produce thereof.
+(2) Exclusions.—The term plant regulator does not include—
+(A) substances to the extent that they are intended as plant nutrients, trace elements, nutritional chemicals, plant inoculants, soil amendments, or vitamin hormone products; or
+(B) plant biostimulants that—
+(i) are of biological origin; or
+(ii) include chemical compounds that are synthetically derived, but are structurally similar and functionally identical to, substances of biological origin.
+;
+[[QUOTED_BLOCK_END]]
+(2) in subsection (hh)—
+(A) in paragraph (2), by striking or at the end;
+(B) in paragraph (3)—
+(i) in the matter preceding subparagraph (A), by striking substances. and inserting substances; and
+(ii) in subparagraph (B)—
+(I) by inserting , or after volatilization; and
+(II) by striking the period at the end and inserting a semicolon; and
+(C) by inserting before the undesignated matter following paragraph (3) the following:
+[[QUOTED_BLOCK_START]]
+(4) a plant biostimulant; or
+(5) a nutritional chemical.
+; and
+[[QUOTED_BLOCK_END]]
+(3) by adding at the end the following:
+[[QUOTED_BLOCK_START]]
+(pp) Plant biostimulant.—The term plant biostimulant means a substance, microorganism, or mixture thereof, that, when applied to seeds, plants, the rhizosphere, soil, or other growth media, act to support a plant’s natural processes independently of the nutrient content of that substance, microorganism, or mixture thereof, and that thereby improves—
+(1) nutrient availability, uptake, or use efficiency;
+(2) tolerance to abiotic stress; and
+(3) consequent growth, development, quality, or yield.
+(qq) Nutritional chemical.—The term nutritional chemical—
+(1) means any substance or mixture of substances that interacts with plant nutrients in a manner which improves nutrient availability or aids the plant in acquiring or utilizing plant nutrients; and
+(2) includes some plant biostimulants.
+(rr) Vitamin hormone product.—The term vitamin hormone product means a product consisting of a mixture of plant hormones, plant nutrients, inoculants, or soil amendments.
+.
+[[QUOTED_BLOCK_END]]
+(b) Regulations.—Not later than 120 days after the date of the enactment of this Act, the Administrator of the Environmental Protection Agency shall revise the regulations under subchapter E of chapter I of title 40, Code of Federal Regulations (as in effect on the date of the enactment of this Act), to carry out the amendments made by subsection (a).
+SEC. 109. Biochar innovations and opportunities for conservation, health, and advancements in research
+(a) Demonstration projects.—
+(1) Establishment.—
+(A) In general.—Subject to the availability of appropriations made in advance for such purpose, not later than 2 years after the date of enactment of this section, the covered Secretaries shall jointly establish a program to enter into partnerships with eligible entities to carry out demonstration projects to support the development and commercialization of biochar in accordance with this subsection.
+(B) Location of demonstration projects.—In carrying out the program established under subparagraph (A), the covered Secretaries shall, to the maximum extent practicable, enter into partnerships with eligible entities such that not fewer than one biochar demonstration project under the program is carried out in each region of the Forest Service and each region of the Bureau of Land Management.
+(2) Proposals.—To be eligible to enter into a partnership to carry out a biochar demonstration project under paragraph (1)(A), an eligible entity shall submit to the covered Secretaries a proposal at such time, in such manner, and containing such information as the covered Secretaries may require.
+(3) Priority.—In selecting proposals under paragraph (2), the covered Secretaries shall give priority to entering into partnerships with eligible entities that submit proposals to carry out biochar demonstration projects that—
+(A) have the most potential to create new jobs and contribute to local economies, particularly in rural areas;
+(B) have the most potential to demonstrate—
+(i) new and innovative uses of biochar;
+(ii) market viability for cost effective biochar-based products;
+(iii) the restorative benefits of biochar with respect to forest heath and resiliency, including forest soils and watersheds; or
+(iv) any combination of purposes specified in clauses (i) through (iii);
+(C) are located in areas that have a high need for biochar production, as determined by the covered Secretaries, due to—
+(i) nearby lands identified as having high, very high, or extreme risk of wildfire;
+(ii) availability of sufficient quantities of feedstocks; or
+(iii) a high level of demand for biochar or other commercial byproducts of biochar; or
+(D) satisfy any combination of purposes specified in subparagraphs (A) through (C).
+(4) Use of funds.—Funds made available to an eligible entity under the program established under paragraph (1)(A) shall be used to—
+(A) acquire and test various feedstocks and their efficacy;
+(B) develop and optimize commercially and technologically viable biochar production units, including mobile and permanent units;
+(C) demonstrate—
+(i) the production of biochar from forest residue; and
+(ii) the use of biochar to restore forest health and resiliency;
+(D) build, expand, or establish biochar facilities;
+(E) conduct research on new and innovative uses of biochar;
+(F) demonstrate cost-effective market opportunities for biochar and biochar-based products;
+(G) carry out any other activities the covered Secretaries determine appropriate; or
+(H) carry out any combination of the purposes specified in subparagraphs (A) through (F).
+(5) Feedstock requirements.—To the maximum extent practicable, an eligible entity that carries out a biochar demonstration project under this subsection shall, with respect to the feedstock used under such project, derive at least 50 percent of such feedstock from forest thinning and management activities (including mill residues) conducted on National Forest System lands or public lands.
+(6) Review of biochar demonstration.—
+(A) In general.—The covered Secretaries shall jointly conduct regionally specific research, including economic analyses and life-cycle assessments, on any biochar produced from a demonstration project carried out under the program established in paragraph (1)(A), including—
+(i) the effects of such biochar on—
+(I) forest health and resiliency;
+(II) carbon capture and sequestration, including increasing soil carbon in the short-term and long-term;
+(III) productivity, reduced input costs, and water retention in agricultural practices;
+(IV) the health of soil and grasslands used for grazing activities, including grazing activities on National Forest System land and public land; and
+(V) environmental remediation activities, including abandoned mine land remediation;
+(ii) the effectiveness of biochar as a co-product of biofuels or in biochemicals; and
+(iii) the effectiveness of other potential uses of biochar to determine if any such use is technologically and commercially viable.
+(B) Coordination.—The covered Secretaries shall, to the maximum extent practicable, provide data, analyses, and other relevant information collected under subparagraph (A) with recipients of grants under subsection (b).
+(7) Limitation on funding for establishing biochar facilities.—If the covered Secretaries provide to an eligible entity that enters into a partnership with the covered Secretaries under paragraph (1)(A) funding for establishing a biochar facility, such funding may not exceed 35 percent of the total capital cost of establishing such biochar facility.
+(b) Biochar research and development grant program.—
+(1) Establishment.—The Secretary of the Interior, in consultation with the Secretary of Energy, shall establish or expand an existing applied biochar research and development grant program to make competitive grants to eligible institutions to carry out the activities described in paragraph (3).
+(2) Applications.—To be eligible to receive a grant under this subsection, an eligible institution shall submit to the Secretary a proposal at such time, in such manner, and containing such information as the Secretary of the Interior may require.
+(3) Use of funds.—An eligible institution that receives a grant under this subsection shall use the grant funds to conduct applied research on—
+(A) the effect of biochar on forest health and resiliency, accounting for variations in biochar, soil, climate, and other factors;
+(B) the effect of biochar on soil health and water retention, accounting for variations in biochar, soil, climate, and other factors;
+(C) the long-term carbon sequestration potential of biochar;
+(D) the best management practices with respect to biochar and biochar-based products that maximize—
+(i) carbon sequestration benefits;
+(ii) the commercial viability of such products; and
+(iii) the application of such products in forestry, agriculture, environmental remediation, water quality improvement, and any other similar uses, as determined by the Secretary of the Interior;
+(E) the regional uses of biochar to increase productivity and profitability, including—
+(i) uses in agriculture and environmental remediation; and
+(ii) use as a co-product in fuel production;
+(F) new and innovative uses for biochar byproducts; and
+(G) opportunities to expand markets for biochar and create related jobs, particularly in rural areas.
+(c) Reports.—
+(1) Report to congress.—Not later than 2 years after the date of enactment of this section, the covered Secretaries shall submit to Congress a report that—
+(A) includes policy and program recommendations to improve the widespread use of biochar;
+(B) identifies any area of research needed to advance biochar commercialization; and
+(C) identifies barriers to further biochar commercialization, including permitting and siting considerations.
+(2) Materials submitted in support of the president’s budget.—Beginning with the second fiscal year that begins after the date of enactment of this section and annually thereafter until the date described in subsection (d)—
+(A) the covered Secretaries shall include in the materials submitted to Congress in support of the President’s budget pursuant to section 1105 of title 31, United States Code, a report describing, for the fiscal year covered by the report, the status of each demonstration project carried out under subsection (a); and
+(B) the Secretary of the Interior shall include in the materials submitted to Congress in support of the President’s budget pursuant to section 1105 of title 31, United States Code, a report describing, for the fiscal year covered by the report, the status of each research and development grant carried out under subsection (b).
+(d) Sunset.—The authority to carry out this section shall terminate on the date that is 7 years after the date of enactment of this section.
+(e) Definitions.—In this section:
+(1) Biochar.—The term biochar means carbonized biomass produced by converting feedstock through reductive thermal processing for non-fuel uses.
+(2) Eligible entity.—The term eligible entity means—
+(A) a State, local, special district, or Tribal government;
+(B) an eligible institution;
+(C) a private, non-private, or cooperative entity or organization;
+(D) a National Laboratory (as such term is defined in section 2 of the Energy Policy Act of 2005 (42 U.S.C. 15801)); or
+(E) a partnership or consortium of two or more entities described in subparagraphs (A) through (D).
+(3) Eligible institution.—The term eligible institution means land-grant colleges and universities, including institutions eligible for funding under the—
+(A) Act of July 2, 1862 (12 Stat. 503, chapter 130; 7 U.S.C. 301 et seq.);
+(B) Act of August 30, 1890 (26 Stat. 417, chapter 841; 7 U.S.C. 321 et seq.), including Tuskegee University;
+(C) Public Law 87–788 (commonly known as the McIntire-Stennis Act of 1962); or
+(D) Equity in Educational Land-Grant Status Act of 1994 (7 U.S.C. 301 note; Public Law 103–382).
+(4) Feedstock.—The term feedstock means excess biomass in the form of plant matter or materials that serves as the raw material for the production of biochar.
+(5) Covered secretaries.—The term covered Secretaries means—
+(A) the Secretary of Agriculture, acting through the Chief of the Forest Service;
+(B) the Secretary of the Interior, acting through the Director of the Bureau of Land Management; and
+(C) the Secretary of Energy, acting through the Director of the Office of Science.
+SEC. 110. Chemical compounds derived from woody biomass
+(a) Study.—
+(1) In general.—The Secretary shall conduct a study in each region of the Forest Service to assess the types of, and practices using, chemical compounds derived from woody biomass.
+(2) Report.—Not later than 200 days after the date on which funds are first made available to conduct the study under paragraph (1), the Secretary shall make publicly available, and submit to the Committee on Agriculture of the House of Representatives and the Committee on Agriculture, Nutrition, and Forestry of the Senate, a report that describes the results of the study.
+(b) Grant program.—
+(1) Establishment.—Not later than 90 days after the date on which the Secretary publishes the report required under subsection (a)(2), the Secretary shall establish or expand an existing woody biomass research and development grant program to make competitive grants to eligible entities (as defined in section 109).
+(2) Applications.—To be eligible to receive a grant under this subsection, an eligible entity shall submit to the Secretary a proposal at such time, in such manner, and containing such information as the Secretary of Agriculture may require.
+(3) Use of funds.—An eligible entity that receives a grant under this subsection shall use the grant to carry out research and development with respect to chemical compounds that can be derived from woody biomass.
+(c) Definition.—In this section, the term Secretary means the Secretary of Agriculture, acting through the Chief of the Forest Service.
+SEC. 111. Modification of reforestation expenditure rules
+(a) Increase in base expensing amount.—Section 194(b)(1)(B) of the Internal Revenue Code of 1986 is amended—
+(1) in clause (i), by striking $10,000 and inserting $30,000, and
+(2) in clause (ii), by striking $5,000 and inserting $15,000.
+(b) Inflation adjustment for base expensing.—Section 194(b)(1) of such Code is amended by adding at the end the following new subparagraph:
+[[QUOTED_BLOCK_START]]
+(C) Inflation adjustment.—
+(i) In general.—In the case of any taxable year beginning after 2026, each dollar amount in subparagraph (B) shall be increased by an amount equal to—
+(I) such dollar amount, multiplied by
+(II) the cost-of-living adjustment determined under section 1(f)(3) for the calendar year in which the taxable year begins, determined by substituting calendar year 2025 for calendar year 2016 in subparagraph (A)(ii) thereof.
+(ii) Rounding.—If any increase determined under clause (i) is not a multiple of $100, such increase shall be rounded to the nearest multiple of $100.
+.
+[[QUOTED_BLOCK_END]]
+(c) Effective date.—The amendments made by this section shall apply to amounts paid or incurred in taxable years beginning after December 31, 2026.
+SEC. 112. Treatment of reforestation expenditures for qualified natural disasters
+(a) In general.—Part VI of subchapter B of chapter 1 of the Internal Revenue Code of 1986 is amended by inserting after section 194A the following new section:
+[[QUOTED_BLOCK_START]]
+SEC. 194B. Treatment of reforestation expenditures for qualified natural disasters
+(a) In general.—
+(1) In general.—In the case of any qualified timber property with respect to which the taxpayer has made an election under this section, there shall be allowed a deduction for the taxable year in an amount equal to the lesser of—
+(A) so much of the disaster-related reforestation expenditures paid or incurred by the taxpayer during such taxable year with respect to each qualified timber property of the taxpayer as does not exceed $500,000 ($250,000 in the case of a married taxpayer filing separately) with respect to any such property, or
+(B) $1,000,000 ($500,000 in the case of a married taxpayer filing separately), in the aggregate for all qualified timber properties with respect to disaster-related reforestation expenditures.
+(2) Election.—An election under this section shall be made at such time and in such manner as the Secretary may prescribe, including on an amended return.
+(3) Determination of marital status.—For purposes of this section, marital status shall be determined under section 7703(a).
+(4) Inflation adjustment.—
+(A) In general.—In the case of any taxable year beginning after 2026, each of the dollar amounts in paragraph (1) shall be increased by an amount equal to—
+(i) such dollar amount, multiplied by
+(ii) the cost-of-living adjustment determined under section 1(f)(3) for the calendar year in which the taxable year begins, determined by substituting calendar year 2025 for calendar year 2016 in subparagraph (A)(ii) thereof.
+(B) Rounding.—If any increase under subparagraph (A) is not a multiple of $100, such increase shall be rounded to the nearest multiple of $100.
+(5) Controlled groups.—
+(A) In general.—In the case of a controlled group of corporations or trades or businesses under common control, the limitations of paragraph (1) shall be allocated among the members of such group in accordance with regulations prescribed by the Secretary.
+(B) Definition.—For purposes of subparagraph (A), the term controlled group has the meaning given to the term controlled group of corporations in section 1563(a), except that section 1563(a)(1) shall be applied by substituting more than 50 percent for at least 80 percent in each instance.
+(C) Pass thru entity.—In the case of a partnership or S corporation, the aggregate amount described in paragraph (1)(B) shall be applied at the partnership or S corporation level, respectively.
+(b) Definitions and special rules.—For purposes of this section—
+(1) Disaster-related reforestation expenditures.—
+(A) In general.—The term disaster-related reforestation expenditures means reforestation expenditures paid or incurred in connection with uncut timber that was damaged or destroyed as a direct result of a qualified natural disaster which occurred during the 5-year period ending on the date on which such reforestation occurs, determined without regard—
+(i) to any expenditure with respect to which the taxpayer has received reimbursement under any governmental reforestation cost-sharing program unless the amounts so reimbursed have been included in the gross income of the taxpayer, and
+(ii) any expenditures with respect to which a deduction is allowed under section 194(a).
+(B) Qualified timber property; reforestation expenditures; cost-sharing programs.—The terms qualified timber property, reforestation expenditures, and cost-sharing programs have the meanings given such terms in section 194(c).
+(C) Uncut timber.—The term uncut timber means, with respect to a qualified natural disaster, standing timber that had not been harvested, severed, or otherwise cut before such qualified natural disaster occurred.
+(D) Qualified natural disaster.—The term qualified natural disaster means any disaster determined by the President under section 401 of the Robert T. Stafford Disaster Relief and Emergency Assistance Act.
+(2) Treatment of trusts and estates.—The aggregate amount of disaster-related reforestation expenditures incurred by any trust or estate shall be apportioned between the income beneficiaries and the fiduciary under regulations prescribed by the Secretary.
+(3) Coordination with other deductions.—No deduction shall be allowed under any other provision other this chapter with respect to any expenditure with respect to which a deduction is allowed or allowable under subsection (a) to the taxpayer.
+(c) Recapture upon early disposition.—
+(1) In general.—If a taxpayer disposes of any qualified timber property (or any timber thereon) with respect to which a deduction was allowed under subsection (a) within the 10-taxable-year period beginning with the taxable year in which such deduction was claimed, such property shall be treated as section 1245 property, and the amount required to be recaptured as ordinary income shall be determined under section 1245 and included in gross income for the taxable year of disposition.
+(2) Recapture amount.—For purposes of applying section 1245, the amount subject to recapture shall not exceed the deduction allowed under subsection (a) with respect to such property.
+(3) Partial dispositions.—In the case of a disposition of only a portion of the qualified timber property, the applicable portion of the deduction allowed under subsection (a) shall be subject to recapture under section 1245 in the same proportion that the disposed portion bears to the entire property.
+(4) Exceptions.—Paragraph (1) shall not apply to a disposition which occurs by reason of—
+(A) casualty, condemnation, or governmental taking, or
+(B) death of the taxpayer.
+(d) Regulations.—The Secretary shall prescribe such regulations as necessary or appropriate to carry out this subsection, including rules for determining proportional allocations.
+.
+[[QUOTED_BLOCK_END]]
+(b) Clerical amendment.—The table of sections for part VI of subchapter B of chapter 1 of such Code is amended by inserting after the item relating to section 194A the following new item:
+[[QUOTED_BLOCK_START]]
+.
+[[QUOTED_BLOCK_END]]
+(c) Effective date.—The amendments made by this section shall apply to amounts paid or incurred in taxable years beginning after December 31, 2026.
+TITLE II Trade
+SEC. 201. Trade investigations
+(a) National security investigations.—Not later than 90 days after the date of the enactment of this Act, the Secretary of Commerce shall conduct investigations, in accordance with the investigation procedures described in section 232 of the Trade Expansion Act of 1962 (19 U.S.C. 1862), to determine—
+(1) whether imports of paper and wood impair the national security of the United States; and
+(2) whether supply chains for domestic pulp and paper, hardwood, and softwood goods are sufficiently important to the national security of the United States for imports of such products to impair the national security of the United States for purposes of the authorities provided by that section.
+(b) Tariff effectiveness investigation.—The Secretary shall study the effectiveness of decreasing or limiting duties and other export restrictions under such section 232 with respect to finished paper products and finished wood products, with a focus on determining the manner and extent to which such restrictions are circumvented.
+(c) Trade agreement investigation.—The United States Trade Representative shall study the effectiveness of actions taken under section 301 of the Trade Act of 1974 (19 U.S.C. 2411) and determine if additional actions under such section are needed.
+SEC. 202. Retaliatory measures with respect to discriminatory European Union Rules
+The United States Trade Representative shall impose, with respect to articles imported from any country that is a member of the European Union, retaliatory tariffs pursuant to the authority provided by section 301(a)(1)(B)(ii) of the Trade Act of 1974 (19 U.S.C. 2411(a)(1)(B)(ii)) if the European Union—
+(1) imposes or enforces any deforestation regulation with respect to products imported from the United States; or
+(2) imposes or enforces fumigant rules or other higher barriers to entry for wood chip products relative to other wood products imported from the United States.
+SEC. 203. Elimination of machine tariffs for mills
+(a) In general.—The President shall take such steps as may be necessary to eliminate all tariffs on each article classifiable under each heading listed in subsection (b) that is imported into the United States for use by a sawmill, pulp mill, or paper mill.
+(b) Articles defined.—The headings listed in this subsection are the following headings under the Harmonized Tariff Schedule of the United States:
+(1) 8441.30.00.00.
+(2) 8441.10.00.00.
+(3) 8441.90.00.00.
+(4) 8439.10.00.10.
+(5) 8439.20.00.10.
+(6) 8439.30.00.00.
+(7) 8422.40.91.70.
+(8) 7309.00.00.30.
+(9) 8402.11.00.00.
+(10) 8402.90.00.00.
+(11) 8419.91.00.78.
+(12) 8465.91.00.78.
+(13) 8465.96.00.40.
+(14) 8465.99.02.10.
+(15) 8479.30.00.00.
+(16) 8479.89.95.99.
+(17) 8479.90.95.60.
+(18) 8428.90.03.00.
+(19) 8428.89.03.90.
+TITLE III Regulatory Changes
+SEC. 301. Requirement to procure domestic forest products
+(a) Prohibition.—The head of a Federal agency may not procure any hardwood, softwood, pulp, or a paper product, or any product (including furniture or manufactured product) made from hardwood, softwood, pulp, or a paper product, unless—
+(1) the hardwood, softwood, pulp, or paper product is derived solely from timber harvested and processed in the United States; and
+(2) with respect to a product made from such hardwood, softwood, pulp, or paper product, the product is fully processed, assembled, and treated (including by any machining, shaping, sanding, coating, staining, painting, laminating, or sealing) in the United States so that—
+(A) no additional manufacturing or surface treatment is required with respect to the product beyond normal consumer use; and
+(B) the product is ready for sale or end use.
+(b) Definition.—In this section, the term Federal agency has the meaning given such term in section 8301 of title 41, United States Code.
+SEC. 302. Hardwood, Softwood, Pulp, and Paper Buy America Act
+Section 70912 of the Infrastructure Investment and Jobs Act (41 U.S.C. 8301 note) is amended by adding at the end the following:
+[[QUOTED_BLOCK_START]]
+(8) Construction materials.—The term construction materials includes—
+(A) hardwood lumber and hardwood product;
+(B) softwood lumber and softwood product;
+(C) pulp;
+(D) paper; and
+(E) engineered wood.
+.
+[[QUOTED_BLOCK_END]]
+SEC. 303. Revision of national ambient air quality standard for PM2.5
+(a) Revision of standard.—Notwithstanding the Clean Air Act (42 U.S.C. 7401 et seq.), not later than 90 days after the date of enactment of this Act, the Administrator of the Environmental Protection Agency shall publish regulations that revise the national primary ambient air quality standard for PM2.5 from 9 micrograms per cubic meter to 12 micrograms per cubic meter.
+(b) Study and report on PM2.5 emissions related to paper mills.—
+(1) Study.—The Administrator of the Environmental Protection Agency shall study—
+(A) the degree to which sawmills and pulp and paper mills located in the United States emit PM2.5; and
+(B) whether the operation of such mills reduces the rate of wildfires in the United States, and, if so, how such reduction affects the total amount of emissions of PM2.5 in the United States.
+(2) Report.—Not later than 180 days after the study required under paragraph (1) is completed, the Administrator of the Environmental Protection Agency shall submit to Congress a report on such study.
+SEC. 304. Periodic review of emission standards for sources of hazardous air pollutants
+Section 112(d)(6) of the Clean Air Act (42 U.S.C. 7412(d)(6)) is amended to read as follows:
+[[QUOTED_BLOCK_START]]
+(6) Review and revision.—The Administrator shall periodically review, and revise as necessary (taking into account developments in practices, processes, and control technologies), emission standards promulgated under this section.
+.
+[[QUOTED_BLOCK_END]]
+SEC. 305. Supply chain study and assessments
+(a) Department of Transportation study.—Not later than 90 days after the date of enactment of this Act, the Secretary of Transportation shall conduct a study on railroad tie supply and include in such study—
+(1) an assessment of—
+(A) railroad tie inventory levels as of the date of enactment of this Act; and
+(B) domestic milling capacity for hardwood crossties; and
+(2) an evaluation of the viability of conditioning Federal funding for rail infrastructure on domestically sourced railroad ties.
+(b) Department of Energy assessment.—
+(1) Assessment.—Not later than 90 days after the date of the enactment of this Act, the Secretary of Energy shall conduct an assessment of—
+(A) the supply chain for hardwood crane matting used in connection with oil and gas exploration, or the construction of transmission lines or facilities for the generation of electricity; and
+(B) the potential for establishing domestic sourcing requirements with respect to the supply chain for hardwood crane matting as a condition on the issuance of Federal permits, or the provision of Federal funds, for projects for such exploration or construction.
+(2) Report.—Upon completion of the assessment under paragraph (1), the Secretary of Energy shall submit to the Committee on Energy and Commerce of the House of Representatives and the Committee on Energy and Natural Resources of the Senate, and publish on an appropriate website of the Department of Energy, a report containing the results of such assessment.
+(c) Department of Defense assessment.—
+(1) In general.—Not later than 90 days after the date of the enactment of this Act, the Secretary of Defense shall conduct an assessment of the following:
+(A) Vulnerabilities of the supply chain for hardwood lumber, hardwood lumber products, softwood lumber, and softwood lumber products used in pallets, crates, ammunition boxes, or trailer floors manufactured or procured by the Department of Defense.
+(B) The potential for establishing domestic sourcing requirements with respect to such supply chain.
+(C) The potential for leveraging authorities under title III of the Defense Production Act of 1950 (50 U.S.C. 4531 et seq.) to address capacity gaps in such supply chain.
+(2) Report; determination.—Not later than 90 days after the date on which the Secretary of Defense commences the assessment under paragraph (1), the Secretary shall submit to the Committee on Armed Services of the House of Representatives and the Committee on Armed Services of the Senate, and publish on an appropriate website of the Department of Defense, a report containing the results of such assessment. Such report shall include a determination by the Secretary as to whether to establish any domestic sourcing requirement the potential for which was assessed under paragraph (1)(B).
+SEC. 306. Secondary inspections
+(a) Secondary inspections required.—The Commissioner of U.S. Customs and Border Protection shall, in coordination with the Administrator of the Animal and Plant Health Inspection Service of the Department of Agriculture, conduct secondary inspection and documentation review at all ports of entry for every entry that includes imported wood products, including laminate flooring, engineered and composite furniture, vinyl wood-look products, pulp and paper products, and softwood lumber.
+(b) Disclosures required.—The Federal Trade Commission, in coordination with Commissioner of U.S. Customs and Border Protection and the Administrator of the Animal and Plant Health Inspection Service of the Department of Agriculture, shall require all products imported into the United States and marketed as wood substitutes to disclose in full to purchasers of such products all chemical inputs used in manufacturing such products.

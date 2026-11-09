@@ -15,6 +15,8 @@ import { SourceEvidence } from "./source-evidence";
 import { ReaderExplanation, useReaderExplanation } from "./reader-explanation";
 import { financialGlossary } from "@/lib/financial-glossary";
 import { ProvisionType } from "./provision-type";
+import { useCompatibleReader } from "./reader-explanation";
+import { ReviewedMoney } from "./reviewed-money";
 
 function FinancialExplanation({ item, contractId, number, textUrl, downloadUrl }: {
   item: LegalNlpFinancialItem; contractId: number; number: number; textUrl?: string | null; downloadUrl?: string | null;
@@ -62,7 +64,15 @@ function formatAmount(item: LegalNlpFinancialItem): string | null {
   }).format(amount);
 }
 
-export function FinancialLedger({
+export function FinancialLedger(props: FinancialLedgerProps) {
+  const result = useCompatibleReader();
+  if (result?.source_review && !props.lineItemId && !props.sectionId) {
+    return <ReviewedMoney key={`${result.identity.contract_hash}-${result.source_review.reviewed_sources.join(',')}`} result={result} />;
+  }
+  return <OriginalFinancialLedger {...props} />;
+}
+
+function OriginalFinancialLedger({
   contractId,
   totalCount,
   lineItemId,

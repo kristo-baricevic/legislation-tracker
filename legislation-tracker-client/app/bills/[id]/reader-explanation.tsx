@@ -10,12 +10,17 @@ import { explanationParagraphs } from "@/lib/reader-copy";
 const Identity = createContext<ReaderIdentity | null>(null);
 export const ReaderIdentityProvider = Identity.Provider;
 
+export function useCompatibleReader() {
+  const { enhancement } = useAiGlossary();
+  return compatibleReader(enhancement, useContext(Identity));
+}
+
 export function useReaderExplanation(kind: ReaderExplanationItem["kind"], itemId: string, original: string) {
   const { enhancement } = useAiGlossary();
   return resolveReaderExplanation(enhancement, useContext(Identity), kind, itemId, original);
 }
 
-function Evidence({ sources, documentId, notes, number = 1 }: { sources: EnhancementCitedSource[]; documentId: number; notes?: ReactNode; number?: number }) {
+export function Evidence({ sources, documentId, notes, number = 1 }: { sources: EnhancementCitedSource[]; documentId: number; notes?: ReactNode; number?: number }) {
   return <SourcePopover number={number}>
     {notes}
     {sources.map((source, index) => <div key={index} className="mb-4 last:mb-0">
@@ -86,6 +91,8 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
   const { enhancement } = useAiGlossary();
   const identity = useContext(Identity);
   const [page, setPage] = useState(1);
+  const reader = useCompatibleReader();
+  if (reader?.source_review) return <>{children}<ReviewedChanges key={`${reader.identity.contract_hash}-${enhancement?.id}`} reader={reader} /></>;
   if (!result || identity?.documentId == null) return <>{children}</>;
   const rows = [
     ...result.key_impacts.map(item => ({ ...item, label: "Change" })),
@@ -109,4 +116,18 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
       <button type="button" disabled={current === totalPages} onClick={() => setPage(current + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
     </nav>}
   </div>;
+}
+
+function ReviewedChanges({ reader }: { reader: NonNullable<ReturnType<typeof useCompatibleReader>> }) {
+  const [page, setPage] = useState(1);
+  const rows = [...(reader.source_review?.additional_changes ?? [])]
+    .sort((a, b) => (a.cited_sources[0]?.start_char ?? 0) - (b.cited_sources[0]?.start_char ?? 0));
+  const pages = Math.max(1, Math.ceil(rows.length / 6));
+  if (!rows.length) return null;
+  return <div className="mt-6"><h4 className="mb-4 text-lg font-semibold">Other changes</h4><ul className="space-y-5">{rows.slice((page - 1) * 6, page * 6).map((item, index) =>
+    <li key={`${page}-${index}`} className="leading-7">{item.text}<Evidence number={(page - 1) * 6 + index + 1} sources={item.cited_sources} documentId={reader.identity.document_id} /></li>)}</ul>
+    {pages > 1 && <nav aria-label="Additional provision pages" className="mt-5 flex items-center justify-center gap-4">
+      <button disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
+      <span>Page {page} of {pages}</span><button disabled={page === pages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
+    </nav>}</div>;
 }

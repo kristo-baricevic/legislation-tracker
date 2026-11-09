@@ -1450,19 +1450,23 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
         provider = get_provider(attempt.enhancement.provider)
         if preflight.output_schema_version == "1.4":
             from .enhancements.reader_batches import execute_reader_batches
+            from .enhancements.reader_steps import DurableReaderProvider
+            from .enhancements.source_first_worker import step_usage
+            provider = DurableReaderProvider(provider, attempt, run_token, preflight.source_manifest['budget']['maximum_calls'])
 
             def reader_checkpoint(completed, completed_calls):
+                usage = step_usage(attempt.pk)
                 attempt.refresh_from_db()
                 _, _, changed = _worker_preflight(attempt)
                 if changed:
-                    raise ProviderError(changed, usage=completed.usage)
+                    raise ProviderError(changed, usage=usage)
                 now = timezone.now()
                 updated = BillEnhancementAttempt.objects.filter(
                     pk=attempt.pk, status=BillEnhancementAttempt.Status.RUNNING,
                     run_token=run_token, lease_expires_at__gt=now,
                 ).update(
-                    input_tokens=completed.usage.input_tokens, output_tokens=completed.usage.output_tokens,
-                    total_tokens=completed.usage.total_tokens, provider_response_id=completed.response_id,
+                    input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                    total_tokens=usage.total_tokens, provider_response_id=completed.response_id,
                     resolved_model=completed.resolved_model,
                     citation_resolution_json={"reader": {"completed_calls": completed_calls,
                                                         "total_calls": 1 + len(preflight.reader_batches)}},
@@ -1471,15 +1475,19 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
                         settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS + 30)),
                 )
                 if not updated:
-                    raise ProviderError("outcome_unknown", outcome_unknown=True, usage=completed.usage)
+                    raise ProviderError("outcome_unknown", outcome_unknown=True, usage=usage)
 
-            result = execute_reader_batches(preflight, provider, api_key, reader_checkpoint)
+            try:
+                result = execute_reader_batches(preflight, provider, api_key, reader_checkpoint)
+            except ProviderError as error:
+                error.usage = step_usage(attempt.pk)
+                raise
             validated = validate_enhancement_output(
                 result.output, preflight.source_snapshot, expected_version="1.4")
             persisted = _finish_enhancement_attempt(
                 attempt_id=attempt_id, run_token=run_token,
                 attempt_status=BillEnhancementAttempt.Status.SUCCEEDED,
-                usage=result.usage, result_json=validated, provider_response_id=result.response_id,
+                usage=step_usage(attempt.pk), result_json=validated, provider_response_id=result.response_id,
                 resolved_model=result.resolved_model, citation_resolution=result.citation_resolution)
             attempt.refresh_from_db()
             return _terminal_task_result(persisted=persisted, status=attempt.status, category=attempt.failure_category or None)

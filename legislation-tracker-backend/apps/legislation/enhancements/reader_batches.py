@@ -67,27 +67,23 @@ def reader_execution_settings():
 
 
 def _output_allowance(sources, *, summary=False):
-    """Plan for full-length prose plus twelve citations per item and JSON.
+    """Estimate prose and citation output from target text/evidence size.
 
     Use a conservative byte estimate (not the usual four characters per token),
     with headroom. This is a planning estimate, not a guarantee about generation;
-    provider truncation still fails closed and never triggers unconfirmed calls.
+    provider truncation subdivides only within the confirmed retry allowance.
     """
     from .source_packet import canonical_json_bytes
+    from .reader_sizing import target_output_bytes
     quote = {"source_ref": max((s["source_ref"] for s in sources), key=len, default="src_0001"),
              "quote_id": "p00000000"}
     output = {"schema_version": READER_VERSION, "summary": [], "explanations": []}
     if summary:
         output["summary"] = [{"text": "x" * 600, "source_quotes": [quote] * 12}] * 4
-    else:
-        output["explanations"] = [
-            {"target_id": t["target_id"], "status": "explained", "text": "x" * 900,
-             "unresolved_reason": None, "source_quotes": [quote] * 12}
-            for t in snapshot_targets(sources)
-        ]
     # Reasoning also consumes the provider's output budget when enabled.
     fraction = .75 if settings.LLM_ENHANCEMENT_REASONING_EFFORT == "none" else .5
-    return max(8000, math.ceil(len(canonical_json_bytes(output)) / fraction / 1000) * 1000)
+    estimated = len(canonical_json_bytes(output)) if summary else 200 + sum(target_output_bytes(t) for t in snapshot_targets(sources))
+    return max(8000, math.ceil(estimated / fraction / 1000) * 1000)
 
 
 def _output_fits(sources, *, summary=False):
@@ -179,8 +175,7 @@ def build_reader_preflight(document):
             continue
         if not _output_fits([source]):
             raise PreflightUnavailable("Reader output allowance cannot fit one complete explanation", reason="request_too_large")
-        if pending and (len(pending) >= 8
-                        or not _output_fits(packed(pending + [source]))
+        if pending and (not _output_fits(packed(pending + [source]))
                         or not _within_limits(canonical_json_bytes(envelope(packed(pending + [source]))))):
             batches.append(packed(pending))
             pending = []
@@ -188,20 +183,73 @@ def build_reader_preflight(document):
         next_ref += 1
     if pending:
         batches.append(packed(pending))
+    envelopes = [envelope(batch) for batch in batches]
+    target_sources = [s for batch in batches for s in batch]
+    # A full-source review can reuse already validated, same-source explanations.
+    # Validate against the *new* immutable targets and citations before reuse.
+    # The whitelist makes reuse deterministic while an upgraded run is pending.
+    from apps.legislation.models import BillEnhancement
+    reused = None
+    for prior in BillEnhancement.objects.filter(bill=document.bill, status='succeeded',
+            output_schema_version=READER_VERSION, prompt_version='reader-6-brief-wire').order_by('-created_at', '-pk'):
+        if prior.source_manifest_json.get('contract_hash') != contract.contract_hash:
+            continue
+        old_sources = [s for s in prior.source_snapshot_json if s.get('reader_targets')]
+        old_targets = {t['target_id']: t for t in snapshot_targets(old_sources)}
+        fresh_targets = {t['target_id']: t for t in snapshot_targets(target_sources)}
+        if old_targets != fresh_targets or any(text[s['start_char']:s['end_char']] != s['quoted_text'] for s in old_sources):
+            continue
+        if {s['source_ref'] for s in old_sources} & {s['source_ref'] for s in main_sources}:
+            continue
+        try:
+            validated = validate_reader_explanations(prior.result_json,
+                snapshot_targets(old_sources), main_sources + old_sources)
+        except (ValidationError, TypeError, KeyError):
+            continue
+        reused = {'explanations': validated['explanations']}
+        target_sources = old_sources
+        batches, envelopes = [], []
+        break
+    from .reader_discovery import discovery_sources, discovery_schema, INSTRUCTIONS as DISCOVERY_INSTRUCTIONS
+    scans = discovery_sources(text, next_ref)
+    if next_ref + len(scans) > 10000:
+        raise PreflightUnavailable("Full review exceeds source capacity", reason="request_too_large")
+    for source in scans:
+        e = _request_envelope(document.bill, [source], truncated=False)
+        e.update(output_schema_version=READER_VERSION, prompt_version=READER_PROMPT_VERSION,
+                 source_packet_version=READER_PROMPT_VERSION, instructions=DISCOVERY_INSTRUCTIONS,
+                 output_schema=discovery_schema([source]), max_output_tokens=settings.LLM_READER_MAX_OUTPUT_TOKENS,
+                 source_review=True)
+        wire = e['source_packet']['sources'][0]
+        wire.pop('quoted_text')
+        wire['citation_passages'] = passages(source['quoted_text'])
+        e['source_packet']['existing_changes'] = [t['original_text'] for t in all_targets
+            if t['kind'] == 'line_item' and any(source['start_char'] <= a < source['end_char'] for a, _ in t['evidence_ranges'])]
+        # Complete adjacent sections belong to other requests. Supplying them
+        # as uncitable prose caused duplicate rules with unrelated citations.
+        # Oversized sections retain their own context, not neighboring sections.
+        if source.get('section_context'):
+            e['source_packet']['section_context'] = source['section_context']
+        if not _within_limits(canonical_json_bytes(e)):
+            raise PreflightUnavailable("Full-source review request exceeds limits", reason="request_too_large")
+        batches.append([source])
+        envelopes.append(e)
     if len(batches) + 1 > settings.LLM_READER_MAX_CALLS:
         raise PreflightUnavailable("Complete reader plan exceeds configured call budget", reason="request_too_large")
-    envelopes = [envelope(batch) for batch in batches]
-    snapshot = main_sources + [s for batch in batches for s in batch]
+    snapshot = main_sources + target_sources + scans
     identity = {"document_id": document.pk, "document_content_hash": _text_hash(text),
                 "contract_id": contract.pk, "contract_hash": contract.contract_hash,
                 "document_version_label": document.version_label}
     # Include exclusion decisions, identities, and the configured total-call ceiling.
     request_bytes = canonical_json_bytes({"main": main, "batches": envelopes, "identity": identity,
                                          "execution_settings": reader_execution_settings(),
-                                         "excluded": excluded, "max_calls": settings.LLM_READER_MAX_CALLS})
-    budget = {"maximum_calls": 1 + len(batches),
+                                         "excluded": excluded, "reused": reused, "max_calls": settings.LLM_READER_MAX_CALLS})
+    reserve = min(8, max(0, settings.LLM_READER_MAX_CALLS - 1 - len(batches)))
+    budget = {"planned_calls": 1 + len(batches), "split_call_reserve": reserve, "maximum_calls": 1 + len(batches) + reserve,
               "maximum_input": len(main_bytes) + sum(len(canonical_json_bytes(e)) for e in envelopes),
               "maximum_output": sum(e["max_output_tokens"] for e in [main, *envelopes])}
+    budget['maximum_input'] += reserve * max(len(canonical_json_bytes(e)) for e in [main, *envelopes])
+    budget['maximum_output'] += reserve * settings.LLM_READER_MAX_OUTPUT_TOKENS
     manifest = {**identity, "execution_settings": reader_execution_settings(),
                 "source_kind": "reader_targets", "truncated": summary_truncated,
                 "coverage": selected_envelope["source_packet"]["coverage"],
@@ -215,7 +263,7 @@ def build_reader_preflight(document):
         source_fingerprint=hashlib.sha256(canonical_json_bytes({"identity": identity, "sources": snapshot})).hexdigest(),
         request_fingerprint=hashlib.sha256(request_bytes).hexdigest(), source_manifest=manifest,
         source_snapshot=snapshot, request_envelope=main, request_bytes=request_bytes,
-        estimated_input_tokens=budget["maximum_input"], truncated=summary_truncated)
+        estimated_input_tokens=budget["maximum_input"], truncated=summary_truncated, reader_reuse=reused)
     return replace(p, reader_batches=tuple(
         replace(p, source_snapshot=sources, request_envelope=e, request_bytes=canonical_json_bytes(e),
                 estimated_input_tokens=len(canonical_json_bytes(e)), truncated=False)
@@ -228,8 +276,15 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
     main = replace(preflight, source_snapshot=[s for s in preflight.source_snapshot if s["source_ref"] in main_refs], reader_batches=())
     combined = ProviderResult({"schema_version": READER_VERSION, "summary": [], "explanations": []},
                               ProviderUsage(0, 0, 0), "", "")
+    if preflight.reader_reuse:
+        combined.output['explanations'] = copy.deepcopy(preflight.reader_reuse['explanations'])
     completed = 0
-    for index, request in enumerate((main, *preflight.reader_batches)):
+    queue = list(enumerate((main, *preflight.reader_batches)))
+    calls = 0
+    maximum_calls = preflight.source_manifest['budget']['maximum_calls']
+    while queue:
+        index, request = queue.pop(0)
+        calls += 1
         stage = "main_analysis" if index == 0 else "reader_batch"
         try:
             checkpoint(combined, completed)
@@ -241,6 +296,17 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                 raise
             combined = replace(combined, usage=combine_usage(combined.usage, response.usage),
                                response_id=response.response_id, resolved_model=response.resolved_model)
+            if request.request_envelope.get('source_review'):
+                from .reader_discovery import resolve_discovery
+                valid = resolve_discovery(response.output, request.source_snapshot)
+                review = combined.output.setdefault('source_review', {
+                    'reviewed_sources': [], 'financial_items': [], 'additional_changes': [], 'money_checks': {}})
+                review['reviewed_sources'].extend(s['source_ref'] for s in request.source_snapshot if s['source_ref'] not in review['reviewed_sources'])
+                review['financial_items'].extend(valid['financial_items'])
+                review['additional_changes'].extend(valid['additional_changes'])
+                review['money_checks'].update(valid['money_checks'])
+                completed += 1
+                continue
             validator = resolve_reader_citations if request.prompt_version == READER_PROMPT_VERSION else validate_reader_explanations
             valid = validator(response.output, snapshot_targets(request.source_snapshot), request.source_snapshot)
             if (index and valid["summary"]) or (index == 0 and not valid["summary"]):
@@ -250,13 +316,20 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
             combined.output["explanations"].extend(valid["explanations"])
             completed += 1
         except (ProviderError, ValidationError) as error:
+            if isinstance(error, ProviderError) and error.validation_code == 'provider_output_limit':
+                from .reader_sizing import split_reader_request
+                children = split_reader_request(request)
+                if children and calls + len(queue) + len(children) <= maximum_calls:
+                    combined = replace(combined, usage=error.usage)
+                    queue[0:0] = [(index, child) for child in children]
+                    continue
             if isinstance(error, ValidationError):
                 detail = validation_diagnostic(error)
                 error = ProviderError("invalid_output", validation_code=detail["code"],
                     validation_detail=detail, usage=combined.usage,
                     response_id=combined.response_id, resolved_model=combined.resolved_model)
             error.validation_detail = {**error.validation_detail, "stage": stage, "batch_index": max(0, index - 1)}
-            error.citation_resolution = {"reader": {"completed_calls": completed, "total_calls": 1 + len(preflight.reader_batches)},
+            error.citation_resolution = {"reader": {"completed_calls": completed, "total_calls": calls + len(queue), "maximum_calls": maximum_calls},
                                          "failed_stage": stage}
             raise error from None
     try:

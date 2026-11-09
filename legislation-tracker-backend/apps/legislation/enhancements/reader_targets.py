@@ -21,6 +21,7 @@ READER_SCHEMA = {
     "required": ["schema_version", "summary", "explanations"],
     "properties": {
         "schema_version": {"type": "string", "const": READER_VERSION},
+        "source_review": {"type": "object"},
         "summary": {"type": "array", "maxItems": 4, "items": {
             "type": "object", "additionalProperties": False,
             "required": ["text", "source_quotes"], "properties": {
@@ -130,6 +131,11 @@ def validate_reader_explanations(output, targets, sources):
         raise output_error("reader_coverage_incomplete", ["explanations"])
     for index, item in enumerate(output["summary"]):
         _validate_quotes(item, source_map, ["summary", index])
+    if any(s.get('discovery_source') for s in sources) and output.get('source_review') is None:
+        raise output_error('reader_coverage_incomplete', ['source_review'])
+    if output.get("source_review") is not None:
+        from .reader_discovery import validate_source_review
+        validate_source_review(output["source_review"], sources)
     return copy.deepcopy(output)
 
 
