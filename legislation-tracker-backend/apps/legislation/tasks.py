@@ -1602,7 +1602,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
                 provider_result, preflight, provider, api_key, glossary_checkpoint,
             )
     except ProviderError as exc:
-        from .enhancements.diagnostics import provider_validation_diagnostic
+        from .enhancements.diagnostics import provider_failure_diagnostic
         if exc.category in {"invalid_credentials", "model_access_denied"}:
             _invalidate_rejected_credential(attempt)
         elif exc.category == "quota_exhausted":
@@ -1618,9 +1618,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             run_token=run_token,
             attempt_status=terminal_status,
             failure_category=exc.category,
-            failure_detail=provider_validation_diagnostic(exc)
-            if exc.category == "invalid_output"
-            else {},
+            failure_detail=provider_failure_diagnostic(exc),
             usage=exc.usage,
             provider_response_id=exc.response_id,
             resolved_model=exc.resolved_model,
