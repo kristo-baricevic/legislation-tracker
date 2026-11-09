@@ -9,7 +9,7 @@ from .citations import citation_spans
 from .diagnostics import output_error
 from .reader_targets import READER_SCHEMA, validate_reader_explanations
 
-READER_PROMPT_VERSION = "reader-2"
+READER_PROMPT_VERSION = "reader-3"
 READER_ID_SCHEMA = copy.deepcopy(READER_SCHEMA)
 for category in ("summary", "explanations"):
     READER_ID_SCHEMA["properties"][category]["items"]["properties"]["source_quotes"]["items"] = {

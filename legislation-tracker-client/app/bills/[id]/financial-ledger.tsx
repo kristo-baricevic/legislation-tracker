@@ -90,8 +90,10 @@ export function FinancialLedger({
   const [filtersApplied, setFiltersApplied] = useState(false);
   const [filters, setFilters] = useState<{ action: FinancialAction | ""; year: number | null }>({ action: "", year: null });
   const requestId = useRef(0);
+  const requestedPage = useRef(1);
 
-  async function load(targetPage: number, append: boolean) {
+  async function load(targetPage: number) {
+    requestedPage.current = targetPage;
     const activeRequest = ++requestId.current;
     setLoading(true);
     setError(null);
@@ -106,7 +108,7 @@ export function FinancialLedger({
     try {
       const response = await getFinancialItems(contractId, params);
       if (activeRequest !== requestId.current) return;
-      setItems((current) => append ? [...current, ...response.results] : response.results);
+      setItems(response.results);
       setFilteredCount(response.count);
       setPage(targetPage);
       setHasMore(Boolean(response.next));
@@ -124,7 +126,7 @@ export function FinancialLedger({
     setFilteredCount(totalCount);
     setPage(1);
     setHasMore(false);
-    void load(1, false);
+    void load(1);
     return () => {
       requestId.current += 1;
     };
@@ -180,7 +182,7 @@ export function FinancialLedger({
         {error && (
           <div role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
             <p>{error}</p>
-            <button type="button" onClick={() => void load(items.length === 0 ? 1 : page + 1, items.length > 0)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
+            <button type="button" disabled={loading} onClick={() => void load(requestedPage.current)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
           </div>
         )}
         {loading && items.length === 0 && <p aria-live="polite" className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading money provisions…</p>}
@@ -209,11 +211,11 @@ export function FinancialLedger({
             ))}
           </ol>
         )}
-        {hasMore && !error && (
-          <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-4 cursor-pointer border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50 dark:border-green-700 dark:text-green-300">
-            {loading ? "Loading money provisions…" : "Show 25 more money provisions"}
-          </button>
-        )}
+        {filteredCount > 0 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
+          <button type="button" disabled={loading || page <= 1} onClick={() => void load(page - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
+          <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}{loading ? " · Loading…" : ""}</span>
+          <button type="button" disabled={loading || !hasMore} onClick={() => void load(page + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
+        </nav>}
       </div>
     </section>
   );

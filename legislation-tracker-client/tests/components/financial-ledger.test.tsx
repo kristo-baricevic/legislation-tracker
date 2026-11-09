@@ -38,6 +38,23 @@ function item(id: string, financial_action: LegalNlpFinancialItem["financial_act
 describe("FinancialLedger", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("replaces pages and retries the failed previous page rather than advancing", async () => {
+    const user = userEvent.setup();
+    const first = { count: 26, next: "page-2", previous: null, results: [item("first", "appropriation", "increase")] };
+    vi.mocked(getFinancialItems).mockResolvedValueOnce(first)
+      .mockResolvedValueOnce({ count: 26, next: null, previous: "page-1", results: [item("last", "authorization", "increase")] })
+      .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(first);
+    render(<FinancialLedger contractId={12} totalCount={26} />);
+    await screen.findByText("appropriation provision first");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("authorization provision last")).toBeVisible();
+    expect(screen.queryByText("appropriation provision first")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Prev" }));
+    await user.click(await screen.findByRole("button", { name: "Retry money provisions" }));
+    expect(await screen.findByText("appropriation provision first")).toBeVisible();
+    expect(getFinancialItems).toHaveBeenLastCalledWith(12, { page: 1, pageSize: 25 });
+  });
+
   it("displays fees and exemptions separately from spending", async () => {
     const records = [
       { ...item("financial-1", "fee", "not_applicable"), amount: "495.00", amount_type: "ceiling" as const, display_text: "The application fee must not exceed $495.", purpose: "application processing" },

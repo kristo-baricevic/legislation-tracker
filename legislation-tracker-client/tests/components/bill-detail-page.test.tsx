@@ -54,7 +54,8 @@ describe("BillDetailPage", () => {
     const action = "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of provisions within their respective jurisdictions.";
     vi.mocked(getBill).mockResolvedValue({ ...value, status: action });
     render(<BillDetailPage />);
-    expect(await screen.findByText("In committee")).toBeVisible();
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
+    expect(screen.getAllByText("In committee").some(node => !node.closest("[hidden]"))).toBe(true);
     expect(screen.getByText("Latest action")).toBeVisible();
     expect(screen.getByText(action)).toBeVisible();
   });
@@ -67,6 +68,7 @@ describe("BillDetailPage", () => {
       })),
     });
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
     expect(await screen.findByText("Bill text: The Secretary shall publish annual reports.")).toBeVisible();
     expect(screen.getByRole("link", { name: "Read summary source text" })).toHaveAttribute("href", "/documents/9");
     expect(screen.queryByText(/No generated summary yet/)).not.toBeInTheDocument();
@@ -195,13 +197,15 @@ describe("BillDetailPage", () => {
   it("keeps a public bill readable while showing an unauthenticated tracking prompt", async () => {
     const user = userEvent.setup();
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
-    expect(await screen.findByRole("heading", { name: "HR 10 (119)" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "HR 10 · 119th Congress" })).toBeVisible();
     expect(screen.getByText("A public bill")).toBeVisible();
     expect(screen.getByRole("link", { name: "Log in to track this bill" })).toHaveAttribute(
       "href",
       "/login",
     );
+    await userEvent.click(screen.getByRole("tab", { name: "Versions" }));
     expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute(
       "href",
       "http://localhost:8000/api/documents/9/download/",
@@ -212,6 +216,7 @@ describe("BillDetailPage", () => {
     );
     expect(screen.queryByRole("heading", { name: "Contract history" })).not.toBeInTheDocument();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Votes & sponsor" }));
     expect(screen.getByRole("heading", { name: "Voting record" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "View voting record" }));
@@ -239,8 +244,10 @@ describe("BillDetailPage", () => {
     });
 
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     expect(screen.queryByText("Newest")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Versions" }));
     expect(await screen.findByRole("button", { name: "Compare versions" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Compare analysis" })).not.toBeInTheDocument();
     expect(compareBillContracts).not.toHaveBeenCalled();
@@ -261,8 +268,9 @@ describe("BillDetailPage", () => {
       title: "A public bill",
     });
     const { rerender } = render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
-    await screen.findByRole("heading", { name: "HR 10 (119)" });
+    await screen.findByRole("heading", { name: "HR 10 · 119th Congress" });
     expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
 
     vi.mocked(getBill).mockResolvedValueOnce(nextBill);
@@ -271,10 +279,12 @@ describe("BillDetailPage", () => {
     routeState.id = "11";
     rerender(<BillDetailPage />);
 
-    expect(await screen.findByRole("heading", { name: "HR 11 (119)" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "HR 11 · 119th Congress" })).toBeVisible();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
     expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "What changes" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "Votes & sponsor" }));
     expect(screen.getByText("Loading vote history…")).toBeVisible();
     expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1, view: "summary" });
     expect(getVotes).toHaveBeenLastCalledWith(11, { page: 1 });
@@ -301,6 +311,7 @@ describe("BillDetailPage", () => {
     });
 
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     expect(await screen.findByText(/house session unknown roll call 17/)).toBeVisible();
   });
@@ -308,6 +319,7 @@ describe("BillDetailPage", () => {
   it("shows a retryable error and clears stale positions when vote detail loading fails", async () => {
     const user = userEvent.setup();
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     const viewPositions = await screen.findByRole("button", {
       name: "View voting record",
@@ -393,6 +405,7 @@ describe("BillDetailPage", () => {
       .mockReturnValueOnce(firstRequest)
       .mockReturnValueOnce(secondRequest);
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     const buttons = await screen.findAllByRole("button", {
       name: "View voting record",
@@ -450,6 +463,7 @@ describe("BillDetailPage", () => {
         ],
       });
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     await user.click(
       await screen.findByRole("button", { name: "View voting record" }),
@@ -539,6 +553,7 @@ describe("BillDetailPage", () => {
       });
 
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     expect(screen.queryByText("Newest contract revision")).not.toBeInTheDocument();
     expect(screen.queryByText("Older contract revision")).not.toBeInTheDocument();
@@ -594,6 +609,7 @@ describe("BillDetailPage", () => {
       });
 
     render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
 
     expect(await screen.findByText(/roll call 17: Passed/)).toBeVisible();
     await user.click(

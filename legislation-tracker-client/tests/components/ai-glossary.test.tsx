@@ -32,7 +32,7 @@ describe("private AI glossary", () => {
   it("uses matching definitions without replacing the original legal definition", () => {
     render(<AiGlossaryProvider><Publish /></AiGlossaryProvider>);
     expect(screen.getByText("A private, source-linked explanation.")).toBeInTheDocument();
-    expect(screen.getByText("View legal definition")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View legal definition" })).toBeInTheDocument();
   });
   it.each([{ stale: true }, { contractId: 11 }])("rejects stale or mismatched analysis %j", props => {
     render(<AiGlossaryProvider><Publish {...props} /></AiGlossaryProvider>);

@@ -91,12 +91,14 @@ describe("unified reader", () => {
   it("enhances in place, retains unmatched money, and exposes original and source", async () => {
     render(<AiGlossaryProvider><Content /></AiGlossaryProvider>);
     expect(screen.getByText("Protects workers from harassment.")).toBeVisible();
-    expect(screen.getByText("Original summary.")).not.toBeVisible();
+    expect(screen.queryByText("Original summary.")).not.toBeInTheDocument();
     expect(screen.getByText("Employers face a fine of up to $1,000.")).toBeVisible();
     expect(screen.getByText("Authorizes such sums as necessary.")).toBeVisible();
-    await userEvent.click(screen.getAllByText("View original")[1]);
-    expect(screen.getByText("A fine of $1,000 applies.")).toBeVisible();
+    await userEvent.click(screen.getAllByRole("button", { name: "Source 1" })[0]);
     expect(screen.getAllByRole("link", { name: "Read bill text" })[0]).toHaveAttribute("href", expect.stringContaining("/documents/4"));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: "Original" }));
+    expect(screen.getByText("A fine of $1,000 applies.")).toBeVisible();
     act(() => { const scope = beginSessionTransition(); endSessionTransition(null, scope); });
     expect(screen.queryByText("Protects workers from harassment.")).not.toBeInTheDocument();
     expect(screen.getByText("Original summary.")).toBeVisible();
@@ -122,9 +124,9 @@ describe("unified reader", () => {
     }
     render(<AiGlossaryProvider><Ledger /></AiGlossaryProvider>);
     expect(await screen.findByText("Employers face a fine of up to $1,000.")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Show 25 more money provisions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("A separate original financial provision.")).toBeVisible();
-    expect(screen.getByText("Employers face a fine of up to $1,000.")).toBeVisible();
+    expect(screen.queryByText("Employers face a fine of up to $1,000.")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Apply money filters" }));
     expect(await screen.findByText("A separate original financial provision.")).toBeVisible();
   });

@@ -128,8 +128,8 @@ describe("BillBrief", () => {
     expect(screen.getByText("Term 12", { exact: true })).toBeVisible();
     expect(screen.getByRole("button", {name: "Key terms (12)"})).toBeVisible();
     expect(screen.getAllByText("Its stated definition.")[0]).toBeVisible();
-    expect(screen.getAllByText("Its stated definition")[0]).not.toBeVisible();
-    await user.click(screen.getAllByText("View legal definition")[0]);
+    expect(screen.queryByText("Its stated definition", { exact: true })).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "View legal definition" })[0]);
     expect(screen.getAllByText("Its stated definition")[0]).toBeVisible();
   });
 
@@ -179,7 +179,7 @@ describe("BillBrief", () => {
     const noSummary = { ...bill, summary_preview: null, summary_has_more: false, summary_source: null };
     const { rerender } = render(<BillBrief bill={noSummary} contractSummary={contract} onShowAllFinancial={() => undefined} />);
     expect(screen.getByText("Creates a rural hospital grant program.")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Topics" })).toBeVisible();
+    expect(screen.getByLabelText("Topics")).toBeVisible();
     expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/bills?topic_id=1");
     expect(screen.queryByText(/health-care programs, coverage, funding, or administration/i)).not.toBeInTheDocument();
     expect(screen.queryByText("No official CRS summary is available yet.")).not.toBeInTheDocument();
@@ -230,15 +230,15 @@ describe("BillBrief", () => {
     render(<BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={() => undefined} />);
     expect(await screen.findByText("Requires action 6.")).toBeVisible();
     expect(screen.queryByText("Requires action 7.")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next provisions" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the bill breakdown");
     expect(screen.getByText("Requires action 1.")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Retry bill provisions" }));
     expect(await screen.findByText("Requires action 12.")).toBeVisible();
     expect(screen.queryByText("Requires action 1.")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next provisions" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("Requires action 13.")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Next provisions" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     await waitFor(() => expect(getReaderItems).toHaveBeenLastCalledWith(12, { page: 3, pageSize: 6 }));
   });
 
@@ -331,7 +331,7 @@ describe("BillBrief", () => {
 
     await user.click(screen.getByRole("button", { name: "View 1 linked term" }));
     expect(await screen.findByText("A hospital in a rural area.")).toBeVisible();
-    await user.click(screen.getByText("View legal definition"));
+    await user.click(screen.getByRole("button", { name: "View legal definition" }));
     expect(screen.getByText("a hospital in a rural area")).toBeVisible();
     expect(getDefinitionItems).toHaveBeenCalledWith(12, {
       page: 1,
