@@ -26,6 +26,8 @@ import { AiGlossaryProvider } from "./ai-glossary-context";
 import BillChangeExperience from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
 import LegislatorName from "../../components/LegislatorName";
+import { ReaderTabsProvider, ReaderTabBar, ReaderTabPanel } from "./reader-tabs";
+import { isLegalNlpV21ContractSummary } from "@/lib/contracts";
 
 function BillDetailInner({ routeId }: { routeId: string }) {
   const id = parseInt(routeId, 10);
@@ -201,7 +203,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
-        <div className="w-full">
+        <div className="mx-auto w-full max-w-6xl">
           <p className="text-slate-600 dark:text-green-500">Loading...</p>
         </div>
       </div>
@@ -238,9 +240,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         <div className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
-              {bill.bill_number} ({bill.session})
+              {bill.bill_number} · {bill.jurisdiction === "federal" ? "Congress" : "Session"} {bill.session}
             </h1>
-            {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-slate-800 dark:text-green-200">{bill.title}</p>}
+            {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-2xl font-semibold text-slate-800 dark:text-green-200">{bill.title}</p>}
+            <p className="mt-2 text-sm text-slate-600 dark:text-green-500">{stageFor(bill.status)?.label ?? bill.status}</p>
           </div>
           <div className="shrink-0">
             {hasAccount ? (
@@ -272,6 +275,25 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
         </div>
 
+
+
+        <div id="bill-ai-controls" className="mb-5" />
+        {bill.latest_contract ? (
+          <ContractSection contract={bill.latest_contract} bill={bill} />
+        ) : (
+          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
+            <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
+              What this bill does
+            </h2>
+            <p>
+              {bill.summary_preview || summaryDocument?.reader_summary || "We have not retrieved enough source text to summarize this bill yet."}
+            </p>
+            {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
+          </section>
+        )}
+
+        {(!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)) && <><ReaderTabBar /><ReaderTabPanel tab="changes"><p className="mb-6">Detailed changes are not available for this analysis.</p></ReaderTabPanel><ReaderTabPanel tab="money"><p className="mb-6">A separate financial breakdown is not available for this version. Check the analysis and full bill text.</p></ReaderTabPanel><ReaderTabPanel tab="terms"><p className="mb-6">A separate glossary is not available for this version.</p></ReaderTabPanel></>}
+        <ReaderTabPanel tab="votes">
         <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="text-sm text-slate-600 dark:text-green-500">Jurisdiction</dt>
@@ -300,22 +322,6 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             <dd className="mt-1 leading-6">{bill.status}</dd>
           </div>}
         </dl>
-
-        <div id="bill-ai-controls" className="mb-5" />
-        {bill.latest_contract ? (
-          <ContractSection contract={bill.latest_contract} bill={bill} />
-        ) : (
-          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
-            <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
-              What this bill does
-            </h2>
-            <p>
-              {bill.summary_preview || summaryDocument?.reader_summary || "We have not retrieved enough source text to summarize this bill yet."}
-            </p>
-            {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
-          </section>
-        )}
-
         {voteHistoryLoading && (
           <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
             {votes ? "Refreshing vote history…" : "Loading vote history…"}
@@ -358,6 +364,8 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </section>
         )}
 
+        </ReaderTabPanel>
+        <ReaderTabPanel tab="versions">
         <BillChangeExperience
           billId={bill.id}
           contracts={comparisonContracts ?? []}
@@ -429,6 +437,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             </ul>
           </div>
         )}
+        </ReaderTabPanel>
         <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
       </div>
     </div>
@@ -438,5 +447,5 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 export default function BillDetailPage() {
   const params = useParams();
   const routeId = params?.id as string;
-  return <AiGlossaryProvider key={routeId}><BillDetailInner routeId={routeId} /></AiGlossaryProvider>;
+  return <AiGlossaryProvider key={routeId}><ReaderTabsProvider><BillDetailInner routeId={routeId} /></ReaderTabsProvider></AiGlossaryProvider>;
 }

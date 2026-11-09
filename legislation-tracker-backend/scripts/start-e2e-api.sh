@@ -2,6 +2,7 @@
 set -euo pipefail
 
 E2E_API_HOST="127.0.0.1"
+E2E_VENV="${E2E_VENV:-.venv}"
 E2E_API_PORT="${E2E_API_PORT:-18000}"
 E2E_CLIENT_ORIGIN="${E2E_CLIENT_ORIGIN:-http://127.0.0.1:13100}"
 E2E_CELERY_BROKER_DIR="$(mktemp -d /private/tmp/legislation-tracker-e2e-broker.XXXXXX)"
@@ -22,15 +23,15 @@ export CSRF_TRUSTED_ORIGINS="$E2E_CLIENT_ORIGIN"
 export E2E_CELERY_BROKER_DIR
 export LLM_CREDENTIAL_ENCRYPTION_KEYS="e2e:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
 
-.venv/bin/python manage.py migrate --noinput
+"$E2E_VENV/bin/python" manage.py migrate --noinput
 if [[ "$E2E_DATABASE_URL" != sqlite:* ]]; then
   # The PostgreSQL service is intentionally persistent between local runs; the
   # browser fixture is not. Reset only this explicitly isolated E2E database.
-  .venv/bin/python manage.py flush --noinput
+  "$E2E_VENV/bin/python" manage.py flush --noinput
 fi
-.venv/bin/python scripts/seed-e2e-legislative-intelligence.py
+"$E2E_VENV/bin/python" scripts/seed-e2e-legislative-intelligence.py
 
-.venv/bin/celery -A config worker --loglevel=warning --pool=solo --concurrency=1 \
+"$E2E_VENV/bin/celery" -A config worker --loglevel=warning --pool=solo --concurrency=1 \
   --without-gossip --without-mingle --without-heartbeat &
 E2E_WORKER_PID=$!
 
@@ -41,4 +42,4 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-.venv/bin/python manage.py runserver "$E2E_API_HOST:$E2E_API_PORT" --noreload
+"$E2E_VENV/bin/python" manage.py runserver "$E2E_API_HOST:$E2E_API_PORT" --noreload

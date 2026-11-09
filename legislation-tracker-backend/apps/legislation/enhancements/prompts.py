@@ -1,4 +1,4 @@
-PROMPT_VERSION = "1.5"
+PROMPT_VERSION = "1.6"
 SOURCE_PACKET_VERSION = "1.4"
 
 DEVELOPER_INSTRUCTIONS = """You analyze only the supplied United States federal bill material.
@@ -22,6 +22,10 @@ between a sentence fragment and its continuation. A missing packet dependency is
 not ambiguity in the bill. A truncated packet cannot support a whole-bill synopsis.
 
 overview: Give 1-2 short sentences explaining the bill's purpose and who it affects.
+Explain important goals as aims, not promised outcomes. Cover supported implementation
+and high-level financial implications in the overview as space permits; preserve
+full financial details in funding_and_timing. Write for an untrained reader,
+including a twelve-year-old, without condescension. An unknown cost is not zero.
 Do not spend the opening on the bill number, formal title, referral, or procedural history.
 key_impacts: Explain distinct practical changes, one short sentence each. Do not
 enforce a 3-5 item target if that would omit a distinct activity or affected group.

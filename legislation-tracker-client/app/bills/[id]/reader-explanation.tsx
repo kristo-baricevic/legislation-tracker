@@ -4,6 +4,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import type { EnhancementCitedSource, ReaderExplanationItem } from "@/lib/api";
 import { compatibleReader, resolveReaderExplanation, type ReaderIdentity } from "@/lib/reader-enhancements";
 import { useAiGlossary } from "./ai-glossary-context";
+import { SourcePopover } from "./source-popover";
 
 const Identity = createContext<ReaderIdentity | null>(null);
 export const ReaderIdentityProvider = Identity.Provider;
@@ -14,28 +15,21 @@ export function useReaderExplanation(kind: ReaderExplanationItem["kind"], itemId
 }
 
 function Evidence({ sources, documentId }: { sources: EnhancementCitedSource[]; documentId: number }) {
-  return <details className="mt-2 text-sm">
-    <summary className="cursor-pointer text-blue-900 underline dark:text-green-400">Sources</summary>
-    {sources.map((source, index) => <div key={index} className="mt-2 border-l-2 border-slate-300 pl-3">
+  return <span>
+    {sources.map((source, index) => <SourcePopover key={index} number={index + 1}>
       <blockquote className="whitespace-pre-wrap text-slate-700 dark:text-green-300">{source.quoted_text}</blockquote>
       <a className="underline" href={`/documents/${documentId}${source.start_char != null && source.end_char != null ? `?start=${source.start_char}&end=${source.end_char}` : ""}`}>Read bill text</a>
-    </div>)}
-  </details>;
+    </SourcePopover>)}
+  </span>;
 }
 
-export function ReaderExplanation({ kind, itemId, original, fallback = original }: {
-  kind: ReaderExplanationItem["kind"]; itemId: string; original: string; fallback?: string;
+export function ReaderExplanation({ kind, itemId, original, fallback = original, citation }: {
+  kind: ReaderExplanationItem["kind"]; itemId: string; original: string; fallback?: string; citation?: ReactNode;
 }) {
   const item = useReaderExplanation(kind, itemId, original);
-  if (!item) return <p className="leading-7 text-slate-900 dark:text-green-100">{fallback}</p>;
+  if (!item) return <p className="leading-7 text-slate-900 dark:text-green-100">{fallback}{citation}</p>;
   return <div>
-    <p className="leading-7 text-slate-900 dark:text-green-100">{item.text}</p>
-    <span className="text-xs text-slate-500 dark:text-green-500">AI-enhanced</span>
-    <details className="mt-2 text-sm">
-      <summary className="cursor-pointer text-blue-900 underline dark:text-green-400">View original</summary>
-      <p className="mt-2">{fallback}</p>
-    </details>
-    <Evidence sources={item.cited_sources} documentId={item.document_id} />
+    <p className="leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence sources={item.cited_sources} documentId={item.document_id} /></p>
   </div>;
 }
 
@@ -45,16 +39,13 @@ export function ReaderSummary({ children }: { children: ReactNode }) {
   const legacy = useLegacyReader();
   const result = compatibleReader(enhancement, identity);
   if (legacy?.overview.length && identity?.documentId != null) return <div className="mt-4 space-y-3">
-    {legacy.overview.map((item, index) => <div key={index}><p className="w-full text-base leading-7">{item.text}</p><Evidence sources={item.cited_sources} documentId={identity.documentId!} /></div>)}
+    {legacy.overview.map((item, index) => <p key={index} className="w-full text-base leading-7">{item.text}<Evidence sources={item.cited_sources} documentId={identity.documentId!} /></p>)}
   </div>;
   if (!result?.summary.length || result.summary.some(item => !item.cited_sources.length)) return <>{children}</>;
   return <div className="mt-4">
     {result.summary.map((item, index) => <div key={index}>
-      <p className="w-full text-base leading-7 text-slate-900 dark:text-green-100">{item.text}</p>
-      <Evidence sources={item.cited_sources} documentId={result.identity.document_id} />
+      <p className="w-full text-base leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence sources={item.cited_sources} documentId={result.identity.document_id} /></p>
     </div>)}
-    <span className="text-xs text-slate-500 dark:text-green-500">AI-enhanced</span>
-    <details className="mt-2 text-sm"><summary className="cursor-pointer underline">View original</summary>{children}</details>
   </div>;
 }
 

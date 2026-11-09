@@ -9,6 +9,7 @@ import {
   type ContractEvidenceParams,
 } from "@/lib/api";
 import type { LegalNlpEvidenceItem } from "@/lib/contracts";
+import { SourcePopover } from "./source-popover";
 
 interface SourceEvidenceProps {
   contractId: number;
@@ -18,6 +19,7 @@ interface SourceEvidenceProps {
   textUrl?: string | null;
   downloadUrl?: string | null;
   label?: string;
+  number?: number;
 }
 
 function documentUrl(path: string): string {
@@ -34,7 +36,6 @@ function evidenceIdentity(props: SourceEvidenceProps): string {
 }
 
 export function SourceEvidence(props: SourceEvidenceProps) {
-  const [open, setOpen] = useState(false);
   const [chunks, setChunks] = useState<LegalNlpEvidenceItem[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -45,7 +46,6 @@ export function SourceEvidence(props: SourceEvidenceProps) {
 
   useEffect(() => {
     requestId.current += 1;
-    setOpen(false);
     setChunks([]);
     setPage(1);
     setHasMore(false);
@@ -88,25 +88,9 @@ export function SourceEvidence(props: SourceEvidenceProps) {
     }
   }
 
-  function toggle() {
-    const nextOpen = !open;
-    setOpen(nextOpen);
-    if (nextOpen && chunks.length === 0 && !loading) void load(1);
-  }
-
   return (
-    <div className="mt-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={toggle}
-        className="cursor-pointer text-sm font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 hover:text-blue-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:text-green-400 dark:decoration-green-800 dark:hover:text-green-300"
-      >
-        {props.label ?? "Read bill text"}
-      </button>
-
-      {open && (
-        <div className="mt-3 border-l-2 border-slate-300 pl-4 dark:border-green-800">
+    <SourcePopover key={identity} number={props.number} label={props.label ?? "Read bill text"} onOpen={() => { if (!chunks.length && !loading) void load(1); }}>
+        <div>
           {loading && chunks.length === 0 && (
             <p aria-live="polite" className="text-sm text-slate-600 dark:text-green-600">
               Loading source text…
@@ -132,6 +116,7 @@ export function SourceEvidence(props: SourceEvidenceProps) {
               {chunks.map((chunk) => chunk.quoted_text).join("")}
             </blockquote>
           )}
+          {!loading && !error && chunks.length === 0 && <p>No source passage is available. Read the full document below.</p>}
           {hasMore && !error && (
             <button
               type="button"
@@ -157,7 +142,6 @@ export function SourceEvidence(props: SourceEvidenceProps) {
             </div>
           )}
         </div>
-      )}
-    </div>
+    </SourcePopover>
   );
 }

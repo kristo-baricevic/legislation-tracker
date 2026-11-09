@@ -51,11 +51,15 @@ test("a user saves a key and completes a durable enhancement through the live AP
   );
 
   const response = await request.get(
-    `${API_BASE}/api/bills/?bill_number=${encodeURIComponent(sourceFirst ? "HR SOURCE E2E" : "HR E2E")}`,
+    `${API_BASE}/api/bills/?bill_number=${encodeURIComponent("HR SOURCE E2E")}`,
   );
   expect(response.status()).toBe(200);
-  const body = (await response.json()) as { results: Array<{ id: number }> };
-  const billId = body.results[0].id;
+  const body = (await response.json()) as { results: Array<{ id: number; bill_number: string }> };
+  // This fixture has no reader contract: the fake provider exercises legacy or
+  // source-first output, not the separate schema-1.4 reader adapter.
+  const bill = body.results.find(item => item.bill_number === "HR SOURCE E2E");
+  expect(bill).toBeDefined();
+  const billId = bill!.id;
 
   const sessionResponse = await request.post(`${API_BASE}/api/auth/session/`, {
     headers: { "X-CSRFToken": csrfToken! },
@@ -71,7 +75,8 @@ test("a user saves a key and completes a durable enhancement through the live AP
   if (sourceFirst) await expect(confirmation).toContainText(/Up to \d+ calls/);
   await page.getByRole("button", { name: "Confirm and enhance" }).click();
 
-  await expect(page.getByRole("status")).toContainText(/pending|running/);
+  await expect(page.getByRole("status").filter({ hasText: /confirmed request/ })).toContainText(/pending|running/);
+  await page.getByText("View saved analysis", { exact: true }).click();
   if (sourceFirst) {
     await expect(page.getByText("The Secretary must award $100 in grants to rural hospitals.", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
     await page.getByText("Source text", { exact: true }).first().click();
@@ -83,6 +88,7 @@ test("a user saves a key and completes a durable enhancement through the live AP
     expect(persisted.published_attempt_id).toBeTruthy();
     expect(persisted.result.quality.semantic_review_status).toBe("unreviewed");
     await page.reload();
+    await page.getByText("View saved analysis", { exact: true }).click();
     await expect(page.getByText("The Secretary must award $100 in grants to rural hospitals.", { exact: true }).first()).toBeVisible();
     return;
   }

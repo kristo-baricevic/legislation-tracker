@@ -52,18 +52,12 @@ test("a visitor can read the complete bounded bill brief and official summary", 
   );
   await expect(page.getByText(/preserves the official roll-call record/)).toBeVisible();
 
-  const breakdown = page.getByText("Browse detailed provisions").locator("..");
   await expect(page.getByText("Requires the Secretary to complete reader provision 26.")).toHaveCount(0);
-  await clickForResponse(
-    page,
-    page.getByText("Browse detailed provisions"),
-    "reader-items/?page=1",
-  );
-  await clickForResponse(page, page.getByRole("button", { name: "Show 25 more", exact: true }), "reader-items/?page=2");
-  await expect(page.getByText("Requires the Secretary to complete reader provision 50.")).toBeVisible();
-  await clickForResponse(page, page.getByRole("button", { name: "Show 25 more", exact: true }), "reader-items/?page=3");
+  for (let targetPage = 2; targetPage <= 11; targetPage++) {
+    await clickForResponse(page, page.getByRole("button", { name: "Next", exact: true }), `reader-items/?page=${targetPage}&`);
+  }
   await expect(page.getByText("Requires the Secretary to complete reader provision 61.")).toBeVisible();
-  await expect(breakdown).toContainText("These provisions are shown in bill order.");
+  await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
 });
 
 test("a visitor sees a clear fallback when CRS has not published a summary", async ({
@@ -82,6 +76,7 @@ test("a visitor can audit every financial item without a computed total", async 
 }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
+  await page.getByRole("tab", { name: "Money", exact: true }).click();
   const money = page.getByRole("region", { name: "Money in this bill" });
   await expect(money.getByText("25 of 101 provisions shown")).toBeVisible();
   for (const action of ["Appropriation", "Authorization", "Transfer", "Rescission"]) {
@@ -92,12 +87,12 @@ test("a visitor can audit every financial item without a computed total", async 
   for (let targetPage = 2; targetPage <= 5; targetPage += 1) {
     await clickForResponse(
       page,
-      money.getByRole("button", { name: "Show 25 more money provisions" }),
+      money.getByRole("button", { name: "Next", exact: true }),
       `financial-items/?page=${targetPage}`,
     );
   }
-  await expect(money.locator("ol > li")).toHaveCount(101);
-  await expect(money.getByText("101 of 101 provisions shown")).toBeVisible();
+  await expect(money.locator("ol > li")).toHaveCount(1);
+  await expect(money.getByText("1 of 101 provisions shown")).toBeVisible();
   const finalItem = money.locator("ol > li").last();
   await expect(finalItem.getByText("$101,000", { exact: true })).toBeVisible();
   await expect(finalItem.getByText("Rural health program 101", { exact: true })).toBeVisible();
@@ -119,11 +114,6 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
 }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
-  await clickForResponse(
-    page,
-    page.getByText("Browse detailed provisions"),
-    "reader-items/?page=1",
-  );
 
   const firstLine = page
     .getByText("Requires the Secretary to publish a complete rural health implementation plan.")
@@ -133,9 +123,10 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
     firstLine.getByRole("button", { name: "Read bill text" }),
     "evidence/?page=1&page_size=25&line_item_id=line-0",
   );
-  await expect(firstLine.getByTestId("source-evidence-text")).toContainText("LONG EVIDENCE START|");
-  await expect(firstLine.getByTestId("source-evidence-text")).toContainText("|LONG EVIDENCE END");
+  await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("LONG EVIDENCE START|");
+  await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("|LONG EVIDENCE END");
 
+  await page.keyboard.press("Escape");
   const secondLine = page
     .getByText("Requires the Secretary to complete reader provision 2.")
     .locator("xpath=ancestor::li[1]");
@@ -144,16 +135,16 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
     secondLine.getByRole("button", { name: "Read bill text" }),
     "evidence/?page=1&page_size=25&line_item_id=line-1",
   );
-  await expect(secondLine.getByTestId("source-evidence-text")).toContainText("Evidence page chunk 25.");
+  await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("Evidence page chunk 25.");
   await clickForResponse(
     page,
-    secondLine.getByRole("button", { name: "Load more source text" }),
+    page.getByRole("dialog").getByRole("button", { name: "Load more source text" }),
     "evidence/?page=2&page_size=25&line_item_id=line-1",
   );
-  await expect(secondLine.getByTestId("source-evidence-text")).toContainText("Evidence page chunk 26.");
+  await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("Evidence page chunk 26.");
 
-  const textLink = firstLine.getByRole("link", { name: "Read full text" });
-  const downloadLink = firstLine.getByRole("link", { name: "Download document" });
+  const textLink = page.getByRole("dialog").getByRole("link", { name: "Read full text" });
+  const downloadLink = page.getByRole("dialog").getByRole("link", { name: "Download document" });
   await expect(textLink).toHaveAttribute("href", /^\/documents\/\d+$/);
   await expect(downloadLink).toHaveAttribute("href", /\/api\/documents\/\d+\/download\/$/);
   expect((await request.get(await downloadLink.getAttribute("href") as string)).status()).toBe(200);
@@ -167,12 +158,7 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
 test("a visitor can inspect linked and paginated key terms", async ({ page, request }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
-  await clickForResponse(
-    page,
-    page.getByText("Browse detailed provisions"),
-    "reader-items/?page=1",
-  );
-  await expect(page.getByText("1 linked term")).toBeVisible();
+  await expect(page.getByRole("button", { name: "View 1 linked term" })).toBeVisible();
 
   const contractId = ((await (await request.get(
     `${API_BASE}/api/bills/${id}/?contract_view=summary`,
@@ -186,15 +172,10 @@ test("a visitor can inspect linked and paginated key terms", async ({ page, requ
 
   await clickForResponse(
     page,
-    page.getByRole("button", { name: "Key terms (27)" }),
+    page.getByRole("tab", { name: "Key terms", exact: true }),
     "definition-items/?page=1&page_size=25",
   );
   await expect(page.getByText("reader term 2", { exact: true })).toBeVisible();
-  await clickForResponse(
-    page,
-    page.getByRole("button", { name: "Show 25 more key terms" }),
-    "definition-items/?page=2&page_size=25",
-  );
   await expect(page.getByText("reader term 27", { exact: true })).toBeVisible();
 });
 
@@ -204,6 +185,7 @@ test("a visitor can select, search, and filter the complete voting record", asyn
 }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
+  await page.getByRole("tab", { name: "Votes & sponsor" }).click();
   const voting = page.getByRole("region", { name: "Voting record" });
   await expect(voting.getByRole("button", { name: "View voting record" })).toHaveCount(2);
   const rollOne = voting.locator("li", { hasText: "roll call 1" });

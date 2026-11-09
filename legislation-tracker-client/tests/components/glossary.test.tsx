@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import definitions from "../fixtures/hr7583-definitions.json";
 import { buildGlossary } from "../../lib/glossary";
@@ -7,12 +8,13 @@ import { GlossaryEntryView } from "../../app/bills/[id]/bill-brief";
 
 describe("H.R. 7583 glossary", () => {
   const source = definitions as LegalNlpDefinitionItem[];
-  it.each(["includes", "excludes"] as const)("preserves %s in explanations and legal text", definition_type => {
+  it.each(["includes", "excludes"] as const)("preserves %s in explanations and legal text", async definition_type => {
     const item = { ...source[0], term: "eligible worker", definition_type, definition: "an independent contractor" };
     const entry = buildGlossary([item])[0];
     const prefix = definition_type === "includes" ? "Includes:" : "Excludes:";
     expect(entry.explanation).toBe(`${prefix} an independent contractor.`);
     render(<GlossaryEntryView entry={entry} contractId={10} document={null} />);
+    await userEvent.click(screen.getByRole("button", { name: "View legal definition" }));
     expect(screen.getByText(`${prefix} an independent contractor`)).toBeInTheDocument();
   });
   it("does not apply affirmative rewrites to exclusions or merge legal operators", () => {

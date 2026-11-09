@@ -9,6 +9,7 @@ import pytest
 from apps.legislation.enhancements.providers.base import ProviderError
 from apps.legislation.enhancements.providers.openai import OpenAIEnhancementProvider
 from apps.legislation.enhancements.schema import OUTPUT_SCHEMA
+from apps.legislation.enhancements.reader_citations import READER_PROMPT_VERSION
 
 from .test_enhancement_schema import _valid_output
 
@@ -26,14 +27,17 @@ class FakeResponses:
         return self.result
 
 
-def test_reader_uses_confirmed_per_request_output_budget():
+@pytest.mark.parametrize("prompt_version", ["reader-2", READER_PROMPT_VERSION])
+def test_reader_uses_confirmed_per_request_output_budget(prompt_version):
     response = _completed_response()
     response.output_text = json.dumps({'schema_version': '1.4', 'summary': [], 'explanations': []})
     responses = FakeResponses(result=response)
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
     request.output_schema_version = '1.4'
-    request.prompt_version = 'reader-2'
+    request.prompt_version = prompt_version
+    request.request_envelope['prompt_version'] = prompt_version
+    request.request_envelope['output_schema_version'] = '1.4'
     request.request_envelope['max_output_tokens'] = 20000
     provider.enhance_bill(api_key='test', request=request, timeout_seconds=30)
     assert responses.calls[0]['max_output_tokens'] == 20000
