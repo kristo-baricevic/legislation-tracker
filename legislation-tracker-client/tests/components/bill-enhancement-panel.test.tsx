@@ -537,6 +537,15 @@ describe("BillEnhancementPanel", () => {
     }
   });
 
+  it("shows queued until the worker actually starts the enhancement", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "person@example.com" } });
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
+    vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({ status: "pending", result: null, poll_after_seconds: 30 }));
+    render(<><div id="queue-controls" /><BillEnhancementPanel billId={10} jurisdiction="federal" controlsTargetId="queue-controls" /></>);
+    expect(await screen.findByRole("button", { name: "Queued…" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Enhancing…" })).not.toBeInTheDocument();
+  });
+
   it("leaves Enhancing state when polling returns a failed validation and offers an explicit retry", async () => {
     vi.useFakeTimers();
     try {

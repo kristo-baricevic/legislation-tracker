@@ -94,17 +94,20 @@ API: **http://127.0.0.1:8000/** — admin at `/admin/`, auth under `/api/auth/`.
 
 ### 4. Celery (ingestion, scheduled polls, file downloads, contracts)
 
-Background work needs **Redis** and **two extra terminals** (same venv, same `legislation-tracker-backend` directory):
+Background work needs **Redis**, three workers and a scheduler, each in its own terminal (same venv, same `legislation-tracker-backend` directory):
 
-**Terminal A — worker**
+**Workers — one command per terminal**
 
 ```bash
 cd legislation-tracker-backend
 source .venv/bin/activate
-celery -A config worker -l info
+celery -A config worker -Q celery -l info
+# Separate terminals: user-requested work must not wait behind ingestion.
+celery -A config worker -Q enhancements --concurrency=1 --prefetch-multiplier=1 -n enhancements@%h -l info
+celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -n research@%h -l info
 ```
 
-**Terminal B — beat (scheduler)**
+**Separate terminal — beat (scheduler)**
 
 ```bash
 cd legislation-tracker-backend

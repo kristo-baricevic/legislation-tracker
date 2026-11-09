@@ -504,12 +504,6 @@ function BillsCatalog() {
           <h1 className="tracker-heading text-ink">
             Ingested Bills
           </h1>
-          <Link
-            href="/"
-            className="cursor-pointer text-ink underline hover:text-ink"
-          >
-            ← Dashboard
-          </Link>
         </div>
 
         <div className="mb-6 tracker-panel">

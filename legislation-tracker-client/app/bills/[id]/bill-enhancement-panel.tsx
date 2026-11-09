@@ -486,7 +486,7 @@ export default function BillEnhancementPanel({
           disabled={preparing || Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
           onClick={() => void prepareEnhancement()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
+          {preparing ? "Preparing AI estimate…" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
         </button>}
         {failed && liveFailure && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
           <p>AI enhancement did not complete. Your original analysis is unchanged.</p>

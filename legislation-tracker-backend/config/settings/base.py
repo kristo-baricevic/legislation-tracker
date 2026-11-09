@@ -102,6 +102,11 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+CELERY_TASK_ROUTES = {
+    "apps.legislation.tasks.dispatch_bill_enhancement_attempts": {"queue": "enhancements"},
+    "apps.legislation.tasks.run_bill_enhancement_attempt": {"queue": "enhancements"},
+    "apps.legislation.tasks.recover_stale_bill_enhancement_attempts": {"queue": "enhancements"},
+}
 # A worker process can disappear after receiving a downstream document, vote,
 # or contract task. Acknowledge only after completion and return that delivery
 # to the broker when the child process is lost so the pipeline is at-least-once.

@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 
 import requests
 from celery import shared_task
+from .dispatch_task import CoalescedDispatcherTask
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, When
@@ -1057,7 +1058,7 @@ def _tracked_refresh_bucket(now):
     )
 
 
-@shared_task
+@shared_task(base=CoalescedDispatcherTask)
 def dispatch_ingestion_work(batch_size=100):
     """Lease bounded, priority-ordered durable work and submit it to Celery."""
     now = timezone.now()
