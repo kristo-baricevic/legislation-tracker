@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import BillDeck from "@/app/components/BillDeck";
-import { authGet, authPost, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
+import { authGet, authPost, getBill, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
 vi.mock("@/app/components/RecommendationsPreview", () => ({ default: () => <h2>Recommendation section</h2> }));
 
 vi.mock("@/lib/api", async importOriginal => ({
@@ -13,7 +13,22 @@ vi.mock("@/lib/api", async importOriginal => ({
   getAllCurrentRepresentatives: vi.fn().mockResolvedValue([]),
   authGet: vi.fn(),
   authPost: vi.fn(),
+  getBill: vi.fn().mockRejectedValue(new Error("offline")),
 }));
+
+it("opens dashboard bill titles in a modal whose title links to the full page", async () => {
+  vi.mocked(getBill).mockRejectedValue(new Error("offline"));
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value() { this.setAttribute("open", ""); } });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value() { this.removeAttribute("open"); } });
+  const bill = { id: 463, title: "Student Success Act", bill_number: "HR 9300", session: 119, jurisdiction: "federal", status: "introduced", sponsor_id: null, sponsor_name: null, sponsor_bioguide_id: null, introduced_at: null, last_action_at: null, topics: [] };
+  vi.mocked(getMyTracking).mockResolvedValue({ bills: [{ id: 1, bill, created_at: "2026-01-01" }], topics: [], legislators: [], is_staff: false });
+  render(<BillDeck />);
+  await userEvent.click(await screen.findByRole("button", { name: bill.title }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByRole("link", { name: bill.title })).toHaveAttribute("href", "/bills/463");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close bill details" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
