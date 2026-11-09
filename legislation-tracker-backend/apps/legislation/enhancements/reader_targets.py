@@ -65,8 +65,10 @@ def build_reader_targets(document):
     except ExpectedExtractionRejection:
         sections = []
     targets = []
+    from ..extraction.reader_language import projection
     for category, kind in (("line_items", "line_item"), ("financial_items", "financial_item"), ("definitions", "definition")):
-        for item in payload.get(category, []):
+        inventory = projection(contract)["groups"] if category == "line_items" else payload.get(category, [])
+        for item in inventory:
             evidence = [span for path in item.get("evidence_paths", [])
                         for span in spans.get(path, [])]
             valid = evidence and all(

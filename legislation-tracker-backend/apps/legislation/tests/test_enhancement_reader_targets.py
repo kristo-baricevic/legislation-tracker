@@ -79,7 +79,7 @@ def test_targets_use_complete_enclosing_section_and_exact_relationships():
     span = SimpleNamespace(field_path="line_items[0].display_text", start_char=start,
                            end_char=end, quoted_text=text[start:end])
     contract = SimpleNamespace(pk=7, document_id=4, contract_hash="contract-a",
-        schema_version="2.1-legal-nlp", contract_json={"schema_version": "2.1-legal-nlp",
+        schema_version="2.1-legal-nlp", reader_copy={}, contract_json={"schema_version": "2.1-legal-nlp",
             "line_items": [item], "financial_items": [], "definitions": [],
             "timeline_items": [{"id": "deadline", "display_text": "Within one year."}]},
         evidence_spans=SimpleNamespace(all=lambda: [span]))
@@ -108,7 +108,7 @@ def test_hr7583_context_keeps_policy_threshold_and_wage_formula_with_effective_d
         items.append({"id": str(i), "display_text": quote, "evidence_paths": [path]})
         spans.append(SimpleNamespace(field_path=path, start_char=start, end_char=start + len(quote), quoted_text=quote))
     contract = SimpleNamespace(pk=7896, document_id=6346, contract_hash="frozen-excerpts",
-        schema_version="2.1-legal-nlp", contract_json={"schema_version": "2.1-legal-nlp",
+        schema_version="2.1-legal-nlp", reader_copy={}, contract_json={"schema_version": "2.1-legal-nlp",
             "line_items": items, "financial_items": [], "definitions": []},
         evidence_spans=SimpleNamespace(all=lambda: spans))
     document = SimpleNamespace(pk=6346, extracted_text=text, raw_text="", bill=SimpleNamespace(latest_contract=contract))

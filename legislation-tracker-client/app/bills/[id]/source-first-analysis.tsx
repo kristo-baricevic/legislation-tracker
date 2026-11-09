@@ -22,7 +22,7 @@ export default function SourceFirstAnalysis({ result }: { result: SourceFirstRes
   return <div className="mt-5 max-w-3xl space-y-6 leading-relaxed">
     {result.coverage.unresolved_unit_ids.length > 0 && <p className="border-l-2 border-amber-400 pl-3 text-sm">Partial AI analysis: {explained} of {result.provisions.length} provisions explained. Unresolved provisions remain available below.</p>}
     {!!result.coverage.context_limited_unit_ids?.length && <p className="border-l-2 border-amber-400 pl-3 text-sm">This analysis explains the supplied bill text. It does not explain the referenced outside law or establish its full legal effect.</p>}
-    {result.synopsis.status !== "unavailable" && <section><h3 className="font-semibold">What this bill does</h3><p className="mt-2">{result.synopsis.text}</p></section>}
+    {result.synopsis.status !== "unavailable" && <section><h3 className="font-semibold">Summary</h3><p className="mt-2">{result.synopsis.text}</p></section>}
     {result.synopsis.status === "unavailable" && <p className="text-sm">An AI overview could not be verified. The bill’s non-AI brief remains available above.</p>}
     <p className="text-sm">{moneyCount} financial items shown below. Amounts are not added together because they may overlap or serve different purposes.</p>
     {onlyHarmThresholds && <p className="text-sm">These financial items are harm thresholds, not funding allocations. They are not an estimate of the bill’s cost.</p>}

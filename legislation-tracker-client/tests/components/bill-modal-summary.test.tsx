@@ -19,70 +19,74 @@ beforeEach(() => {
 });
 
 function show(value: unknown) {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(value))));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("/votes/") ? { count: 0, next: null, previous: null, results: [] } : url.includes("reader-items") ? { count: 0, next: null, previous: null, results: [], section_supplements: [] } : value)));
   render(<ProfileProvider><BillDeckModal bill={bill} onClose={() => {}} /></ProfileProvider>);
 }
 
 function selectedSection() {
-  return within(screen.getByRole("heading", { name: /^Selected version:/ }).closest("section")!);
+  return within(screen.getByRole("heading", { name: "Summary" }).closest("section")!);
 }
 
 it("shows the generated synopsis and source document when the official summary is absent", async () => {
   show(detail);
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
+  await screen.findByRole("heading", { name: "Summary" });
   expect(selectedSection().getByText(synopsis)).toBeInTheDocument();
-  expect(selectedSection().getByRole("link", { name: "Read this document" })).toHaveAttribute("href", "/documents/511");
+  expect(selectedSection().getByRole("link", { name: "Introduced in House" })).toHaveAttribute("href", "/documents/511");
   expect(screen.queryByText(/specifically linked.*unavailable/)).not.toBeInTheDocument();
   expect(screen.queryByText("No bill summary is available yet.")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: bill.title })).toHaveAttribute("href", "/bills/463");
+  expect(screen.getByRole("img", { name: /Step 1 of/ })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "What this bill does" })).toBeVisible();
+  expect(screen.queryByRole("navigation", { name: "Bill version history" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Open full bill page" })).not.toBeInTheDocument();
 });
 
 it("does not assign the current document synopsis to a different selected version", async () => {
   show({ ...detail, documents: [document, { ...document, id: 512, version_label: "Reported in House", is_active_version: false, source_order: null }] });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
-  await userEvent.setup().click(screen.getByRole("button", { name: "Reported in House" }));
-  expect(selectedSection().queryByText(synopsis)).not.toBeInTheDocument();
-  expect(selectedSection().getByText(/No summary is available for this version/)).toBeInTheDocument();
+  await screen.findByRole("heading", { name: "Summary" });
+  expect(screen.queryByRole("button", { name: "Reported in House" })).not.toBeInTheDocument();
+  expect(selectedSection().getByText(synopsis)).toBeVisible();
 });
 
 it("does not refer to a summary above when neither summary source exists", async () => {
   show({ ...detail, latest_contract: null });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
-  expect(selectedSection().getByText(/No summary is available for this version/)).toBeInTheDocument();
+  await screen.findByRole("heading", { name: "Summary" });
+  expect(selectedSection().getByText("No bill summary is available yet.")).toBeInTheDocument();
   expect(screen.queryByText(/bill summary above/)).not.toBeInTheDocument();
 });
 
 it("keeps the official bill summary while using the matching document synopsis", async () => {
   show({ ...detail, summary: "Official overview from an earlier version.", summary_source: "crs", summary_version_code: "earlier" });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
+  await screen.findByRole("heading", { name: "Summary" });
   expect(screen.getByText("Official overview from an earlier version.")).toBeInTheDocument();
-  expect(selectedSection().getByText(synopsis)).toBeInTheDocument();
+  expect(selectedSection().queryByText(synopsis)).not.toBeInTheDocument();
 });
 
 it("uses a source-based document summary when no extracted purpose exists", async () => {
   show({ ...detail, latest_contract: null, documents: [{ ...document, reader_summary: "This bill would provide funding for Department of Homeland Security for fiscal year 2026." }] });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
+  await screen.findByRole("heading", { name: "Summary" });
   expect(selectedSection().getByText(/would provide funding for Department/)).toBeVisible();
   expect(screen.queryByText("No bill summary is available yet.")).not.toBeInTheDocument();
 });
 
 it("prefers the document synopsis over a fragmentary legacy extraction", async () => {
   show({ ...detail, latest_contract: { ...detail.latest_contract, contract_json: { plain_summary: "SEC." } }, documents: [{ ...document, reader_summary: "This bill would fund homeland security programs in fiscal year 2026." }] });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
+  await screen.findByRole("heading", { name: "Summary" });
   expect(selectedSection().getByText(/would fund homeland security/)).toBeVisible();
   expect(screen.queryByText("SEC.")).not.toBeInTheDocument();
 });
 
 it("keeps a supported synopsis ahead of an extractive fallback", async () => {
   show({ ...detail, documents: [{ ...document, reader_summary: "Bill text: The Secretary shall establish a program." }] });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
+  await screen.findByRole("heading", { name: "Summary" });
   expect(selectedSection().getByText(synopsis)).toBeVisible();
 });
 
 it("shows a source-linked fallback even before analysis is generated", async () => {
   const fallback = "Bill text: The Secretary shall publish annual reports.";
   show({ ...detail, latest_contract: null, documents: [{ ...document, reader_summary: fallback }] });
-  await screen.findByRole("heading", { name: "Selected version: Introduced in House" });
+  await screen.findByRole("heading", { name: "Summary" });
   expect(selectedSection().getByText(fallback)).toBeVisible();
-  expect(selectedSection().getByRole("link", { name: "Read this document" })).toHaveAttribute("href", "/documents/511");
+  expect(selectedSection().getByRole("link", { name: "Introduced in House" })).toHaveAttribute("href", "/documents/511");
   expect(screen.queryByText("No bill summary is available yet.")).not.toBeInTheDocument();
 });

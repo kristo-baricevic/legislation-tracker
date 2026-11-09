@@ -1,0 +1,2 @@
+.trigger { display: inline-flex; align-items: center; max-width: 100%; }
+.tooltip { position: fixed; z-index: 10000; width: max-content; max-width: min(280px, calc(100vw - 24px)); padding: .65rem .85rem; border: 1px solid var(--control-line, #475569); border-radius: 8px; background: var(--ink, #182536); color: var(--paper, #fff); font-family: inherit; font-size: .8rem; font-weight: 450; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; box-shadow: 0 5px 18px rgb(0 0 0 / 18%); }

@@ -10,9 +10,43 @@ from apps.congress.models import (
     Vote,
     VoteRecord,
 )
-from apps.legislation.models import Bill
+from apps.legislation.models import Bill, BillTopic, Topic
 
 pytestmark = pytest.mark.django_db
+
+
+def test_vote_topic_totals_cover_all_records_without_topic_join_inflation():
+    representative = member()
+    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 1", title="Schools")
+    education, _ = Topic.objects.get_or_create(name="Education", slug="education")
+    budget, _ = Topic.objects.get_or_create(name="Budget", slug="budget")
+    for topic in (education, budget):
+        BillTopic.objects.create(bill=bill, topic=topic)
+    for roll in range(1, 27):
+        row = record(representative, roll)
+        row.vote.bill = bill
+        row.vote.save(update_fields=["bill"])
+    record(representative, 27, position="no")
+    record(representative, 28, position="not_voting")
+    record(member("I000101"), 29)
+    record(representative, 30, chamber="senate", position="no")
+    prior = record(representative, 31)
+    prior.vote.congress = 118
+    prior.vote.save(update_fields=["congress"])
+    response = APIClient().get(f"/api/representatives/{representative.id}/vote-summary/?congress=119&chamber=house")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["totals"] == {"yes": 26, "no": 1, "present": 0, "not_voting": 1, "other": 0}
+    assert {row["name"]: (row["yes"], row["no"]) for row in data["topics"]} == {"Education": (26, 0), "Budget": (26, 0), "No topic assigned": (0, 1)}
+    assert APIClient().get(f"/api/representatives/{representative.id}/vote-summary/?congress=119&page=1").status_code == 400
+
+
+def test_empty_vote_summary_does_not_infer_votes():
+    representative = member()
+    response = APIClient().get(f"/api/representatives/{representative.id}/vote-summary/?congress=119")
+    assert response.status_code == 200
+    assert response.json()["topics"] == []
+    assert not any(response.json()["totals"].values())
 
 
 def member(bioguide="I000100", **fields):

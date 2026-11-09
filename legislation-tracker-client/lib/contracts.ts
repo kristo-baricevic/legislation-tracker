@@ -190,6 +190,7 @@ export interface LegalNlpTimelinePreview {
 }
 
 export interface LegalNlpLineItem {
+  reader_text?: string;
   id: string;
   source_id: string;
   section_id: string;
@@ -264,6 +265,7 @@ export interface LegalNlpReaderOrientation {
 }
 
 interface ContractSummaryBase {
+  reader_brief?: { summary: string; money: string; source_id: string | null } | null;
   id: number;
   schema_version: string;
   contract_hash: string;
@@ -465,6 +467,7 @@ export function isLegalNlpLineItem(value: unknown): value is LegalNlpLineItem {
   if (!isRecord(value)) return false;
   if (
     !hasExactKeys(value, [
+      ...("reader_text" in value ? ["reader_text"] : []),
       "id",
       "source_id",
       "section_id",
@@ -480,7 +483,7 @@ export function isLegalNlpLineItem(value: unknown): value is LegalNlpLineItem {
       "timeline_preview",
       "definition_count",
     ]) ||
-    !isIdentifier(value.id) ||
+    !(isIdentifier(value.id) || (typeof value.id === "string" && /^brief-[a-f0-9]{20}$/.test(value.id))) ||
     !isIdentifier(value.source_id) ||
     !isIdentifier(value.section_id) ||
     !isSectionPath(value.section_path) ||
@@ -495,6 +498,7 @@ export function isLegalNlpLineItem(value: unknown): value is LegalNlpLineItem {
       "timeline",
     ].includes(value.kind as string) ||
     !isNonEmptyString(value.display_text) ||
+    ("reader_text" in value && !isNonEmptyString(value.reader_text)) ||
     !isNullableNonEmptyString(value.actor) ||
     !isNullableNonEmptyString(value.action) ||
     !isNullableNonEmptyString(value.effect) ||
@@ -758,7 +762,8 @@ const CONTRACT_SUMMARY_KEYS = [
 
 function hasContractSummaryBase(value: Record<string, unknown>): boolean {
   return (
-    hasExactKeys(value, CONTRACT_SUMMARY_KEYS) &&
+    hasExactKeys(value, value.reader_brief === undefined ? CONTRACT_SUMMARY_KEYS : [...CONTRACT_SUMMARY_KEYS, "reader_brief"]) &&
+    (value.reader_brief === undefined || value.reader_brief === null || (isRecord(value.reader_brief) && typeof value.reader_brief.summary === "string" && typeof value.reader_brief.money === "string" && isStringOrNull(value.reader_brief.source_id))) &&
     isPositiveInteger(value.id) &&
     isNonEmptyString(value.schema_version) &&
     isNonEmptyString(value.contract_hash) &&

@@ -40,7 +40,7 @@ type Readiness = {
     reason?: string | null;
 };
 export default function IngestionTelemetryLive() {
-    const [expanded, setExpanded] = React.useState(true);
+    const [expanded, setExpanded] = React.useState(false);
     const contentId = React.useId();
     const [scope, setScope] = React.useState("119");
     const [telemetry, setTelemetry] = React.useState<Telemetry | null>(null);

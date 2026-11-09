@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import BillDeck from "@/app/components/BillDeck";
-import { authGet, authPost, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
+import { authGet, authPost, getBill, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
 vi.mock("@/app/components/RecommendationsPreview", () => ({ default: () => <h2>Recommendation section</h2> }));
 
 vi.mock("@/lib/api", async importOriginal => ({
@@ -13,7 +13,22 @@ vi.mock("@/lib/api", async importOriginal => ({
   getAllCurrentRepresentatives: vi.fn().mockResolvedValue([]),
   authGet: vi.fn(),
   authPost: vi.fn(),
+  getBill: vi.fn().mockRejectedValue(new Error("offline")),
 }));
+
+it("opens dashboard bill titles in a modal whose title links to the full page", async () => {
+  vi.mocked(getBill).mockRejectedValue(new Error("offline"));
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value() { this.setAttribute("open", ""); } });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value() { this.removeAttribute("open"); } });
+  const bill = { id: 463, title: "Student Success Act", bill_number: "HR 9300", session: 119, jurisdiction: "federal", status: "introduced", sponsor_id: null, sponsor_name: null, sponsor_bioguide_id: null, introduced_at: null, last_action_at: null, topics: [] };
+  vi.mocked(getMyTracking).mockResolvedValue({ bills: [{ id: 1, bill, created_at: "2026-01-01" }], topics: [], legislators: [], is_staff: false });
+  render(<BillDeck />);
+  await userEvent.click(await screen.findByRole("button", { name: bill.title }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByRole("link", { name: bill.title })).toHaveAttribute("href", "/bills/463");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close bill details" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,7 +64,8 @@ it("keeps the live telemetry panel visible without exposing samples or starting 
   await screen.findByRole("heading", { name: "Your collection starts with a bill" });
   expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Legislation ingestion" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Start discovery and ingestion" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByLabelText("Show ingestion telemetry preview")).not.toBeInTheDocument();
   expect(authGet).not.toHaveBeenCalled();
   expect(authPost).not.toHaveBeenCalled();
@@ -62,6 +78,7 @@ it("shows real telemetry to staff on refresh without requiring sample mode", asy
     : { observed_at: "2026-10-15T12:00:00Z", last_discovery_completed_at: null, last_successful_work_item_at: null, counts_by_kind_and_status: [{ kind: "bill", status: "pending", count: 17 }], stale_leases: 0, discovery_run: null, recent_work_states: [] });
   const user = userEvent.setup();
   render(<BillDeck />);
+  await user.click(await screen.findByRole("button", { name: "Expand legislation ingestion" }));
   await user.click(await screen.findByRole("button", { name: "Refresh telemetry" }));
   expect(screen.getByRole("heading", { name: "Queued" }).parentElement).toHaveTextContent("17");
   expect(screen.queryByLabelText("Show ingestion telemetry preview")).not.toBeInTheDocument();

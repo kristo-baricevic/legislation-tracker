@@ -1,4 +1,5 @@
-.dashboard { margin-top: 3rem; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); padding: clamp(1rem, 3vw, 2rem); }
+.dashboard { --paper: #293b34; --ink: #f0f4ef; --muted: #c0cec4; --line: #52665a; --wash: #34483e; --control-line: #91a89a; --focus: #c1ddcb; color: var(--ink); margin-top: 3rem; border-top: 1px solid var(--line); border-radius: 10px; background: #22332c; padding: clamp(1rem, 3vw, 2rem); }
+:global(.dark) .dashboard { --paper: #1d2d25; --wash: #26392e; background: #111e17; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
 .header h2 { font-size: 1.65rem; font-weight: 650; letter-spacing: -.03em; }
 .header p, .pipelineHeader p { color: var(--muted); font-size: .88rem; margin-top: .3rem; }
@@ -29,7 +30,7 @@
 .tableScroll thead { background: var(--wash); color: var(--muted); font-size: .75rem; }
 .tableScroll tbody th { font-weight: 500; }
 .tableScroll tr:last-child > * { border-bottom: 0; }
-.failureCount { color: #a12c36; font-weight: 700; }
+.failureCount { color: #ffb1b8; font-weight: 700; }
 :global(.dark) .failureCount { color: #ffb1b8; }
 .empty { background: var(--wash); border-radius: 8px; padding: 1.5rem; font-size: .87rem; color: var(--muted); }
 .details { border-top: 1px solid var(--line); margin-top: 1.25rem; padding-top: 1rem; }

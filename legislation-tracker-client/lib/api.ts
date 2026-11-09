@@ -109,6 +109,7 @@ export interface AuthSession {
   authenticated: true;
   user: {
     email: string;
+    is_superuser?: boolean;
   };
 }
 
@@ -541,6 +542,7 @@ export async function getContracts(
 }
 
 interface ReaderRequestOptions {
+  grouped?: boolean;
   page?: number;
   pageSize?: number;
   signal?: AbortSignal;
@@ -573,6 +575,7 @@ export function getReaderItems(
 ): Promise<LegalNlpReaderItemsPage> {
   const search = new URLSearchParams();
   setReaderPagination(search, params);
+  if (params?.grouped) search.set("grouped", "true");
   return guardedPublicGet(
     readerPath(contractId, "reader-items", search),
     isLegalNlpReaderItemsPage,
@@ -934,6 +937,7 @@ export interface RepresentativesPage {
 }
 
 export async function getRepresentatives(params?: {
+  party?: string;
   search?: string;
   state?: string;
   chamber?: string;
@@ -943,6 +947,7 @@ export async function getRepresentatives(params?: {
 }): Promise<RepresentativesPage> {
   const sp = new URLSearchParams();
   if (params?.state) sp.set("state", params.state);
+  if (params?.party) sp.set("party", params.party);
   if (params?.search?.trim()) sp.set("search", params.search.trim());
   if (params?.chamber) sp.set("chamber", params.chamber);
   if (params?.is_current != null) sp.set("is_current", String(params.is_current));
@@ -1030,8 +1035,8 @@ export interface BillCosponsorItem {
   withdrawn_at: string | null;
 }
 
-export function getRepresentative(id: number): Promise<RepresentativeItem> {
-  return publicGet<RepresentativeItem>(`/api/representatives/${id}/`);
+export function getRepresentative(id: number, signal?: AbortSignal): Promise<RepresentativeItem> {
+  return publicGet<RepresentativeItem>(`/api/representatives/${id}/`, { signal });
 }
 
 export function getRepresentativeInsights(
@@ -1099,6 +1104,10 @@ export interface TrackedLegislatorItem {
     portrait: { url: string; source: { url: string; attribution: string; license: string } } | null;
     latest_bill: { id: number; title: string; bill_number: string; introduced_at: string; session: number } | null;
   };
+}
+
+export function getRepresentativeCard(id: number, signal?: AbortSignal) {
+  return publicGet<NonNullable<TrackedLegislatorItem["card"]>>(`/api/representatives/${id}/card/`, { signal });
 }
 
 export interface TrackingSummary {
@@ -1447,6 +1456,7 @@ export type EnhancementStatus =
   | "outcome_unknown";
 
 export interface BillEnhancement {
+  shared?: boolean;
   id: number;
   bill_id: number;
   status: EnhancementStatus;

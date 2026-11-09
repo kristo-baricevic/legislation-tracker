@@ -7,6 +7,7 @@ class CandidateIdentity(models.Model):
     name = models.CharField(max_length=255)
     office = models.CharField(max_length=1)
     state = models.CharField(max_length=2)
+    reporting_periods = models.JSONField(default=dict)
 
 
 class RepresentativeCandidate(models.Model):
@@ -114,6 +115,27 @@ class FinanceResearchCheckpoint(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["snapshot", "committee", "schedule"], name="finance_checkpoint_schedule_uniq")]
+
+
+class OutsideSpendingScan(models.Model):
+    snapshot = models.ForeignKey(FinanceSnapshot, on_delete=models.CASCADE, related_name="outside_scans")
+    candidate_id = models.CharField(max_length=9)
+    page = models.PositiveIntegerField(default=1)
+    complete = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["snapshot", "candidate_id"], name="outside_scan_candidate_unique")]
+
+
+class OutsideSpendingTotal(models.Model):
+    scan = models.ForeignKey(OutsideSpendingScan, on_delete=models.CASCADE, related_name="totals")
+    spender_id = models.CharField(max_length=9)
+    spender_name = models.CharField(max_length=255)
+    position = models.CharField(max_length=1, choices=[("S", "Supporting"), ("O", "Opposing")])
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["scan", "spender_id", "position"], name="outside_spender_position_unique")]
 
 
 class ConnectionRevision(models.Model):

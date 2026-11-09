@@ -156,6 +156,7 @@ class BillContract(models.Model):
     )
     schema_version = models.CharField(max_length=20, default="1.0")
     contract_json = models.JSONField(default=dict)
+    reader_copy = models.JSONField(default=dict, blank=True)
     contract_hash = models.CharField(max_length=64, db_index=True)
     computed_at = models.DateTimeField(auto_now_add=True)
 
@@ -271,7 +272,7 @@ class EvidenceSpan(models.Model):
 
 
 class BillEnhancement(models.Model):
-    """Private, immutable request identity and its promoted validated result."""
+    """Shared bill analysis with private payer attribution and attempt history."""
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -283,7 +284,9 @@ class BillEnhancement(models.Model):
 
     user = models.ForeignKey(
         "accounts.User",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="bill_enhancements",
     )
     bill = models.ForeignKey(

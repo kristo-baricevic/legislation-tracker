@@ -19,6 +19,8 @@ function mockRequests(response: () => Response | Promise<Response>) {
   vi.stubGlobal("fetch", vi.fn((url, init) => {
     if (String(url).includes("session/current")) return Promise.resolve(Response.json({ authenticated: true, user: { email: "reader@example.com" } }));
     if (String(url).includes("logout")) return Promise.resolve(new Response(null, { status: 204 }));
+    if (String(url).endsWith("/card/")) return Promise.resolve(Response.json({ biography: { text: "Saved representative biography." }, portrait: null, latest_bill: { id: 22, bill_number: "HR 22", title: "Education Act", session: 119, introduced_at: "2026-01-01" } }));
+    if (String(url).endsWith("/api/representatives/410/")) return Promise.resolve(Response.json({ id: 410, name: "Katie Boyd Britt", bioguide_id: "B001319", image_url: "https://www.congress.gov/img/member/b001319_200.jpg" }));
     if (String(url).includes("/tracking/bills/") && init?.method === "POST") return Promise.resolve(Response.json({ id: 1, bill }));
     return Promise.resolve(response());
   }));
@@ -68,10 +70,31 @@ describe("recommendation rows", () => {
     render(<BillRecommendations onOpenBill={open} />);
     fireEvent.click(await screen.findByRole("link", { name: bill.title }));
     expect(open).toHaveBeenCalledWith(bill);
-    expect(screen.getByLabelText("Why recommended")).toHaveTextContent("Tagged Health, a topic you follow");
+    expect(screen.getByLabelText("Why recommended")).toHaveTextContent("Health");
+    expect(screen.getByLabelText("Why recommended")).not.toHaveTextContent("a topic you follow");
     expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/bills?topic_id=1");
     expect(screen.getByRole("region", { name: "Recommended bills" })).toHaveAttribute("tabindex", "0");
     expect(screen.getByText("Not recorded")).toBeVisible();
+  });
+  it("uses topic pills and a single representative badge with relationship tooltips", async () => {
+    mockRequests(() => Response.json({ ...page, results: [{ ...page.results[0], reasons: [
+      { kind: "followed_topic", topic_id: 1, name: "Health" },
+      { kind: "followed_bill_topic", topic_id: 1, name: "Health", seed_bill_id: 2, seed_bill_number: "HR 2", seed_session: 119 },
+      { kind: "followed_representative", representative_id: 410, name: "Sen. Britt, Katie Boyd [R-AL]", relation: "cosponsor" },
+    ] }] }));
+    render(<BillRecommendations onOpenBill={() => true} />);
+    const badge = await screen.findByRole("link", { name: "Katie Boyd Britt" });
+    expect(badge).toHaveAttribute("href", "/representatives/410");
+    fireEvent.focus(badge);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Cosponsored this bill · You follow this representative");
+    fireEvent.blur(badge);
+    expect(badge).not.toHaveTextContent("Katie Boyd Britt");
+    expect(await screen.findByRole("img", { name: "Katie Boyd Britt" })).toHaveAttribute("src", "https://www.congress.gov/img/member/b001319_200.jpg");
+    expect(screen.getAllByRole("link", { name: "Health" })).toHaveLength(1);
+    fireEvent.focus(screen.getByRole("link", { name: "Health" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("HR 2");
+    fireEvent.blur(screen.getByRole("link", { name: "Health" }));
+    expect(screen.queryByText(/Actively cosponsored by/)).not.toBeInTheDocument();
   });
   it("shows cold-start, recoverable error and retry states", async () => {
     let fails = true;
@@ -119,14 +142,19 @@ describe("recommendation rows", () => {
     expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument();
   });
   it("renders representative reasons through the profile adapter", async () => {
-    mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Member One", bioguide_id: "A000001", score: .4, reasons: [{ kind: "followed_topic", topic_id: 1, name: "Health", shared_topics: [], channel_evidence: {} }, { kind: "followed_representative_activity", representative_id: 2, name: "Other member", shared_topics: [{ id: 1, name: "Health", slug: "health" }, { id: 2, name: "Energy", slug: "energy" }], channel_evidence: {} }], topic_activity_evidence: activity }], activity_as_of: activity.captured_at }));
+    mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Member One", bioguide_id: "A000001", score: .4, reasons: [{ kind: "followed_topic", topic_id: 1, name: "Health", shared_topics: [], channel_evidence: {} }, { kind: "followed_representative_activity", representative_id: 2, name: "Other member", shared_topics: [{ id: 1, name: "Health", slug: "health" }, { id: 2, name: "Energy", slug: "energy" }], channel_evidence: {} }], topic_activity_evidence: { ...activity, channels: { ...activity.channels, sponsor: { ...channel, topics: [ { topic: { id: 1, name: "Health", slug: "health" }, grouped: { topic_observation_count: 9 } }, { topic: { id: 2, name: "Energy", slug: "energy" }, grouped: { topic_observation_count: 5 } } ] } } } }], activity_as_of: activity.captured_at }));
     render(<RepresentativeRecommendations renderName={member => <button>{member.name} profile</button>} />);
     expect(await screen.findByRole("button", { name: "Member One profile" })).toBeVisible();
     expect(screen.getAllByRole("link", { name: "Health" })).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/bills?topic_id=1");
     expect(screen.getByRole("link", { name: "Energy" })).toHaveAttribute("href", "/bills?topic_id=2");
     expect(screen.getByRole("link", { name: "Other member" })).toHaveAttribute("href", "/representatives/2");
-    expect(screen.getByText("Similar to")).toBeVisible();
+    expect(screen.queryByText("Similar to")).not.toBeInTheDocument();
+    expect(await screen.findByText("Saved representative biography.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "HR 22" })).toHaveAttribute("href", "/bills/22");
+    fireEvent.focus(screen.getByRole("link", { name: "Other member" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Similar to this representative in recorded topic activity");
+    fireEvent.blur(screen.getByRole("link", { name: "Other member" }));
     expect(screen.getByRole("img", { name: "Member One" })).toHaveAttribute("src", "https://www.congress.gov/img/member/a000001_200.jpg");
     expect(screen.queryByText(/Recorded sponsorship or active cosponsorship in/)).not.toBeInTheDocument();
   });

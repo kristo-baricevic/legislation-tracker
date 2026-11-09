@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from apps.congress.models import Representative
 from apps.ingestion.models import IngestionWorkItem
-from .models import ResearchRun, RepresentativeBiography, ResearchSourcePolicy
+from .models import ResearchRun, RepresentativeBiography, RepresentativePortrait, ResearchSourcePolicy
 from .biographies import save_official_biography, save_excerpt, save_official_excerpt
 from .portraits import save_portrait, prepare_portrait
 from .sources import fetch_official_biography, SourceUnavailable
@@ -45,6 +45,24 @@ def process_research(work):
         return process_finance(work)
     run = ResearchRun.objects.select_related("representative").get(pk=work.payload_json["run_id"])
     rep = run.representative
+    # Historical periods reuse the representative's saved profile. A deliberate
+    # refresh still visits the sources; finance remains scoped to the period.
+    if not work.payload_json.get("refresh", True) and getattr(settings, "FEC_API_KEY", ""):
+        bio = RepresentativeBiography.objects.filter(representative=rep).order_by("-id").first()
+        photo = RepresentativePortrait.objects.filter(representative=rep).order_by("-id").first()
+        if bio and photo:
+            with transaction.atomic():
+                current = fenced_work(work)
+                if current is None:
+                    return {"status": "superseded"}
+                Representative.objects.select_for_update().get(pk=rep.pk)
+                if not is_latest_run(run):
+                    return {"status": "superseded"}
+                run.sections = {"biography": {"status": "succeeded", "revision": bio.pk}, "photo": {"status": "succeeded"}, "finance": {"status": "running"}}
+                run.status = "running"
+                run.save(update_fields=["sections", "status"])
+                continue_work(current, "finance")
+            return {"status": "running"}
     depiction = {"imageUrl": rep.image_url}
     excerpt = None
     source_error = ""

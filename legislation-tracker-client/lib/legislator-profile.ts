@@ -35,6 +35,19 @@ export type RecordedVote = {
 };
 export type LivePage<T> = { count: number; next: string | null; previous: string | null; results: T[] };
 export type VotesPage = LivePage<RecordedVote> & { coverage: VoteCoverage; page_read_at: string; pagination_mode: "live_pages" };
+export type VoteSummary = {
+  scope: { congress: number; chamber: string | null };
+  totals: Record<RecordedVote["position"], number>;
+  topics: { id: number | null; name: string; yes: number; no: number }[];
+};
+
+export async function getVoteSummary(scope: ProfileScope, signal?: AbortSignal): Promise<VoteSummary> {
+  const value = await publicGet<unknown>(`/api/representatives/${scope.representativeId}/vote-summary/?${scopeQuery(scope)}`, { signal });
+  if (!object(value) || !object(value.scope) || value.scope.congress !== scope.congress || value.scope.chamber !== (scope.chamber ?? null) || !object(value.totals)) throw new Error("Invalid vote summary");
+  const totals = value.totals;
+  if (!["yes", "no", "present", "not_voting", "other"].every(key => integer(totals[key])) || !Array.isArray(value.topics) || !value.topics.every(row => object(row) && nullableId(row.id) && text(row.name) && integer(row.yes) && integer(row.no) && row.yes <= Number(totals.yes) && row.no <= Number(totals.no))) throw new Error("Invalid vote summary");
+  return value as VoteSummary;
+}
 
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): value is ObjectValue => typeof value === "object" && value !== null && !Array.isArray(value);

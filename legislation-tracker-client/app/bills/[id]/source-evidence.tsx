@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 
 import {
@@ -12,6 +12,7 @@ import type { LegalNlpEvidenceItem } from "@/lib/contracts";
 import { SourcePopover } from "./source-popover";
 
 interface SourceEvidenceProps {
+  annotations?: ReactNode;
   contractId: number;
   lineItemId?: string;
   financialItemId?: string;
@@ -90,6 +91,7 @@ export function SourceEvidence(props: SourceEvidenceProps) {
 
   return (
     <SourcePopover key={identity} number={props.number} label={props.label ?? "Read bill text"} onOpen={() => { if (!chunks.length && !loading) void load(1); }}>
+        {props.annotations}
         <div>
           {loading && chunks.length === 0 && (
             <p aria-live="polite" className="text-sm text-slate-600 dark:text-green-600">

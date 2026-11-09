@@ -1,68 +1,62 @@
 "use client";
 
 import Link from "next/link";
+import BillCard from "../../components/BillCard";
+import BillDeckModal from "../../components/BillDeckModal";
+import CardTooltip from "../../components/CardTooltip";
+import { VotingRecord as VoteSummary } from "../../components/LegislatorProfileModal";
+import { getRecordedVotes, safeSourceUrl, type ProfileScope, type VotesPage } from "@/lib/legislator-profile";
+import { getRepresentativeTopicActivity, type RepresentativeTopicActivity } from "@/lib/recommendations";
+import { topRepresentativeTopics } from "@/lib/representative-card";
+import type { Research } from "@/lib/representative-research";
+import deck from "../../components/bill-deck.module.css";
+import styles from "./representative-page.module.css";
 import RepresentativeResearch from "../../components/RepresentativeResearch";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useUrlTab, representativeTabs, representativeTabKey } from "@/lib/use-url-tab";
 
 import {
   getRepresentative,
   getBillFilterOptions,
   getRepresentativeCommittees,
   getRepresentativeCosponsoredBills,
-  getRepresentativeInsights,
   getRepresentativeSponsoredBills,
   type BillCosponsorItem,
   type BillListItem,
   type CommitteeMembershipItem,
-  type RepresentativeInsight,
   type RepresentativeItem,
 } from "@/lib/api";
 
-function percent(value: number | null) {
-  return value === null ? "—" : `${Math.round(value * 100)}%`;
-}
-
 function BillRows({ bills }: { bills: BillListItem[] }) {
-  if (!bills.length) return <p className="text-sm text-slate-600 dark:text-green-600">No bills are recorded for this Congress.</p>;
-  return (
-    <ul className="divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
-      {bills.map((bill) => (
-        <li key={bill.id} className="p-3">
-          <Link className="font-semibold text-blue-900 underline dark:text-green-400" href={`/bills/${bill.id}`}>
-            {bill.bill_number}: {bill.title}
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
+  const [selected, setSelected] = useState<BillListItem | null>(null);
+  if (!bills.length) return <p className={styles.note}>No bills available.</p>;
+  return <><div className={deck.followedRow} role="region" aria-label="Bill cards" tabIndex={0}>{bills.map(bill => <BillCard key={bill.id} bill={bill} onOpen={() => setSelected(bill)} footer={null} />)}</div>{selected && <BillDeckModal bill={selected} onClose={() => setSelected(null)} />}</>;
 }
 
-function InsightCards({ insight }: { insight: RepresentativeInsight }) {
-  return (
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <div className="rounded border border-slate-300 p-3 dark:border-green-900/70">
-        <p className="text-sm text-slate-600 dark:text-green-600">Participation</p>
-        <p className="text-xl font-semibold">{percent(insight.participation_rate)}</p>
-        <p className="text-sm">{insight.participation_numerator} / {insight.participation_denominator} roll calls</p>
-      </div>
-      <div className="rounded border border-slate-300 p-3 dark:border-green-900/70">
-        <p className="text-sm text-slate-600 dark:text-green-600">Recorded positions</p>
-        <p className="text-sm">Yes {insight.position_counts.yes ?? 0} · No {insight.position_counts.no ?? 0}</p>
-        <p className="text-sm">Present {insight.position_counts.present ?? 0} · Not voting {insight.position_counts.not_voting ?? 0}</p>
-      </div>
-      <div className="rounded border border-slate-300 p-3 dark:border-green-900/70">
-        <p className="text-sm text-slate-600 dark:text-green-600">Legislation</p>
-        <p className="text-sm">Sponsored {insight.sponsored_bill_count}</p>
-        <p className="text-sm">Active cosponsored {insight.active_cosponsored_bill_count}</p>
-      </div>
-      <div className="rounded border border-slate-300 p-3 dark:border-green-900/70">
-        <p className="text-sm text-slate-600 dark:text-green-600">Committee roles</p>
-        <p className="text-xl font-semibold">{insight.committee_count}</p>
-        <p className="text-sm">First vote {insight.first_vote_at ? new Date(insight.first_vote_at).toLocaleDateString() : "—"}</p>
-      </div>
-    </section>
-  );
+function FullVotes({ scope }: { scope: ProfileScope }) {
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<VotesPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setError(false);
+    void getRecordedVotes(scope, page, controller.signal).then(value => { if (!controller.signal.aborted) setData(value); }).catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [scope, page, retry]);
+  return <section className={styles.records}><h2>Voting record</h2>
+    {loading && <p role="status">Loading votes…</p>}
+    {error && <p role="alert">Could not load votes. <button onClick={() => setRetry(value => value + 1)}>Retry votes</button></p>}
+    <ul aria-busy={loading}>{data?.results.map(record => <li key={record.id}>
+      <span className={styles.position} data-position={record.position}>{({yes:"Yes",no:"No",present:"Present",not_voting:"Not voting",other:record.raw_position || "Other"})[record.position]}</span>
+      <div>{record.bill ? <Link href={`/bills/${record.bill.id}`}>{record.bill.bill_number} · {record.bill.title}</Link> : <strong>{record.question || "Roll call"}</strong>}{record.bill && record.question && <p>{record.question}</p>}<small>{new Date(record.vote_date).toLocaleDateString("en-US", { timeZone: "UTC" })} · {record.chamber === "senate" ? "Senate" : "House"}</small></div>
+      {safeSourceUrl(record.source_url) && <CardTooltip text={record.source_link_kind === "session_list" ? "Official session vote list" : "Official roll-call record"}><a href={record.source_url!} target="_blank" rel="noreferrer" aria-label="Vote source">↗</a></CardTooltip>}
+    </li>)}</ul>
+    {data && !data.results.length && !loading && <p className={styles.note}>No voting records available.</p>}
+    <nav className={styles.pagination} aria-label="Vote pages"><button disabled={loading || page === 1} onClick={() => setPage(value => value - 1)}>Prev</button><span>Page {page}</span><button disabled={loading || !data?.next} onClick={() => setPage(value => value + 1)}>Next</button></nav>
+  </section>;
 }
 
 function RepresentativeDetailContent() {
@@ -74,8 +68,23 @@ function RepresentativeDetailContent() {
   const [defaultCongress, setDefaultCongress] = useState<number | null>(null);
   const congress = parsedCongress ?? defaultCongress;
   const valid = Number.isSafeInteger(representativeId) && representativeId > 0 && congress !== null && Number.isSafeInteger(congress) && congress > 0;
+  const [research, setResearch] = useState<Research | null>(null);
+  const [activity, setActivity] = useState<RepresentativeTopicActivity | null>(null);
+  const [failedPortrait, setFailedPortrait] = useState("");
+  const [tabKey, setTabKey] = useUrlTab<keyof typeof representativeTabs>(representativeTabs, "bills");
+  const tab = representativeTabs[tabKey];
+  const [opened, setOpened] = useState(["Bills"]);
+  const tabs = ["Bills", "Votes", "Campaign funding", "Committees"];
+  const chooseTab = (name: string) => { setTabKey(representativeTabKey(name)); };
+  useEffect(() => { setOpened(previous => previous.includes(tab) ? previous : [...previous, tab]); }, [tab]);
+  const scope = useMemo<ProfileScope>(() => ({ representativeId, congress: congress ?? 0 }), [representativeId, congress]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setResearch(null); setActivity(null);
+    void getRepresentativeTopicActivity(representativeId, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setActivity(value); }).catch(() => {});
+    return () => controller.abort();
+  }, [representativeId]);
   const [representative, setRepresentative] = useState<RepresentativeItem | null>(null);
-  const [insight, setInsight] = useState<RepresentativeInsight | null>(null);
   const [sponsored, setSponsored] = useState<BillListItem[]>([]);
   const [cosponsored, setCosponsored] = useState<BillCosponsorItem[]>([]);
   const [committees, setCommittees] = useState<CommitteeMembershipItem[]>([]);
@@ -117,15 +126,13 @@ function RepresentativeDetailContent() {
     setError(null);
     Promise.all([
       getRepresentative(representativeId),
-      getRepresentativeInsights(representativeId, congress),
       getRepresentativeSponsoredBills(representativeId, congress, 1),
       getRepresentativeCosponsoredBills(representativeId, congress, 1),
       getRepresentativeCommittees(representativeId, congress, 1),
     ])
-      .then(([person, summary, sponsors, cosponsors, memberships]) => {
+      .then(([person, sponsors, cosponsors, memberships]) => {
         if (cancelled) return;
         setRepresentative(person);
-        setInsight(summary);
         setSponsored(sponsors.results);
         setCosponsored(cosponsors.results);
         setCommittees(memberships.results);
@@ -192,39 +199,37 @@ function RepresentativeDetailContent() {
     [cosponsored],
   );
 
-  return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <Link href={congress === null ? "/representatives" : `/representatives?congress=${congress}`} className="text-blue-900 underline dark:text-green-400">← Representatives</Link>
-        {loading && <p className="text-slate-600 dark:text-green-600">Loading representative evidence…</p>}
-        {error && <div role="alert" className="rounded border border-red-300 p-3 text-red-800 dark:border-red-800 dark:text-red-300">{error} <button type="button" className="underline" onClick={() => setRetry((value) => value + 1)}>Retry</button></div>}
-        {!loading && representative && insight && (
-          <>
-            <header>
-              <h1 className="text-2xl font-semibold">{representative.name}</h1>
-              <p className="mt-1 text-slate-600 dark:text-green-600">{representative.party} · {representative.state}{representative.district ? `-${representative.district}` : ""} · {representative.chamber} · Congress {congress}</p>
-            </header>
-            <InsightCards insight={insight} />
-            <RepresentativeResearch representativeId={representative.id} />
-            <section className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20">
-              <h2 className="text-lg font-semibold">Roll-call coverage</h2>
-              <p className="mt-1 text-sm">{insight.coverage_complete ? "Complete official roll-call coverage." : `Partial coverage — ${insight.coverage_reason ?? "source status is unavailable"}`}</p>
-              <p className="mt-1 text-sm text-slate-600 dark:text-green-600">{insight.ingested_roll_calls} persisted of {insight.discovered_roll_calls} discovered chamber roll calls. Percentages above show raw counts, not a score.</p>
-            </section>
-            <section className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20"><h2 className="mb-3 text-lg font-semibold">Sponsored bills</h2><BillRows bills={sponsored} />{historyHasMore.sponsored && <button type="button" className="mt-3 underline disabled:opacity-50" disabled={historyLoading.sponsored} onClick={() => void loadMoreHistory("sponsored")}>Load more sponsored bills</button>}</div>
-              <div className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20"><h2 className="mb-3 text-lg font-semibold">Cosponsored bills</h2><BillRows bills={activeCosponsoredBills.map((item) => item.bill)} />{cosponsored.some((item) => item.withdrawn_at) && <p className="mt-3 text-sm text-slate-600 dark:text-green-600">Withdrawn cosponsorships are retained in the record.</p>}{historyHasMore.cosponsored && <button type="button" className="mt-3 underline disabled:opacity-50" disabled={historyLoading.cosponsored} onClick={() => void loadMoreHistory("cosponsored")}>Load more cosponsored bills</button>}</div>
-            </section>
-            <section className="rounded-lg border border-slate-400/80 bg-white/80 p-4 dark:border-green-800/80 dark:bg-green-950/20">
-              <h2 className="mb-3 text-lg font-semibold">Committee assignments</h2>
-              {committees.length ? <ul className="divide-y divide-slate-300 dark:divide-green-900/70">{committees.map((membership) => <li key={`${membership.committee.id}-${membership.congress}`} className="py-2"><span className="font-semibold">{membership.committee.name}</span> · {membership.role.replaceAll("_", " ")}{membership.rank ? ` · rank ${membership.rank}` : ""}{!membership.is_current ? " · former" : ""}</li>)}</ul> : <p className="text-sm text-slate-600 dark:text-green-600">No committee assignments are recorded for this Congress.</p>}
-              {historyHasMore.committees && <button type="button" className="mt-3 underline disabled:opacity-50" disabled={historyLoading.committees} onClick={() => void loadMoreHistory("committees")}>Load more committee assignments</button>}
-            </section>
-          </>
-        )}
-      </div>
-    </main>
-  );
+  const name = (representative?.name ?? "").replace(/^(Rep\.|Sen\.)\s*/, "").replace(/\s*\[.*\]$/, "").replace(/^([^,]+),\s*(.+)$/, "$2 $1");
+  const portrait = research?.portrait?.url || representative?.image_url;
+  return <main className={styles.page}>
+    {loading && <p role="status">Loading representative…</p>}
+    {error && <p role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
+    {!loading && representative && <>
+      <header className={styles.header}>
+        <div className={styles.avatar}>{portrait && portrait !== failedPortrait ? <img src={portrait} alt={name} onError={() => setFailedPortrait(portrait)} /> : <span>{name.split(" ").map(part => part[0]).slice(0, 2).join("")}</span>}</div>
+        <div><h1>{name}</h1><div className={styles.badges}><span>{({D:"Democrat",R:"Republican",I:"Independent"} as Record<string,string>)[representative.party] || representative.party}</span><span>{representative.state}{representative.district ? ` · District ${representative.district}` : ""}</span><span>{representative.chamber === "senate" ? "Senate" : "House"}</span></div></div>
+        <RepresentativeResearch representativeId={representative.id} cardName={name} onResearch={setResearch} />
+      </header>
+      {research?.biography && <p className={styles.bio}>{research.biography.text}</p>}
+      <div className={styles.topics}>{topRepresentativeTopics(activity).map(topic => <Link key={topic.id} href={`/bills?topic_id=${topic.id}`}>{topic.name}</Link>)}</div>
+      <div className={styles.tabBar}><div role="tablist" aria-label="Representative information">{tabs.map((name,index) => <button key={name} id={`representative-tab-${index}`} role="tab" aria-selected={tab === name} aria-controls={`representative-panel-${index}`} tabIndex={tab === name ? 0 : -1} onClick={() => chooseTab(name)} onKeyDown={event => {
+        const next = event.key === "ArrowRight" ? (index+1)%tabs.length : event.key === "ArrowLeft" ? (index+tabs.length-1)%tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length-1 : null;
+        if (next !== null) { event.preventDefault(); chooseTab(tabs[next]); document.getElementById(`representative-tab-${next}`)?.focus(); }
+      }}>{name}</button>)}</div><span>Congress {congress}</span></div>
+      {tabs.map((name,index) => (opened.includes(name) || tab === name) && <div key={name} id={`representative-panel-${index}`} role="tabpanel" aria-labelledby={`representative-tab-${index}`} hidden={tab !== name} className={styles.panel}>
+        {name === "Bills" && <><section><h2>Bills introduced</h2><BillRows bills={sponsored} />{historyHasMore.sponsored && <div className={styles.pagination}><button disabled={historyLoading.sponsored} onClick={() => void loadMoreHistory("sponsored")}>Load more sponsored bills</button></div>}</section><section><h2>Bills cosponsored</h2><BillRows bills={activeCosponsoredBills.map(item => item.bill)} />{historyHasMore.cosponsored && <div className={styles.pagination}><button disabled={historyLoading.cosponsored} onClick={() => void loadMoreHistory("cosponsored")}>Load more cosponsored bills</button></div>}</section></>}
+        {name === "Votes" && <><VoteSummary scope={scope} fullPage /><FullVotes scope={scope} /></>}
+        {name === "Campaign funding" && <RepresentativeResearch representativeId={representative.id} financeView />}
+        {name === "Committees" && <section><h2>Committees</h2>{committees.length ? <ul className={styles.committees}>{committees.map(membership => <li key={`${membership.committee.id}-${membership.congress}`}><strong>{membership.committee.name}</strong><span>{membership.role.replaceAll("_", " ")}{!membership.is_current ? " · Former" : ""}</span></li>)}</ul> : <p className={styles.note}>No committee assignments available.</p>}{historyHasMore.committees && <div className={styles.pagination}><button disabled={historyLoading.committees} onClick={() => void loadMoreHistory("committees")}>Load more committees</button></div>}</section>}
+      </div>)}
+    </>}
+  </main>;
+}
+
+function ScopedRepresentativeDetail() {
+  const params = useParams<{ id: string }>();
+  const query = useSearchParams();
+  return <RepresentativeDetailContent key={`${params.id}:${query.get("congress") ?? ""}`} />;
 }
 
 export default function RepresentativeDetailPage() {
@@ -236,7 +241,7 @@ export default function RepresentativeDetailPage() {
         </div>
       }
     >
-      <RepresentativeDetailContent />
+      <ScopedRepresentativeDetail />
     </Suspense>
   );
 }

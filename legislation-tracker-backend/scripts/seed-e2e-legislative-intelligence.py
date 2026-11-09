@@ -138,7 +138,7 @@ def _reader_contract_fixture():
                 "id": f"line-{index}",
                 "source_id": f"requirement-{index}",
                 "section_id": "section-2",
-                "section_path": _section_path(),
+                "section_path": [*_section_path(), {"level": "subsection", "label": f"({index + 1})", "heading": f"Independent requirement {index + 1}"}],
                 "kind": "requirement",
                 "display_text": (
                     "Requires the Secretary to publish a complete rural health implementation plan."

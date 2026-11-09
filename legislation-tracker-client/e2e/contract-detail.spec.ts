@@ -52,11 +52,11 @@ test("a visitor can read the complete bounded bill brief and official summary", 
   );
   await expect(page.getByText(/preserves the official roll-call record/)).toBeVisible();
 
-  await expect(page.getByText("Requires the Secretary to complete reader provision 26.")).toHaveCount(0);
+  await expect(page.getByText("The Secretary must complete reader provision 26.")).toHaveCount(0);
   for (let targetPage = 2; targetPage <= 11; targetPage++) {
     await clickForResponse(page, page.getByRole("button", { name: "Next", exact: true }), `reader-items/?page=${targetPage}&`);
   }
-  await expect(page.getByText("Requires the Secretary to complete reader provision 61.")).toBeVisible();
+  await expect(page.getByText("The Secretary must complete reader provision 61.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
 });
 
@@ -121,25 +121,25 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
   await clickForResponse(
     page,
     firstLine.getByRole("button", { name: "Read bill text" }),
-    "evidence/?page=1&page_size=25&line_item_id=line-0",
+    "evidence/?page=1&page_size=25&line_item_id=brief-",
   );
   await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("LONG EVIDENCE START|");
   await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("|LONG EVIDENCE END");
 
   await page.keyboard.press("Escape");
   const secondLine = page
-    .getByText("Requires the Secretary to complete reader provision 2.")
+    .getByText("The Secretary must complete reader provision 2.")
     .locator("xpath=ancestor::li[1]");
   await clickForResponse(
     page,
     secondLine.getByRole("button", { name: "Read bill text" }),
-    "evidence/?page=1&page_size=25&line_item_id=line-1",
+    "evidence/?page=1&page_size=25&line_item_id=brief-",
   );
   await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("Evidence page chunk 25.");
   await clickForResponse(
     page,
     page.getByRole("dialog").getByRole("button", { name: "Load more source text" }),
-    "evidence/?page=2&page_size=25&line_item_id=line-1",
+    "evidence/?page=2&page_size=25&line_item_id=brief-",
   );
   await expect(page.getByRole("dialog").getByTestId("source-evidence-text")).toContainText("Evidence page chunk 26.");
 
@@ -158,6 +158,7 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
 test("a visitor can inspect linked and paginated key terms", async ({ page, request }) => {
   const id = await billId(request, "HR E2E");
   await page.goto(`/bills/${id}`);
+  await page.getByRole("button", { name: "Read bill text", exact: true }).first().click();
   await expect(page.getByRole("button", { name: "View 1 linked term" })).toBeVisible();
 
   const contractId = ((await (await request.get(

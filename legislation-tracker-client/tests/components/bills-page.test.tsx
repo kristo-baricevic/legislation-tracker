@@ -78,7 +78,7 @@ describe("BillsPage", () => {
     await user.click(screen.getByRole("button", { name: "Unfollow" }));
     expect(await screen.findByRole("button", { name: "Follow" })).toHaveAttribute("aria-pressed", "false");
   });
-  it("shows search results as cards with highlights and full-bill links", async () => {
+  it("shows search cards with clickable titles and no redundant full-bill links", async () => {
     vi.mocked(getBills).mockResolvedValue({ count: 1, next: null, previous: null, results: [{
       id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "Rural health grants",
       status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [],
@@ -86,8 +86,8 @@ describe("BillsPage", () => {
     }] });
     render(<BillsPage />);
     expect(await screen.findByRole("article")).toHaveTextContent("Rural health grants");
-    expect(screen.getByRole("button", { name: "Rural health grants" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Open full bill page" })).toHaveAttribute("href", "/bills/42");
+    expect(screen.getByRole("link", { name: "Rural health grants" })).toHaveAttribute("href", "/bills/42");
+    expect(screen.queryByRole("link", { name: "Open full bill page" })).not.toBeInTheDocument();
     expect(screen.getByText("Rural", { selector: "mark" })).toBeVisible();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });

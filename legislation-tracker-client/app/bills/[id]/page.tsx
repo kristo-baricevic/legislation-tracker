@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -50,6 +50,8 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   const [loadingVoteId, setLoadingVoteId] = useState<number | null>(null);
   const [voteError, setVoteError] = useState<string | null>(null);
   const voteRequestId = useRef(0);
+  const processing = !bill?.latest_contract && (bill?.processing_status === "pending" || bill?.processing_status === "processing");
+  const [refreshError, setRefreshError] = useState(false);
 
   useEffect(() => {
     if (Number.isNaN(id)) {
@@ -79,6 +81,30 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   }, [id]);
 
   useEffect(() => {
+    if (!processing) return;
+    let cancelled = false;
+    let busy = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      if (cancelled || busy) return;
+      clearTimeout(timer);
+      busy = true;
+      try {
+        const updated = await getBill(id, { contractView: "summary" });
+        if (!cancelled) { setBill(updated); setRefreshError(false); }
+      } catch {
+        if (!cancelled) setRefreshError(true);
+      } finally {
+        busy = false;
+        if (!cancelled) timer = setTimeout(refresh, 5000);
+      }
+    }
+    timer = setTimeout(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    return () => { cancelled = true; clearTimeout(timer); window.removeEventListener("focus", refresh); };
+  }, [id, processing]);
+
+  useEffect(() => {
     if (Number.isNaN(id)) return;
     let cancelled = false;
     getContracts(id, { page: 1, view: "summary" })
@@ -91,7 +117,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, bill?.latest_contract?.id]);
 
   useEffect(() => {
     if (Number.isNaN(id)) return;
@@ -227,6 +253,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   }
 
   const summaryDocument = bill.documents.find(document => document.is_active_version);
+  const sourceDocument = bill.latest_contract?.document != null
+    ? bill.documents.find(document => document.id === bill.latest_contract?.document)
+    : summaryDocument ?? bill.documents[0];
+  const sourceLinkClass = "inline-flex items-center rounded-full border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-green-800 dark:text-green-300 dark:hover:bg-green-950/40";
   return (
     <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
       <div className="w-full">
@@ -237,15 +267,19 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           ← Back to bills
         </Link>
 
-        <div className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+        <header className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
               {bill.bill_number} · {bill.jurisdiction === "federal" ? "Congress" : "Session"} {bill.session}
             </h1>
             {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-2xl font-semibold text-slate-800 dark:text-green-200">{bill.title}</p>}
             <p className="mt-2 text-sm text-slate-600 dark:text-green-500">{stageFor(bill.status)?.label ?? bill.status}</p>
           </div>
-          <div className="shrink-0">
+          <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+            {(bill.congress_gov_url || sourceDocument?.text_url) && <nav aria-label="Bill source links" className="flex flex-wrap gap-2 sm:justify-end">
+              {bill.congress_gov_url && <a href={bill.congress_gov_url} target="_blank" rel="noopener noreferrer" className={sourceLinkClass}>Congress.gov <span aria-hidden="true" className="ml-1">↗</span></a>}
+              {sourceDocument?.text_url && <Link href={`/documents/${sourceDocument.id}`} className={sourceLinkClass}>Full bill text</Link>}
+            </nav>}
             {hasAccount ? (
               <button
                 type="button"
@@ -273,7 +307,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               </p>
             )}
           </div>
-        </div>
+        </header>
 
 
 
@@ -283,14 +317,16 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         ) : (
           <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
             <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
-              What this bill does
+              Summary
             </h2>
             <p>
-              {bill.summary_preview || summaryDocument?.reader_summary || "We have not retrieved enough source text to summarize this bill yet."}
+              {bill.summary_preview || summaryDocument?.reader_summary || (processing ? "The summary will appear here when processing finishes." : "We have not retrieved enough source text to summarize this bill yet.")}
             </p>
             {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
           </section>
         )}
+
+        {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
 
         {(!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)) && <><ReaderTabBar /><ReaderTabPanel tab="changes"><p className="mb-6">Detailed changes are not available for this analysis.</p></ReaderTabPanel><ReaderTabPanel tab="money"><p className="mb-6">A separate financial breakdown is not available for this version. Check the analysis and full bill text.</p></ReaderTabPanel><ReaderTabPanel tab="terms"><p className="mb-6">A separate glossary is not available for this version.</p></ReaderTabPanel></>}
         <ReaderTabPanel tab="votes">
@@ -372,27 +408,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           documents={bill.documents}
         />
 
-        <div className="mb-6">
-          <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Source & documents</h2>
-          <ul className="space-y-2">
-            {bill.congress_gov_url && (
-              <li>
-                <a
-                  href={bill.congress_gov_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                >
-                  View on Congress.gov →
-                </a>
-              </li>
-            )}
-          </ul>
-        </div>
-
         {bill.documents && bill.documents.length > 0 && (
           <div className="mb-6">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Bill documents</h2>
+            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Bill versions</h2>
             <ul className="divide-y divide-slate-400 rounded-lg border border-slate-400 dark:divide-green-800 dark:border-green-800">
               {bill.documents.map((doc) => (
                 <li key={doc.id} className="flex items-center justify-between gap-4 p-3">
@@ -447,5 +465,5 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 export default function BillDetailPage() {
   const params = useParams();
   const routeId = params?.id as string;
-  return <AiGlossaryProvider key={routeId}><ReaderTabsProvider><BillDetailInner routeId={routeId} /></ReaderTabsProvider></AiGlossaryProvider>;
+  return <Suspense><AiGlossaryProvider key={routeId}><ReaderTabsProvider><BillDetailInner routeId={routeId} /></ReaderTabsProvider></AiGlossaryProvider></Suspense>;
 }

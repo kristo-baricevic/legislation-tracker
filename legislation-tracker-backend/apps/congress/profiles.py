@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from .current import congress_date_bounds
 from .insights import _coverage, _service_scopes, _votes_for_scopes
@@ -21,6 +21,27 @@ def recorded_votes(representative, congress, chamber=None):
         .prefetch_related("vote__bill__bill_topics__topic")
         .order_by("-vote__vote_date", "-vote_id", "-id")
     )
+
+
+def vote_topic_summary(representative, congress, chamber=None):
+    records = recorded_votes(representative, congress, chamber).order_by()
+    totals = records.aggregate(**{
+        position: Count("pk", filter=Q(position=position))
+        for position in ("yes", "no", "present", "not_voting", "other")
+    })
+    rows = records.filter(position__in=("yes", "no")).values(
+        "vote__bill__bill_topics__topic_id", "vote__bill__bill_topics__topic__name"
+    ).annotate(
+        yes=Count("pk", filter=Q(position="yes"), distinct=True),
+        no=Count("pk", filter=Q(position="no"), distinct=True),
+    )
+    topics = [{
+        "id": row["vote__bill__bill_topics__topic_id"],
+        "name": row["vote__bill__bill_topics__topic__name"] or "No topic assigned",
+        "yes": row["yes"], "no": row["no"],
+    } for row in rows]
+    topics.sort(key=lambda row: (-(row["yes"] + row["no"]), row["name"], row["id"] or 0))
+    return {"scope": {"congress": congress, "chamber": chamber}, "totals": totals, "topics": topics}
 
 
 def vote_coverage(representative, congress, chamber=None):

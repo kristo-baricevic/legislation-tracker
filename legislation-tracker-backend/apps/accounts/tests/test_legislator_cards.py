@@ -25,6 +25,9 @@ def test_tracked_cards_use_latest_introduction_not_latest_ingestion_and_saved_bi
     assert cards[0]["card"]["latest_bill"]["id"] == latest.pk
     assert cards[0]["card"]["biography"]["text"] == "Works on education."
     assert cards[0]["card"]["portrait"]["url"].endswith("a000001_200.jpg")
+    public_card = APIClient().get(f"/api/representatives/{rep.pk}/card/")
+    assert public_card.status_code == 200
+    assert public_card.json() == cards[0]["card"]
 
 
 @pytest.mark.django_db

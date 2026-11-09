@@ -18,6 +18,13 @@ export function legalDefinition(item: LegalNlpDefinitionItem): string {
     : item.definition_type === "excludes" ? `Excludes: ${text}` : text;
 }
 
+/** A cross-reference is source metadata, not a useful reader explanation. */
+export function isReferenceOnlyDefinition(item: LegalNlpDefinitionItem): boolean {
+  const text = cleanDefinition(item.definition);
+  return /^(?:(?:has\s+)?the\s+)?meaning\s+(?:given|provided|assigned)\b/i.test(text)
+    && !/\b(?:except|but|includes?|excludes?|excluding|including|only if)\b/i.test(text);
+}
+
 function explain(item: LegalNlpDefinitionItem): string {
   const text = cleanDefinition(item.definition);
   // Affirmative paraphrases are valid only for "means". Preserve inclusion

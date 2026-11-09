@@ -24,6 +24,7 @@ from .service import (
     reusable_publication,
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
+from .shared import shared_enhancement, source_compatible
 
 
 class PrivateEnhancementMixin:
@@ -78,27 +79,15 @@ def _is_stale(enhancement, bill) -> bool:
 
 
 def _source_compatible(enhancement, bill) -> bool:
-    from .source_packet import _marked_active_document, _stored_document, _text_hash
-    document = _marked_active_document(bill) or _stored_document(bill)
-    manifest = enhancement.source_manifest_json
-    if not document or manifest.get("document_id") != document.pk:
-        return False
-    if manifest.get("document_content_hash") != _text_hash(document.extracted_text or document.raw_text or ""):
-        return False
-    if enhancement.output_schema_version == "1.4":
-        contract = bill.latest_contract
-        return bool(contract and contract.document_id == document.pk
-                    and manifest.get("contract_id") == contract.pk
-                    and manifest.get("contract_hash") == contract.contract_hash)
-    return enhancement.output_schema_version in {"1.1", "1.2", "1.3"}
+    return source_compatible(enhancement, bill)
 
 
 def _active_reader_payload(user, bill):
     for saved in BillEnhancement.objects.filter(
-        user=user, bill=bill, status=BillEnhancement.Status.SUCCEEDED,
+        bill=bill, status=BillEnhancement.Status.SUCCEEDED,
     ).exclude(result_json=None).prefetch_related(ATTEMPT_PREFETCH).order_by("-created_at", "-id"):
         if _source_compatible(saved, bill):
-            payload = enhancement_payload(saved, detail=True)
+            payload = enhancement_payload(saved, detail=True, viewer=user)
             payload["source_compatible"] = True
             return payload
     return None
@@ -114,6 +103,10 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             "credential_revision": None,
             "requested_model": settings.LLM_ENHANCEMENT_MODEL,
         }
+        shared = shared_enhancement(bill)
+        if shared is not None:
+            return Response({**base, "unavailable_reason": "shared_enhancement_available",
+                             "matching_enhancement": enhancement_payload(shared, detail=False, viewer=request.user)})
         if not base["feature_available"]:
             return Response({**base, "unavailable_reason": "feature_unavailable"})
         if str(bill.jurisdiction or "").strip().lower() != "federal":
@@ -210,7 +203,7 @@ class BillEnhancementListCreateView(PrivateEnhancementMixin, APIView):
         except EnhancementServiceError as exc:
             return _service_error(exc)
         return Response(
-            enhancement_payload(result.enhancement, detail=True),
+            enhancement_payload(result.enhancement, detail=True, viewer=request.user),
             status=status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK,
         )
 
@@ -218,7 +211,7 @@ class BillEnhancementListCreateView(PrivateEnhancementMixin, APIView):
 class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
-        enhancement = (
+        enhancement = shared_enhancement(bill) or (
             BillEnhancement.objects.filter(user=request.user, bill=bill)
             .prefetch_related(ATTEMPT_PREFETCH)
             .order_by("-created_at", "-id")
@@ -226,8 +219,8 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
         )
         if enhancement is None:
             return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
-        payload = enhancement_payload(enhancement, detail=True)
-        payload["stale"] = _is_stale(enhancement, bill)
+        payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
+        payload["stale"] = not _source_compatible(enhancement, bill)
         payload["source_compatible"] = _source_compatible(enhancement, bill)
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
@@ -239,11 +232,10 @@ class BillEnhancementDetailView(PrivateEnhancementMixin, APIView):
         enhancement = get_object_or_404(
             BillEnhancement.objects.prefetch_related(ATTEMPT_PREFETCH),
             pk=enhancement_id,
-            user=request.user,
             bill=bill,
         )
-        payload = enhancement_payload(enhancement, detail=True)
-        payload["stale"] = _is_stale(enhancement, bill)
+        payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
+        payload["stale"] = not _source_compatible(enhancement, bill)
         payload["source_compatible"] = _source_compatible(enhancement, bill)
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
@@ -266,6 +258,6 @@ class BillEnhancementRetryView(PrivateEnhancementMixin, APIView):
         except EnhancementServiceError as exc:
             return _service_error(exc)
         return Response(
-            enhancement_payload(result.enhancement, detail=True),
+            enhancement_payload(result.enhancement, detail=True, viewer=request.user),
             status=status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK,
         )

@@ -39,6 +39,20 @@ def create_user(email="user@example.com", password="correct-horse-battery-staple
     )
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("superuser", [False, True])
+def test_session_reports_superuser_status_not_staff_status(superuser):
+    user = create_user()
+    user.is_staff = True
+    user.is_superuser = superuser
+    user.save(update_fields=["is_staff", "is_superuser"])
+    client = APIClient()
+    client.force_authenticate(user)
+    response = client.get("/api/auth/session/current/")
+    assert response.status_code == 200
+    assert response.json()["user"]["is_superuser"] is superuser
+
+
 def bootstrap_csrf(client):
     response = client.get("/api/auth/csrf/")
     assert response.status_code == 200
@@ -198,7 +212,7 @@ def test_session_login_issues_httponly_tokens_and_a_readable_csrf_cookie():
     assert response.status_code == 200
     assert response.json() == {
         "authenticated": True,
-        "user": {"email": "user@example.com"},
+        "user": {"email": "user@example.com", "is_superuser": False},
     }
     assert "access" not in response.json()
     assert "refresh" not in response.json()
@@ -240,7 +254,7 @@ def test_session_status_uses_the_httponly_access_cookie():
     assert response.status_code == 200
     assert response.json() == {
         "authenticated": True,
-        "user": {"email": "user@example.com"},
+        "user": {"email": "user@example.com", "is_superuser": False},
     }
 
 

@@ -327,7 +327,7 @@ def test_detail_expands_only_server_owned_cited_source_text(
 
 
 @pytest.mark.django_db
-def test_cross_user_detail_and_latest_are_hidden(
+def test_cross_user_detail_and_latest_share_status_without_payer_metadata(
     enhancement_owner,
     source_bill,
     enhancement_settings,
@@ -351,7 +351,11 @@ def test_cross_user_detail_and_latest_are_hidden(
         )
         latest = other_client.get(f"/api/bills/{source_bill.id}/enhancements/latest/")
 
-    assert detail.status_code == 404
-    assert latest.status_code == 404
+    assert detail.status_code == 200
+    assert latest.status_code == 200
+    for response in (detail, latest):
+        assert response.data["shared"] is True
+        assert response.data["attempts"] == []
+        assert response.data["latest_attempt"] is None
     _assert_private(detail)
     _assert_private(latest)

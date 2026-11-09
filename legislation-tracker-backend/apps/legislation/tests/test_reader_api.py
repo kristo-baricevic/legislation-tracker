@@ -551,6 +551,7 @@ def test_compact_bill_and_history_omit_full_summary_contract_and_evidence(
         "coverage_note",
         "orientation",
         "reader_stats",
+        "reader_brief",
     }
     assert "contract_json" not in compact_body["latest_contract"]
     assert "evidence_spans" not in compact_body["latest_contract"]

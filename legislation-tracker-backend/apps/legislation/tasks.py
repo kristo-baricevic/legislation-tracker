@@ -29,6 +29,7 @@ from apps.ingestion.document_download import reextract_stored_document_text
 from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.comparison import semantic_contracts_equal
 from apps.legislation.contract_json import contract_hash_from_dict
+from apps.legislation.extraction.reader_language import build_reader_copy
 from apps.legislation.enhancements.citations import resolve_citations
 from apps.legislation.enhancements.diagnostics import diagnostic, validation_diagnostic
 from apps.legislation.enhancements.provider_registry import get_provider
@@ -717,6 +718,7 @@ def _generate_contract_impl(
             defaults={
                 "schema_version": extraction_result.schema_version,
                 "contract_json": contract_json,
+                "reader_copy": build_reader_copy(contract_json, new_hash, document.source_purpose),
             },
         )
         unchanged = not created

@@ -14,6 +14,13 @@ const bill: BillListItem = {
   ],
 };
 
+it("shows the sponsor as an avatar rather than a visible name", async () => {
+  render(<BillCard bill={{ ...bill, sponsor_id: 12, sponsor_name: "Bruce Westerman", sponsor_bioguide_id: "W000821" }} onOpen={() => {}} footer={null} />);
+  expect(await screen.findByRole("img", { name: "Bruce Westerman" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Bruce Westerman" })).toHaveAttribute("href", "/representatives/12?congress=119");
+  expect(screen.queryByText("Bruce Westerman")).not.toBeInTheDocument();
+});
+
 it("shows the preferred topic, congress and accessible stage without breaking card actions", async () => {
   const open = vi.fn(), follow = vi.fn();
   render(<BillCard bill={bill} accentTopicId={2} onOpen={open} footer={<button onClick={follow}>Follow</button>} />);

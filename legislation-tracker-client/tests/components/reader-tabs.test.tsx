@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
+afterEach(() => window.history.replaceState(null, "", "/"));
 import { ReaderTabsProvider, ReaderTabBar, ReaderTabPanel, useReaderTabs } from "@/app/bills/[id]/reader-tabs";
 import { SourcePopover } from "@/app/bills/[id]/source-popover";
 
@@ -12,7 +14,7 @@ it("keeps the summary visible and preserves money filters across keyboard tab sw
   </ReaderTabsProvider>);
   await user.click(screen.getByRole("tab", { name: "Money" }));
   await user.type(screen.getByRole("textbox"), "grants");
-  await user.click(screen.getByRole("tab", { name: "What changes" }));
+  await user.click(screen.getByRole("tab", { name: "What this bill does" }));
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   await user.keyboard("{ArrowRight}");
   expect(screen.getByRole("textbox")).toHaveValue("grants");
