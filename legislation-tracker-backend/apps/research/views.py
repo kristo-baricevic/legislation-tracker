@@ -156,12 +156,16 @@ class ContributorsView(APIView):
         else:
             snapshot = qs.filter(active=True).first() or preview
         snapshots = [snapshot] if snapshot else []
+        collecting = bool(preview) and not data.get("snapshot")
         if data["all_periods"]:
             if data.get("snapshot"):
                 raise serializers.ValidationError("Choose a snapshot or all periods, not both.")
             snapshots = []
+            collecting = False
             for period in FinanceSnapshot.objects.filter(representative_id=representative_id, invalidated=False).values_list("period", flat=True).distinct():
-                saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False).first() or latest_preview(representative_id, period)
+                preview = latest_preview(representative_id, period)
+                collecting = collecting or bool(preview)
+                saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False).first() or preview
                 if saved:
                     snapshots.append(saved)
         if not snapshots:
@@ -170,7 +174,7 @@ class ContributorsView(APIView):
             return Response({"status": "not_researched", "snapshot": None, "results": [], "count": 0, "next_cursor": None})
         from apps.campaign_finance.models import FinanceTransaction
         transactions = FinanceTransaction.objects.filter(snapshot__in=snapshots, effective=True)
-        status = "collecting" if any(saved.published_at is None for saved in snapshots) else "partial"
+        status = "collecting" if collecting or any(saved.published_at is None for saved in snapshots) else "partial"
         rows = transactions.filter(kind=data["kind"]).select_related("contributor", "committee")
         if data["by_size"]:
             bands = [("Under $200", Q(amount__lt=200)), ("$200–$999", Q(amount__gte=200, amount__lt=1000)), ("$1,000–$4,999", Q(amount__gte=1000, amount__lt=5000)), ("$5,000+", Q(amount__gte=5000))]

@@ -229,7 +229,7 @@ function RepresentativeDetailContent() {
 function ScopedRepresentativeDetail() {
   const params = useParams<{ id: string }>();
   const query = useSearchParams();
-  return <RepresentativeDetailContent key={`${params.id}:${query.toString()}`} />;
+  return <RepresentativeDetailContent key={`${params.id}:${query.get("congress") ?? ""}`} />;
 }
 
 export default function RepresentativeDetailPage() {

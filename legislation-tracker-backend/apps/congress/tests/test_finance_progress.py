@@ -13,6 +13,25 @@ from apps.campaign_finance.fec_client import receipt_parameters
 pytestmark = pytest.mark.django_db
 
 
+def test_all_year_refresh_keeps_saved_totals_but_signals_collection(scope):
+    from apps.research.models import ResearchRun
+    from apps.campaign_finance.models import FinanceTransaction
+    rep, run, preview, committee = scope
+    old_run = ResearchRun.objects.create(representative=rep, period=2026, status="partial", created_at=run.created_at - timedelta(days=1))
+    # auto_now_add owns created_at; set the fixture's ordering explicitly.
+    ResearchRun.objects.filter(pk=old_run.pk).update(created_at=run.created_at - timedelta(days=1))
+    saved = FinanceSnapshot.objects.create(run=old_run, representative=rep, period=2026, active=True, published_at=timezone.now())
+    FinanceTransaction.objects.create(snapshot=saved, committee=committee, source_key="saved", kind="contribution", amount=100)
+    FinanceTransaction.objects.create(snapshot=preview, committee=committee, source_key="preview", kind="contribution", amount=250)
+    url = f"/api/representatives/{rep.pk}/contributors/?all_periods=true&by_size=true"
+    result = APIClient().get(url).data
+    assert Decimal(result["total"]) == 100
+    assert result["status"] == "collecting"
+    run.status = "failed"
+    run.save()
+    assert APIClient().get(url).data["status"] == "partial"
+
+
 def test_all_year_donations_use_one_snapshot_per_period_and_match_pie(scope):
     from apps.research.models import ResearchRun
     from apps.campaign_finance.models import FinanceTransaction

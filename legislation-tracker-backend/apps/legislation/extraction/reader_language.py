@@ -7,7 +7,7 @@ import re
 import hashlib
 import copy
 
-VERSION = "brief-1"
+VERSION = "brief-2"
 PHRASES = (
     ("prior to", "before"), ("subsequent to", "after"),
     ("in order to", "to"), ("in the event that", "if"),
@@ -63,7 +63,6 @@ def projection(contract):
 
 def _plain(text):
     text = explain_line({"display_text": text})
-    text = re.sub(r"\s*\(\d+ U\.S\.C\.[^)]*\)", "", text)
     replacements = {
         "postsecondary": "college", "participation, retention, and completion rates": "college enrollment, retention, and graduation rates",
         "participation, retention, and completion": "starting, staying in, and finishing college",
@@ -73,10 +72,12 @@ def _plain(text):
         "eligible entities": "qualifying organizations", "eligible entity": "qualifying organization",
         "on a competitive basis": "through a competition", "shall": "must",
     }
-    for old, new in replacements.items():
-        text = re.sub(r"\b" + re.escape(old) + r"\b", new, text, flags=re.I)
-    text = re.sub(r"\b([Aa])n qualifying\b", r"\1 qualifying", text)
-    return " ".join(text.split()).strip()
+    parts = re.split(r'(“[^”]*”|"[^"]*")', text)
+    for index in range(0, len(parts), 2):
+        for old, new in replacements.items():
+            parts[index] = re.sub(r"\b" + re.escape(old) + r"\b", new, parts[index], flags=re.I)
+        parts[index] = re.sub(r"\b([Aa])n qualifying\b", r"\1 qualifying", parts[index])
+    return "".join(parts).strip()
 
 
 def _heading(line):
@@ -85,7 +86,7 @@ def _heading(line):
     # independent clauses per screen. Keep different programs/sections apart.
     application = next((i for i, p in enumerate(path) if re.search(r"content(?:s)? of application|application requirements", p.get("heading") or "", re.I)), None)
     if application is not None:
-        return path[:application + 1], "What applicants must explain"
+        return path[:application + 1], "Application information"
     meaningful = [(i, p) for i, p in enumerate(path) if p.get("heading") and not re.fullmatch(r"in general|general rule", p["heading"], re.I)]
     if meaningful:
         i, p = meaningful[-1]
@@ -94,22 +95,23 @@ def _heading(line):
 
 
 def _application_overview(lines):
-    raw = " ".join(l.get("display_text", "") for l in lines)
-    subjects = []
-    for pattern, label in (
-        (r"plan to increase|implement|use the grant|use grant|grant funds", "what they will do"),
-        (r"demographic|high.need|students enrolled|enrolled students", "which students they will help"),
-        (r"evaluat|benchmark|outcome", "how they will measure results"),
-        (r"Pell Grant", "how many students receive Pell Grants"),
-        (r"sustain|after.*grant|continue", "how the work will continue after funding ends"),
-    ):
-        if re.search(pattern, raw, re.I):
-            subjects.append(label)
-    if not subjects:
+    # Factor only a repeated, identical obligation. Keyword summaries cannot
+    # establish modality or preserve the conditions attached to each clause.
+    prefix = "An application submitted under this section must include "
+    if len(lines) < 2:
         return None
-    # A high-level list of required application information, not a statement
-    # that an applicant qualifies or that these are the only requirements.
-    return "Applicants must explain " + ", ".join(subjects[:-1]) + (", and " if len(subjects) > 1 else "") + subjects[-1] + "."
+    tails = []
+    for line in lines:
+        text = line.get("display_text", "")
+        if line.get("kind") != "requirement" or not text.startswith(prefix):
+            return None
+        tail = text[len(prefix):]
+        # Keep qualified clauses as separate complete statements, so a final
+        # exception cannot accidentally appear to qualify the entire list.
+        if not re.fullmatch(r"[^.;:!?]+\.", tail) or re.search(r"\b(if|unless|except|only|provided|subject|not|without)\b", tail, re.I):
+            return None
+        tails.append(tail[:-1])
+    return prefix + "; ".join(dict.fromkeys(tails)) + "."
 
 
 def change_groups(payload):
@@ -136,9 +138,12 @@ def change_groups(payload):
         for field in ("evidence_paths", "exact_financial_refs", "timeline_refs", "definition_refs"):
             item[field] = list(dict.fromkeys(ref for l in lines for ref in l.get(field, [])))
         item["actor"] = item["action"] = item["effect"] = None
-        text = _application_overview(lines) if group["heading"] == "What applicants must explain" else None
+        text = _application_overview(lines) if group["heading"] == "Application information" else None
         if not text:
-            statements = list(dict.fromkeys(_plain(explain_line(l)) for l in lines))
+            statements = list(dict.fromkeys(
+                explain_line(l) if l.get("kind") == "amendment" else _plain(explain_line(l))
+                for l in lines
+            ))
             text = _group_overview(statements, group["heading"])
         if len(text) > 8000 and len(lines) > 1:
             # An unknown construction must not turn a whole page into a 400
@@ -153,31 +158,9 @@ def change_groups(payload):
 
 
 def _group_overview(statements, heading):
-    raw = " ".join(statements)
-    if len(raw.split()) <= 45:
-        return raw
-    # These describe the governing action, not the exhaustive eligibility test.
-    # The original clauses and all monetary records remain independently stored.
-    if re.search(r"must use the grant funds to carry out the plans", raw, re.I):
-        examples = [label for pattern, label in (("tutor", "tutoring"), ("emergency financial", "emergency aid"), ("career", "career support"), ("counsel", "advising")) if re.search(pattern, raw, re.I)]
-        return "Grant recipients must carry out their approved plans." + (" Allowed support includes " + ", ".join(examples) + "." if examples else "")
-    if re.search(r"must submit an application", raw, re.I):
-        return "Qualifying applicants must apply and follow the required timing, format, and information rules."
-    if re.search(r"evaluations? .*must measure|must.*evaluate.*effectiveness", raw, re.I):
-        return "The program must be evaluated to check whether it works." + (" Evaluators must compare participants’ results with those of similar people who did not participate." if "comparing" in raw else "")
-    if re.search(r"must (?:reserve|set aside)|Sets aside", raw):
-        return "Funding must be set aside for " + _plain(heading).removeprefix("Reservation of funds for ").lower() + ". The Money tab shows the amounts and funding rules."
-    if re.search(r"may (?:reserve|set aside)", raw):
-        purposes = list(dict.fromkeys(re.findall(r"percent for ([^.]+)", raw)))
-        if purposes and len(" ".join(purposes).split()) <= 30:
-            return "Some funding may be used for " + "; or ".join(purposes) + "."
-    grant = re.search(r"For each of budget years (\d{4} through \d{4}), (.+?) must award competitive grants to (.+?) to (.+)\.$", raw)
-    if grant:
-        return f"From {grant[1]}, {grant[2]} must offer competitive grants to {grant[3]}. The grants would {_plain(grant[4])}."
-    # Never drop an exception to produce a seemingly unconditional benefit.
-    # Unknown long constructions stay faithful until a source-bound AI overview
-    # is available; this is intentionally not word-count truncation.
-    return raw
+    # Retain full clauses: a familiar keyword does not establish that the rest
+    # of a long provision is optional context rather than a legal condition.
+    return " ".join(statements)
 
 
 def bill_brief(payload, source_purpose=""):

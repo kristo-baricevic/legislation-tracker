@@ -5,6 +5,9 @@ const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 const words = (text: string) => text.trim().split(/\s+/).length;
 
 function plainWording(text: string) {
+  // Quoted wording can be an exact legal term or amendment instruction.
+  // Leave the entire statement intact rather than reinterpret its fragments.
+  if (/[“”"]/.test(text)) return text;
   return text
     .replace(/award, on a competitive basis, grants/g, "award competitive grants")
     .replace(/at such time, in such manner, and containing the information required under (?:subsection|section) (?:\([a-zA-Z0-9]+\)|[0-9]+)(?:\([a-zA-Z0-9]+\))*/g, "following the required timing, format, and information rules")
@@ -22,18 +25,15 @@ export function changeCopy(item: LegalNlpLineItem) {
       text = cleanLegislativeText(`${capitalize(item.actor)} ${item.kind === "requirement" ? "must" : "may"} ${item.action}${item.display_text.slice(prefix.length)}`);
     }
   }
-  text = plainWording(text);
+  if (item.kind !== "amendment") text = plainWording(text);
   const headings = item.section_path.map(p => cleanLegislativeText(p.heading || ""))
     .filter(h => h && !/^(in general|general rule|definitions?)$/i.test(h));
   const heading = headings.reverse().find(h => words(h) <= 10);
   const labels = { purpose: "Purpose", requirement: "Requirements", prohibition: "Restrictions", permission: "What is allowed", amendment: "Changes to existing law", applicability: "Who is covered", financial: "Funding", timeline: "Timing" };
   const plainHeadings: Record<string, string> = { "short title": "Bill name", "grant authorization": "Awarding grants", "notification and application": "How to apply", "content of application": "What applicants must provide", "effective date": "When it starts", "authorization of appropriations": "Funding allowed", "reservation of funds": "Reserved funding" };
   const title = heading ? plainHeadings[heading.toLowerCase()] ?? capitalize(heading) : labels[item.kind];
-  text = plainWording(cleanLegislativeText(item.reader_text || text));
-  if (title === "What applicants must provide") {
-    text = text.replace(/^An application submitted under this section must include\s+/, "");
-    text = capitalize(text);
-  }
+  text = cleanLegislativeText(item.reader_text || text);
+  if (item.kind !== "amendment") text = plainWording(text);
   return { title, text };
 }
 

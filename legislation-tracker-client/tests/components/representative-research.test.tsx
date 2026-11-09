@@ -1,10 +1,27 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import RepresentativeResearch from "@/app/components/RepresentativeResearch";
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
+
+it.each([false, true])("refreshes all-year totals after a published campaign is replaced (modal: %s)", async (modalView) => {
+  let refreshed = false;
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.includes("by_size")) return Response.json({ status: "partial", total: refreshed ? "250" : "100", refunds: "0", results: [] });
+    if (url.includes("contributors")) return Response.json({ status: "partial", count: 0, next_cursor: null, results: [] });
+    return Response.json({ ...empty, status: "succeeded", snapshot: refreshed ? "new" : "old", available_periods: [2026], finance_progress: { pages_loaded: 7, official_totals: [] } });
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView modalView={modalView} />);
+  const dropdown = screen.getByRole("combobox", { name: "Reporting period" });
+  await waitFor(() => expect(dropdown).toBeEnabled());
+  await userEvent.selectOptions(dropdown, "all");
+  expect(await screen.findByText("$100.00")).toBeVisible();
+  refreshed = true;
+  act(() => window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: 1 })));
+  expect(await screen.findByText("$250.00")).toBeVisible();
+});
 
 it("appends outside spending on scroll without removing existing rows or showing pagination", async () => {
   let intersect: IntersectionObserverCallback = () => {};

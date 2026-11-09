@@ -141,7 +141,7 @@ function ResearchPanel({ representativeId, compact, profileView = false, finance
     {error && <p role="alert">{error} <button onClick={() => void selectPeriod(period)}>Retry</button></p>}
     <div className={styles.fundingLoadStatus} role="status">{!data && !error ? "Loading funding…" : overviewReady && active ? "Donations updating in background" : ""}</div>
     <div className={styles.fundingContent} aria-label="Funding results" aria-busy={busy} inert={busy}>
-    {fundingView === "outside" ? <OutsideSpendingTable representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? <AllYearsDonations representativeId={representativeId} modalView={modalView} /> : <>
+    {fundingView === "outside" ? <OutsideSpendingTable representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? <AllYearsDonations representativeId={representativeId} modalView={modalView} refreshToken={`${reload}:${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : <>
       {data?.finance_progress && <CampaignTotals progress={data.finance_progress} concise />}
       {data?.snapshot ? modalView ? <DonationPie initialData={preparedFunding?.snapshot === data.snapshot ? preparedFunding.sizes : undefined} refreshToken={`${data.finance_progress?.pages_loaded ?? 0}:${active}`} key={`${displayedPeriod}:${data.snapshot}`} representativeId={representativeId} period={displayedPeriod} snapshot={data.snapshot} /> : <ContributorTable initialData={preparedFunding?.snapshot === data.snapshot ? preparedFunding.contributors : undefined} concise refreshToken={`${data.finance_progress?.pages_loaded ?? 0}:${active}`} key={`${displayedPeriod}:${data.snapshot}`} representativeId={representativeId} period={displayedPeriod} snapshot={data.snapshot} /> : data && <p role="status">{active ? data.status === "queued" ? "Campaign research queued." : "Collecting campaign records…" : "No campaign records available for this period."}</p>}
     </>}
@@ -173,7 +173,7 @@ function ResearchPanel({ representativeId, compact, profileView = false, finance
   </section>;
 }
 
-function AllYearsDonations({ representativeId, modalView }: { representativeId: number; modalView: boolean }) {
+function AllYearsDonations({ representativeId, modalView, refreshToken }: { representativeId: number; modalView: boolean; refreshToken: string }) {
   const [totals, setTotals] = useState<DonationSizes | null>(null);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -186,13 +186,13 @@ function AllYearsDonations({ representativeId, modalView }: { representativeId: 
       if (result.status === "collecting") timer = setTimeout(() => setRevision(value => value + 1), 5000);
     }).catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [representativeId, revision]);
+  }, [representativeId, revision, refreshToken]);
   const dollars = (amount?: string) => amount == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(amount));
   return <>
     <CardTooltip text="Collected itemized records across available periods. These are not total campaign receipts; collection may be incomplete."><span tabIndex={0} className={styles.note}>Collected donations ⓘ</span></CardTooltip>
     {error && <p role="alert">Could not load totals. <button onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     <dl className={styles.fundingTotals}><div><dt>Donations</dt><dd>{dollars(totals?.total)}</dd></div><div><dt>Refunds</dt><dd>{dollars(totals?.refunds)}</dd></div></dl>
-    {modalView ? <DonationPie representativeId={representativeId} period={0} snapshot="" refreshToken={String(revision)} /> : <ContributorTable concise representativeId={representativeId} period={0} snapshot="" refreshToken={String(revision)} />}
+    {modalView ? <DonationPie representativeId={representativeId} period={0} snapshot="" refreshToken={`${refreshToken}:${revision}`} /> : <ContributorTable concise representativeId={representativeId} period={0} snapshot="" refreshToken={`${refreshToken}:${revision}`} />}
   </>;
 }
 

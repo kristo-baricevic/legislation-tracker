@@ -1,3 +1,4 @@
+import pytest
 from apps.legislation.extraction.reader_language import build_reader_copy
 
 
@@ -20,7 +21,7 @@ def test_application_clauses_become_one_change_without_losing_sources():
     assert groups[0]["member_ids"] == ["a", "b", "c"]
     assert groups[0]["evidence_paths"] == ["/a", "/b", "/c"]
     assert len(groups[0]["reader_text"].split()) <= 45
-    assert "results" in groups[0]["reader_text"]
+    assert "evaluate" in groups[0]["reader_text"]
     assert "students" in groups[0]["reader_text"]
 
 
@@ -62,3 +63,55 @@ def test_large_unrecognized_group_keeps_every_member_without_breaking_reader_lim
 def test_plain_replacement_keeps_the_indefinite_article_grammatical():
     item = line("a", "An eligible entity must apply.", heading="Application")
     assert build_reader_copy({"line_items": [item]}, "h")["groups"][0]["reader_text"] == "A qualifying organization must apply."
+
+
+@pytest.mark.parametrize("kind,text", [
+    ("amendment", "Section 2 is amended by striking “shall” and inserting “may”."),
+    ("amendment", "Strike prior to and insert subsequent to."),
+    ("requirement", 'The term "eligible entity" shall retain its meaning.'),
+])
+def test_group_projection_preserves_amendments_and_quoted_terms(kind, text):
+    item = line("a", text, heading="Rules")
+    item["kind"] = kind
+    expected = text if kind == "amendment" else 'The term "eligible entity" must retain its meaning.'
+    assert build_reader_copy({"line_items": [item]}, "h")["groups"][0]["reader_text"] == expected
+
+
+@pytest.mark.parametrize("kind,text", [
+    ("permission", "Applicants may include an evaluation plan."),
+    ("prohibition", "Applicants must not include student demographics."),
+    ("requirement", "Applicants must report outcomes only if they receive a grant, except small institutions."),
+    ("requirement", "An application submitted under this section must include an evaluation plan unless exempt under section 9."),
+])
+def test_application_groups_keep_modality_and_full_qualifications(kind, text):
+    item = line("a", text)
+    item["kind"] = kind
+    actual = build_reader_copy({"line_items": [item]}, "h")["groups"][0]["reader_text"]
+    assert actual == text
+    if kind != "requirement":
+        assert "must" not in build_reader_copy({"line_items": [item]}, "h")["groups"][0]["section_path"][-1]["heading"].lower()
+
+
+def test_long_application_rule_does_not_lose_exception_in_general_overview():
+    text = "Applicants must submit an application describing the proposed program, the people it serves, the location, the duration, the staffing plan, the evaluation method, the proposed spending, and the planned reporting schedule, unless they have already submitted an approved application under section 9 of this Act."
+    item = line("a", text, heading="Applications")
+    assert build_reader_copy({"line_items": [item]}, "h")["groups"][0]["reader_text"] == text
+
+
+def test_mixed_application_clauses_keep_their_individual_obligations():
+    items = [line("a", "Applicants must report outcomes."), line("b", "Applicants may include an evaluation plan.")]
+    items[1]["kind"] = "permission"
+    group = build_reader_copy({"line_items": items}, "h")["groups"][0]
+    assert group["reader_text"] == "Applicants must report outcomes. Applicants may include an evaluation plan."
+
+
+def test_previous_saved_projection_is_rebuilt_without_changing_source():
+    from types import SimpleNamespace
+    from apps.legislation.extraction.reader_language import projection
+    text = "Strike “shall” and insert “may”."
+    item = line("a", text)
+    item["kind"] = "amendment"
+    contract = SimpleNamespace(contract_hash="h", contract_json={"line_items": [item]}, document=None,
+                               reader_copy={"version": "brief-1", "contract_hash": "h", "groups": [{"reader_text": "wrong"}]})
+    assert projection(contract)["groups"][0]["reader_text"] == text
+    assert contract.contract_json["line_items"][0]["display_text"] == text

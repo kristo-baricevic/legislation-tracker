@@ -57,6 +57,22 @@ describe("RepresentativeDetailPage", () => {
     expect(window.location.search).toBe("?congress=119&tab=votes");
   });
 
+  it("keeps loaded profile and panels mounted when the router updates the tab query", async () => {
+    const view = render(<RepresentativeDetailPage />);
+    const heading = await screen.findByRole("heading", { name: "Representative Example" });
+    await userEvent.click(screen.getByRole("tab", { name: "Votes" }));
+    const votes = await screen.findByRole("heading", { name: "Voting record" });
+    route.query = "congress=119&tab=votes";
+    view.rerender(<RepresentativeDetailPage />);
+    expect(heading).toBeInTheDocument();
+    expect(votes).toBeInTheDocument();
+    expect(screen.queryByText("Loading representative…")).not.toBeInTheDocument();
+    route.query = "congress=119&tab=bills";
+    view.rerender(<RepresentativeDetailPage />);
+    expect(votes).toBeInTheDocument();
+    expect(votes).not.toBeVisible();
+  });
+
   it("keeps the profile concise and separates bills, voting, funding and committees", async () => {
     render(<RepresentativeDetailPage />);
     expect(await screen.findByRole("heading", { name: "Representative Example" })).toBeVisible();
@@ -69,6 +85,16 @@ describe("RepresentativeDetailPage", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Campaign funding" }));
     expect(screen.getByText("Campaign funding controls")).toBeVisible();
     expect(screen.getByRole("tab", { name: "Campaign funding" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("resets loaded panels when the Congress scope changes", async () => {
+    const view = render(<RepresentativeDetailPage />);
+    const heading = await screen.findByRole("heading", { name: "Representative Example" });
+    route.query = "congress=120";
+    view.rerender(<RepresentativeDetailPage />);
+    expect(heading).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Representative Example" })).toBeVisible();
+    expect(getRepresentativeSponsoredBills).toHaveBeenLastCalledWith(8, 120, 1);
   });
 
   it("prevents a second sponsored-history request while the next page is loading", async () => {

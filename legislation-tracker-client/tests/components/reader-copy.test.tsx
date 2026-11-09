@@ -10,6 +10,14 @@ const item = (overrides: Partial<LegalNlpLineItem>): LegalNlpLineItem => ({
 });
 
 describe("shared change copy", () => {
+  it("preserves amendment instructions and quoted wording through the final presentation", () => {
+    for (const kind of ["amendment", "requirement"] as const) {
+      const text = 'Replace “award, on a competitive basis, grants” with “award grants”.';
+      expect(changeCopy(item({ kind, display_text: text, reader_text: text })).text).toBe(text);
+    }
+    const text = "Strike award, on a competitive basis, grants and insert award grants.";
+    expect(changeCopy(item({ kind: "amendment", display_text: text })).text).toBe(text);
+  });
   it("removes internal markers from saved reader explanations without altering the stored source", () => {
     const text = "Section 1 is amended by inserting the following: [[QUOTED_BLOCK_START]]Workers must report annually.[[QUOTED_BLOCK_END]]";
     const source = item({ reader_text: text });
