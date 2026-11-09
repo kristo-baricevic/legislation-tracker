@@ -112,6 +112,17 @@ function enhancementPayload(
 }
 
 describe("BillEnhancementPanel", () => {
+  it("opens a shared result found during preparation without paid confirmation", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    const shared = enhancementPayload({ shared: true });
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue({ ...estimate, can_enhance: false, unavailable_reason: "shared_enhancement_available", matching_enhancement: shared });
+    vi.mocked(getBillEnhancement).mockResolvedValue(shared);
+    render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /><ActiveReader /></AiGlossaryProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: "Enhance" }));
+    expect(await screen.findByText("Active reader: 9")).toBeVisible();
+    expect(screen.queryByRole("dialog", { name: /Confirm AI/ })).not.toBeInTheDocument();
+    expect(createBillEnhancement).not.toHaveBeenCalled();
+  });
   it.each([false, true])("shows metadata only for superusers: %s", async (is_superuser) => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com", is_superuser } });
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
@@ -147,7 +158,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     render(<AiGlossaryProvider><div id="reading-controls" data-testid="top-controls" /><BillEnhancementPanel billId={10} jurisdiction="federal" controlsTargetId="reading-controls" /></AiGlossaryProvider>);
     const top = screen.getByTestId("top-controls");
-    await userEvent.click(await within(top).findByRole("button", { name: "Enhance with AI" }));
+    await userEvent.click(await within(top).findByRole("button", { name: "Enhance" }));
     expect(within(top).queryByRole("button", { name: "Original" })).not.toBeInTheDocument();
     expect(await within(top).findByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
     expect(createBillEnhancement).not.toHaveBeenCalled();
@@ -168,7 +179,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getSession).mockResolvedValue(null);
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
-    expect(await screen.findByRole("link", { name: "Enhance with AI" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Enhance" })).toHaveAttribute(
       "href",
       "/login",
     );
@@ -230,7 +241,7 @@ describe("BillEnhancementPanel", () => {
     });
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-    await user.click(await screen.findByRole("button", { name: "Enhance with AI" }));
+    await user.click(await screen.findByRole("button", { name: "Enhance" }));
 
     const dialog = screen.getByRole("dialog", { name: "Confirm AI enhancement" });
     expect(dialog).toHaveTextContent("600 estimated input tokens");
@@ -258,7 +269,7 @@ describe("BillEnhancementPanel", () => {
       glossary_coverage: { eligible_definitions: 24, batch_count: 6 },
     });
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-    await user.click(await screen.findByRole("button", { name: "Enhance with AI" }));
+    await user.click(await screen.findByRole("button", { name: "Enhance" }));
     const dialog = screen.getByRole("dialog", { name: "Confirm AI enhancement" });
     expect(dialog).toHaveTextContent("All 24 eligible definitions in 6 glossary batches");
     expect(dialog).toHaveTextContent("123,000 estimated input tokens");
@@ -285,14 +296,14 @@ describe("BillEnhancementPanel", () => {
     );
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-    await user.click(await screen.findByRole("button", { name: "Enhance with AI" }));
+    await user.click(await screen.findByRole("button", { name: "Enhance" }));
     await user.click(screen.getByRole("button", { name: "Confirm and enhance" }));
 
     await waitFor(() => expect(getBillEnhancementEstimate).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("dialog", { name: "Confirm AI enhancement" })).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(/review the refreshed estimate/i);
 
-    await user.click(screen.getByRole("button", { name: "Enhance with AI" }));
+    await user.click(screen.getByRole("button", { name: "Enhance" }));
     const refreshedDialog = screen.getByRole("dialog", { name: "Confirm AI enhancement" });
     expect(refreshedDialog).toHaveTextContent("700 estimated input tokens");
     expect(refreshedDialog).toHaveTextContent("Credential revision 3");
@@ -468,7 +479,7 @@ describe("BillEnhancementPanel", () => {
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
     expect(await screen.findByText(/older bill source or execution version/i)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Enhance with AI" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Enhance" })).toBeVisible();
   });
 
   it("retries polling after a transient detail failure and then renders success", async () => {
@@ -620,7 +631,7 @@ describe("BillEnhancementPanel", () => {
     });
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Enhance with AI" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Enhance" }));
     expect(await screen.findByText(/no stored bill text/i)).toBeVisible();
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });
@@ -636,7 +647,7 @@ describe("BillEnhancementPanel", () => {
     });
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Enhance with AI" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Enhance" }));
     expect(await screen.findByText(/available only for federal bills/i)).toBeVisible();
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });

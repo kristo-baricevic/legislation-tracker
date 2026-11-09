@@ -12,6 +12,7 @@ from apps.legislation.models import Bill, BillEnhancement, BillEnhancementAttemp
 
 from .dispatch import request_enhancement_dispatch
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
+from .shared import shared_enhancement
 
 ACTIVE_STATUSES = {
     BillEnhancementAttempt.Status.PENDING,
@@ -161,6 +162,13 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
         raise EnhancementServiceError("feature_unavailable", http_status=503)
 
     with transaction.atomic():
+        # The bill lock serializes requests across users, not just one payer.
+        locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
+        shared = shared_enhancement(locked_bill)
+        if shared is not None:
+            latest = shared.attempts.order_by("-sequence").first()
+            if latest is not None:
+                return AttemptCreation(shared, latest, False)
         locked_bill, preflight = _build_locked_preflight(bill.pk)
         credential = _locked_credential(user)
         _validate_confirmation(preflight, credential, confirmed)
@@ -235,6 +243,11 @@ def retry_enhancement_attempt(
         )
         if enhancement is None:
             raise EnhancementServiceError("not_found", http_status=404)
+        shared = shared_enhancement(locked_bill)
+        if shared is not None and shared.pk != enhancement.pk:
+            latest = shared.attempts.order_by("-sequence").first()
+            if latest is not None:
+                return AttemptCreation(shared, latest, False)
         credential = _locked_credential(user)
         base_fingerprint = preflight.request_fingerprint
         reused_result = reusable_publication(enhancement, credential)

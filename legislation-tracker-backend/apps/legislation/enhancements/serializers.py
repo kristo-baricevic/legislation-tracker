@@ -118,7 +118,7 @@ def _expanded_result(enhancement: BillEnhancement):
     return result
 
 
-def enhancement_payload(enhancement: BillEnhancement, *, detail: bool) -> dict:
+def enhancement_payload(enhancement: BillEnhancement, *, detail: bool, viewer=None) -> dict:
     attempts = getattr(enhancement, "ordered_attempts_cache", None)
     if attempts is None:
         attempts = list(enhancement.attempts.order_by("sequence"))
@@ -165,4 +165,11 @@ def enhancement_payload(enhancement: BillEnhancement, *, detail: bool) -> dict:
             }
             else None
         )
+    if viewer is not None and enhancement.user_id != viewer.pk:
+        payload["shared"] = True
+        payload["latest_attempt"] = None
+        payload["published_attempt_id"] = None
+        payload["usage"] = {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+        if detail:
+            payload["attempts"] = []
     return payload

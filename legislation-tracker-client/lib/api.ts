@@ -1456,6 +1456,7 @@ export type EnhancementStatus =
   | "outcome_unknown";
 
 export interface BillEnhancement {
+  shared?: boolean;
   id: number;
   bill_id: number;
   status: EnhancementStatus;

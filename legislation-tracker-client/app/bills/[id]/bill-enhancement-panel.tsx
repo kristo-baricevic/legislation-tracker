@@ -301,6 +301,11 @@ export default function BillEnhancementPanel({
       const nextEstimate = await getBillEnhancementEstimate(billId);
       if (owner !== generation.current) return;
       setEstimate(nextEstimate);
+      if (nextEstimate.unavailable_reason === "shared_enhancement_available" && nextEstimate.matching_enhancement) {
+        const shared = await getBillEnhancement(billId, nextEstimate.matching_enhancement.id);
+        if (owner === generation.current) { setEnhancement(shared); setEstimate(null); }
+        return;
+      }
       if (nextEstimate.can_enhance) {
         const sameRequest = enhancement?.request_fingerprint === nextEstimate.request_fingerprint;
         setConfirming(sameRequest && enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
@@ -457,7 +462,7 @@ export default function BillEnhancementPanel({
     return (
       <ControlsSlot targetId={controlsTargetId}>
         <Link href="/login" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-green-500 dark:text-black">
-          Enhance with AI
+          Enhance
         </Link>
       </ControlsSlot>
     );
@@ -469,7 +474,7 @@ export default function BillEnhancementPanel({
 
   const retryable = Boolean(enhancement?.latest_attempt?.retry_allowed);
   const isActive = enhancement && ["pending", "running"].includes(enhancement.status);
-  const canStartNewIdentity = Boolean(enhancement?.stale);
+  const canStartNewIdentity = Boolean(enhancement?.stale || (enhancement?.shared && ["failed", "refused", "outcome_unknown"].includes(enhancement.status)));
   const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
     : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
   const hasSavedReader = Boolean(activeReader?.result);
@@ -481,7 +486,7 @@ export default function BillEnhancementPanel({
           disabled={preparing || Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
           onClick={() => void prepareEnhancement()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance with AI"}
+          {preparing ? "Preparing AI estimate…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
         </button>}
         {failed && liveFailure && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
           <p>AI enhancement did not complete. Your original analysis is unchanged.</p>
