@@ -110,6 +110,10 @@ as context. Exact source matching, complete sentences, length bounds, and guards
 against quote IDs and amendment instructions apply before publication. One
 bounded correction for wording/coverage failures is allowed within the existing
 confirmed reserve. Repeated failure leaves the previous result intact.
+Output-limit failures in the grouping pass subdivide between whole policies,
+weighted by input size, within the same confirmed call and token limits. A single
+policy is never split from its conditions. Cached source reviews are applied
+before budgeting, and all known grouping requests are counted before confirmation.
 
 `hr10906_policy_expectations.json` adds source-pinned policy coverage checks,
 including nonfinancial policies. `evaluate_policy_review` reports entry and word

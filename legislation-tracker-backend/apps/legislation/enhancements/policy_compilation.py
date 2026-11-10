@@ -108,33 +108,49 @@ def section_assignments(preflight, items):
     return [grouped[key] for key in sorted(grouped)]
 
 
+def _build_request(preflight, items, assigned):
+    from django.conf import settings
+    chunk = [items[i] for group in assigned for i in group]
+    groups, offset = [], 0
+    for group in assigned:
+        groups.append(list(range(offset, offset + len(group))))
+        offset += len(group)
+    evidence, rows = [], []
+    for index, item in enumerate(chunk):
+        refs = []
+        for quote in item['source_quotes']:
+            if quote not in evidence:
+                evidence.append(quote)
+            refs.append(evidence.index(quote))
+        rows.append({'id': index, 'title': item['title'], 'text': item['text'], 'evidence': refs})
+    envelope = {**preflight.request_envelope, 'policy_compilation': True,
+        'instructions': INSTRUCTIONS + '\nThe source sections have already been grouped. Return exactly one coherent explanation for each supplied group key, combining ALL of its items. Do not list or rewrite each item separately. The group membership is fixed by the server.',
+        'output_schema': group_schema(chunk, groups),
+        'source_packet': {'policy_items': rows, 'evidence': evidence, 'groups': {str(i): group for i, group in enumerate(groups)}},
+        'max_output_tokens': settings.LLM_READER_MAX_OUTPUT_TOKENS}
+    if preflight.request_envelope.get('policy_compilation'):
+        # Preserve stricter wording instructions if a correction was subdivided.
+        envelope['instructions'] = preflight.request_envelope['instructions']
+    data = canonical_json_bytes(envelope)
+    return replace(preflight, request_envelope=envelope, request_bytes=data,
+        estimated_input_tokens=len(data), reader_reuse={'policy_items': chunk, 'policy_assignments': groups}, reader_batches=())
+
+
+def split_compilation_request(request):
+    """Split between complete policies, never separate a rule from its conditions."""
+    groups = request.reader_reuse['policy_assignments']
+    if len(groups) < 2:
+        return ()
+    items = request.reader_reuse['policy_items']
+    weights = [len(canonical_json_bytes([items[i] for i in group])) for group in groups]
+    pivot = min(range(1, len(groups)), key=lambda i: abs(sum(weights[:i]) - sum(weights) / 2))
+    return tuple(_build_request(request, items, part) for part in (groups[:pivot], groups[pivot:]))
+
+
 def compilation_requests(preflight, items):
     """Size-bound packets; every input appears once, never silently truncated."""
     def build(assigned):
-        chunk = [items[i] for group in assigned for i in group]
-        groups, offset = [], 0
-        for group in assigned:
-            groups.append(list(range(offset, offset + len(group))))
-            offset += len(group)
-        evidence = []
-        rows = []
-        for index, item in enumerate(chunk):
-            refs = []
-            for quote in item['source_quotes']:
-                if quote not in evidence:
-                    evidence.append(quote)
-                refs.append(evidence.index(quote))
-            rows.append({'id': index, 'title': item['title'], 'text': item['text'], 'evidence': refs})
-        envelope = {**preflight.request_envelope, 'policy_compilation': True,
-            'instructions': INSTRUCTIONS + '\nThe source sections have already been grouped. Return exactly one coherent explanation for each supplied group key, combining ALL of its items. Do not list or rewrite each item separately. The group membership is fixed by the server.',
-            'output_schema': group_schema(chunk, groups),
-            'source_packet': {'policy_items': rows, 'evidence': evidence, 'groups': {str(i): group for i, group in enumerate(groups)}},
-            'max_output_tokens': 24000}
-        from django.conf import settings
-        envelope['max_output_tokens'] = settings.LLM_READER_MAX_OUTPUT_TOKENS
-        data = canonical_json_bytes(envelope)
-        return replace(preflight, request_envelope=envelope, request_bytes=data,
-            estimated_input_tokens=len(data), reader_reuse={'policy_items': chunk, 'policy_assignments': groups}, reader_batches=())
+        return _build_request(preflight, items, assigned)
     requests, chunk = [], []
     for group in section_assignments(preflight, items):
         candidate = build([*chunk, group])

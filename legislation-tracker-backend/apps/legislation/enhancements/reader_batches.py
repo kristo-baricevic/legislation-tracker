@@ -59,7 +59,7 @@ Do not claim the guide is exhaustive when the source packet is truncated.
 
 
 def reader_execution_settings():
-    return {"policy_grouping_version": 5, **{name: getattr(settings, name) for name in (
+    return {"policy_grouping_version": 6, **{name: getattr(settings, name) for name in (
         "LLM_READER_MAX_OUTPUT_TOKENS", "LLM_READER_MAX_CALLS",
         "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS", "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
         "LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS",
@@ -235,8 +235,6 @@ def build_reader_preflight(document):
             raise PreflightUnavailable("Full-source review request exceeds limits", reason="request_too_large")
         batches.append([source])
         envelopes.append(e)
-    if len(batches) + 2 > settings.LLM_READER_MAX_CALLS:
-        raise PreflightUnavailable("Complete reader plan exceeds configured call budget", reason="request_too_large")
     snapshot = main_sources + target_sources + scans
     # An explicit presentation upgrade can keep a verified full-source review.
     # No source bytes, target identities, or financial inventory are guessed.
@@ -265,12 +263,7 @@ def build_reader_preflight(document):
     request_bytes = canonical_json_bytes({"main": main, "batches": envelopes, "identity": identity,
                                          "execution_settings": reader_execution_settings(),
                                          "excluded": excluded, "reused": reused, "policy_grouping": 1, "max_calls": settings.LLM_READER_MAX_CALLS})
-    reserve = min(8, max(0, settings.LLM_READER_MAX_CALLS - 2 - len(batches)))
-    budget = {"planned_calls": 2 + len(batches), "split_call_reserve": reserve, "maximum_calls": 2 + len(batches) + reserve,
-              "maximum_input": len(main_bytes) + sum(len(canonical_json_bytes(e)) for e in envelopes),
-              "maximum_output": sum(e["max_output_tokens"] for e in [main, *envelopes])}
-    budget['maximum_input'] += (reserve + 1) * settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
-    budget['maximum_output'] += (reserve + 1) * settings.LLM_READER_MAX_OUTPUT_TOKENS
+    budget = {}
     manifest = {**identity, "execution_settings": reader_execution_settings(),
                 "source_kind": "reader_targets", "truncated": summary_truncated,
                 "coverage": selected_envelope["source_packet"]["coverage"],
@@ -284,7 +277,26 @@ def build_reader_preflight(document):
         source_fingerprint=hashlib.sha256(canonical_json_bytes({"identity": identity, "sources": snapshot})).hexdigest(),
         request_fingerprint=hashlib.sha256(request_bytes).hexdigest(), source_manifest=manifest,
         source_snapshot=snapshot, request_envelope=main, request_bytes=request_bytes,
-        estimated_input_tokens=budget["maximum_input"], truncated=summary_truncated, reader_reuse=reused)
+        estimated_input_tokens=0, truncated=summary_truncated, reader_reuse=reused)
+    # Cached review packets are known before confirmation: budget every compiler
+    # request instead of pretending an arbitrarily large review takes one call.
+    compiler_calls = 1
+    if reused and 'source_review' in reused:
+        from .policy_compilation import compilation_requests
+        try:
+            compiler_calls = len(compilation_requests(p, reused['source_review'].get('policy_changes', [])))
+        except ProviderError:
+            raise PreflightUnavailable("Policy compilation exceeds request limits", reason="request_too_large") from None
+    planned = 1 + len(batches) + compiler_calls
+    if planned > settings.LLM_READER_MAX_CALLS:
+        raise PreflightUnavailable("Complete reader plan exceeds configured call budget", reason="request_too_large")
+    reserve = min(8, settings.LLM_READER_MAX_CALLS - planned)
+    budget.update(planned_calls=planned, split_call_reserve=reserve, maximum_calls=planned + reserve,
+        maximum_input=len(main_bytes) + sum(len(canonical_json_bytes(e)) for e in envelopes)
+            + (compiler_calls + reserve) * settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+        maximum_output=sum(e['max_output_tokens'] for e in [main, *envelopes])
+            + (compiler_calls + reserve) * settings.LLM_READER_MAX_OUTPUT_TOKENS)
+    p = replace(p, estimated_input_tokens=budget['maximum_input'])
     return replace(p, reader_batches=tuple(
         replace(p, source_snapshot=sources, request_envelope=e, request_bytes=canonical_json_bytes(e),
                 estimated_input_tokens=len(canonical_json_bytes(e)), truncated=False)
@@ -399,6 +411,12 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                         timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS)
                 except ProviderError as error:
                     combined = replace(combined, usage=combine_usage(combined.usage, error.usage))
+                    if error.validation_code == 'provider_output_limit':
+                        from .policy_compilation import split_compilation_request
+                        children = split_compilation_request(request)
+                        if children and calls + len(requests) + len(children) <= maximum_calls:
+                            requests[0:0] = children
+                            continue
                     if (error.validation_code == 'reader_policy_wording'
                             and not request.request_envelope.get('policy_retry')
                             and calls + len(requests) + 1 <= maximum_calls):

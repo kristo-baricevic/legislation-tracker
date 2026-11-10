@@ -77,6 +77,18 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     assert reuse.reader_reuse['source_review']['financial_items'] == attempt.enhancement.result_json['source_review']['financial_items']
     assert reuse.reader_reuse['source_review']['policy_changes'] == attempt.enhancement.result_json['source_review']['policy_drafts']
     assert not any(r.request_envelope.get('source_review') for r in reuse.reader_batches)
+    from django.test import override_settings
+    with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=2):
+        cached = build_enhancement_preflight(source_bill)
+    assert cached.source_manifest['budget']['planned_calls'] == 2
+    monkeypatch.setattr('apps.legislation.enhancements.policy_compilation.compilation_requests',
+                        lambda preflight, items: [None] * 3)
+    with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=4):
+        cached = build_enhancement_preflight(source_bill)
+    assert cached.source_manifest['budget']['planned_calls'] == 4
+    assert cached.source_manifest['budget']['maximum_calls'] == 4
+    with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=3), pytest.raises(PreflightUnavailable):
+        build_enhancement_preflight(source_bill)
 
 
 @pytest.mark.django_db
@@ -114,25 +126,32 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "group_repair", "missing", "revoked", "changed"])
+@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "group_repair", "group_split", "group_split_exhausted", "missing", "revoked", "changed"])
 def test_reader_pipeline_publishes_only_complete_current_targets(
     source_bill, enhancement_owner, enhancement_settings, monkeypatch, mode
 ):
     from apps.accounts.models import LLMCredential
     c = install_reader(source_bill)
+    if mode.startswith('group_split'):
+        monkeypatch.setattr('apps.legislation.enhancements.policy_compilation.section_assignments',
+                            lambda preflight, items: [[i] for i in range(len(items))])
     requests = []
     class Provider:
         def enhance_bill(self, *, request, **kwargs):
             requests.append(request)
             if request.request_envelope.get('policy_compilation'):
-                return ProviderResult({'groups': {'0': {'title': 'Report on the program',
-                    'text': 'Cite p0001.' if mode == 'group_repair' and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.'}}},
+                groups = request.request_envelope['output_schema']['properties']['groups']['properties']
+                if mode.startswith('group_split') and len(groups) > 1:
+                    from apps.legislation.enhancements.providers.base import ProviderError
+                    raise ProviderError('invalid_output', validation_code='provider_output_limit', usage=ProviderUsage(10, 5, 15))
+                return ProviderResult({'groups': {key: {'title': schema['properties']['title']['const'],
+                    'text': 'Cite p0001.' if mode == 'group_repair' and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.'} for key, schema in groups.items()}},
                     ProviderUsage(10, 5, 15), 'grouped', 'test')
             if request.request_envelope.get('source_review'):
                 ref = request.source_snapshot[0]['source_ref']
                 return ProviderResult({'financial_items': [], 'additional_changes': [], 'money_checks': {},
-                    'policy_changes': [{'title': 'Report on the program', 'text': 'Cite p0001 for the report.' if mode == 'policy_repair' and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
-                        'source_quotes': [{'source_ref': ref, 'quote_id': 'p0001'}]}], 'policy_checks': {ref + ':p0001': 'explained'}},
+                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': 'Cite p0001 for the report.' if mode == 'policy_repair' and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
+                        'source_quotes': [{'source_ref': ref, 'quote_id': 'p0001'}]} for i in range(2 if mode.startswith('group_split') else 1)], 'policy_checks': {ref + ':p0001': 'explained'}},
                     ProviderUsage(10, 5, 15), 'review-response', 'test')
             targets = snapshot_targets(request.source_snapshot)
             if mode == 'split' and len(targets) == 10:
@@ -158,23 +177,30 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
                 c.save()
             return ProviderResult(output, ProviderUsage(10, 5, 15), "reader-response", "test")
     monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
-    with enhancement_settings:
+    from contextlib import nullcontext
+    from django.test import override_settings
+    with enhancement_settings, (override_settings(LLM_READER_MAX_CALLS=4) if mode == 'group_split_exhausted' else nullcontext()):
         a = _pending_attempt(enhancement_owner, source_bill)
         a.dispatch_token = "reader-test"
         a.save()
         outcome = run_bill_enhancement_attempt(a.pk, a.dispatch_token)
     a.refresh_from_db()
     a.enhancement.refresh_from_db()
-    if mode in {"success", "split", "policy_repair", "group_repair"}:
+    if mode in {"success", "split", "policy_repair", "group_repair", "group_split"}:
         assert outcome["status"] == "succeeded"
-        assert len(requests) == {'success': 4, 'split': 6, 'policy_repair': 5, 'group_repair': 5}[mode]
-        assert a.total_tokens == {'success': 60, 'split': 90, 'policy_repair': 75, 'group_repair': 75}[mode]
-        assert a.steps.filter(status='validated').count() == (5 if mode == 'split' else 4)
+        assert len(requests) == {'success': 4, 'split': 6, 'policy_repair': 5, 'group_repair': 5, 'group_split': 6}[mode]
+        assert a.total_tokens == {'success': 60, 'split': 90, 'policy_repair': 75, 'group_repair': 75, 'group_split': 90}[mode]
+        assert a.steps.filter(status='validated').count() == (5 if mode in {'split', 'group_split'} else 4)
         assert a.enhancement.result_json['source_review']['reviewed_sources']
         payload = enhancement_payload(a.enhancement, detail=True)
         assert len(payload["result"]["explanations"]) == 10
         assert payload["result"]["explanations"][0]["contract_id"] == c.pk
         assert payload["result"]["explanations"][0]["cited_sources"]
+    elif mode == 'group_split_exhausted':
+        assert outcome['status'] == 'failed'
+        assert len(requests) == 4
+        assert a.enhancement.result_json is None
+        assert a.failure_detail['code'] == 'provider_output_limit'
     else:
         assert outcome["status"] != "succeeded"
         assert a.enhancement.result_json is None

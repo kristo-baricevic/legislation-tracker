@@ -2,6 +2,13 @@ import pytest
 from jsonschema import ValidationError
 
 
+def test_a_single_policy_is_not_split_from_its_conditions_to_fit_output():
+    from types import SimpleNamespace
+    from apps.legislation.enhancements.policy_compilation import split_compilation_request
+    request = SimpleNamespace(reader_reuse={'policy_assignments': [[0, 1]]})
+    assert split_compilation_request(request) == ()
+
+
 def test_grouping_keeps_every_underlying_policy_and_its_sources_exactly_once():
     from apps.legislation.enhancements.policy_compilation import resolve_policy_groups
     items = [{'title': 'Loans', 'text': 'States offer repayable housing loans.', 'source_quotes': [{'source_ref': 'src_0001', 'quote': 'Loans must be repaid.'}]},
