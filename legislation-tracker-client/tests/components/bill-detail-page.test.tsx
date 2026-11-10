@@ -50,6 +50,13 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillDetailPage", () => {
+  it("keeps independent bill tabs available while the session lookup is pending", async () => {
+    vi.mocked(getSession).mockReturnValue(new Promise(() => {}));
+    render(<BillDetailPage />);
+    expect(await screen.findByRole("status", { name: "Loading bill analysis" })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Versions" }));
+    expect(screen.getByRole("tabpanel", { name: "Versions" })).toBeVisible();
+  });
   it("keeps the existing summary through a progress-check failure and refreshes on the next tick", async () => {
     const value = await getBill(10);
     const initial = { ...value, processing_status: "processing", summary_preview: "Initial sourced summary." };

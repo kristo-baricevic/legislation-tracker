@@ -32,7 +32,15 @@ def _request_period(representative_id, period, user_id, *, refresh, finance_only
             from apps.campaign_finance.models import FinanceSnapshot
             saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False, published_at__isnull=False).select_related("run").first()
             if saved:
-                return saved.run
+                if not finance_only:
+                    return saved.run
+                from apps.campaign_finance.identity import resolve_candidate
+                identity = resolve_candidate(representative_id, period)
+                if identity.status == "verified":
+                    expected = set(identity.candidate_ids)
+                    scanned = set(saved.outside_scans.filter(complete=True).values_list("candidate_id", flat=True))
+                    if expected and expected == scanned == set(saved.candidate_ids):
+                        return saved.run
         run = ResearchRun.objects.create(representative_id=representative_id, period=period, requester_id=user_id)
         payload = {"run_id": str(run.pk), "refresh": refresh, "include_history": not finance_only}
         if finance_only:

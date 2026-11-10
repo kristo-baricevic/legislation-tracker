@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from apps.congress.models import Representative
-from apps.campaign_finance.models import CandidateIdentity, RepresentativeCandidate, FinanceSnapshot
+from apps.campaign_finance.models import CandidateIdentity, RepresentativeCandidate, FinanceSnapshot, OutsideSpendingScan
 from apps.ingestion.models import IngestionWorkItem
 from apps.research.models import ResearchRun
 from apps.research.services import request_research
@@ -56,12 +56,27 @@ def test_saved_selected_year_still_queues_history_and_reuses_saved_older_year(hi
     rep, user = history_scope
     for period in (2020, 2026):
         run = ResearchRun.objects.create(representative=rep, requester=user, period=period, status='partial')
-        FinanceSnapshot.objects.create(representative=rep, run=run, period=period, active=True, published_at=timezone.now())
+        snapshot = FinanceSnapshot.objects.create(representative=rep, run=run, period=period, active=True,
+            published_at=timezone.now(), candidate_ids=['S6IL00151'])
+        OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', complete=True)
     returned = request_research(rep.pk, 2026, user.pk, refresh=False)
     assert returned.pk == run.pk
     run_history(rep)
     assert ResearchRun.objects.filter(representative=rep, period=2020).count() == 1
     assert ResearchRun.objects.filter(representative=rep).count() == 5
+
+
+def test_backfill_researches_saved_cycle_missing_outside_spending(history_scope):
+    rep, user = history_scope
+    old = ResearchRun.objects.create(representative=rep, requester=user, period=2020, status='partial')
+    snapshot = FinanceSnapshot.objects.create(representative=rep, run=old, period=2020, active=True,
+        published_at=timezone.now(), candidate_ids=['S6IL00151'])
+    request_research(rep.pk, 2026, user.pk)
+    run_history(rep)
+    replacement = ResearchRun.objects.get(representative=rep, period=2020, status='queued')
+    assert replacement.work_item.payload_json['stage'] == 'finance'
+    snapshot.refresh_from_db()
+    assert snapshot.active
 
 
 def test_history_does_not_queue_records_after_identity_revoked(history_scope):
