@@ -92,7 +92,7 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
   const identity = useContext(Identity);
   const [page, setPage] = useState(1);
   const reader = useCompatibleReader();
-  if (reader?.source_review?.policy_changes) return <PolicyChanges key={`${enhancement?.id}-${reader.identity.contract_hash}`} reader={reader} />;
+  if (reader?.source_review?.policy_changes?.length) return <PolicyChanges key={`${enhancement?.id}-${reader.identity.contract_hash}`} reader={reader} />;
   if (reader?.source_review) return <>{children}<ReviewedChanges key={`${reader.identity.contract_hash}-${enhancement?.id}`} reader={reader} /></>;
   if (!result || identity?.documentId == null) return <>{children}</>;
   const rows = [

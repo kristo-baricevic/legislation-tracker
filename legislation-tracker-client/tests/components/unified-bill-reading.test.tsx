@@ -35,6 +35,21 @@ const saved = {
 } as unknown as BillEnhancement;
 
 describe("unified reader", () => {
+  it("keeps original provisions when a saved policy review has no explanations", () => {
+    const emptyReview = { ...saved, result: { ...saved.result, source_review: {
+      reviewed_sources: [], financial_items: [], additional_changes: [], policy_changes: [],
+    } } } as BillEnhancement;
+    function Policies() {
+      const { setEnhancement } = useAiGlossary();
+      useEffect(() => setEnhancement(emptyReview), [setEnhancement]);
+      return <ReaderIdentityProvider value={identity}><ReaderModeSwitch />
+        <LegacyReaderChanges><p>Existing sourced provisions.</p></LegacyReaderChanges>
+      </ReaderIdentityProvider>;
+    }
+    render(<AiGlossaryProvider><Policies /></AiGlossaryProvider>);
+    expect(screen.getByRole("button", { name: "Enhanced" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Existing sourced provisions.")).toBeVisible();
+  });
   it('paginates long policy lists, keeps citation numbering, and excludes inactive pages from interaction', async () => {
     const policies = { ...saved, result: { ...saved.result, source_review: {
       reviewed_sources: [], financial_items: [], additional_changes: [],
