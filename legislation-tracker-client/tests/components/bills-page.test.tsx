@@ -47,6 +47,11 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillsPage", () => {
+  it("does not duplicate the navbar with a Dashboard back link", async () => {
+    render(<BillsPage />);
+    await screen.findByRole("heading", { name: "Ingested Bills" });
+    expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
+  });
   it("selects a status stage and clears it without retaining the old page", async () => {
     searchState.query = "page=3&session=119";
     render(<BillsPage />);

@@ -56,3 +56,4 @@ class EnhancementPreflight:
     analysis_plan: Any = None
     glossary_batches: tuple = ()
     reader_batches: tuple = ()
+    reader_reuse: Any = None

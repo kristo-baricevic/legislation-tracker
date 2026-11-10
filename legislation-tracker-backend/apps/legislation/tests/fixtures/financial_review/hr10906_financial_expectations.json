@@ -1,0 +1,14 @@
+[
+  {"id":"mass_timber_credit", "source_text":"shall be equal to $85", "patterns":["85", "(?:metric )?ton", "(?:five|5|425)"]},
+  {"id":"biomass_investment_credit", "source_text":"energy percentage with respect to such property is 30 percent", "patterns":["30\\s*(?:%|percent)", "(?:biomass|investment)"]},
+  {"id":"housing_fund_share", "source_text":"use 95 percent of any deposit", "patterns":["95\\s*(?:%|percent)", "(?:grant|housing)"]},
+  {"id":"industry_fund_share", "source_text":"use 5 percent of any deposit", "patterns":["5\\s*(?:%|percent)", "(?:promot|industry)"]},
+  {"id":"first_housing_grant", "source_text":"not less than $100,000,000", "patterns":["100", "200", "million|000,000"]},
+  {"id":"additional_housing_grant", "source_text":"not less than $20,000,000", "patterns":["20", "50", "million|000,000", "(?:five|5) years"]},
+  {"id":"repayable_housing_support", "source_text":"legal obligation of repayment", "patterns":["repay|revolv|loan"]},
+  {"id":"biochar_cap", "source_text":"may not exceed 35 percent", "patterns":["35\\s*(?:%|percent)", "capital", "cost"]},
+  {"id":"base_deduction", "source_text":"striking $10,000 and inserting $30,000", "patterns":["10,?000", "30,?000"]},
+  {"id":"second_base_deduction", "source_text":"striking $5,000 and inserting $15,000", "patterns":["5,?000", "15,?000"]},
+  {"id":"disaster_deduction", "source_text":"does not exceed $500,000", "patterns":["500,?000", "(?:1 million|1,?000,?000)", "250,?000"]},
+  {"id":"disaster_recapture", "source_text":"within the 10-taxable-year period", "patterns":["(?:10|ten)", "(?:recaptur|tax|income)"]}
+]

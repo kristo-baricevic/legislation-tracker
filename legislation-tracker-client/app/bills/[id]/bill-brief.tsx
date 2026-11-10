@@ -185,7 +185,7 @@ function GlossaryTerm({ item, contractId, document }: { item: LegalNlpDefinition
   return <GlossaryEntryView entry={buildGlossary([item])[0]} contractId={contractId} document={document} />;
 }
 
-import { useAiGlossary } from "./ai-glossary-context";
+import { BillAnalysisBoundary, useAiGlossary } from "./ai-glossary-context";
 import { ReaderTabBar, ReaderTabPanel, useReaderTabs } from "./reader-tabs";
 import { SourcePopover } from "./source-popover";
 
@@ -359,7 +359,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
     <section className="mb-6 rounded-lg border border-slate-300 bg-white p-2 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
       <div className="p-4 sm:p-5">
         <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">Summary</h2>
-        <ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-4 space-y-3">
+        <BillAnalysisBoundary><ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-4 space-y-3">
           <p className="text-base leading-7">{contract.reader_brief.summary}{contract.reader_brief.source_id && <SourceEvidence contractId={contract.id} lineItemId={contract.reader_brief.source_id} textUrl={document?.text_url} downloadUrl={document?.download_url} number={1} />}</p>
           {contract.reader_brief.money && <p className="text-base leading-7"><span className="font-semibold">Money: </span>{contract.reader_brief.money}</p>}
         </div> : sourceLabel ? (
@@ -374,7 +374,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
           <p className="mt-2 w-full text-base leading-7 text-slate-900 dark:text-green-100">{fallbackOverview}</p>
           {contract.orientation.purpose_clause && contract.orientation.purpose_line_item_id && <SourceEvidence contractId={contract.id} lineItemId={contract.orientation.purpose_line_item_id} textUrl={document?.text_url} downloadUrl={document?.download_url} label="Read synopsis source text" />}
           {!contract.orientation.purpose_clause && document?.reader_summary && <a href={`/documents/${document.id}`} className="mt-2 inline-block underline">Read summary source text</a>}
-        </div>}</ReaderSummary>
+        </div>}</ReaderSummary></BillAnalysisBoundary>
       </div>
 
       <div className="border-y border-slate-300 bg-slate-50/70 p-4 dark:border-green-900 dark:bg-black/20 sm:p-5">
@@ -389,6 +389,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
     </section>
     <ReaderTabBar />
     <ReaderTabPanel tab="changes">
+      <BillAnalysisBoundary>
       <div className="p-4 sm:p-5">
         <h3 ref={readerHeading} tabIndex={-1} className="mb-3 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">What this bill does<SourcePopover number={coverageNumber} label="Analysis coverage"><p>{contract.coverage_note}</p></SourcePopover></h3>
         <LegacyReaderChanges>
@@ -405,9 +406,10 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
           </div>
         </LegacyReaderChanges>
       </div>
+      </BillAnalysisBoundary>
     </ReaderTabPanel>
     <ReaderTabPanel tab="terms">
-      <KeyTerms key={contract.id} document={document} contractId={contract.id} totalCount={contract.reader_stats.definition_item_count} />
+      <BillAnalysisBoundary><KeyTerms key={contract.id} document={document} contractId={contract.id} totalCount={contract.reader_stats.definition_item_count} /></BillAnalysisBoundary>
     </ReaderTabPanel>
     </>
   );

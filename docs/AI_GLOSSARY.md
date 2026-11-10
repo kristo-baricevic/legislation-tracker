@@ -8,7 +8,7 @@ explanations replace matching summary, provision, money-purpose and definition
 text in place; they never replace amounts, relationships, filters or pagination.
 Every replacement retains the original explanation and cited source disclosure.
 The top of the bill shows only Enhance with AI until a compatible saved result
-exists, then replaces it with the Original / AI-enhanced selector. Switching uses
+exists, then replaces it with the Original / Enhanced selector. Switching uses
 saved data and never starts a paid request. The AI metadata box, including
 warnings, regeneration controls, usage and histories, sits at the bottom of the
 bill page. Cost confirmation opens beside the top control. Signed-out users see

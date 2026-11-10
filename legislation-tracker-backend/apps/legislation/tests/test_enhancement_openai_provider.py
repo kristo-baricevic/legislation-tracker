@@ -536,6 +536,8 @@ def test_timeout_or_connection_loss_is_an_unknown_outcome(error_name):
     assert captured.value.category == "outcome_unknown"
     assert captured.value.outcome_unknown is True
     assert captured.value.retry_allowed is True
+    assert captured.value.validation_code == ("provider_timeout" if error_name == "APITimeoutError" else "provider_connection_lost")
+    assert captured.value.validation_detail["timeout_seconds"] == 90
 
 
 def test_refusal_and_incomplete_response_fail_without_parsing_output():

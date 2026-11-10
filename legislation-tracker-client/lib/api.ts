@@ -1408,6 +1408,12 @@ export interface ReaderEnhancementResult {
   identity: ReaderEnhancementIdentity;
   summary: { text: string; cited_sources: EnhancementCitedSource[] }[];
   explanations: ReaderExplanationItem[];
+  source_review?: {
+    reviewed_sources: string[];
+    financial_items: { label: string; amount_display: string; text: string; fiscal_years: number[]; cited_sources: EnhancementCitedSource[] }[];
+    additional_changes: { text: string; cited_sources: EnhancementCitedSource[] }[];
+    policy_changes?: { title: string; text: string; cited_sources: EnhancementCitedSource[] }[];
+  };
 }
 
 export type AnalysisCondition = { operator: "leaf"; text: string; evidence_ids: string[] }

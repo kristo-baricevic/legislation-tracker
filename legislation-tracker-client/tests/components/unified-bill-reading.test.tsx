@@ -35,6 +35,71 @@ const saved = {
 } as unknown as BillEnhancement;
 
 describe("unified reader", () => {
+  it("keeps original provisions when a saved policy review has no explanations", () => {
+    const emptyReview = { ...saved, result: { ...saved.result, source_review: {
+      reviewed_sources: [], financial_items: [], additional_changes: [], policy_changes: [],
+    } } } as BillEnhancement;
+    function Policies() {
+      const { setEnhancement } = useAiGlossary();
+      useEffect(() => setEnhancement(emptyReview), [setEnhancement]);
+      return <ReaderIdentityProvider value={identity}><ReaderModeSwitch />
+        <LegacyReaderChanges><p>Existing sourced provisions.</p></LegacyReaderChanges>
+      </ReaderIdentityProvider>;
+    }
+    render(<AiGlossaryProvider><Policies /></AiGlossaryProvider>);
+    expect(screen.getByRole("button", { name: "Enhanced" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Existing sourced provisions.")).toBeVisible();
+  });
+  it('paginates long policy lists, keeps citation numbering, and excludes inactive pages from interaction', async () => {
+    const policies = { ...saved, result: { ...saved.result, source_review: {
+      reviewed_sources: [], financial_items: [], additional_changes: [],
+      policy_changes: Array.from({ length: 13 }, (_, i) => ({ title: `Policy ${i + 1}`, text: `Explanation ${i + 1}.`, cited_sources: [] })),
+    } } } as BillEnhancement;
+    function Policies() {
+      const { setEnhancement } = useAiGlossary();
+      useEffect(() => setEnhancement(policies), [setEnhancement]);
+      return <ReaderIdentityProvider value={identity}><LegacyReaderChanges>Original</LegacyReaderChanges></ReaderIdentityProvider>;
+    }
+    render(<AiGlossaryProvider><Policies /></AiGlossaryProvider>);
+    expect(screen.getAllByRole('heading')).toHaveLength(6);
+    expect(screen.getByRole('button', { name: 'Prev' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('heading', { name: 'Policy 7' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Policy 1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Source 9' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getAllByRole('heading')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Policy 13' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Prev' }));
+    expect(screen.getByRole('heading', { name: 'Policy 7' })).toBeVisible();
+  });
+  it("shows one policy-level list including newly discovered changes, with sources and no clause pagination", async () => {
+    const source = { source_ref: 'src_0001', label: 'Source', section_label: 'Section 1', quoted_text: 'A credit of $85 applies.', start_char: 0, end_char: 23 };
+    const policies = { ...saved, result: { ...saved.result,
+      source_review: { reviewed_sources: ['src_0001'], financial_items: [], additional_changes: [],
+        policy_changes: [
+          { title: 'Help build with wood', text: 'Qualifying wood buildings get an $85 credit per ton of stored carbon.', cited_sources: [source] },
+          { title: 'Support housing loans', text: 'States receive grants to help eligible people buy homes.', cited_sources: [source] },
+        ] } } } as BillEnhancement;
+    function Policies() {
+      const { setEnhancement } = useAiGlossary();
+      useEffect(() => setEnhancement(policies), [setEnhancement]);
+      return <ReaderIdentityProvider value={identity}><ReaderModeSwitch />
+        <LegacyReaderChanges><p>Raw amendment clauses</p><p>Page 1 of 19</p></LegacyReaderChanges>
+      </ReaderIdentityProvider>;
+    }
+    render(<AiGlossaryProvider><Policies /></AiGlossaryProvider>);
+    expect(screen.getByRole('heading', { name: 'Help build with wood' })).toBeVisible();
+    expect(screen.getByText('States receive grants to help eligible people buy homes.')).toBeVisible();
+    expect(screen.queryByText('Page 1 of 19')).not.toBeInTheDocument();
+    expect(screen.queryByText('Other changes')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Source 3' }));
+    expect(screen.getByRole('link', { name: 'Read bill text' })).toHaveAttribute('href', '/documents/4?start=0&end=23');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Original' }));
+    expect(screen.getByText('Raw amendment clauses')).toBeVisible();
+  });
   it.each([
     { contractId: 9 }, { contractHash: "hash-b" }, { documentId: 8 },
   ])("does not apply another identity %j", mismatch => {
@@ -61,10 +126,10 @@ describe("unified reader", () => {
     expect(screen.getByText("Original summary.")).toBeVisible();
     expect(screen.getByText("A fine of $1,000 applies.")).toBeVisible();
     expect(screen.queryByText("Protects workers from harassment.")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "AI-enhanced" }));
+    await userEvent.click(screen.getByRole("button", { name: "Enhanced" }));
     expect(screen.getByText("Protects workers from harassment.")).toBeVisible();
     expect(screen.getByText("Employers face a fine of up to $1,000.")).toBeVisible();
-    expect(screen.getByRole("button", { name: "AI-enhanced" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Enhanced" })).toHaveAttribute("aria-pressed", "true");
   });
   it("shows a compatible saved older AI version without requiring regeneration", async () => {
     const legacy = { ...saved, result: { schema_version: "1.3",

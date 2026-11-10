@@ -202,6 +202,16 @@ class OutsideSpendingView(APIView):
         periods = FinanceSnapshot.objects.filter(representative_id=representative_id, invalidated=False).values_list("period", flat=True).distinct() if data["all_periods"] else [data["period"]]
         snapshots = []
         complete = True
+        pending_periods = set()
+        if data['all_periods']:
+            from apps.ingestion.models import IngestionWorkItem
+            latest_run = ResearchRun.objects.filter(representative_id=representative_id, period=OuterRef('period')).order_by('-created_at').values('pk')[:1]
+            pending_periods = set(ResearchRun.objects.filter(representative_id=representative_id,
+                pk=Subquery(latest_run), status__in=['queued', 'running']).exclude(work_item__status='dead').values_list('period', flat=True))
+            periods = set(periods) | pending_periods
+            history_keys = [f'history:{pk}' for pk in ResearchRun.objects.filter(representative_id=representative_id).values_list('pk', flat=True)]
+            complete = not IngestionWorkItem.objects.filter(kind='representative_research',
+                dedupe_key__in=history_keys, status__in=['pending', 'dispatched', 'processing']).exists()
         for period in periods:
             preview = latest_preview(representative_id, period)
             saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False).first()
@@ -210,7 +220,7 @@ class OutsideSpendingView(APIView):
             if snapshot and snapshot.outside_scans.exists():
                 snapshots.append(snapshot)
                 complete = complete and (not preview or preview_complete) and set(snapshot.outside_scans.filter(complete=True).values_list("candidate_id", flat=True)) == set(snapshot.candidate_ids)
-            elif preview:
+            elif preview or period in pending_periods:
                 complete = False
         empty = {"status": "not_researched", "support": None, "oppose": None, "results": [], "count": 0, "next_cursor": None}
         if not snapshots:

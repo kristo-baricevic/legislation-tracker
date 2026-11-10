@@ -57,7 +57,7 @@ def _expanded_result(enhancement: BillEnhancement):
             target = targets[item["target_id"]]
             item.update({key: target[key] for key in (
                 "kind", "item_id", "contract_id", "contract_hash", "document_id", "document_content_hash", "original_text")})
-    for category in (
+    categories = (
         "overview",
         "key_impacts",
         "obligations",
@@ -66,8 +66,14 @@ def _expanded_result(enhancement: BillEnhancement):
         "glossary",
         "summary",
         "explanations",
-    ):
-        for item in result.get(category, []):
+    )
+    rows = [(category, result.get(category, [])) for category in categories]
+    if result.get('source_review'):
+        result['source_review'].pop('policy_drafts', None)
+        rows.extend((category, result['source_review'].get(category, []))
+                    for category in ('financial_items', 'additional_changes', 'policy_changes'))
+    for category, items in rows:
+        for item in items:
             if category == "glossary":
                 target = next(
                     (t for s in sources.values() for t in s.get("glossary_targets", [])

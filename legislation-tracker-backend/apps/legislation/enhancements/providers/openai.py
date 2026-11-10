@@ -47,6 +47,7 @@ def _mapped_error(error: Exception) -> ProviderError:
             "outcome_unknown",
             outcome_unknown=True,
             retry_allowed=True,
+            validation_code="provider_timeout" if "timeout" in class_name else "provider_connection_lost",
         )
     body = getattr(error, "body", None)
     error_code = getattr(error, "code", None)
@@ -381,7 +382,9 @@ class OpenAIEnhancementProvider:
         # See validate_credential: the adapter owns sanitization for every SDK
         # exception, including version-specific subclasses.
         except Exception as error:  # noqa: BLE001
-            raise _mapped_error(error) from None
+            mapped = _mapped_error(error)
+            mapped.validation_detail = {"timeout_seconds": timeout_seconds}
+            raise mapped from None
 
         usage = _usage(response)
         response_id = str(_value(response, "id", "") or "")

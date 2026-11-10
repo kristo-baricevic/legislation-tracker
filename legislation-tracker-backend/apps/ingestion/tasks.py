@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 
 import requests
 from celery import shared_task
+from .dispatch_task import CoalescedDispatcherTask
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, When
@@ -1057,7 +1058,7 @@ def _tracked_refresh_bucket(now):
     )
 
 
-@shared_task
+@shared_task(base=CoalescedDispatcherTask)
 def dispatch_ingestion_work(batch_size=100):
     """Lease bounded, priority-ordered durable work and submit it to Celery."""
     now = timezone.now()
@@ -1092,7 +1093,8 @@ def dispatch_ingestion_work(batch_size=100):
             candidates.extend(IngestionWorkItem.objects.select_for_update(skip_locked=True).filter(
                 kind="representative_research", status=IngestionWorkStatus.PENDING,
                 available_at__lte=now,
-            ).order_by("available_at", "id")[:1])
+            ).order_by(Case(When(payload_json__finance_phase="receipts", then=1),
+                            default=0, output_field=IntegerField()), "available_at", "id")[:1])
         for work_item in candidates:
             work_item.status = IngestionWorkStatus.DISPATCHED
             work_item.lease_expires_at = now + WORK_LEASE_DURATION

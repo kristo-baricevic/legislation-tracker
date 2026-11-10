@@ -22,7 +22,7 @@ import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import { stageFor } from "@/lib/bill-stage";
-import { AiGlossaryProvider } from "./ai-glossary-context";
+import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
 import BillChangeExperience from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
 import LegislatorName from "../../components/LegislatorName";
@@ -313,8 +313,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
         <div id="bill-ai-controls" className="mb-5" />
         {bill.latest_contract ? (
-          <ContractSection contract={bill.latest_contract} bill={bill} />
+          isLegalNlpV21ContractSummary(bill.latest_contract)
+            ? <ContractSection contract={bill.latest_contract} bill={bill} />
+            : <BillAnalysisBoundary><ContractSection contract={bill.latest_contract} bill={bill} /></BillAnalysisBoundary>
         ) : (
+          <BillAnalysisBoundary>
           <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
             <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
               Summary
@@ -324,6 +327,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             </p>
             {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
           </section>
+          </BillAnalysisBoundary>
         )}
 
         {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}

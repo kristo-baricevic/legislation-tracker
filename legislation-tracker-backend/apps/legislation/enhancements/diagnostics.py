@@ -3,6 +3,19 @@
 from jsonschema import ValidationError
 
 MESSAGES = {
+    "reader_policy_wording": "A policy explanation contains drafting instructions, an incomplete sentence, or wording that needs simplification.",
+    "provider_timeout": "The AI request timed out while waiting for a response. The provider may still have processed it; usage may have been charged.",
+    "provider_connection_lost": "The connection to the AI provider was lost. The provider may still have processed the request; usage may have been charged.",
+    "outcome_unknown": "We could not confirm whether the AI request finished. Usage may have been charged.",
+    "provider_failed": "The AI provider request failed. Your original analysis is unchanged.",
+    "provider_rate_limited": "The AI provider temporarily limited requests. Try again later.",
+    "provider_unavailable": "The AI provider is temporarily unavailable.",
+    "quota_exhausted": "The API account has insufficient credits or has reached its spending limit.",
+    "invalid_credentials": "The AI provider rejected the saved API key.",
+    "model_access_denied": "The API account cannot access the configured AI model.",
+    "request_too_large": "The request exceeds the AI model's input limit.",
+    "provider_request_rejected": "The AI provider rejected the request format or settings.",
+    "content_refusal": "The AI provider declined to generate this analysis.",
     "reader_target_invalid": "An explanation does not match its assigned bill provision.",
     "reader_coverage_incomplete": "The AI did not return an outcome for every requested provision.",
     "glossary_coverage_incomplete": "The AI did not explain every requested definition. No partial glossary was published.",
@@ -34,6 +47,10 @@ MESSAGES = {
 }
 PATH_FIELDS = frozenset(
     {
+        "policy_changes",
+        "policy_checks",
+        "money_checks",
+        "source_review",
         "schema_version",
         "summary",
         "explanations",
@@ -134,4 +151,21 @@ def provider_validation_diagnostic(error):
                 safe[field] = value
         if safe:
             result["parser"] = safe
+    return result
+
+
+def provider_failure_diagnostic(error):
+    if error.category == "invalid_output":
+        return provider_validation_diagnostic(error)
+    code = error.validation_code or error.category
+    result = diagnostic(code if code in MESSAGES else "provider_failed")
+    # Reuse the same allowlisted stage/index handling. No raw error text,
+    # credentials, HTTP bodies or generated output is persisted.
+    safe = provider_validation_diagnostic(error)
+    for key in ("stage", "batch_index"):
+        if key in safe:
+            result[key] = safe[key]
+    seconds = error.validation_detail.get("timeout_seconds") if isinstance(error.validation_detail, dict) else None
+    if type(seconds) is int and 0 < seconds <= 86400:
+        result["timeout_seconds"] = seconds
     return result

@@ -5,7 +5,7 @@ from .fec_client import get_page, FECError
 from .models import CandidateIdentity, RepresentativeCandidate
 
 
-def discover_periods(rep):
+def discover_periods(rep, *, strict=False):
     year = timezone.now().year
     current = year + year % 2
     periods = set()
@@ -22,8 +22,13 @@ def discover_periods(rep):
                     cycles = sorted({cycle for cycle in rows[0]["cycles"] if type(cycle) is int and 1980 <= cycle <= current and cycle % 2 == 0})
                     saved = {"checked_cycle": current, "periods": cycles}
                     CandidateIdentity.objects.filter(pk=candidate.pk).update(reporting_periods=saved)
+                elif strict:
+                    raise FECError("invalid_fec_periods")
             except FECError:
                 # Keep saved choices; retry later without hammering the provider.
-                pass
+                if strict:
+                    raise
+        if strict and saved.get("checked_cycle") != current:
+            raise FECError("fec_period_discovery_pending", retry_after_seconds=60)
         periods.update(saved.get("periods", []))
     return sorted(periods, reverse=True)

@@ -50,6 +50,13 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillDetailPage", () => {
+  it("keeps independent bill tabs available while the session lookup is pending", async () => {
+    vi.mocked(getSession).mockReturnValue(new Promise(() => {}));
+    render(<BillDetailPage />);
+    expect(await screen.findByRole("status", { name: "Loading bill analysis" })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Versions" }));
+    expect(screen.getByRole("tabpanel", { name: "Versions" })).toBeVisible();
+  });
   it("keeps the existing summary through a progress-check failure and refreshes on the next tick", async () => {
     const value = await getBill(10);
     const initial = { ...value, processing_status: "processing", summary_preview: "Initial sourced summary." };
@@ -107,7 +114,7 @@ describe("BillDetailPage", () => {
     expect(within(links).getByRole("link", { name: "Congress.gov" })).toHaveAttribute("href", "https://www.congress.gov/bill/119th-congress/house-bill/10");
     expect(within(links).getByRole("link", { name: "Full bill text" })).toHaveAttribute("href", "/documents/9");
     expect(links.closest("header")).toContainElement(screen.getByRole("heading", { name: "HR 10 · Congress 119" }));
-    await userEvent.click(screen.getByRole("tab", { name: "Versions" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Versions" }));
     const versions = screen.getByRole("tabpanel", { name: "Versions" });
     expect(within(versions).getByRole("heading", { name: "Bill versions" })).toBeVisible();
     expect(within(versions).getByRole("link", { name: "Read text" })).toHaveAttribute("href", "/documents/9");
@@ -357,7 +364,7 @@ describe("BillDetailPage", () => {
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
     expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "What this bill does" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "What this bill does" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("tab", { name: "Votes & sponsor" }));
     expect(screen.getByText("Loading vote history…")).toBeVisible();
     expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1, view: "summary" });

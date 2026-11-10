@@ -102,6 +102,11 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+CELERY_TASK_ROUTES = {
+    "apps.legislation.tasks.dispatch_bill_enhancement_attempts": {"queue": "enhancements"},
+    "apps.legislation.tasks.run_bill_enhancement_attempt": {"queue": "enhancements"},
+    "apps.legislation.tasks.recover_stale_bill_enhancement_attempts": {"queue": "enhancements"},
+}
 # A worker process can disappear after receiving a downstream document, vote,
 # or contract task. Acknowledge only after completion and return that delivery
 # to the broker when the child process is lost so the pipeline is at-least-once.
@@ -151,11 +156,11 @@ LLM_READER_MAX_OUTPUT_TOKENS = env.int("LLM_READER_MAX_OUTPUT_TOKENS", default=2
 LLM_READER_MAX_CALLS = env.int("LLM_READER_MAX_CALLS", default=64)
 LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS = env.int(
     "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS",
-    default=90,
+    default=240,
 )
 LLM_ENHANCEMENT_RUN_LEASE_SECONDS = env.int(
     "LLM_ENHANCEMENT_RUN_LEASE_SECONDS",
-    default=180,
+    default=600,
 )
 LLM_ENHANCEMENT_CREATE_RATE = env(
     "LLM_ENHANCEMENT_CREATE_RATE",

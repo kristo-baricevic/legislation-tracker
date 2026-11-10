@@ -151,10 +151,13 @@ With **Redis** running (e.g. `docker compose up -d` or `brew services start redi
 ```bash
 cd legislation-tracker-backend
 source .venv/bin/activate   # if using venv
-celery -A config worker -l info
+celery -A config worker -Q celery -l info
+# Run these in separate terminals to isolate interactive work from ingestion:
+celery -A config worker -Q enhancements --concurrency=1 --prefetch-multiplier=1 -n enhancements@%h -l info
+celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -n research@%h -l info
 ```
 
-**Start Beat** (second terminal):
+**Start Beat** (separate terminal):
 
 ```bash
 cd legislation-tracker-backend

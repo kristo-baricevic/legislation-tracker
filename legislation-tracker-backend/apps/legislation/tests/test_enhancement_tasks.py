@@ -41,6 +41,27 @@ def _pending_attempt(owner, bill):
     return created.attempt
 
 
+@pytest.mark.django_db(transaction=True)
+def test_timeout_diagnostic_is_saved_without_provider_secrets(enhancement_owner, source_bill, enhancement_settings, monkeypatch):
+    class TimeoutProvider:
+        def enhance_bill(self, **kwargs):
+            raise ProviderError("outcome_unknown", outcome_unknown=True,
+                validation_code="provider_timeout", validation_detail={
+                    "timeout_seconds": 240, "stage": "reader_batch", "batch_index": 12,
+                    "secret": "must-not-be-saved"})
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: TimeoutProvider())
+        run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+        attempt.refresh_from_db()
+    assert attempt.status == "outcome_unknown"
+    assert attempt.failure_detail["code"] == "provider_timeout"
+    assert attempt.failure_detail["timeout_seconds"] == 240
+    assert attempt.failure_detail["batch_index"] == 12
+    assert "timed out" in attempt.failure_detail["message"]
+    assert "must-not-be-saved" not in str(attempt.failure_detail)
+
+
 def _valid_output(source_ref):
     return {
         "schema_version": "1.3",

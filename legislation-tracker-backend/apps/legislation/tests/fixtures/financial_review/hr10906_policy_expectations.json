@@ -1,0 +1,19 @@
+[
+  {"id":"solid-carbon", "source_text":"captured in solid form", "patterns":["credit", "solid"]},
+  {"id":"mass-timber", "source_text":"$85 for each metric ton", "patterns":["credit", "wood|timber"]},
+  {"id":"biomass-fuel", "source_text":"emissions rate for such fuel shall be zero", "patterns":["biomass|plant|wood", "zero|0"]},
+  {"id":"biomass-credit", "source_text":"energy percentage with respect to such property is 30 percent", "patterns":["credit", "biomass|plant|wood"]},
+  {"id":"fund", "source_text":"Build America Fund", "patterns":["fund", "duties|tariff|import"]},
+  {"id":"housing", "source_text":"State housing finance agencies", "patterns":["housing|homes", "grant"]},
+  {"id":"plant-biostimulants", "source_text":"plant biostimulants", "patterns":["plant", "pesticide|regulat"]},
+  {"id":"biochar", "source_text":"biochar demonstration projects", "patterns":["biochar|charcoal", "research|project"]},
+  {"id":"wood-chemicals", "source_text":"chemical compounds derived from woody biomass", "patterns":["research", "wood"]},
+  {"id":"expensing", "source_text":"$30,000", "patterns":["deduct|tax", "replant|reforest"]},
+  {"id":"disaster-reforestation", "source_text":"qualified natural disaster", "patterns":["disaster", "deduct|tax"]},
+  {"id":"trade-investigation", "source_text":"national security", "patterns":["investigat|stud", "import"]},
+  {"id":"eu-tariffs", "source_text":"retaliatory tariffs", "patterns":["tariff", "EU|European"]},
+  {"id":"mill-tariffs", "source_text":"eliminate all tariffs", "patterns":["tariff", "mill"]},
+  {"id":"domestic-procurement", "source_text":"harvested and processed in the United States", "patterns":["buy|purchase|procure", "U.S.|domestic|American"]},
+  {"id":"air-standard", "source_text":"PM2.5", "patterns":["air|pollution|soot|particle", "standard|limit"]},
+  {"id":"air-review", "source_text":"shall periodically review, and revise as necessary", "patterns":["review", "pollut|emission"]}
+]
