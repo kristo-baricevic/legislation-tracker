@@ -1469,7 +1469,9 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
                     total_tokens=usage.total_tokens, provider_response_id=completed.response_id,
                     resolved_model=completed.resolved_model,
                     citation_resolution_json={"reader": {"completed_calls": completed_calls,
-                                                        "total_calls": 1 + len(preflight.reader_batches)}},
+                                                        "total_calls": max(completed_calls,
+                                                            (completed.citation_resolution or {}).get('reader', {}).get('total_calls',
+                                                                preflight.source_manifest['budget']['planned_calls']))}},
                     lease_expires_at=now + timedelta(seconds=max(
                         settings.LLM_ENHANCEMENT_RUN_LEASE_SECONDS,
                         settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS + 30)),

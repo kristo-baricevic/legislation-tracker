@@ -75,7 +75,7 @@ Section-level deadlines must retain their broader scope rather than attaching
 to arbitrary provisions. Money can link to its parent change without duplicating
 the entire explanation in both places.
 
-Use a small “AI-enhanced” indicator and “View original” disclosure. Keep the
+Use a small “Enhanced” indicator and “View original” disclosure. Keep the
 current app styling. Move generation controls and usage/failure/attempt history
 into a compact “AI enhancement” details control near the reading controls.
 Votes and legislative history are unchanged.

@@ -21,8 +21,14 @@ second input does not depend on which financial provisions NLP recognized.
   labels, rather than overlaying prose on the NLP ledger's amount fields. The
   Original switch retains the original NLP ledger. Older saved enhancements
   without a source review retain their prior behavior.
-- Missing nonfinancial changes are displayed alongside the existing enhanced
-  changes. Both views use source annotations and pagination.
+- Prompt version 8 produces a single `policy_changes` list covering financial
+  and nonfinancial effects. Related definitions, dates and conforming edits are
+  folded into their policy instead of becoming a page of separate clauses.
+  All policy entries are shown with numbered source tooltips, without a second
+  "Other changes" list. Long lists paginate six grouped explanations at a time,
+  reserving the tallest page's height so navigation never shifts the layout.
+  Money remains a complete,
+  separate inventory. Original and older saved results retain their source data.
 - Existing shared enhancements remain reusable across users. A prompt change
   does not automatically charge users to regenerate every saved bill. The
   H.R. 10906 replacement is an explicitly authorized administrative run.
@@ -71,3 +77,47 @@ review; a correct citation alone does not establish a correct explanation.
   sections are not supplied as uncitable context, avoiding cross-batch duplicates.
   Oversized sections retain their own governing context; requests exceeding the
   configured input allowance are rejected before payment.
+
+## Reader-level explanations
+
+The audience has no legislative background. Use a short action heading and
+normally 25–45 words explaining who is affected and what changes. Preserve
+conditions that change the meaning; use the Money tab for the detailed financial
+breakdown rather than repeating its entire ledger in the overview. There is no
+fixed count of policy entries; every entry remains accessible through pagination.
+
+A final size-bounded grouping pass combines related draft entries (for example,
+a housing program's applications, eligibility, loans and reporting). The server
+groups entries by their originating bill section before requesting prose, so the
+model cannot simply return one explanation per draft clause. Very large sections
+retain source-chunk subdivisions. Quoted amendments do not create outer sections.
+Each output group has a fixed policy heading and its own schema description;
+the model cannot shift a later policy into an earlier group's slot. Each input
+entry must belong to exactly one output group. Rewrite packets target 24 KB of
+serialized input, keeping whole groups together. Citations are inherited and
+deduplicated by the server, not rewritten by the model. This does not establish
+semantic equivalence automatically, but prevents silent omission of input entries
+and retains the evidence for review. The original draft, group membership and
+usage remain in the durable step records. Verified full-source inventories can
+be reused for a presentation upgrade; Money is not regenerated unnecessarily.
+Unabridged policy drafts are also retained with the stored review and excluded
+from the reader API, so another presentation upgrade does not summarize an
+already condensed explanation and progressively lose details.
+
+Each selectable source passage receives an explained/context decision. Explained
+passages must be cited by a policy entry; financial passages cannot be dismissed
+as context. Exact source matching, complete sentences, length bounds, and guards
+against quote IDs and amendment instructions apply before publication. One
+bounded correction for wording/coverage failures is allowed within the existing
+confirmed reserve. Repeated failure leaves the previous result intact.
+Output-limit failures in the grouping pass subdivide between whole policies,
+weighted by input size, within the same confirmed call and token limits. A single
+policy is never split from its conditions. Cached source reviews are applied
+before budgeting, and all known grouping requests are counted before confirmation.
+
+`hr10906_policy_expectations.json` adds source-pinned policy coverage checks,
+including nonfinancial policies. `evaluate_policy_review` reports entry and word
+counts and flags concrete readability hazards. Neither those metrics nor passing
+keyword checks prove that a child understands the explanation; human review is
+still needed. Existing saved enhancements do not automatically incur new API
+charges. H.R. 10906 is explicitly regenerated to verify this change live.

@@ -3,6 +3,7 @@
 from jsonschema import ValidationError
 
 MESSAGES = {
+    "reader_policy_wording": "A policy explanation contains drafting instructions, an incomplete sentence, or wording that needs simplification.",
     "provider_timeout": "The AI request timed out while waiting for a response. The provider may still have processed it; usage may have been charged.",
     "provider_connection_lost": "The connection to the AI provider was lost. The provider may still have processed the request; usage may have been charged.",
     "outcome_unknown": "We could not confirm whether the AI request finished. Usage may have been charged.",
@@ -46,6 +47,10 @@ MESSAGES = {
 }
 PATH_FIELDS = frozenset(
     {
+        "policy_changes",
+        "policy_checks",
+        "money_checks",
+        "source_review",
         "schema_version",
         "summary",
         "explanations",

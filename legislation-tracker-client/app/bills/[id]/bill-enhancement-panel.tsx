@@ -222,12 +222,15 @@ export default function BillEnhancementPanel({
   const [confirming, setConfirming] = useState<"create" | "retry" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isFederal = jurisdiction.trim().toLowerCase() === "federal";
-  const { setEnhancement: publishGlossary } = useAiGlossary();
+  const { setEnhancement: publishGlossary, setAnalysisPending } = useAiGlossary();
   useEffect(() => {
+    // Publish the chosen reader and release the placeholder together. Never
+    // interpret an unresolved lookup as "no enhancement" on the initial paint.
+    setAnalysisPending(signedIn === null || featureAvailable === null || loading);
     if (!signedIn || !featureAvailable) publishGlossary(null);
     else if (enhancement?.active_reader !== undefined) publishGlossary(enhancement.active_reader);
     else if (enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale)) publishGlossary(enhancement);
-  }, [enhancement, signedIn, featureAvailable, publishGlossary]);
+  }, [enhancement, signedIn, featureAvailable, loading, publishGlossary, setAnalysisPending]);
   useEffect(() => {
     publishGlossary(null);
     return () => publishGlossary(null);

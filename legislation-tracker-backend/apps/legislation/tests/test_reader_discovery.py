@@ -7,6 +7,56 @@ from jsonschema import ValidationError
 TEXT = (Path(__file__).parent / 'fixtures/reader_evals/hr10906_119_ih.txt').read_text()
 
 
+def test_policy_expectations_are_pinned_to_the_bill_not_generated_output():
+    import json
+    from apps.legislation.evaluation.financial_review import evaluate_policy_review
+    expectations = json.loads((Path(__file__).parent / 'fixtures/financial_review/hr10906_policy_expectations.json').read_text())
+    assert all(e['source_text'] in TEXT for e in expectations)
+    report = evaluate_policy_review({'policy_changes': []}, expectations)
+    assert not report['passed'] and len(report['failures']) == len(expectations)
+    item = {'title': 'Fund housing', 'text': 'States get grants to help build homes.',
+            'source_quotes': [{'quote': 'Grants for State housing finance agencies.'}]}
+    case = [{'id': 'housing', 'source_text': 'State housing finance agencies', 'patterns': ['grants', 'homes']}]
+    assert evaluate_policy_review({'policy_changes': [item]}, case)['passed']
+    item['source_quotes'] = [{'quote': 'Unrelated source.'}]
+    assert not evaluate_policy_review({'policy_changes': [item]}, case)['passed']
+
+
+def test_policy_review_requires_a_complete_cited_policy_explanation():
+    from apps.legislation.enhancements.reader_discovery import discovery_sources, resolve_discovery
+    sources = discovery_sources('SEC. 1. Grants\nThe Secretary shall provide grants of $100 to eligible schools.', 1)
+    sources[0]['policy_review'] = True
+    output = {'financial_items': [{'label': 'Grants', 'amount_display': '$100',
+        'text': 'Provides $100 grants to eligible schools.', 'fiscal_years': [],
+        'source_quotes': [{'source_ref': 'src_0001', 'quote_id': 'p0001'}]}],
+        'additional_changes': [], 'money_checks': {'src_0001:p0001': 'financial'}}
+    with pytest.raises(ValidationError):
+        resolve_discovery(output, sources)
+    output.update(policy_changes=[{'title': 'Help schools pay for services',
+        'text': 'The government must give eligible schools $100 grants.',
+        'source_quotes': [{'source_ref': 'src_0001', 'quote_id': 'p0001'}]}],
+        policy_checks={'src_0001:p0001': 'explained'})
+    resolved = resolve_discovery(output, sources)
+    assert '$100' in resolved['policy_changes'][0]['source_quotes'][0]['quote']
+    output['policy_checks']['src_0001:p0001'] = 'context'
+    with pytest.raises(ValidationError):
+        resolve_discovery(output, sources)
+
+
+@pytest.mark.parametrize('text', ['The government must give', 'Cite p0001 for the grants.',
+    'Section 4 is amended by striking a comma and inserting a semicolon.'])
+def test_policy_prose_rejects_clipped_sentences_citation_instructions_and_amendment_mechanics(text):
+    from apps.legislation.enhancements.reader_discovery import discovery_sources, resolve_discovery
+    sources = discovery_sources('SEC. 1. Grants\nSchools receive grants.', 1)
+    sources[0]['policy_review'] = True
+    output = {'financial_items': [], 'additional_changes': [], 'money_checks': {},
+        'policy_changes': [{'title': 'Help schools', 'text': text,
+            'source_quotes': [{'source_ref': 'src_0001', 'quote_id': 'p0001'}]}],
+        'policy_checks': {'src_0001:p0001': 'explained'}}
+    with pytest.raises(ValidationError):
+        resolve_discovery(output, sources)
+
+
 def test_hr10906_answer_key_is_source_pinned_and_catches_empty_money_inventory():
     import json
     from apps.legislation.evaluation.financial_review import evaluate_financial_review

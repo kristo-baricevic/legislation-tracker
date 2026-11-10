@@ -38,6 +38,37 @@ Context before/after is for interpretation only; do not extract a second copy
 of provisions belonging to that context. Do not invent a total or outside law.
 """
 
+POLICY_INSTRUCTIONS = """
+policy_changes is the ONE reader-facing explanation of what this bill does.
+Write for someone with no knowledge of legislation, using words a 12-year-old
+understands without talking down to them. Explain practical effects, not how
+Congress edits a statute. Include financial AND nonfinancial changes, whether
+or not NLP found them. Preserve the distinct changes previously called additional
+changes; additional_changes must now be empty because these belong here instead.
+Combine a program's definition, eligibility, amount, start date and related
+technical amendments into one clear change. Do not create separate entries for
+"Conforming amendment", "When it starts", or "Inflation adjustment". Do not repeat
+one change for each source passage. Keep genuinely different policies separate.
+Use a short action heading and usually 25–45 words in one or two COMPLETE sentences.
+Name who is affected and what must, may, or cannot happen. Keep qualifications that
+change that meaning visible; do not turn optional powers into requirements.
+Mention the main financial mechanism; the complete amounts and restrictions stay
+in financial_items. Never describe an unstated total as zero. No arbitrary limit
+on the number of meaningful changes; do not omit policies to make the list short.
+Never include drafting instructions, quote IDs, source-ref IDs, [[markers]], or
+"cite ..." directions in prose. Put evidence only in source_quotes.
+For EVERY policy_checks passage: use explained if it contains a policy change
+or a condition belonging to one, and cite it in at least one policy_changes item.
+Use context only for headings, the short title, or wording with no distinct effect.
+A financial money_checks passage must be explained, not context. Cite supporting
+conditions even when they share the same entry. All entries must be source-backed.
+"""
+
+
+def policy_passages(sources):
+    return [f"{s['source_ref']}:{p['quote_id']}" for s in sources for p in citation_passages(s)
+            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids'])]
+
 
 def discovery_sources(text, first_ref):
     # Keep sections together when possible; never truncate a large document.
@@ -109,33 +140,67 @@ def discovery_schema(sources):
         'required': ['text', 'source_quotes'], 'properties': {
             'text': {'type': 'string', 'minLength': 1, 'maxLength': 400}, 'source_quotes': quotes}}
     candidates = money_candidates(sources)
-    return {'type': 'object', 'additionalProperties': False,
+    schema = {'type': 'object', 'additionalProperties': False,
         'required': ['financial_items', 'additional_changes', 'money_checks'], 'properties': {
             'financial_items': {'type': 'array', 'maxItems': 60, 'items': financial},
             'additional_changes': {'type': 'array', 'maxItems': 40, 'items': change},
             'money_checks': {'type': 'object', 'additionalProperties': False, 'required': candidates,
                 'properties': {key: {'type': 'string', 'enum': ['financial', 'not_financial']} for key in candidates}}}}
+    if any(s.get('policy_review') for s in sources):
+        schema['required'] += ['policy_changes', 'policy_checks']
+        schema['properties']['additional_changes']['maxItems'] = 0
+        schema['properties']['policy_changes'] = {'type': 'array', 'items': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['title', 'text', 'source_quotes'], 'properties': {
+                'title': {'type': 'string', 'minLength': 1, 'maxLength': 90},
+                'text': {'type': 'string', 'minLength': 1, 'maxLength': 420, 'pattern': r'[.!?]$'},
+                'source_quotes': quotes}}}
+        keys = policy_passages(sources)
+        schema['properties']['policy_checks'] = {'type': 'object', 'additionalProperties': False,
+            'required': keys, 'properties': {key: {'type': 'string', 'enum': ['explained', 'context']} for key in keys}}
+    return schema
 
 
-def resolve_discovery(output, sources):
-    Draft202012Validator(discovery_schema(sources)).validate(output)
+def resolve_discovery(output, sources, *, aggregate=False):
+    schema = discovery_schema(sources)
+    if aggregate:
+        schema['properties']['financial_items'].pop('maxItems', None)
+        if 'policy_changes' in schema['properties']:
+            schema['properties']['policy_changes']['items']['properties']['source_quotes'].pop('maxItems', None)
+    Draft202012Validator(schema).validate(output)
     financial_citations = {f"{q['source_ref']}:{q['quote_id']}"
         for item in output['financial_items'] for q in item['source_quotes']}
     if any(value == 'financial' and key not in financial_citations
            for key, value in output['money_checks'].items()):
         raise output_error('reader_coverage_incomplete', ['money_checks'])
+    if any(s.get('policy_review') for s in sources):
+        cited = {f"{q['source_ref']}:{q['quote_id']}" for item in output['policy_changes'] for q in item['source_quotes']}
+        if any(value == 'explained' and key not in cited for key, value in output['policy_checks'].items()) or any(
+                value == 'financial' and output['policy_checks'].get(key) != 'explained'
+                for key, value in output['money_checks'].items()):
+            raise output_error('reader_coverage_incomplete', ['policy_changes'])
+        for item in output['policy_changes']:
+            validate_policy_copy(item)
     catalogs = {s['source_ref']: {p['quote_id']: p['text'] for p in citation_passages(s)
                                 if p['quote_id']} for s in sources}
     resolved = copy.deepcopy(output)
-    for category in ('financial_items', 'additional_changes'):
-        for item in resolved[category]:
+    for category in ('financial_items', 'additional_changes', 'policy_changes'):
+        for item in resolved.get(category, []):
             first = item['source_quotes'][0]
             source = next(s for s in sources if s['source_ref'] == first['source_ref'])
             if source.get('review_quote_ids') is not None and first['quote_id'] not in source['review_quote_ids']:
                 raise output_error('reader_target_invalid', [category])
-            for q in item['source_quotes']:
-                q['quote'] = catalogs[q['source_ref']][q.pop('quote_id')]
+            item['source_quotes'] = [{'source_ref': q['source_ref'],
+                'quote': catalogs[q['source_ref']][q['quote_id']]} for q in item['source_quotes']]
     return resolved
+
+
+def validate_policy_copy(item):
+    text = item['text']
+    if len(text.split()) > 65 or not re.search(r'[.!?]$', text) or re.search(
+            r'\b(?:p\d{4}|src_\d{4})\b|\[\[|\b(?:amended by striking|inserting the following|subparagraph [A-Z] is amended)\b',
+            text, re.I):
+        raise output_error('reader_policy_wording', ['policy_changes'])
 
 
 def validate_source_review(review, sources):
@@ -145,14 +210,35 @@ def validate_source_review(review, sources):
     expected = list(source_map)
     if review.get('reviewed_sources') != expected:
         raise output_error('reader_coverage_incomplete', ['source_review'])
-    if set(review) != {'reviewed_sources', 'financial_items', 'additional_changes', 'money_checks'}:
+    policy = any(s.get('policy_review') for s in scan_sources)
+    fields = {'reviewed_sources', 'financial_items', 'additional_changes', 'money_checks'}
+    if policy:
+        fields |= {'policy_changes', 'policy_checks'}
+        if 'policy_drafts' in review:
+            fields.add('policy_drafts')
+    if set(review) != fields:
         raise output_error('reader_target_invalid', ['source_review'])
     # Revalidate the stored prose shape and every server-resolved citation.
-    for category in ('financial_items', 'additional_changes'):
+    for category in ('financial_items', 'additional_changes', *(['policy_changes'] if policy else []), *(['policy_drafts'] if 'policy_drafts' in review else [])):
         if not isinstance(review[category], list):
             raise output_error('reader_target_invalid', ['source_review', category])
         for i, item in enumerate(review[category]):
             _validate_quotes(item, source_map, ['source_review', category, i])
+            if category in {'policy_changes', 'policy_drafts'}:
+                validate_policy_copy(item)
+    if policy:
+        # Re-run the wire validator against the immutable, server-owned passage
+        # catalog. This guards stored results and split-batch aggregation too.
+        wire = copy.deepcopy({k: v for k, v in review.items() if k not in {'reviewed_sources', 'policy_drafts'}})
+        for category in ('financial_items', 'additional_changes', 'policy_changes'):
+            for item in wire[category]:
+                for q in item['source_quotes']:
+                    matches = [p['quote_id'] for p in citation_passages(source_map[q['source_ref']]) if p['text'] == q['quote'] and p['quote_id']]
+                    if len(matches) != 1:
+                        raise output_error('citation_quote_not_found', ['source_review', category])
+                    q['quote_id'] = matches[0]
+                    del q['quote']
+        resolve_discovery(wire, scan_sources, aggregate=True)
     if set(review['money_checks']) != set(money_candidates(scan_sources)):
         raise output_error('reader_coverage_incomplete', ['source_review', 'money_checks'])
     # A new full inventory must not silently drop a financial provision already

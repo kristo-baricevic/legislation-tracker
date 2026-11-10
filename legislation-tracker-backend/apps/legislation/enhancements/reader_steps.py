@@ -43,8 +43,13 @@ class DurableReaderProvider:
                 stage='reader', request_fingerprint=fingerprint, status='dispatching')
         try:
             response = self.provider.enhance_bill(api_key=api_key, request=request, timeout_seconds=timeout_seconds)
+            if request.request_envelope.get('policy_compilation'):
+                from .policy_compilation import resolve_policy_groups
+                resolve_policy_groups(response.output, request.reader_reuse['policy_items'], request.reader_reuse['policy_assignments'])
             validator = resolve_discovery if request.request_envelope.get('source_review') else None
-            if validator:
+            if request.request_envelope.get('policy_compilation'):
+                pass
+            elif validator:
                 validator(response.output, request.source_snapshot)
             else:
                 resolve_reader_citations(response.output, snapshot_targets(request.source_snapshot), request.source_snapshot)

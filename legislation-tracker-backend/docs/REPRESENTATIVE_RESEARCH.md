@@ -27,6 +27,17 @@ starts a new whole-period scan, not an incremental timestamp-only scan.
 
 ### Progressive finance loading
 
+A Research action discovers reporting cycles for the verified FEC candidate
+and durably queues missing cycles overlapping the last ten calendar years
+(2017–2026 in 2026). Older saved records are retained. The selected period
+controls the view, not the automatic backfill scope.
+Historical jobs reuse saved profiles and published finance snapshots, avoid
+duplicate active runs, and fetch outside-spending summaries and official totals
+before itemized receipts. A saved current-year result does not prevent historical
+backfill. Candidate verification and revocation checks apply to every period.
+All-year outside-spending reads remain `collecting` while historical discovery
+or missing-period scans are pending, so the UI continues polling.
+
 New scans (`fec-2-filtered`) fetch official committee totals first, followed by
 Form 3 party/other committee contributions (11B/11C) and their refunds (20B/20C),
 then individual contributions (11AI) and refunds (20A). Each filtered stream has

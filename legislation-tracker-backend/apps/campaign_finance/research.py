@@ -51,6 +51,9 @@ def persist_page(checkpoint, page):
 def process_finance(work):
     run = ResearchRun.objects.select_related("representative").get(pk=work.payload_json["run_id"])
     identity = resolve_candidate(run.representative_id, run.period)
+    if identity.status == "verified" and work.payload_json.get("include_history", True):
+        from .history import queue_history
+        queue_history(run)
     snapshot = FinanceSnapshot.objects.filter(run=run).first()
     priority = Case(*[When(schedule=name, then=Value(i)) for i, name in enumerate(FILTERED_SCHEDULES)], default=Value(10), output_field=IntegerField())
     checkpoint = snapshot.checkpoints.filter(complete=False).select_related("committee", "snapshot").order_by(priority, "pk").first() if snapshot else None
@@ -83,6 +86,10 @@ def process_finance(work):
         if resolve_candidate(run.representative_id, run.period) != identity:
             continue_work(current, "finance")
             return {"status": "identity_changed"}
+        if run.status == "queued":
+            run.status = "running"
+            run.sections = {**run.sections, "finance": {"status": "running"}}
+            run.save(update_fields=["status", "sections"])
         if identity.status != "verified":
             rows = (page or {}).get("results", [])
             year = timezone.now().year
@@ -151,7 +158,7 @@ def process_finance(work):
             if outside_scan:
                 persist_outside_page(outside_scan, page)
             else:
-                current.payload_json["finance_phase"] = "receipts"
+                current.payload_json["finance_phase"] = "totals"
             continue_work(current, "finance")
         elif checkpoint:
             if checkpoint.schedule == "totals":
@@ -163,6 +170,8 @@ def process_finance(work):
                 if not checkpoint.complete:
                     raise ValueError("ambiguous_committee_totals")
                 checkpoint.save(update_fields=["source_totals", "complete"])
+                if not snapshot.checkpoints.filter(schedule="totals", complete=False).exists():
+                    current.payload_json["finance_phase"] = "receipts"
             else:
                 persist_page(checkpoint, page)
             continue_work(current, "finance")

@@ -16,6 +16,7 @@ import { BillBrief } from "./bill-brief";
 import { FinancialLedger } from "./financial-ledger";
 import { ReaderIdentityProvider } from "./reader-explanation";
 import { ReaderTabPanel, useReaderTabs } from "./reader-tabs";
+import { BillAnalysisBoundary } from "./ai-glossary-context";
 
 function LegacyContractSection({ contract }: { contract: BillContractItem }) {
   const j = contract.contract_json;
@@ -296,6 +297,7 @@ function V21ContractSection({ contract, bill }: { contract: BillContractSummary;
     <ReaderIdentityProvider value={{ contractId: contract.id, contractHash: contract.contract_hash, documentId: contract.document }}>
       <BillBrief bill={bill} contractSummary={contract} onShowAllFinancial={showLineItemMoney} />
       <ReaderTabPanel tab="money"><div id="money-in-this-bill">
+        <BillAnalysisBoundary>
         <FinancialLedger
           contractId={contract.id}
           totalCount={contract.reader_stats?.financial_item_count ?? 0}
@@ -304,6 +306,7 @@ function V21ContractSection({ contract, bill }: { contract: BillContractSummary;
           textUrl={document?.text_url}
           downloadUrl={document?.download_url}
         />
+        </BillAnalysisBoundary>
       </div></ReaderTabPanel>
     </ReaderIdentityProvider>
   );
