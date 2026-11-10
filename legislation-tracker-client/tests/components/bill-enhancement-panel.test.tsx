@@ -3,11 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BillEnhancementPanel from "@/app/bills/[id]/bill-enhancement-panel";
-import { AiGlossaryProvider, useAiGlossary } from "@/app/bills/[id]/ai-glossary-context";
+import { AiGlossaryProvider, BillAnalysisBoundary, useAiGlossary } from "@/app/bills/[id]/ai-glossary-context";
 
 function ActiveReader() {
   const { enhancement } = useAiGlossary();
   return <p>Active reader: {enhancement?.id ?? "none"}</p>;
+}
+function ReaderReadiness() {
+  const { analysisPending, enhancement } = useAiGlossary();
+  return <p>{analysisPending ? "Analysis pending" : enhancement ? "Enhanced analysis ready" : "Original analysis ready"}</p>;
 }
 import {
   ApiError,
@@ -112,6 +116,34 @@ function enhancementPayload(
 }
 
 describe("BillEnhancementPanel", () => {
+  it("does not expose original analysis while the initial saved-reader lookup is unresolved", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    let resolve!: (value: BillEnhancement | null) => void;
+    vi.mocked(getLatestBillEnhancement).mockReturnValue(new Promise(done => { resolve = done; }));
+    render(<AiGlossaryProvider><ReaderReadiness /><BillAnalysisBoundary><ActiveReader /></BillAnalysisBoundary><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
+    expect(screen.getByText("Analysis pending")).toBeVisible();
+    expect(screen.getByRole("status", { name: "Loading bill analysis" })).toBeVisible();
+    expect(screen.queryByText("Active reader: none")).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "Loading AI status…" });
+    expect(screen.queryByText("Original analysis ready")).not.toBeInTheDocument();
+    await act(async () => resolve(enhancementPayload()));
+    expect(await screen.findByText("Enhanced analysis ready")).toBeVisible();
+    expect(screen.getByText("Active reader: 9")).toBeVisible();
+    expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Original analysis ready")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Original" }));
+    expect(screen.getByText("Active reader: none")).toBeVisible();
+    expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument();
+  });
+
+  it.each(["empty", "failure", "anonymous", "disabled"])("reveals the original after %s instead of leaving a loading placeholder", async reason => {
+    vi.mocked(getSession).mockResolvedValue(reason === "anonymous" ? null : { authenticated: true, user: { email: "reader@example.com" } });
+    if (reason === "disabled") vi.mocked(getPublicCapabilities).mockResolvedValue({ llm_enhancements: false });
+    if (reason === "failure") vi.mocked(getLatestBillEnhancement).mockRejectedValue(new Error("Network failed"));
+    render(<AiGlossaryProvider><ReaderReadiness /><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
+    expect(screen.getByText("Analysis pending")).toBeVisible();
+    expect(await screen.findByText("Original analysis ready")).toBeVisible();
+  });
   it("opens a shared result found during preparation without paid confirmation", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     const shared = enhancementPayload({ shared: true });
@@ -127,7 +159,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com", is_superuser } });
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
     render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
-    expect(await screen.findByRole("button", { name: "AI-enhanced" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Enhanced" })).toBeVisible();
     if (is_superuser) expect(screen.getByRole("region", { name: "AI metadata" })).toBeVisible();
     else expect(screen.queryByRole("region", { name: "AI metadata" })).not.toBeInTheDocument();
   });
@@ -136,7 +168,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getBillEnhancementEstimate).mockReturnValue(new Promise(() => {}));
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
     render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
-    expect(await screen.findByRole("button", { name: "AI-enhanced" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Enhanced" })).toBeVisible();
     expect(getBillEnhancementEstimate).not.toHaveBeenCalled();
   });
   it("keeps only the primary control at the top and metadata below the bill", async () => {
@@ -145,7 +177,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload({ stale: true, source_compatible: true }));
     render(<AiGlossaryProvider><div id="reading-controls" data-testid="top-controls" /><p>Bill content</p><BillEnhancementPanel billId={10} jurisdiction="federal" controlsTargetId="reading-controls" /></AiGlossaryProvider>);
     const top = screen.getByTestId("top-controls");
-    expect(await within(top).findByRole("button", { name: "AI-enhanced" })).toBeVisible();
+    expect(await within(top).findByRole("button", { name: "Enhanced" })).toBeVisible();
     expect(within(top).queryByText(/older bill source/)).not.toBeInTheDocument();
     expect(within(top).getByRole("button", { name: "Enhance current version" })).toBeVisible();
     const metadata = screen.getByRole("region", { name: "AI metadata" });

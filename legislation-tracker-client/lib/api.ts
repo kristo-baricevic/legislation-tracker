@@ -1412,6 +1412,7 @@ export interface ReaderEnhancementResult {
     reviewed_sources: string[];
     financial_items: { label: string; amount_display: string; text: string; fiscal_years: number[]; cited_sources: EnhancementCitedSource[] }[];
     additional_changes: { text: string; cited_sources: EnhancementCitedSource[] }[];
+    policy_changes?: { title: string; text: string; cited_sources: EnhancementCitedSource[] }[];
   };
 }
 

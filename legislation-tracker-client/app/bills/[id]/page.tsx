@@ -22,7 +22,7 @@ import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import { stageFor } from "@/lib/bill-stage";
-import { AiGlossaryProvider } from "./ai-glossary-context";
+import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
 import BillChangeExperience from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
 import LegislatorName from "../../components/LegislatorName";
@@ -312,6 +312,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
 
         <div id="bill-ai-controls" className="mb-5" />
+        <BillAnalysisBoundary>
         {bill.latest_contract ? (
           <ContractSection contract={bill.latest_contract} bill={bill} />
         ) : (
@@ -456,6 +457,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
         )}
         </ReaderTabPanel>
+        </BillAnalysisBoundary>
         <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
       </div>
     </div>

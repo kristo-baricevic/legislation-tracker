@@ -92,6 +92,7 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
   const identity = useContext(Identity);
   const [page, setPage] = useState(1);
   const reader = useCompatibleReader();
+  if (reader?.source_review?.policy_changes) return <PolicyChanges key={`${enhancement?.id}-${reader.identity.contract_hash}`} reader={reader} />;
   if (reader?.source_review) return <>{children}<ReviewedChanges key={`${reader.identity.contract_hash}-${enhancement?.id}`} reader={reader} /></>;
   if (!result || identity?.documentId == null) return <>{children}</>;
   const rows = [
@@ -114,6 +115,34 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
       <button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
       <span>Page {current} of {totalPages}</span>
       <button type="button" disabled={current === totalPages} onClick={() => setPage(current + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
+    </nav>}
+  </div>;
+}
+
+function PolicyChanges({ reader }: { reader: NonNullable<ReturnType<typeof useCompatibleReader>> }) {
+  const sourceStart = useSummaryCitationCount() + 2;
+  const [page, setPage] = useState(0);
+  const rows = reader.source_review?.policy_changes ?? [];
+  const pageCount = Math.max(1, Math.ceil(rows.length / 6));
+  const current = Math.min(page, pageCount - 1);
+  return <div>
+    {/* Overlaid grid pages reserve the tallest page's natural height at every
+        viewport width. Inactive pages cannot be read, clicked or tabbed into. */}
+    <div className="grid">
+      {Array.from({ length: pageCount }, (_, index) => <ul key={index}
+        aria-label="Bill policy changes" aria-hidden={index !== current} inert={index !== current}
+        style={{ gridArea: '1 / 1', visibility: index === current ? 'visible' : 'hidden' }}
+        className="m-0 min-w-0 self-start list-none space-y-7">
+        {rows.slice(index * 6, index * 6 + 6).map((item, offset) => <li key={offset}>
+          <h4 className="mb-1 text-base font-semibold text-slate-950">{item.title}</h4>
+          <p className="w-full leading-7 text-slate-800">{item.text}<Evidence number={sourceStart + index * 6 + offset} sources={item.cited_sources} documentId={reader.identity.document_id} /></p>
+        </li>)}
+      </ul>)}
+    </div>
+    {pageCount > 1 && <nav aria-label="Policy explanation pages" className="mt-6 flex items-center justify-center gap-4">
+      <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
+      <span aria-live="polite" className="min-w-24 text-center tabular-nums">Page {current + 1} of {pageCount}</span>
+      <button type="button" disabled={current === pageCount - 1} onClick={() => setPage(current + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
     </nav>}
   </div>;
 }
