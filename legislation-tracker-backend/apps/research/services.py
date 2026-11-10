@@ -12,7 +12,15 @@ def validate_period(period):
     return period
 
 
-def request_research(representative_id: int, period: int, user_id: int, *, refresh=True) -> ResearchRun:
+def request_research(representative_id: int, period: int, user_id: int, *, refresh=True, include_history=True) -> ResearchRun:
+    run = _request_period(representative_id, period, user_id, refresh=refresh, finance_only=not include_history)
+    if include_history:
+        from apps.campaign_finance.history import queue_history
+        queue_history(run, explicit=True)
+    return run
+
+
+def _request_period(representative_id, period, user_id, *, refresh, finance_only):
     validate_period(period)
     with transaction.atomic():
         Representative.objects.select_for_update().get(pk=representative_id)
@@ -26,6 +34,9 @@ def request_research(representative_id: int, period: int, user_id: int, *, refre
             if saved:
                 return saved.run
         run = ResearchRun.objects.create(representative_id=representative_id, period=period, requester_id=user_id)
-        run.work_item = enqueue_ingestion_work(kind="representative_research", dedupe_key=str(run.pk), source_updated_at=run.created_at, payload_json={"run_id": str(run.pk), "refresh": refresh})
+        payload = {"run_id": str(run.pk), "refresh": refresh, "include_history": not finance_only}
+        if finance_only:
+            payload["stage"] = "finance"
+        run.work_item = enqueue_ingestion_work(kind="representative_research", dedupe_key=str(run.pk), source_updated_at=run.created_at, payload_json=payload)
         run.save(update_fields=["work_item"])
         return run

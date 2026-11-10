@@ -5,6 +5,46 @@ from celery import Task
 import pytest
 
 
+def test_periodic_research_recovery_reaches_research_worker_not_bill_backlog():
+    from config.celery import app
+    cache.clear()
+    entry = app.conf.beat_schedule['dispatch-research-work']
+    with app.connection_for_write() as connection:
+        normal, research = connection.SimpleQueue('celery'), connection.SimpleQueue('research')
+        normal.clear()
+        research.clear()
+        try:
+            app.tasks[entry['task']].apply_async(kwargs=entry['kwargs'], **entry['options'])
+            assert research.qsize() == 1
+            assert normal.qsize() == 0
+        finally:
+            normal.clear()
+            research.clear()
+            cache.clear()
+
+
+def test_fast_research_page_can_wake_next_dispatch_without_waiting_for_ingestion():
+    cache.clear()
+    with dispatch_ingestion_work.app.connection_for_write() as connection:
+        queue = connection.SimpleQueue('research')
+        queue.clear()
+        try:
+            dispatch_ingestion_work.apply_async(kwargs={'batch_size': 0}, queue='research')
+            message = queue.get(block=False)
+            message.ack()
+            dispatch_ingestion_work.push_request(delivery_info={'routing_key': 'research'})
+            try:
+                dispatch_ingestion_work.before_start('research-test', (), {'batch_size': 0})
+            finally:
+                dispatch_ingestion_work.pop_request()
+            for _ in range(100):
+                dispatch_ingestion_work.apply_async(kwargs={'batch_size': 0}, queue='research')
+            assert queue.qsize() == 1
+        finally:
+            queue.clear()
+            cache.clear()
+
+
 def test_burst_of_wakeups_publishes_one_message_per_queue():
     cache.clear()
     with dispatch_ingestion_work.app.connection_for_write() as connection:

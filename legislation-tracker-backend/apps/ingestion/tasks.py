@@ -1093,7 +1093,8 @@ def dispatch_ingestion_work(batch_size=100):
             candidates.extend(IngestionWorkItem.objects.select_for_update(skip_locked=True).filter(
                 kind="representative_research", status=IngestionWorkStatus.PENDING,
                 available_at__lte=now,
-            ).order_by("available_at", "id")[:1])
+            ).order_by(Case(When(payload_json__finance_phase="receipts", then=1),
+                            default=0, output_field=IntegerField()), "available_at", "id")[:1])
         for work_item in candidates:
             work_item.status = IngestionWorkStatus.DISPATCHED
             work_item.lease_expires_at = now + WORK_LEASE_DURATION
