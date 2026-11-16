@@ -38,6 +38,15 @@ backfill. Candidate verification and revocation checks apply to every period.
 All-year outside-spending reads remain `collecting` while historical discovery
 or missing-period scans are pending, so the UI continues polling.
 
+Cached reuse checks candidate identity and completed outside-spending scans for
+the selected cycle as well as history children. Incomplete or superseded saved
+snapshots remain visible while a replacement is queued. All-year spending returns
+`failed_periods` and `history_failed`; terminal gaps produce `partial`, not
+`available`. If other periods are still running, status remains `collecting` and
+the failed-period indicators are still included. The UI retains totals and offers
+Retry missing records through the existing authenticated Research endpoint.
+Retries reuse complete cycles and deduplicate active runs; no data is deleted.
+
 New scans (`fec-2-filtered`) fetch official committee totals first, followed by
 Form 3 party/other committee contributions (11B/11C) and their refunds (20B/20C),
 then individual contributions (11AI) and refunds (20A). Each filtered stream has

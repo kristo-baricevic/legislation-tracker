@@ -69,12 +69,14 @@ def test_overview_ready_while_donation_collection_continues(scope):
 
 
 def test_research_api_reuses_saved_snapshot_unless_refresh_requested(scope):
+    from apps.campaign_finance.models import OutsideSpendingScan
     rep, run, snapshot, _ = scope
     run.status = "partial"
     run.save()
     snapshot.active = True
     snapshot.published_at = timezone.now()
     snapshot.save()
+    OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id=snapshot.candidate_ids[0], complete=True)
     client = APIClient()
     client.force_authenticate(get_user_model().objects.get(username="reader"))
     url = f"/api/representatives/{rep.pk}/research/"

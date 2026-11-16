@@ -59,7 +59,7 @@ Do not claim the guide is exhaustive when the source packet is truncated.
 
 
 def reader_execution_settings():
-    return {"policy_grouping_version": 6, **{name: getattr(settings, name) for name in (
+    return {"policy_grouping_version": 7, **{name: getattr(settings, name) for name in (
         "LLM_READER_MAX_OUTPUT_TOKENS", "LLM_READER_MAX_CALLS",
         "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS", "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
         "LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS",
@@ -278,24 +278,16 @@ def build_reader_preflight(document):
         request_fingerprint=hashlib.sha256(request_bytes).hexdigest(), source_manifest=manifest,
         source_snapshot=snapshot, request_envelope=main, request_bytes=request_bytes,
         estimated_input_tokens=0, truncated=summary_truncated, reader_reuse=reused)
-    # Cached review packets are known before confirmation: budget every compiler
-    # request instead of pretending an arbitrarily large review takes one call.
-    compiler_calls = 1
-    if reused and 'source_review' in reused:
-        from .policy_compilation import compilation_requests
-        try:
-            compiler_calls = len(compilation_requests(p, reused['source_review'].get('policy_changes', [])))
-        except ProviderError:
-            raise PreflightUnavailable("Policy compilation exceeds request limits", reason="request_too_large") from None
-    planned = 1 + len(batches) + compiler_calls
+    # Grouping is lossless and local; no paid compiler or compiler reserve.
+    planned = 1 + len(batches)
     if planned > settings.LLM_READER_MAX_CALLS:
         raise PreflightUnavailable("Complete reader plan exceeds configured call budget", reason="request_too_large")
     reserve = min(8, settings.LLM_READER_MAX_CALLS - planned)
     budget.update(planned_calls=planned, split_call_reserve=reserve, maximum_calls=planned + reserve,
         maximum_input=len(main_bytes) + sum(len(canonical_json_bytes(e)) for e in envelopes)
-            + (compiler_calls + reserve) * settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+            + reserve * settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
         maximum_output=sum(e['max_output_tokens'] for e in [main, *envelopes])
-            + (compiler_calls + reserve) * settings.LLM_READER_MAX_OUTPUT_TOKENS)
+            + reserve * settings.LLM_READER_MAX_OUTPUT_TOKENS)
     p = replace(p, estimated_input_tokens=budget['maximum_input'])
     return replace(p, reader_batches=tuple(
         replace(p, source_snapshot=sources, request_envelope=e, request_bytes=canonical_json_bytes(e),
@@ -357,7 +349,7 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
             if (isinstance(error, ProviderError) and request.request_envelope.get('source_review')
                     and error.validation_code in {'reader_policy_wording', 'reader_coverage_incomplete'}
                     and not request.request_envelope.get('policy_retry')
-                    and calls + len(queue) + 2 <= maximum_calls):
+                    and calls + len(queue) + 1 <= maximum_calls):
                 # One bounded correction of a known invalid response, never an
                 # ambiguous/timeout retry. The durable cache keeps other work.
                 from .source_packet import canonical_json_bytes, _within_limits
@@ -378,7 +370,7 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
             if isinstance(error, ProviderError) and error.validation_code == 'provider_output_limit':
                 from .reader_sizing import split_reader_request
                 children = split_reader_request(request)
-                if children and calls + len(queue) + len(children) + 1 <= maximum_calls:
+                if children and calls + len(queue) + len(children) <= maximum_calls:
                     combined = replace(combined, usage=error.usage)
                     queue[0:0] = [(index, child) for child in children]
                     continue
@@ -392,50 +384,11 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                                          "failed_stage": stage}
             raise error from None
     try:
-        from .policy_compilation import compilation_requests, resolve_policy_groups
+        from .policy_compilation import group_policy_drafts
         review = combined.output.get('source_review', {})
         if 'policy_changes' in review:
             review['policy_drafts'] = copy.deepcopy(review['policy_changes'])
-            requests = compilation_requests(preflight, review['policy_changes'])
-            if calls + len(requests) > maximum_calls:
-                raise ProviderError('request_too_large', usage=combined.usage)
-            policies = []
-            while requests:
-                request = requests.pop(0)
-                combined = replace(combined, citation_resolution={'reader': {
-                    'total_calls': completed + len(requests) + 1}})
-                checkpoint(combined, completed)
-                calls += 1
-                try:
-                    response = provider.enhance_bill(api_key=api_key, request=request,
-                        timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS)
-                except ProviderError as error:
-                    combined = replace(combined, usage=combine_usage(combined.usage, error.usage))
-                    if error.validation_code == 'provider_output_limit':
-                        from .policy_compilation import split_compilation_request
-                        children = split_compilation_request(request)
-                        if children and calls + len(requests) + len(children) <= maximum_calls:
-                            requests[0:0] = children
-                            continue
-                    if (error.validation_code == 'reader_policy_wording'
-                            and not request.request_envelope.get('policy_retry')
-                            and calls + len(requests) + 1 <= maximum_calls):
-                        from .source_packet import canonical_json_bytes, _within_limits
-                        envelope = copy.deepcopy(request.request_envelope)
-                        envelope['policy_retry'] = True
-                        envelope['instructions'] += '\nThe previous rewrite failed the wording check. Use 25–35 words per group, complete sentences, and no amendment instructions. Summarize the practical change, not each draft clause. Preserve exclusions and exceptions stated in the drafts. Preserve the fixed group membership.'
-                        encoded = canonical_json_bytes(envelope)
-                        if _within_limits(encoded):
-                            requests.insert(0, replace(request, request_envelope=envelope,
-                                request_bytes=encoded, estimated_input_tokens=len(encoded)))
-                            continue
-                    error.usage = combined.usage
-                    raise
-                combined = replace(combined, usage=combine_usage(combined.usage, response.usage),
-                    response_id=response.response_id, resolved_model=response.resolved_model)
-                policies.extend(resolve_policy_groups(response.output, request.reader_reuse['policy_items'], request.reader_reuse['policy_assignments']))
-                completed += 1
-            review['policy_changes'] = policies
+            review['policy_changes'] = group_policy_drafts(preflight, review['policy_drafts'])
         validate_reader_explanations(combined.output, snapshot_targets(preflight.source_snapshot), preflight.source_snapshot)
         checkpoint(combined, completed)
     except (ValidationError, ProviderError) as error:

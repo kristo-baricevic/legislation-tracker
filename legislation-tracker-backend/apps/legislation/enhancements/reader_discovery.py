@@ -227,6 +227,11 @@ def validate_source_review(review, sources):
             if category in {'policy_changes', 'policy_drafts'}:
                 validate_policy_copy(item)
     if policy:
+        if 'policy_drafts' in review:
+            from types import SimpleNamespace
+            from .policy_compilation import group_policy_drafts
+            if review['policy_changes'] != group_policy_drafts(SimpleNamespace(source_snapshot=sources), review['policy_drafts']):
+                raise output_error('reader_coverage_incomplete', ['source_review', 'policy_changes'])
         # Re-run the wire validator against the immutable, server-owned passage
         # catalog. This guards stored results and split-batch aggregation too.
         wire = copy.deepcopy({k: v for k, v in review.items() if k not in {'reviewed_sources', 'policy_drafts'}})

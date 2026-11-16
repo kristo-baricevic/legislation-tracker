@@ -6,6 +6,34 @@ import RepresentativeResearch from "@/app/components/RepresentativeResearch";
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
 
+it.each([false, true])("keeps saved spending visible while retrying gaps (permission denied: %s)", async denied => {
+  let retried = false;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.includes("csrf")) return Response.json({ csrf_token: "test" });
+    if (options?.method === "POST") {
+      if (denied) return Response.json({ detail: "Permission denied" }, { status: 403 });
+      retried = JSON.parse(String(options.body)).refresh === false;
+      return Response.json({ id: "retry", status: "queued", sections: {} });
+    }
+    if (url.includes("outside-spending")) return Response.json({ status: retried ? "collecting" : "partial",
+      failed_periods: retried ? [] : [2020], history_failed: false, support: "100", oppose: "0", count: 1,
+      next_cursor: null, results: [{ id: 1, name: "Saved group", amount: "100", position: "S", period: 2026, source_url: "https://www.fec.gov/" }] });
+    return Response.json(empty);
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  const saved = await screen.findByRole("link", { name: "Saved group" });
+  expect(await screen.findByText(/2019–2020.*could not be collected/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Retry missing records" }));
+  if (denied) {
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sign in to retry research.");
+    expect(screen.getByRole("button", { name: "Retry missing records" })).toBeEnabled();
+  } else {
+    await waitFor(() => expect(screen.queryByText(/2019–2020.*could not be collected/)).not.toBeInTheDocument());
+  }
+  expect(saved).toBeInTheDocument();
+});
+
 it.each([false, true])("refreshes all-year totals after a published campaign is replaced (modal: %s)", async (modalView) => {
   let refreshed = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {

@@ -202,6 +202,29 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
   const [retry, setRetry] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  const retryAction = useRef<AbortController | null>(null);
+  useEffect(() => () => retryAction.current?.abort(), []);
+  async function retryMissing() {
+    if (retrying) return;
+    const controller = new AbortController();
+    retryAction.current = controller;
+    setRetrying(true); setRetryError("");
+    try {
+      const year = new Date().getFullYear();
+      const periods = new Set(data?.failed_periods ?? []);
+      if (data?.history_failed) periods.add(year + year % 2);
+      for (const period of periods) {
+        await startResearch(representativeId, period, controller.signal, false);
+        if (controller.signal.aborted) return;
+      }
+      setRetry(value => value + 1);
+      window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: representativeId }));
+    } catch (e) {
+      if (!controller.signal.aborted) setRetryError(e instanceof ApiError && [401, 403].includes(e.status) ? "Sign in to retry research." : "Could not restart research. Try again.");
+    } finally { if (!controller.signal.aborted) setRetrying(false); }
+  }
   const list = useRef<HTMLUListElement>(null);
   const end = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -237,6 +260,11 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
   const money = (amount: string | null) => amount === null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(amount));
   return <section className={`${styles.contributors} ${styles.outsideSpending}`} aria-label="Outside spending">
     <div className={styles.note}>Independent spending <CardTooltip text="Money groups spent independently supporting or opposing this candidate. Not money received by the campaign. FEC processed Schedule E totals; excludes other forms of outside spending."><span tabIndex={0} aria-label="About independent spending">ⓘ</span></CardTooltip>{data?.status === "collecting" ? " · Updating" : ""}</div>
+    {(Boolean(data?.failed_periods?.length) || data?.history_failed) && <div role="status" className={styles.note}>
+      {data?.failed_periods?.length ? `${data.failed_periods.map(year => `${year - 1}–${year}`).join(", ")} records could not be collected.` : "Some reporting periods could not be checked."}{" "}
+      <button type="button" disabled={retrying} onClick={() => void retryMissing()}>{retrying ? "Retrying…" : "Retry missing records"}</button>
+    </div>}
+    {retryError && <p role="alert">{retryError}</p>}
     <dl className={styles.fundingTotals}><div><dt>Supporting</dt><dd>{money(data?.support ?? null)}</dd></div><div><dt>Opposing</dt><dd>{money(data?.oppose ?? null)}</dd></div></dl>
     <ul ref={list} className={styles.donorList} aria-label="Outside spending records" aria-busy={loading} tabIndex={0}>{data?.results.map(item => <li key={item.id}><div className={styles.spenderIdentity}><SourceLink url={item.source_url}>{item.name}</SourceLink><span className={`${styles.positionPill} ${item.position === "S" ? styles.supports : styles.opposes}`}>{item.position === "S" ? "Supports" : "Opposes"}</span>{item.period && <span className={`${styles.positionPill} ${styles.yearPill}`}>{item.period - 1}–{item.period}</span>}</div><strong>{money(item.amount)}</strong></li>)}<li ref={end} className={styles.scrollSentinel} aria-hidden="true" /></ul>
     <div className={styles.listStatus}>{error ? <span role="alert">Could not load spending. <button onClick={() => setRetry(value => value + 1)}>Retry</button></span> : !data ? <span role="status">Loading spending…</span> : data.status === "not_researched" ? collecting ? "Collecting spending records…" : "Use Research to collect outside spending." : !data.results.length ? data.status === "collecting" ? "Collecting spending records…" : "No outside spending in collected records." : null}</div>

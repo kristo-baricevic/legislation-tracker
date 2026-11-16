@@ -69,7 +69,14 @@ def _expanded_result(enhancement: BillEnhancement):
     )
     rows = [(category, result.get(category, [])) for category in categories]
     if result.get('source_review'):
-        result['source_review'].pop('policy_drafts', None)
+        drafts = result['source_review'].pop('policy_drafts', None)
+        if drafts is not None:
+            from types import SimpleNamespace
+            from .policy_compilation import group_policy_drafts
+            # Old saved compiler output may have dropped or changed conditions.
+            # Re-present its accepted drafts locally; never charge to repair UI.
+            result['source_review']['policy_changes'] = group_policy_drafts(
+                SimpleNamespace(source_snapshot=enhancement.source_snapshot_json), drafts)
         rows.extend((category, result['source_review'].get(category, []))
                     for category in ('financial_items', 'additional_changes', 'policy_changes'))
     for category, items in rows:

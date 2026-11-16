@@ -201,17 +201,27 @@ class OutsideSpendingView(APIView):
         data = parameters(request, OutsideSpendingQuery)
         periods = FinanceSnapshot.objects.filter(representative_id=representative_id, invalidated=False).values_list("period", flat=True).distinct() if data["all_periods"] else [data["period"]]
         snapshots = []
-        complete = True
+        collecting = False
         pending_periods = set()
+        failed_periods = set()
+        history_failed = False
+        latest_run = ResearchRun.objects.filter(representative_id=representative_id, period=OuterRef('period')).order_by('-created_at').values('pk')[:1]
+        runs = ResearchRun.objects.filter(representative_id=representative_id, pk=Subquery(latest_run)).exclude(financesnapshot__invalidated=True).select_related('work_item')
+        if not data['all_periods']:
+            runs = runs.filter(period=data['period'])
+        runs = list(runs)
+        for run in runs:
+            if (run.work_item and run.work_item.status == 'dead') or run.status in {'failed', 'needs_review'}:
+                failed_periods.add(run.period)
+            elif run.status in {'queued', 'running'}:
+                pending_periods.add(run.period)
         if data['all_periods']:
             from apps.ingestion.models import IngestionWorkItem
-            latest_run = ResearchRun.objects.filter(representative_id=representative_id, period=OuterRef('period')).order_by('-created_at').values('pk')[:1]
-            pending_periods = set(ResearchRun.objects.filter(representative_id=representative_id,
-                pk=Subquery(latest_run), status__in=['queued', 'running']).exclude(work_item__status='dead').values_list('period', flat=True))
-            periods = set(periods) | pending_periods
+            periods = set(periods) | {run.period for run in runs}
             history_keys = [f'history:{pk}' for pk in ResearchRun.objects.filter(representative_id=representative_id).values_list('pk', flat=True)]
-            complete = not IngestionWorkItem.objects.filter(kind='representative_research',
-                dedupe_key__in=history_keys, status__in=['pending', 'dispatched', 'processing']).exists()
+            history = IngestionWorkItem.objects.filter(kind='representative_research', dedupe_key__in=history_keys).order_by('-source_updated_at', '-pk').first()
+            history_failed = bool(history and history.status == 'dead')
+            collecting = bool(history and history.status in {'pending', 'dispatched', 'processing'})
         for period in periods:
             preview = latest_preview(representative_id, period)
             saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False).first()
@@ -219,21 +229,32 @@ class OutsideSpendingView(APIView):
             snapshot = preview if preview_complete else saved or preview
             if snapshot and snapshot.outside_scans.exists():
                 snapshots.append(snapshot)
-                complete = complete and (not preview or preview_complete) and set(snapshot.outside_scans.filter(complete=True).values_list("candidate_id", flat=True)) == set(snapshot.candidate_ids)
+                scan_complete = bool(snapshot.candidate_ids) and set(snapshot.outside_scans.filter(complete=True).values_list("candidate_id", flat=True)) == set(snapshot.candidate_ids)
+                if not scan_complete:
+                    if period in pending_periods:
+                        collecting = True
+                    else:
+                        failed_periods.add(period)
+                if period in pending_periods and not preview_complete:
+                    collecting = True
             elif preview or period in pending_periods:
-                complete = False
+                collecting = True
+            elif any(run.period == period for run in runs):
+                failed_periods.add(period)
+        coverage = {'failed_periods': sorted(failed_periods, reverse=True), 'history_failed': history_failed}
+        status = 'collecting' if collecting else 'partial' if failed_periods or history_failed else 'available'
         empty = {"status": "not_researched", "support": None, "oppose": None, "results": [], "count": 0, "next_cursor": None}
         if not snapshots:
-            if not complete:
-                empty["status"] = "collecting"
-            return Response(empty)
+            if status != 'available':
+                empty["status"] = status
+            return Response({**empty, **coverage})
         rows = OutsideSpendingTotal.objects.filter(scan__snapshot__in=snapshots)
         totals = {side: rows.filter(position=side).aggregate(total=Sum("amount"))["total"] or 0 for side in ["S", "O"]}
         if data.get("position"):
             rows = rows.filter(position=data["position"])
         rows = rows.select_related("scan__snapshot").order_by("-amount", "pk")
         count, offset = rows.count(), data["cursor"]
-        return Response({"status": "available" if complete else "collecting", "support": str(totals["S"]), "oppose": str(totals["O"]), "count": count,
+        return Response({"status": status, **coverage, "support": str(totals["S"]), "oppose": str(totals["O"]), "count": count,
             "next_cursor": offset + 20 if offset + 20 < count else None,
             "results": [{"id": row.pk, "name": row.spender_name, "amount": str(row.amount), "position": row.position, "period": row.scan.snapshot.period,
                 "source_url": f"https://www.fec.gov/data/independent-expenditures/?data_type=processed&committee_id={row.spender_id}&candidate_id={row.scan.candidate_id}&cycle={row.scan.snapshot.period}&support_oppose_indicator={row.position}"} for row in rows[offset:offset + 20]]})
