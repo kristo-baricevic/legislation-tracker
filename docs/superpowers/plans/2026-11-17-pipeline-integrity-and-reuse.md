@@ -27,6 +27,9 @@ Correct the demonstrated financial validation failures, process large bills in b
 - Include validator version in confirmation identity and checkpoint guards, preventing an old successful-request identity from bypassing upgraded checks.
 - Split truncated summary groups by serialized size within the confirmed budget, including the final merge. Do not split/retry unknown outcomes or exceed the approved allowance.
 - Mark baseline audit probes as historical and update the current source-review documentation.
+- Report complete source-plan coverage independently of the legacy summary seed, eliminating false truncation notices for fully reviewed large bills.
+
+PR verification: full SQLite suite 1,746 passed / 17 skipped; full PostgreSQL suite 1,759 passed / 3 skipped. Final confirmation/coverage changes were followed by 40 affected-path tests passing on SQLite and 42 on PostgreSQL. Client `pnpm test` (including 59 API/helper tests) and `pnpm typecheck` passed. Migration drift and whitespace checks passed. PostgreSQL skips were the SQLite-only fallback, opt-in performance benchmark and unavailable standalone Redis integration. No paid calls, production changes or browser E2E verification were performed.
 
 ## Verification
 

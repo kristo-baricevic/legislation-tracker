@@ -299,8 +299,10 @@ def build_reader_preflight(document):
                                          "excluded": excluded, "reused": reused, "policy_grouping": 1, "max_calls": settings.LLM_READER_MAX_CALLS})
     budget = {}
     manifest = {**identity, "execution_settings": reader_execution_settings(),
-                "source_kind": "reader_targets", "truncated": summary_truncated,
-                "coverage": selected_envelope["source_packet"]["coverage"],
+                "source_kind": "reader_targets", "truncated": False,
+                "coverage": {"complete_document": True, "total_chunks": len(scans),
+                             "reviewed_source_refs": [s['source_ref'] for s in scans]},
+                "summary_seed_coverage": selected_envelope["source_packet"]["coverage"],
                 "reader": {"total_count": len(all_targets), "selected_count": len(all_targets) - len(excluded),
                            "unavailable_count": len(excluded), "unavailable": excluded, "batch_count": len(batches)},
                 "budget": budget}
@@ -311,7 +313,7 @@ def build_reader_preflight(document):
         source_fingerprint=hashlib.sha256(canonical_json_bytes({"identity": identity, "sources": snapshot})).hexdigest(),
         request_fingerprint=hashlib.sha256(request_bytes).hexdigest(), source_manifest=manifest,
         source_snapshot=snapshot, request_envelope=main, request_bytes=request_bytes,
-        estimated_input_tokens=0, truncated=summary_truncated, reader_reuse=reused,
+        estimated_input_tokens=0, truncated=False, reader_reuse=reused,
         worker_guard=worker_guard)
     if reader_input_guard(document.bill) != worker_guard:
         raise PreflightUnavailable('Source changed while preparing requests', reason='source_unavailable')

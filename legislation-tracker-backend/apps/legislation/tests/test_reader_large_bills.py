@@ -27,6 +27,8 @@ def test_large_bill_uses_source_sized_confirmed_budget_not_fixed_call_count(sour
         p = build_enhancement_preflight(source_bill)
     assert p.source_manifest['budget']['planned_calls'] > 64
     assert p.source_manifest['budget']['maximum_calls'] >= p.source_manifest['budget']['planned_calls']
+    assert not p.truncated
+    assert p.source_manifest['coverage']['complete_document'] is True
     scans = [s for s in p.source_snapshot if s.get('discovery_source')]
     assert ''.join(s['quoted_text'] for s in scans) == doc.extracted_text
     assert all(len(r.request_bytes) <= 100000 for r in p.reader_batches)
