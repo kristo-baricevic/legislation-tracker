@@ -1050,16 +1050,18 @@ export function getRepresentativeSponsoredBills(
   id: number,
   congress: number,
   page = 1,
+  topicId?: number,
 ): Promise<{ count: number; next: string | null; previous: string | null; results: BillListItem[] }> {
-  return publicGet(`/api/representatives/${id}/sponsored-bills/?congress=${congress}&page=${page}`);
+  return publicGet(`/api/representatives/${id}/sponsored-bills/?congress=${congress}&page=${page}${topicId ? `&topic_id=${topicId}` : ""}`);
 }
 
 export function getRepresentativeCosponsoredBills(
   id: number,
   congress: number,
   page = 1,
+  topicId?: number,
 ): Promise<{ count: number; next: string | null; previous: string | null; results: BillCosponsorItem[] }> {
-  return publicGet(`/api/representatives/${id}/cosponsored-bills/?congress=${congress}&page=${page}`);
+  return publicGet(`/api/representatives/${id}/cosponsored-bills/?congress=${congress}&page=${page}${topicId ? `&topic_id=${topicId}` : ""}`);
 }
 
 export function getRepresentativeCommittees(

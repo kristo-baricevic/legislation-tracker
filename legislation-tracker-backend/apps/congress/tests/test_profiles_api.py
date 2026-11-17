@@ -15,6 +15,28 @@ from apps.legislation.models import Bill, BillTopic, Topic
 pytestmark = pytest.mark.django_db
 
 
+@pytest.mark.parametrize("endpoint", ["sponsored-bills", "cosponsored-bills"])
+def test_bill_history_topic_filter_applies_before_pagination(endpoint):
+    representative = member()
+    topic = Topic.objects.create(name="History filter", slug="history-filter")
+    expected = []
+    for number in range(30):
+        bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number=f"HR {number}", title="Test", sponsor=representative)
+        BillCosponsor.objects.create(bill=bill, representative=representative)
+        if number < 2:
+            BillTopic.objects.create(bill=bill, topic=topic)
+            expected.append(bill.pk)
+    client = APIClient()
+    url = f"/api/representatives/{representative.pk}/{endpoint}/"
+    response = client.get(url, {"congress": 119, "topic_id": topic.pk})
+    assert response.status_code == 200
+    assert response.data["count"] == 2
+    rows = response.data["results"]
+    assert {row["bill"]["id"] if endpoint == "cosponsored-bills" else row["id"] for row in rows} == set(expected)
+    assert client.get(url, {"congress": 119, "topic_id": -1}).status_code == 400
+    assert client.get(url, {"congress": 119}).data["count"] == 30
+
+
 def test_vote_filters_apply_before_pagination_and_combine_with_topic():
     representative = member()
     topic, _ = Topic.objects.get_or_create(slug="schools", defaults={"name": "Schools"})

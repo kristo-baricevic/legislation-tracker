@@ -116,6 +116,22 @@ function RepresentativeDetailContent() {
   const [historyHasMore, setHistoryHasMore] = useState({ sponsored: false, cosponsored: false, committees: false });
   const [historyLoading, setHistoryLoading] = useState({ sponsored: false, cosponsored: false, committees: false });
   const historyInFlight = useRef({ sponsored: false, cosponsored: false, committees: false });
+  const historyGeneration = useRef({ sponsored: 0, cosponsored: 0, committees: 0 });
+  const [billTopics, setBillTopics] = useState<TopicItem[]>([]);
+  const [billTopicError, setBillTopicError] = useState(false);
+  const [billTopicRetry, setBillTopicRetry] = useState(0);
+  const [selectedTopics, setSelectedTopics] = useState({ sponsored: "", cosponsored: "" });
+  const [billErrors, setBillErrors] = useState({ sponsored: false, cosponsored: false });
+  useEffect(() => {
+    let active = true;
+    void getTopics().then(items => { if (active) { setBillTopics(items); setBillTopicError(false); } }).catch(() => { if (active) setBillTopicError(true); });
+    return () => { active = false; };
+  }, [billTopicRetry]);
+  useEffect(() => () => {
+    historyGeneration.current.sponsored++;
+    historyGeneration.current.cosponsored++;
+    historyGeneration.current.committees++;
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -157,6 +173,10 @@ function RepresentativeDetailContent() {
       .then(([person, sponsors, cosponsors, memberships]) => {
         if (cancelled) return;
         setRepresentative(person);
+        historyGeneration.current.sponsored++;
+        historyGeneration.current.cosponsored++;
+        setSelectedTopics({ sponsored: "", cosponsored: "" });
+        setBillErrors({ sponsored: false, cosponsored: false });
         setSponsored(sponsors.results);
         setCosponsored(cosponsors.results);
         setCommittees(memberships.results);
@@ -181,6 +201,7 @@ function RepresentativeDetailContent() {
   ) {
     if (congress === null || historyInFlight.current[kind]) return;
     historyInFlight.current[kind] = true;
+    const generation = historyGeneration.current[kind];
     setHistoryLoading((current) => ({ ...current, [kind]: true }));
     const nextPage = historyPages[kind] + 1;
     try {
@@ -189,7 +210,9 @@ function RepresentativeDetailContent() {
           representativeId,
           congress,
           nextPage,
+          Number(selectedTopics.sponsored) || undefined,
         );
+        if (generation !== historyGeneration.current[kind]) return;
         setSponsored((current) => [...current, ...response.results]);
         setHistoryHasMore((current) => ({ ...current, sponsored: Boolean(response.next) }));
       } else if (kind === "cosponsored") {
@@ -197,7 +220,9 @@ function RepresentativeDetailContent() {
           representativeId,
           congress,
           nextPage,
+          Number(selectedTopics.cosponsored) || undefined,
         );
+        if (generation !== historyGeneration.current[kind]) return;
         setCosponsored((current) => [...current, ...response.results]);
         setHistoryHasMore((current) => ({ ...current, cosponsored: Boolean(response.next) }));
       } else {
@@ -206,15 +231,49 @@ function RepresentativeDetailContent() {
           congress,
           nextPage,
         );
+        if (generation !== historyGeneration.current[kind]) return;
         setCommittees((current) => [...current, ...response.results]);
         setHistoryHasMore((current) => ({ ...current, committees: Boolean(response.next) }));
       }
       setHistoryPages((current) => ({ ...current, [kind]: nextPage }));
     } catch (cause) {
+      if (generation !== historyGeneration.current[kind]) return;
       setError(cause instanceof Error ? cause.message : "Could not load more history.");
     } finally {
-      historyInFlight.current[kind] = false;
-      setHistoryLoading((current) => ({ ...current, [kind]: false }));
+      if (generation === historyGeneration.current[kind]) {
+        historyInFlight.current[kind] = false;
+        setHistoryLoading((current) => ({ ...current, [kind]: false }));
+      }
+    }
+  }
+
+  async function filterBills(kind: "sponsored" | "cosponsored", topic: string) {
+    if (congress === null) return;
+    const generation = ++historyGeneration.current[kind];
+    setSelectedTopics(current => ({ ...current, [kind]: topic }));
+    setBillErrors(current => ({ ...current, [kind]: false }));
+    historyInFlight.current[kind] = true;
+    setHistoryLoading(current => ({ ...current, [kind]: true }));
+    try {
+      let next: string | null;
+      if (kind === "sponsored") {
+        const response = await getRepresentativeSponsoredBills(representativeId, congress, 1, Number(topic) || undefined);
+        if (generation !== historyGeneration.current[kind]) return;
+        setSponsored(response.results); next = response.next;
+      } else {
+        const response = await getRepresentativeCosponsoredBills(representativeId, congress, 1, Number(topic) || undefined);
+        if (generation !== historyGeneration.current[kind]) return;
+        setCosponsored(response.results); next = response.next;
+      }
+      setHistoryPages(current => ({ ...current, [kind]: 1 }));
+      setHistoryHasMore(current => ({ ...current, [kind]: Boolean(next) }));
+    } catch {
+      if (generation === historyGeneration.current[kind]) setBillErrors(current => ({ ...current, [kind]: true }));
+    } finally {
+      if (generation === historyGeneration.current[kind]) {
+        historyInFlight.current[kind] = false;
+        setHistoryLoading(current => ({ ...current, [kind]: false }));
+      }
     }
   }
 
@@ -244,7 +303,18 @@ function RepresentativeDetailContent() {
         if (next !== null) { event.preventDefault(); chooseTab(tabs[next]); document.getElementById(`representative-tab-${next}`)?.focus(); }
       }}>{name}</button>)}</div><span>Congress {congress}</span></div>
       {tabs.map((name,index) => (opened.includes(name) || tab === name) && <div key={name} id={`representative-panel-${index}`} role="tabpanel" aria-labelledby={`representative-tab-${index}`} hidden={tab !== name} className={styles.panel}>
-        {name === "Bills" && <><section><h2>Bills introduced</h2><BillRows bills={sponsored} />{historyHasMore.sponsored && <div className={styles.pagination}><button disabled={historyLoading.sponsored} onClick={() => void loadMoreHistory("sponsored")}>Load more sponsored bills</button></div>}</section><section><h2>Bills cosponsored</h2><BillRows bills={activeCosponsoredBills.map(item => item.bill)} />{historyHasMore.cosponsored && <div className={styles.pagination}><button disabled={historyLoading.cosponsored} onClick={() => void loadMoreHistory("cosponsored")}>Load more cosponsored bills</button></div>}</section></>}
+        {name === "Bills" && <>
+          {billTopicError && <button onClick={() => setBillTopicRetry(value => value + 1)}>Retry topics</button>}
+          {(["sponsored", "cosponsored"] as const).map(kind => {
+            const title = kind === "sponsored" ? "Bills introduced" : "Bills cosponsored";
+            return <section key={kind}>
+              <div className={styles.billHistoryToolbar}><h2>{title}</h2><select aria-label={`${title} topic`} value={selectedTopics[kind]} onChange={event => void filterBills(kind, event.target.value)}><option value="">All topics</option>{billTopics.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}</select></div>
+              <div className={styles.billHistoryResults} aria-busy={historyLoading[kind]} style={{ opacity: historyLoading[kind] || billErrors[kind] ? 0.55 : 1 }}><BillRows bills={kind === "sponsored" ? sponsored : activeCosponsoredBills.map(item => item.bill)} /></div>
+              {billErrors[kind] && <p role="alert">Could not load bills. <button onClick={() => void filterBills(kind, selectedTopics[kind])}>Retry</button></p>}
+              {historyHasMore[kind] && <div className={styles.pagination}><button disabled={historyLoading[kind] || billErrors[kind]} onClick={() => void loadMoreHistory(kind)}>Load more {kind} bills</button></div>}
+            </section>;
+          })}
+        </>}
         {name === "Votes" && <><VoteSummary scope={scope} fullPage /><FullVotes scope={scope} /></>}
         {name === "Campaign funding" && <RepresentativeResearch representativeId={representative.id} financeView />}
         {name === "Committees" && <section><h2>Committees</h2>{committees.length ? <ul className={styles.committees}>{committees.map(membership => <li key={`${membership.committee.id}-${membership.congress}`}><strong>{membership.committee.name}</strong><span>{membership.role.replaceAll("_", " ")}{!membership.is_current ? " · Former" : ""}</span></li>)}</ul> : <p className={styles.note}>No committee assignments available.</p>}{historyHasMore.committees && <div className={styles.pagination}><button disabled={historyLoading.committees} onClick={() => void loadMoreHistory("committees")}>Load more committees</button></div>}</section>}

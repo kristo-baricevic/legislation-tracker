@@ -44,6 +44,31 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativeDetailPage", () => {
+  it("ignores an older topic response after selecting all topics", async () => {
+    const bill = { id: 101, jurisdiction: "federal", session: 119, bill_number: "HR 101", title: "Unfiltered bill", status: "Introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] };
+    type Page = Awaited<ReturnType<typeof getRepresentativeSponsoredBills>>;
+    let finish!: (value: Page) => void;
+    vi.mocked(getRepresentativeSponsoredBills).mockImplementation(async (_id, _congress, _page, topic) => topic ? new Promise<Page>(resolve => { finish = resolve; }) : { count: 1, next: null, previous: null, results: [bill] });
+    render(<RepresentativeDetailPage />);
+    const row = await screen.findByText("Unfiltered bill");
+    const dropdown = screen.getByRole("combobox", { name: "Bills introduced topic" });
+    await userEvent.selectOptions(dropdown, "9");
+    expect(row).toBeVisible();
+    await userEvent.selectOptions(dropdown, "");
+    await act(async () => finish({ count: 0, next: null, previous: null, results: [] }));
+    expect(screen.getByText("Unfiltered bill")).toBeVisible();
+  });
+  it("filters introduced and cosponsored bills independently", async () => {
+    const bill = { id: 101, jurisdiction: "federal", session: 119, bill_number: "HR 101", title: "School support", status: "Introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] };
+    vi.mocked(getRepresentativeSponsoredBills).mockImplementation(async (_id, _congress, _page, topic) => ({ count: topic ? 1 : 0, next: null, previous: null, results: topic ? [bill] : [] }));
+    render(<RepresentativeDetailPage />);
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Bills introduced topic" }), "9");
+    expect(await screen.findByText("School support")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Bills cosponsored topic" })).toHaveValue("");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Bills introduced topic" }), "");
+    await act(async () => {});
+    expect(screen.queryByText("School support")).not.toBeInTheDocument();
+  });
   it("keeps vote rows mounted during filter requests and replaces them only when ready", async () => {
     const base = await getRecordedVotes({ representativeId: 8, congress: 119 }, 1);
     vi.mocked(getRecordedVotes).mockResolvedValueOnce({ ...base, results: [{ id: 1, representative_id: 8, vote_id: 1, congress: 119, chamber: "house", session_number: 1, roll_number: 1, vote_date: "2026-01-01T00:00:00Z", question: "Existing vote", position: "yes", raw_position: "Yea", bill: null, source_url: null, source_link_kind: "unavailable", source_updated_at: null }] });

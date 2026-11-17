@@ -29,6 +29,7 @@ from .serializers import (
     CommitteeSerializer,
     RepresentativeCompareQuerySerializer,
     RepresentativeInsightQuerySerializer,
+    RepresentativeBillQuerySerializer,
     RepresentativeListQuerySerializer,
     RepresentativeSerializer,
     VoteDetailSerializer,
@@ -49,10 +50,10 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         qs = super().get_queryset()
         if self.action == "list":
             query_serializer = RepresentativeListQuerySerializer
+        elif self.action in {"sponsored_bills", "cosponsored_bills"}:
+            query_serializer = RepresentativeBillQuerySerializer
         elif self.action in {
             "insights",
-            "sponsored_bills",
-            "cosponsored_bills",
             "committees",
         }:
             query_serializer = RepresentativeInsightQuerySerializer
@@ -189,7 +190,7 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="sponsored-bills")
     def sponsored_bills(self, request, pk=None):
-        query = RepresentativeInsightQuerySerializer(data=request.query_params)
+        query = RepresentativeBillQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         representative = self.get_object()
         bills = (
@@ -200,12 +201,14 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             .prefetch_related("bill_topics__topic")
             .order_by("-last_activity_sequence", "-id")
         )
+        if topic_id := query.validated_data.get("topic_id"):
+            bills = bills.filter(bill_topics__topic_id=topic_id).distinct()
         page = self.paginate_queryset(bills)
         return self.get_paginated_response(BillListSerializer(page, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="cosponsored-bills")
     def cosponsored_bills(self, request, pk=None):
-        query = RepresentativeInsightQuerySerializer(data=request.query_params)
+        query = RepresentativeBillQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         relationships = (
             BillCosponsor.objects.filter(
@@ -216,6 +219,8 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
             .prefetch_related("bill__bill_topics__topic")
             .order_by("-sponsorship_date", "-id")
         )
+        if topic_id := query.validated_data.get("topic_id"):
+            relationships = relationships.filter(bill__bill_topics__topic_id=topic_id).distinct()
         page = self.paginate_queryset(relationships)
         return self.get_paginated_response(
             [
