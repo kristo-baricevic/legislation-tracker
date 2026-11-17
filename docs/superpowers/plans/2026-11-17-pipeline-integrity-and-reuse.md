@@ -41,7 +41,7 @@ Full-suite verification: SQLite passed 1,739 tests (17 skipped); PostgreSQL pass
 
 ## Deployment
 
-Apply migrations `0023_shared_enhancement_calls` and `0024_processing_cache` (and the preceding `0022_similarity_checkpoints` from the earlier work) before deploying the workers. Restart the application's workers through the normal deployment process. No application database migration or paid regeneration was performed by this implementation task.
+Apply legislation migrations `0022_similarity_checkpoints` through `0025_reader_lookup_digests` and campaign-finance migration `0010_outside_revision_triggers` before deploying the updated API and workers. See [read-path rollout notes](../../audits/2026-11-17-read-path-optimizations.md) for generated-column table locks and PostgreSQL extension permissions. Restart the application's workers through the normal deployment process. No application database migration or paid regeneration was performed by this implementation task.
 
 `LLM_READER_MAX_CALLS=0` uses the source-sized confirmed maximum; an explicit positive value remains a hard ceiling. `LLM_READER_CALLS_PER_DELIVERY=8` controls fairness, not the total approved paid-call budget. All actual requests remain byte-bounded and each attempt remains call-bounded.
 

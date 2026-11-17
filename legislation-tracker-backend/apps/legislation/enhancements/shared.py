@@ -3,18 +3,28 @@ from apps.legislation.models import BillEnhancement
 
 
 def _reader_result_valid(saved):
+    import copy
     import hashlib
+    from types import SimpleNamespace
     from jsonschema import ValidationError
     from apps.legislation.models import BillProcessingCache
     from .reader_cache import VALIDATOR_VERSION
     from .schema import validate_enhancement_output
-    fingerprint = hashlib.sha256(f"reader-validation:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
+    fingerprint = hashlib.sha256(f"reader-validation:projection-1:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
         return cached.result_json['valid']
     valid = True
     try:
-        validate_enhancement_output(saved.result_json, saved.source_snapshot_json, expected_version='1.4')
+        result = copy.deepcopy(saved.result_json)
+        review = result.get('source_review') if isinstance(result, dict) else None
+        if isinstance(review, dict) and review.get('policy_drafts') is not None:
+            from .policy_compilation import group_policy_drafts
+            # Validate the same lossless draft projection that readers receive,
+            # not obsolete compiler prose. All other validation still applies.
+            review['policy_changes'] = group_policy_drafts(
+                SimpleNamespace(source_snapshot=saved.source_snapshot_json), review['policy_drafts'])
+        validate_enhancement_output(result, saved.source_snapshot_json, expected_version='1.4')
     except (ValidationError, KeyError, TypeError, ValueError):
         valid = False
     BillProcessingCache.objects.get_or_create(pk=fingerprint,

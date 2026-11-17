@@ -12,7 +12,15 @@ from .source_packet import canonical_json_bytes, _within_limits
 
 def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_calls):
     catalog = {s['source_ref']: s for s in preflight.source_snapshot}
-    items = review.get('policy_changes') or review.get('financial_items') or review.get('additional_changes')
+    items, seen = [], set()
+    for category in ('policy_changes', 'financial_items', 'additional_changes'):
+        for item in review.get(category, []):
+            # Identical cross-category explanations need only one summary input;
+            # distinct funding details and conditions must never be discarded.
+            key = canonical_json_bytes({'text': item['text'], 'source_quotes': item['source_quotes']})
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
     if not items:
         return None, 0
     base_envelope = copy.deepcopy(preflight.request_envelope)

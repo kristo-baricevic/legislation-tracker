@@ -33,6 +33,46 @@ def test_old_success_with_wrong_money_cannot_bypass_new_validation(enhancement_o
         # A cached validation verdict must not reload or serialize either large JSON field.
         assert not any('"legislation_billenhancement"."source_snapshot_json"' in q["sql"].split(" FROM ")[0]
             or '"legislation_billenhancement"."result_json"' in q["sql"].split(" FROM ")[0] for q in queries)
+        client = APIClient()
+        client.force_authenticate(enhancement_owner)
+        for suffix in ("latest/", f"{saved.pk}/"):
+            response = client.get(f"/api/bills/{source_bill.pk}/enhancements/{suffix}")
+            assert response.status_code == 200
+            assert response.data["result"] is None
+            assert response.data["active_reader"] is None
+
+
+@pytest.mark.django_db
+def test_saved_policy_drafts_are_repaired_before_validation(enhancement_owner, enhancement_settings, source_bill):
+    from copy import deepcopy
+    from .test_reader_enhancement_pipeline import install_reader
+    from apps.legislation.enhancements.reader_discovery import discovery_sources, resolve_discovery
+    from apps.legislation.enhancements.shared import shared_enhancement
+    from apps.legislation.enhancements.serializers import enhancement_payload
+    install_reader(source_bill, count=0)
+    sources = discovery_sources('SEC. 1. Schools\nThe Secretary may provide services to eligible schools.', 1)
+    sources[0]['policy_review'] = True
+    review = resolve_discovery({'financial_items': [], 'additional_changes': [], 'money_checks': {},
+        'policy_checks': {'src_0001:p0001': 'explained'}, 'policy_changes': [{
+            'title': 'School services', 'text': 'The Secretary may provide services to eligible schools.',
+            'source_quotes': [{'source_ref': 'src_0001', 'quote_id': 'p0001'}]}]}, sources)
+    review['reviewed_sources'] = ['src_0001']
+    review['policy_drafts'] = deepcopy(review['policy_changes'])
+    review['policy_changes'][0]['text'] = 'The Secretary must provide services to every school.'
+    with enhancement_settings:
+        credential = _valid_credential(enhancement_owner)
+        saved = create_enhancement_attempt(user=enhancement_owner, bill=source_bill,
+            confirmed=_confirmation(source_bill, credential)).enhancement
+        saved.source_snapshot_json = sources
+        saved.status = 'succeeded'
+        saved.result_json = {'schema_version': '1.4', 'summary': [], 'explanations': [], 'source_review': review}
+        saved.save()
+        reusable = shared_enhancement(source_bill, include_active=False)
+        assert reusable is not None
+        result = enhancement_payload(reusable, detail=True, viewer=enhancement_owner)['result']
+        assert result['source_review']['policy_changes'][0]['text'] == review['policy_drafts'][0]['text']
+        saved.refresh_from_db()
+        assert saved.result_json['source_review']['policy_changes'][0]['text'] == review['policy_changes'][0]['text']
 
 
 @pytest.mark.django_db

@@ -167,7 +167,10 @@ def enhancement_payload(enhancement: BillEnhancement, *, detail: bool, viewer=No
         "latest_attempt": _attempt_payload(attempts[-1]) if attempts else None,
     }
     if detail:
-        payload["result"] = _expanded_result(enhancement)
+        from .shared import _reader_result_valid
+        eligible = (enhancement.output_schema_version != "1.4" or enhancement.result_json is None
+                    or _reader_result_valid(enhancement))
+        payload["result"] = _expanded_result(enhancement) if eligible else None
         payload["attempts"] = [_attempt_payload(attempt) for attempt in attempts]
         payload["poll_after_seconds"] = (
             2

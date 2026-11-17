@@ -17,6 +17,32 @@ def test_large_section_context_is_bounded_and_every_source_byte_is_reviewed():
 
 
 @pytest.mark.django_db
+def test_summary_includes_financial_and_additional_changes_alongside_policies(source_bill, enhancement_settings):
+    from apps.legislation.enhancements.reader_summary import summarize_review
+    from apps.legislation.enhancements.reader_citations import citation_passages
+    from apps.legislation.enhancements.providers.base import ProviderResult, ProviderUsage
+    install_reader(source_bill, count=0)
+    with enhancement_settings:
+        preflight = build_enhancement_preflight(source_bill)
+        source = next(s for s in preflight.source_snapshot if s.get('discovery_source'))
+        quote = {'source_ref': source['source_ref'], 'quote': citation_passages(source)[0]['text']}
+        texts = ['Creates a school program.', 'Funds the program with $10,000.', 'Requires a public annual report.']
+        review = {key: [{'text': text, 'source_quotes': [quote]}] for key, text in zip(
+            ['policy_changes', 'financial_items', 'additional_changes'], texts)}
+        class Provider:
+            def enhance_bill(self, *, request, **kwargs):
+                assert [item['text'] for item in request.request_envelope['source_packet']['validated_changes']] == texts
+                wire = request.request_envelope['source_packet']['sources'][0]
+                return ProviderResult({'schema_version': '1.4', 'explanations': [], 'summary': [{
+                    'text': 'Creates and funds a school program that must report annually.',
+                    'source_quotes': [{'source_ref': wire['source_ref'], 'quote_id': wire['citation_passages'][0]['quote_id']}]}]},
+                    ProviderUsage(10, 5, 15), 'test', 'test')
+        result, calls = summarize_review(preflight, review, Provider(), 'offline', lambda: None, 4)
+    assert calls == 1
+    assert result.output['summary']
+
+
+@pytest.mark.django_db
 def test_large_bill_uses_source_sized_confirmed_budget_not_fixed_call_count(source_bill, enhancement_settings):
     install_reader(source_bill, count=0)
     doc = source_bill.documents.get()

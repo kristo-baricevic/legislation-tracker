@@ -29,3 +29,9 @@ Apply backend migrations before starting the updated backend:
 - `campaign_finance.0010_outside_revision_triggers` adds the representative-scoped revision table and mutation triggers.
 
 No analysis regeneration, paid API calls, or source-text changes are required. Tests use isolated databases; production throughput and browser rendering have not been benchmarked by this change.
+
+## Adversarial review corrections
+
+- Latest/detail enhancement endpoints and the active-reader fallback now enforce the same validation as shared lookup. Invalid historical reader output is not exposed through an alternate endpoint.
+- Validation uses the same lossless retained-draft projection as presentation, so older grouping prose can be repaired locally rather than requiring another paid run. Historical records stay unchanged; financial and citation validation still applies.
+- Summary inputs include policy, financial, and additional changes together, with exact duplicate explanations removed. Previously, a nonempty policy list excluded the other two categories. Execution version 3 changes confirmation identity; unchanged validated section calls remain reusable.

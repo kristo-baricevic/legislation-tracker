@@ -60,7 +60,7 @@ Do not claim the guide is exhaustive when the source packet is truncated.
 
 def reader_execution_settings():
     from .reader_cache import VALIDATOR_VERSION
-    return {"policy_grouping_version": 7, "reader_execution_version": 2,
+    return {"policy_grouping_version": 7, "reader_execution_version": 3,
             "validator_version": VALIDATOR_VERSION, **{name: getattr(settings, name) for name in (
         "LLM_READER_MAX_OUTPUT_TOKENS", "LLM_READER_MAX_CALLS",
         "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS", "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
