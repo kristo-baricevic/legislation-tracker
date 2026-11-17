@@ -69,12 +69,14 @@ def test_overview_ready_while_donation_collection_continues(scope):
 
 
 def test_research_api_reuses_saved_snapshot_unless_refresh_requested(scope):
+    from apps.campaign_finance.models import OutsideSpendingScan
     rep, run, snapshot, _ = scope
     run.status = "partial"
     run.save()
     snapshot.active = True
     snapshot.published_at = timezone.now()
     snapshot.save()
+    OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id=snapshot.candidate_ids[0], complete=True)
     client = APIClient()
     client.force_authenticate(get_user_model().objects.get(username="reader"))
     url = f"/api/representatives/{rep.pk}/research/"
@@ -219,7 +221,8 @@ def test_partial_donors_visible_but_not_published_and_revocation_hides_them(scop
     assert result.data["results"][0]["amount"] == "125.00"
     connections = APIClient().get(f"/api/representatives/{rep.pk}/connections/?period=2026").data
     assert connections["finance_status"] == "collecting"
-    assert connections["donors"][0]["amount"] == "125"
+    from decimal import Decimal
+    assert Decimal(connections["donors"][0]["amount"]) == Decimal('125')
     snapshot.refresh_from_db()
     assert snapshot.published_at is None and not snapshot.active
     snapshot.invalidated = True

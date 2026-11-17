@@ -153,7 +153,10 @@ LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
 )
 # Entire reader plan is confirmed before any calls; never silently truncate it.
 LLM_READER_MAX_OUTPUT_TOKENS = env.int("LLM_READER_MAX_OUTPUT_TOKENS", default=24000)
-LLM_READER_MAX_CALLS = env.int("LLM_READER_MAX_CALLS", default=64)
+# Zero derives a finite, confirmable budget from the complete source inventory.
+# A positive value remains an explicit operator spending ceiling.
+LLM_READER_MAX_CALLS = env.int("LLM_READER_MAX_CALLS", default=0)
+LLM_READER_CALLS_PER_DELIVERY = env.int("LLM_READER_CALLS_PER_DELIVERY", default=8)
 LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS = env.int(
     "LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS",
     default=240,

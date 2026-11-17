@@ -6,6 +6,53 @@ from apps.congress.models import Representative
 pytestmark = pytest.mark.django_db
 
 
+def test_fec_stream_uses_chunks_with_total_deadline(monkeypatch, settings):
+    import json
+    from apps.campaign_finance.fec_client import get_page
+    settings.FEC_API_KEY = 'fixture'
+    body = json.dumps({'results': [], 'pagination': {}, 'padding': 'x' * 100000}).encode()
+    chunks = []
+    class Response:
+        status_code = 200
+        headers = {'Content-Type': 'application/json'}
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def iter_content(self, size):
+            for start in range(0, len(body), size):
+                chunks.append(size)
+                yield body[start:start + size]
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs): return Response()
+    monkeypatch.setattr('apps.campaign_finance.fec_client.requests.Session', Session)
+    assert get_page('candidates/search/', {})['results'] == []
+    assert len(chunks) < 30
+
+
+def test_receipt_page_uses_batched_persistence_and_rolls_back_changed_rows(django_assert_max_num_queries):
+    from apps.research.services import request_research
+    from apps.campaign_finance.models import FinanceSnapshot, CampaignCommittee, FinanceResearchCheckpoint
+    from apps.campaign_finance.research import persist_page
+    rep = Representative.objects.create(bioguide_id='BULK01', name='Test', chamber='house', state='NY')
+    run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username='bulk').pk)
+    snapshot = FinanceSnapshot.objects.create(run=run, representative=rep, period=2026)
+    committee = CampaignCommittee.objects.create(fec_id='C00000001', name='Campaign')
+    checkpoint = FinanceResearchCheckpoint.objects.create(snapshot=snapshot, committee=committee)
+    rows = [{'sub_id': str(i), 'committee_id': committee.pk, 'contributor_id': f'C{i:08}',
+        'contributor_name': f'PAC {i}', 'entity_type': 'PAC', 'line_number': '11C',
+        'contribution_receipt_amount': 150} for i in range(2, 102)]
+    with django_assert_max_num_queries(15):
+        persist_page(checkpoint, {'results': rows, 'pagination': {'last_indexes': {'last_index': '101'}}})
+    assert snapshot.transactions.count() == 100
+    changed = [dict(rows[0], sub_id='999'), dict(rows[-1], contribution_receipt_amount=500)]
+    with pytest.raises(ValueError, match='source_record_changed'):
+        persist_page(checkpoint, {'results': changed, 'pagination': {'last_indexes': {'last_index': '102'}}})
+    assert snapshot.transactions.count() == 100
+    checkpoint.refresh_from_db()
+    assert checkpoint.cursor == {'last_index': '101'}
+
+
 def test_schedule_cursor_keeps_both_fields_and_rejects_foreign_parameters():
     from apps.campaign_finance.fec_client import receipt_parameters
     params = receipt_parameters("C00000001", 2026, {"last_index": "123", "last_contribution_receipt_date": "2026-01-01"})

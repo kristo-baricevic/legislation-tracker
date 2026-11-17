@@ -113,15 +113,15 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
 
 
 def step_usage(attempt_id):
-    rows = list(BillEnhancementStep.objects.filter(attempt_id=attempt_id))
-
-    def total(field):
-        values = [getattr(r, field) for r in rows]
-        return None if any(v is None for v in values) else sum(values)
-
-    return ProviderUsage(
-        total("input_tokens"), total("output_tokens"), total("total_tokens")
-    )
+    from django.db.models import Count, Sum
+    fields = ('input_tokens', 'output_tokens', 'total_tokens')
+    aggregates = {'rows': Count('pk')}
+    for field in fields:
+        aggregates[field + '_sum'] = Sum(field)
+        aggregates[field + '_known'] = Count(field)
+    totals = BillEnhancementStep.objects.filter(attempt_id=attempt_id).aggregate(**aggregates)
+    return ProviderUsage(*(None if totals[field + '_known'] != totals['rows']
+                           else totals[field + '_sum'] or 0 for field in fields))
 
 
 def should_promote(existing, candidate):

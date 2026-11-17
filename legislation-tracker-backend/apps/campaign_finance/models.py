@@ -142,3 +142,10 @@ class ConnectionRevision(models.Model):
     """Database-triggered generation, including bulk ingestion mutations."""
     generation = models.PositiveBigIntegerField(default=0)
     epoch = models.UUIDField(default=uuid.uuid4)
+
+
+class OutsideSpendingRevision(models.Model):
+    """Per-representative revision; unrelated ingestion must not evict pages."""
+    representative = models.OneToOneField("congress.Representative", primary_key=True, on_delete=models.CASCADE)
+    generation = models.PositiveBigIntegerField(default=0)
+    epoch = models.UUIDField(default=uuid.uuid4)

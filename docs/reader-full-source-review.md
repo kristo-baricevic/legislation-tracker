@@ -65,9 +65,9 @@ review; a correct citation alone does not establish a correct explanation.
   ceiling and includes their maximum input/output allowances in confirmation.
   This bounds recovery cost; it does not cap the number of provisions.
 - Each paid call is recorded before dispatch. Validated responses are saved
-  immediately in existing enhancement-step records. An explicit retry of the
-  same enhancement reuses successful steps without another provider call.
-  An ambiguous dispatch is not automatically replayed.
+  in enhancement-step records and a shared content-addressed call cache.
+  Retries and other users reuse matching completed work without another
+  provider call. An ambiguous dispatch is not automatically replayed.
 - Usage totals come from durable step records so a cache hit cannot erase
   already incurred token usage. Reused results retain their resolved model.
 - Compatible validated legacy explanations may be reused for an explicitly
@@ -75,8 +75,13 @@ review; a correct citation alone does not establish a correct explanation.
   still match; the summary and full-source inventory are regenerated.
 - Quoted amendments stay with their enclosing section. Neighboring complete
   sections are not supplied as uncitable context, avoiding cross-batch duplicates.
-  Oversized sections retain their own governing context; requests exceeding the
-  configured input allowance are rejected before payment.
+  Oversized sections use bounded adjacent context and a hash of the entire
+  enclosing section. All source chunks are reviewed, but distant cross-references
+  still need semantic verification; local context is not proof of completeness.
+- Generate the summary last from the completed review. Large inventories use
+  bounded intermediate summaries. A truncated summary group is split by size
+  when the confirmed call budget can cover both children and their merge.
+  Timeouts and ambiguous outcomes are not automatically retried.
 
 ## Reader-level explanations
 
@@ -86,23 +91,22 @@ conditions that change the meaning; use the Money tab for the detailed financial
 breakdown rather than repeating its entire ledger in the overview. There is no
 fixed count of policy entries; every entry remains accessible through pagination.
 
-A final size-bounded grouping pass combines related draft entries (for example,
-a housing program's applications, eligibility, loans and reporting). The server
-groups entries by their originating bill section before requesting prose, so the
-model cannot simply return one explanation per draft clause. Very large sections
-retain source-chunk subdivisions. Quoted amendments do not create outer sections.
-Each output group has a fixed policy heading and its own schema description;
-the model cannot shift a later policy into an earlier group's slot. Each input
-entry must belong to exactly one output group. Rewrite packets target 24 KB of
-serialized input, keeping whole groups together. Citations are inherited and
-deduplicated by the server, not rewritten by the model. This does not establish
-semantic equivalence automatically, but prevents silent omission of input entries
-and retains the evidence for review. The original draft, group membership and
-usage remain in the durable step records. Verified full-source inventories can
-be reused for a presentation upgrade; Money is not regenerated unnecessarily.
-Unabridged policy drafts are also retained with the stored review and excluded
-from the reader API, so another presentation upgrade does not summarize an
-already condensed explanation and progressively lose details.
+A lossless local grouping pass joins accepted draft explanations from the same
+bill section with the same heading only when the combined text fits 55 words and fewer than 410
+characters. It copies whole statements and their citations; it never rewrites,
+clips, or removes a draft. Larger groups remain multiple paginated entries.
+Quoted amendments do not create outer sections. Publication verifies that the
+displayed policies equal this deterministic projection of the retained drafts.
+This guarantees preservation during grouping, not that the initial AI extraction
+is legally correct. The source-review checks and human semantic evaluations
+remain necessary.
+
+Grouping makes no paid API calls and needs no output-token reserve. Existing
+saved results that retain `policy_drafts` are projected the same way on read,
+without modifying historical records or charging for regeneration. These internal
+drafts are excluded from the API response. Older results without drafts retain
+their legacy behavior. Money remains unchanged. Shared enhancements and validated
+discovery calls remain reusable; the grouping execution version is now 7.
 
 Each selectable source passage receives an explained/context decision. Explained
 passages must be cited by a policy entry; financial passages cannot be dismissed
@@ -110,10 +114,9 @@ as context. Exact source matching, complete sentences, length bounds, and guards
 against quote IDs and amendment instructions apply before publication. One
 bounded correction for wording/coverage failures is allowed within the existing
 confirmed reserve. Repeated failure leaves the previous result intact.
-Output-limit failures in the grouping pass subdivide between whole policies,
-weighted by input size, within the same confirmed call and token limits. A single
-policy is never split from its conditions. Cached source reviews are applied
-before budgeting, and all known grouping requests are counted before confirmation.
+Output-limit recovery still applies to paid source-review and explanation calls,
+within confirmed call and token limits. Cached source reviews are applied before
+budgeting. There is no generative grouping pass to truncate or repair.
 
 `hr10906_policy_expectations.json` adds source-pinned policy coverage checks,
 including nonfinancial policies. `evaluate_policy_review` reports entry and word

@@ -1470,7 +1470,7 @@ def _process_durable_work(work_item):
             generation_reason=payload.get("generation_reason", "ingestion"),
         )
     if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
-        return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"])
+        return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"], work_item=work_item)
     if work_item.kind == legislation_tasks.WORK_KIND_SEARCH_INDEX:
         from apps.legislation.search_index import (
             latest_search_index_at,

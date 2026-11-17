@@ -83,13 +83,11 @@ def _source_compatible(enhancement, bill) -> bool:
 
 
 def _active_reader_payload(user, bill):
-    for saved in BillEnhancement.objects.filter(
-        bill=bill, status=BillEnhancement.Status.SUCCEEDED,
-    ).exclude(result_json=None).prefetch_related(ATTEMPT_PREFETCH).order_by("-created_at", "-id"):
-        if _source_compatible(saved, bill):
-            payload = enhancement_payload(saved, detail=True, viewer=user)
-            payload["source_compatible"] = True
-            return payload
+    saved = shared_enhancement(bill, include_active=False)
+    if saved:
+        payload = enhancement_payload(saved, detail=True, viewer=user)
+        payload["source_compatible"] = True
+        return payload
     return None
 
 

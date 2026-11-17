@@ -36,6 +36,9 @@ the text too: the candidate list is a safeguard, not the scope of your review.
 Use only the supplied source_ref and quote_id pairs. Cite all material conditions.
 Context before/after is for interpretation only; do not extract a second copy
 of provisions belonging to that context. Do not invent a total or outside law.
+If section_context_complete is false, this is one part of a larger section.
+Other chunks are reviewed separately. Do not infer that a condition, definition,
+or exception does not exist merely because it is outside this context window.
 """
 
 POLICY_INSTRUCTIONS = """
@@ -109,13 +112,25 @@ def discovery_sources(text, first_ref):
         enclosing = [(a, b) for a, b in zip(boundaries, boundaries[1:])
                      if a < source['end_char'] and b > source['start_char']]
         if enclosing and (enclosing[0][0] < source['start_char'] or enclosing[-1][1] > source['end_char']):
-            source['section_context'] = text[enclosing[0][0]:enclosing[-1][1]]
+            section = text[enclosing[0][0]:enclosing[-1][1]]
+            source['section_context_sha256'] = hashlib.sha256(section.encode()).hexdigest()
+            source['section_context_complete'] = len(section.encode()) <= 24000
+            if source['section_context_complete']:
+                source['section_context'] = section
+            else:
+                # Every byte remains in the review inventory. Supply bounded
+                # adjacent context instead of repeating a hundred-page section
+                # for each chunk. Pin the whole section hash so a changed remote
+                # condition invalidates reuse, even outside this local window.
+                before = text[max(enclosing[0][0], source['start_char'] - 2000):source['start_char']]
+                after = text[source['end_char']:min(enclosing[-1][1], source['end_char'] + 2000)]
+                source['section_context'] = before + '\n[CURRENT REVIEW CHUNK]\n' + after
     return sources
 
 
 def money_candidates(sources):
     return [f"{s['source_ref']}:{p['quote_id']}" for s in sources for p in citation_passages(s)
-            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids']) and re.search(r'\$|\b(?:percent|appropriat\w*|tax credit|deduction|grant amounts|tariffs?)\b', p['text'], re.I)]
+            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids']) and re.search(r'\$|%|\b(?:percent|appropriat\w*|tax credit|deduction|grant amounts|tariffs?|shall (?:reserve|transfer|allocate)|(?:may|shall) set aside)\b', p['text'], re.I)]
 
 
 def discovery_schema(sources):
@@ -183,6 +198,8 @@ def resolve_discovery(output, sources, *, aggregate=False):
             validate_policy_copy(item)
     catalogs = {s['source_ref']: {p['quote_id']: p['text'] for p in citation_passages(s)
                                 if p['quote_id']} for s in sources}
+    from .reader_integrity import validate_financial_coverage, validate_numbers
+    validate_financial_coverage(output, catalogs)
     resolved = copy.deepcopy(output)
     for category in ('financial_items', 'additional_changes', 'policy_changes'):
         for item in resolved.get(category, []):
@@ -192,6 +209,7 @@ def resolve_discovery(output, sources, *, aggregate=False):
                 raise output_error('reader_target_invalid', [category])
             item['source_quotes'] = [{'source_ref': q['source_ref'],
                 'quote': catalogs[q['source_ref']][q['quote_id']]} for q in item['source_quotes']]
+            validate_numbers(item, path=[category])
     return resolved
 
 
@@ -227,18 +245,22 @@ def validate_source_review(review, sources):
             if category in {'policy_changes', 'policy_drafts'}:
                 validate_policy_copy(item)
     if policy:
-        # Re-run the wire validator against the immutable, server-owned passage
-        # catalog. This guards stored results and split-batch aggregation too.
-        wire = copy.deepcopy({k: v for k, v in review.items() if k not in {'reviewed_sources', 'policy_drafts'}})
-        for category in ('financial_items', 'additional_changes', 'policy_changes'):
-            for item in wire[category]:
-                for q in item['source_quotes']:
-                    matches = [p['quote_id'] for p in citation_passages(source_map[q['source_ref']]) if p['text'] == q['quote'] and p['quote_id']]
-                    if len(matches) != 1:
-                        raise output_error('citation_quote_not_found', ['source_review', category])
-                    q['quote_id'] = matches[0]
-                    del q['quote']
-        resolve_discovery(wire, scan_sources, aggregate=True)
+        if 'policy_drafts' in review:
+            from types import SimpleNamespace
+            from .policy_compilation import group_policy_drafts
+            if review['policy_changes'] != group_policy_drafts(SimpleNamespace(source_snapshot=sources), review['policy_drafts']):
+                raise output_error('reader_coverage_incomplete', ['source_review', 'policy_changes'])
+    # Revalidate every stored inventory, including pre-policy results.
+    wire = copy.deepcopy({k: v for k, v in review.items() if k not in {'reviewed_sources', 'policy_drafts'}})
+    for category in ('financial_items', 'additional_changes', 'policy_changes'):
+        for item in wire.get(category, []):
+            for q in item['source_quotes']:
+                matches = [p['quote_id'] for p in citation_passages(source_map[q['source_ref']]) if p['text'] == q['quote'] and p['quote_id']]
+                if len(matches) != 1:
+                    raise output_error('citation_quote_not_found', ['source_review', category])
+                q['quote_id'] = matches[0]
+                del q['quote']
+    resolve_discovery(wire, scan_sources, aggregate=True)
     if set(review['money_checks']) != set(money_candidates(scan_sources)):
         raise output_error('reader_coverage_incomplete', ['source_review', 'money_checks'])
     # A new full inventory must not silently drop a financial provision already

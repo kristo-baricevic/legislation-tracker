@@ -112,6 +112,12 @@ class BillDocument(models.Model):
     source_url = models.URLField(max_length=1024, null=True, blank=True)
     raw_text = models.TextField(null=True, blank=True)
     extracted_text = models.TextField(null=True, blank=True)
+    # Database-maintained so bulk updates cannot leave lookup hashes stale.
+    reader_text_hash = models.GeneratedField(
+        expression=models.functions.SHA256(models.functions.Coalesce(
+            models.functions.NullIf("extracted_text", models.Value("")), "raw_text", models.Value(""), output_field=models.TextField(),
+        )), output_field=models.CharField(max_length=64), db_persist=True,
+    )
     # Exact version-specific official purpose from the original document form.
     # Kept separate so existing text offsets and source hashes never shift.
     source_purpose = models.TextField(blank=True, default="")
@@ -311,6 +317,12 @@ class BillEnhancement(models.Model):
         db_index=True,
     )
     result_json = models.JSONField(null=True, blank=True)
+    validation_digest = models.GeneratedField(
+        expression=models.functions.SHA256(models.functions.Concat(
+            models.functions.SHA256(models.functions.Coalesce(models.functions.Cast("result_json", models.TextField()), models.Value(""), output_field=models.TextField())),
+            models.functions.SHA256(models.functions.Cast("source_snapshot_json", models.TextField())),
+        )), output_field=models.CharField(max_length=64), db_persist=True,
+    )
     successful_attempt = models.OneToOneField(
         "BillEnhancementAttempt",
         on_delete=models.SET_NULL,
@@ -417,6 +429,30 @@ class BillEnhancementAttempt(models.Model):
         ]
 
 
+class BillProcessingCache(models.Model):
+    """Versioned, content-addressed deterministic work; no credentials."""
+    fingerprint = models.CharField(max_length=64, primary_key=True)
+    kind = models.CharField(max_length=24)
+    result_json = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class BillEnhancementCallCache(models.Model):
+    """Shared call reservation and validated response, independent of user lifetime.
+
+    Dispatching reservations are deliberately never expired into paid retries:
+    a crashed caller may have already incurred provider charges.
+    """
+    fingerprint = models.CharField(max_length=64, primary_key=True)
+    status = models.CharField(max_length=24, default='dispatching')
+    result_json = models.JSONField(null=True)
+    response_id = models.CharField(max_length=255, default='', blank=True)
+    resolved_model = models.CharField(max_length=255, default='', blank=True)
+    diagnostic_code = models.CharField(max_length=100, default='', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class BillEnhancementStep(models.Model):
     """Durable per-call authorization; dispatching after a crash is ambiguous."""
 
@@ -467,6 +503,17 @@ class BillTopic(models.Model):
             models.Index(fields=["bill"]),
             models.Index(fields=["topic", "bill"]),
         ]
+
+
+class BillSimilarityState(models.Model):
+    """Reusable features and an atomic, keyset-paginated comparison checkpoint."""
+
+    bill = models.OneToOneField(Bill, on_delete=models.CASCADE, primary_key=True,
+        related_name="similarity_state")
+    fingerprint = models.CharField(max_length=64)
+    features = models.JSONField(default=dict)
+    cursor = models.BigIntegerField(default=0)
+    completed_fingerprint = models.CharField(max_length=64, default="")
 
 
 class BillSimilarity(models.Model):

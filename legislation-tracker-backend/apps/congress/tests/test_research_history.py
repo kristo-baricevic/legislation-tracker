@@ -79,6 +79,102 @@ def test_backfill_researches_saved_cycle_missing_outside_spending(history_scope)
     assert snapshot.active
 
 
+def test_default_research_repairs_selected_cycle_missing_outside_scan(history_scope):
+    from rest_framework.test import APIClient
+    rep, user = history_scope
+    old = ResearchRun.objects.create(representative=rep, requester=user, period=2026, status='partial')
+    snapshot = FinanceSnapshot.objects.create(representative=rep, run=old, period=2026, active=True,
+        published_at=timezone.now(), candidate_ids=['S6IL00151'])
+    client = APIClient()
+    client.force_authenticate(user)
+    response = client.post(f'/api/representatives/{rep.pk}/research/', {'period': 2026}, format='json')
+    assert response.status_code == 202
+    assert response.data['status'] == 'queued'
+    assert response.data['id'] != str(old.pk)
+    snapshot.refresh_from_db()
+    assert snapshot.active
+    again = client.post(f'/api/representatives/{rep.pk}/research/', {'period': 2026}, format='json')
+    assert again.data['id'] == response.data['id']
+
+
+@pytest.mark.parametrize('failure', ['failed', 'dead', 'needs_review'])
+def test_all_years_retains_failed_period_and_retry_clears_failure(history_scope, failure):
+    from rest_framework.test import APIClient
+    rep, user = history_scope
+    current = ResearchRun.objects.create(representative=rep, requester=user, period=2026, status='partial')
+    snapshot = FinanceSnapshot.objects.create(representative=rep, run=current, period=2026, active=True,
+        published_at=timezone.now(), candidate_ids=['S6IL00151'])
+    OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', complete=True)
+    old = request_research(rep.pk, 2020, user.pk, include_history=False)
+    if failure == 'dead':
+        old.work_item.status = 'dead'
+        old.work_item.save()
+    else:
+        old.status = failure
+        old.save()
+    client = APIClient()
+    url = f'/api/representatives/{rep.pk}/outside-spending/?all_periods=true'
+    response = client.get(url).data
+    assert response['status'] == 'partial'
+    assert response['failed_periods'] == [2020]
+    assert response['support'] == '0'  # Keep successfully collected totals visible.
+    request_research(rep.pk, 2026, user.pk, refresh=False)
+    run_history(rep)
+    response = client.get(url).data
+    assert response['status'] == 'collecting'
+    assert response['failed_periods'] == []
+
+
+def test_dead_history_discovery_is_not_reported_as_complete(history_scope):
+    from rest_framework.test import APIClient
+    rep, user = history_scope
+    request_research(rep.pk, 2026, user.pk)
+    work = IngestionWorkItem.objects.get(payload_json__stage='history')
+    work.status = 'dead'
+    work.save()
+    response = APIClient().get(f'/api/representatives/{rep.pk}/outside-spending/?all_periods=true').data
+    assert response['history_failed'] is True
+
+
+def test_retry_does_not_reuse_a_snapshot_superseded_by_a_failed_run(history_scope):
+    rep, user = history_scope
+    old = ResearchRun.objects.create(representative=rep, requester=user, period=2026, status='partial')
+    snapshot = FinanceSnapshot.objects.create(representative=rep, run=old, period=2026, active=True,
+        published_at=timezone.now(), candidate_ids=['S6IL00151'])
+    OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', complete=True)
+    ResearchRun.objects.create(representative=rep, requester=user, period=2026, status='failed')
+    replacement = request_research(rep.pk, 2026, user.pk, refresh=False)
+    assert replacement.status == 'queued'
+    assert replacement.pk != old.pk
+    snapshot.refresh_from_db()
+    assert snapshot.active
+
+
+def test_refresh_keeps_outside_polling_before_new_snapshot_exists(history_scope):
+    from rest_framework.test import APIClient
+    rep, user = history_scope
+    old = ResearchRun.objects.create(representative=rep, requester=user, period=2026, status='partial')
+    snapshot = FinanceSnapshot.objects.create(representative=rep, run=old, period=2026, active=True,
+        published_at=timezone.now(), candidate_ids=['S6IL00151'])
+    OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', complete=True)
+    request_research(rep.pk, 2026, user.pk, include_history=False)
+    response = APIClient().get(f'/api/representatives/{rep.pk}/outside-spending/?all_periods=true').data
+    assert response['status'] == 'collecting'
+    assert response['support'] == '0'
+
+
+def test_terminal_incomplete_scan_is_partial_not_an_endless_collection(history_scope):
+    from rest_framework.test import APIClient
+    rep, user = history_scope
+    run = ResearchRun.objects.create(representative=rep, requester=user, period=2026, status='failed')
+    snapshot = FinanceSnapshot.objects.create(representative=rep, run=run, period=2026, active=True,
+        published_at=timezone.now(), candidate_ids=['S6IL00151'])
+    OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', complete=False)
+    result = APIClient().get(f'/api/representatives/{rep.pk}/outside-spending/?all_periods=true').data
+    assert result['status'] == 'partial'
+    assert result['failed_periods'] == [2026]
+
+
 def test_history_does_not_queue_records_after_identity_revoked(history_scope):
     rep, user = history_scope
     request_research(rep.pk, 2026, user.pk)

@@ -7,6 +7,7 @@ from email.utils import parsedate_to_datetime
 import requests
 from django.conf import settings
 from django.utils import timezone
+from apps.ingestion.congress_client import _total_request_deadline
 
 
 def retry_after(value, now=None):
@@ -53,14 +54,14 @@ def get_page(path, params):
     with requests.Session() as session:
         session.trust_env = False
         try:
-            with session.get("https://api.open.fec.gov/v1/" + path, params={**params, "api_key": key}, headers={"Accept": "application/json", "Accept-Encoding": "identity", "User-Agent": "LegislationTrackerResearch/1.0"}, timeout=(5, 10), stream=True, allow_redirects=False) as response:
+            with _total_request_deadline(30, error_factory=lambda: FECError('fec_response_limit')) as armed, session.get("https://api.open.fec.gov/v1/" + path, params={**params, "api_key": key}, headers={"Accept": "application/json", "Accept-Encoding": "identity", "User-Agent": "LegislationTrackerResearch/1.0"}, timeout=(5, 10), stream=True, allow_redirects=False) as response:
                 if response.status_code != 200:
                     retry = response.headers.get("Retry-After", "")
                     raise FECError("fec_rate_limited" if response.status_code == 429 else "fec_source_unavailable", response.status_code, retry_after(retry))
                 if "json" not in response.headers.get("Content-Type", "") or response.headers.get("Content-Encoding", "identity") not in ("", "identity"):
                     raise FECError("invalid_fec_response")
                 body = bytearray()
-                for chunk in response.iter_content(1):
+                for chunk in response.iter_content(65536 if armed else 1):
                     body.extend(chunk)
                     if len(body) > 4_000_000 or time.monotonic() > deadline:
                         raise FECError("fec_response_limit")

@@ -1,4 +1,5 @@
 import { authPost, getApiBase } from "./api";
+import { SpendingRevisionChanged } from "./spending-pages";
 
 export type ResearchSource = { url: string; attribution: string; license: string; fetched_at: string };
 export type ResearchRun = { id: string; status: string; sections: Record<string, { status: string; reason?: string }>; error?: string | null; retry_at?: string | null };
@@ -9,6 +10,7 @@ export type Connections = { nodes?: { id: string; kind: string; label: string; u
 
 async function read<T>(id: number, path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${getApiBase()}/api/representatives/${id}/${path}`, { signal });
+  if (response.status === 409 && path.startsWith("outside-spending/")) throw new SpendingRevisionChanged();
   if (!response.ok) throw new Error("Could not load saved research. Please retry.");
   return response.json();
 }
@@ -22,8 +24,8 @@ export const getResearch = async (id: number, period: number, signal?: AbortSign
 export const startResearch = (id: number, period: number, signal?: AbortSignal, refresh = false) => authPost<ResearchRun>(`/api/representatives/${id}/research/`, { period, refresh }, { signal });
 export type DonationSizes = { status: string; total: string; refunds?: string; results: { label: string; amount: string }[] };
 export const getDonationSizes = (id: number, period: number, snapshot: string, signal?: AbortSignal) => read<DonationSizes>(id, `contributors/?${period === 0 ? "all_periods=true" : `period=${period}&snapshot=${encodeURIComponent(snapshot)}`}&by_size=true`, signal);
-export type OutsideSpending = { status: string; support: string | null; oppose: string | null; count: number; next_cursor: number | null; results: { id: number; name: string; amount: string; period: number; position: "S" | "O"; source_url: string }[] };
-export const getOutsideSpending = (id: number, cursor: number, signal?: AbortSignal) => read<OutsideSpending>(id, `outside-spending/?all_periods=true&cursor=${cursor}`, signal);
+export type OutsideSpending = { revision?: string; status: string; failed_periods?: number[]; history_failed?: boolean; support: string | null; oppose: string | null; count: number; next_cursor: number | null; results: { id: number; name: string; amount: string; period: number; position: "S" | "O"; source_url: string }[] };
+export const getOutsideSpending = (id: number, cursor: number, signal?: AbortSignal, revision?: string) => read<OutsideSpending>(id, `outside-spending/?all_periods=true&cursor=${cursor}${revision ? `&revision=${encodeURIComponent(revision)}` : ""}`, signal);
 export const getContributors = (id: number, period: number, snapshot: string, cursor: number, sort: string, signal?: AbortSignal, kind = "contribution") => read<Contributors>(id, `contributors/?${period === 0 ? "all_periods=true" : `period=${period}&snapshot=${encodeURIComponent(snapshot)}`}&cursor=${cursor}&sort=${sort}&kind=${kind}`, signal);
 export type FinanceHistory = { count: number; next_cursor: number | null; results: { id: string; published_at: string; active: boolean; coverage: string }[] };
 export const getFinanceHistory = (id: number, period: number, cursor: number, signal?: AbortSignal) => read<FinanceHistory>(id, `research-snapshots/?period=${period}&cursor=${cursor}`, signal);

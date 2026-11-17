@@ -41,9 +41,7 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     class Provider:
         def enhance_bill(self, *, request, **kwargs):
             if request.request_envelope.get('policy_compilation'):
-                return ProviderResult({'groups': {'0': {'title': 'Help build homes',
-                    'text': 'The government must provide a $100 million first housing grant.'}}},
-                    ProviderUsage(10, 5, 15), 'grouped', 'test')
+                pytest.fail('Grouping must not make another paid prose-rewrite call')
             source = request.source_snapshot[0]
             quote = {'source_ref': source['source_ref'], 'quote_id': 'p0001'}
             if request.request_envelope.get('source_review'):
@@ -80,15 +78,11 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     from django.test import override_settings
     with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=2):
         cached = build_enhancement_preflight(source_bill)
-    assert cached.source_manifest['budget']['planned_calls'] == 2
-    monkeypatch.setattr('apps.legislation.enhancements.policy_compilation.compilation_requests',
-                        lambda preflight, items: [None] * 3)
-    with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=4):
+    assert cached.source_manifest['budget']['planned_calls'] == 1
+    with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=1):
         cached = build_enhancement_preflight(source_bill)
-    assert cached.source_manifest['budget']['planned_calls'] == 4
-    assert cached.source_manifest['budget']['maximum_calls'] == 4
-    with enhancement_settings, override_settings(LLM_READER_MAX_CALLS=3), pytest.raises(PreflightUnavailable):
-        build_enhancement_preflight(source_bill)
+    assert cached.source_manifest['budget']['planned_calls'] == 1
+    assert cached.source_manifest['budget']['maximum_calls'] == 1
 
 
 @pytest.mark.django_db
@@ -109,11 +103,11 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
         assert {r["target_id"] for r in rules} == {t["target_id"] for t in snapshot_targets(p.reader_batches[0].source_snapshot)}
         assert all(r["allowed_source_refs"] == [p.reader_batches[0].source_snapshot[0]["source_ref"]] for r in rules)
         assert all(r["own_evidence"] for r in rules)
-        assert p.source_manifest["budget"]["planned_calls"] == 4
-        assert p.source_manifest["budget"]["maximum_calls"] == 12
+        assert p.source_manifest["budget"]["planned_calls"] == 3
+        assert p.source_manifest["budget"]["maximum_calls"] == 11
         assert p.reader_batches[0].request_envelope['max_output_tokens'] >= 8000
         assert p.source_manifest['budget']['maximum_output'] == sum(
-            r.request_envelope['max_output_tokens'] for r in (p, *p.reader_batches)) + 9 * 24000
+            r.request_envelope['max_output_tokens'] for r in (p, *p.reader_batches)) + 8 * 24000
         wire_source = p.request_envelope["source_packet"]["sources"][0]
         assert "citation_passages" in wire_source
         assert "quoted_text" not in wire_source  # Do not send the text twice.
@@ -126,35 +120,26 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "group_repair", "group_split", "group_split_exhausted", "missing", "revoked", "changed"])
+@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "missing", "revoked", "changed", "yield", "policy_repair_yield", "split_yield"])
 def test_reader_pipeline_publishes_only_complete_current_targets(
     source_bill, enhancement_owner, enhancement_settings, monkeypatch, mode
 ):
     from apps.accounts.models import LLMCredential
     c = install_reader(source_bill)
-    if mode.startswith('group_split'):
-        monkeypatch.setattr('apps.legislation.enhancements.policy_compilation.section_assignments',
-                            lambda preflight, items: [[i] for i in range(len(items))])
     requests = []
     class Provider:
         def enhance_bill(self, *, request, **kwargs):
             requests.append(request)
             if request.request_envelope.get('policy_compilation'):
-                groups = request.request_envelope['output_schema']['properties']['groups']['properties']
-                if mode.startswith('group_split') and len(groups) > 1:
-                    from apps.legislation.enhancements.providers.base import ProviderError
-                    raise ProviderError('invalid_output', validation_code='provider_output_limit', usage=ProviderUsage(10, 5, 15))
-                return ProviderResult({'groups': {key: {'title': schema['properties']['title']['const'],
-                    'text': 'Cite p0001.' if mode == 'group_repair' and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.'} for key, schema in groups.items()}},
-                    ProviderUsage(10, 5, 15), 'grouped', 'test')
+                pytest.fail('Grouping must not rewrite accepted explanations')
             if request.request_envelope.get('source_review'):
                 ref = request.source_snapshot[0]['source_ref']
                 return ProviderResult({'financial_items': [], 'additional_changes': [], 'money_checks': {},
-                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': 'Cite p0001 for the report.' if mode == 'policy_repair' and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
-                        'source_quotes': [{'source_ref': ref, 'quote_id': 'p0001'}]} for i in range(2 if mode.startswith('group_split') else 1)], 'policy_checks': {ref + ':p0001': 'explained'}},
+                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': 'Cite p0001 for the report.' if mode.startswith('policy_repair') and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
+                        'source_quotes': [{'source_ref': ref, 'quote_id': 'p0001'}]} for i in range(1)], 'policy_checks': {ref + ':p0001': 'explained'}},
                     ProviderUsage(10, 5, 15), 'review-response', 'test')
             targets = snapshot_targets(request.source_snapshot)
-            if mode == 'split' and len(targets) == 10:
+            if mode.startswith('split') and len(targets) == 10:
                 from apps.legislation.enhancements.providers.base import ProviderError
                 raise ProviderError('invalid_output', validation_code='provider_output_limit', usage=ProviderUsage(10, 5, 15))
             output = {"schema_version": "1.4", "summary": [], "explanations": []}
@@ -177,34 +162,69 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
                 c.save()
             return ProviderResult(output, ProviderUsage(10, 5, 15), "reader-response", "test")
     monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
-    from contextlib import nullcontext
     from django.test import override_settings
-    with enhancement_settings, (override_settings(LLM_READER_MAX_CALLS=4) if mode == 'group_split_exhausted' else nullcontext()):
+    with enhancement_settings, override_settings(LLM_READER_CALLS_PER_DELIVERY=1 if mode.endswith('yield') else 8):
         a = _pending_attempt(enhancement_owner, source_bill)
         a.dispatch_token = "reader-test"
         a.save()
         outcome = run_bill_enhancement_attempt(a.pk, a.dispatch_token)
+        if mode.endswith('yield'):
+            assert outcome['status'] == 'pending'
+            for _ in range(6):
+                a.refresh_from_db()
+                outcome = run_bill_enhancement_attempt(a.pk, a.dispatch_token)
+                if outcome['status'] != 'pending':
+                    break
     a.refresh_from_db()
     a.enhancement.refresh_from_db()
-    if mode in {"success", "split", "policy_repair", "group_repair", "group_split"}:
+    if mode in {"success", "split", "policy_repair", "yield", "policy_repair_yield", "split_yield"}:
         assert outcome["status"] == "succeeded"
-        assert len(requests) == {'success': 4, 'split': 6, 'policy_repair': 5, 'group_repair': 5, 'group_split': 6}[mode]
-        assert a.total_tokens == {'success': 60, 'split': 90, 'policy_repair': 75, 'group_repair': 75, 'group_split': 90}[mode]
-        assert a.steps.filter(status='validated').count() == (5 if mode in {'split', 'group_split'} else 4)
+        expected_calls = 5 if mode.startswith('split') else 4 if mode.startswith('policy_repair') else 3
+        assert len(requests) == expected_calls
+        # The final summary must be based on the completed source review, not
+        # a prefix selected before the rest of the bill was processed.
+        assert not requests[-1].request_envelope.get('source_review')
+        assert requests[-1].request_envelope['source_packet'].get('validated_changes')
+        assert a.total_tokens == expected_calls * 15
+        assert a.steps.filter(status='validated').count() == (4 if mode.startswith('split') else 3)
         assert a.enhancement.result_json['source_review']['reviewed_sources']
         payload = enhancement_payload(a.enhancement, detail=True)
         assert len(payload["result"]["explanations"]) == 10
         assert payload["result"]["explanations"][0]["contract_id"] == c.pk
         assert payload["result"]["explanations"][0]["cited_sources"]
-    elif mode == 'group_split_exhausted':
-        assert outcome['status'] == 'failed'
-        assert len(requests) == 4
-        assert a.enhancement.result_json is None
-        assert a.failure_detail['code'] == 'provider_output_limit'
     else:
         assert outcome["status"] != "succeeded"
         assert a.enhancement.result_json is None
-        assert len(requests) == 2
+        assert len(requests) == 1  # Failed work no longer pays for an unused summary.
+
+
+@pytest.mark.django_db
+def test_reader_checkpoint_reuses_plan_but_detects_changed_source(source_bill, enhancement_owner, enhancement_settings, monkeypatch):
+    from apps.legislation.tasks import _worker_preflight
+    install_reader(source_bill)
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        plan, _, failure = _worker_preflight(attempt)
+        assert failure is None
+        def forbidden(*args, **kwargs):
+            pytest.fail('A checkpoint rebuilt the entire request plan')
+        monkeypatch.setattr('apps.legislation.tasks.build_enhancement_preflight', forbidden)
+        assert _worker_preflight(attempt, cached_preflight=plan)[2] is None
+        document = source_bill.documents.get()
+        document.extracted_text += '\nA new funding rule.'
+        document.save()
+        assert _worker_preflight(attempt, cached_preflight=plan)[2] == 'source_unavailable'
+
+
+@pytest.mark.django_db
+def test_validation_upgrade_changes_confirmation_identity(source_bill, enhancement_settings, monkeypatch):
+    install_reader(source_bill, count=0)
+    with enhancement_settings:
+        before = build_enhancement_preflight(source_bill)
+        monkeypatch.setattr('apps.legislation.enhancements.reader_cache.VALIDATOR_VERSION', 999)
+        after = build_enhancement_preflight(source_bill)
+    assert after.request_fingerprint != before.request_fingerprint
+    assert after.worker_guard != before.worker_guard
 
 
 @pytest.mark.django_db
@@ -240,7 +260,7 @@ def test_output_allowance_splits_batches_without_losing_targets(source_bill, enh
     assert small.source_manifest['reader']['unavailable_count'] == 0
     assert small.request_fingerprint != large.request_fingerprint
     assert small.source_manifest['budget']['maximum_output'] == sum(
-        r.request_envelope['max_output_tokens'] for r in (small, *small.reader_batches)) + 9 * 8000
+            r.request_envelope['max_output_tokens'] for r in (small, *small.reader_batches)) + 8 * 8000
 
 
 @pytest.mark.django_db
