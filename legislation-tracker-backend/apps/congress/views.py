@@ -145,6 +145,13 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         congress = query.validated_data["congress"]
         chamber = query.validated_data.get("chamber")
         rows = recorded_votes(representative, congress, chamber)
+        position = query.validated_data.get("position")
+        if position == "no_vote":
+            rows = rows.filter(position__in=("present", "not_voting"))
+        elif position:
+            rows = rows.filter(position=position)
+        if topic_id := query.validated_data.get("topic_id"):
+            rows = rows.filter(vote__bill__bill_topics__topic_id=topic_id).distinct()
         page = self.paginate_queryset(rows)
         response = self.get_paginated_response(
             [recorded_vote_data(row) for row in page]

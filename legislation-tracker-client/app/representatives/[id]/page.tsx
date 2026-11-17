@@ -5,19 +5,22 @@ import BillCard from "../../components/BillCard";
 import BillDeckModal from "../../components/BillDeckModal";
 import CardTooltip from "../../components/CardTooltip";
 import { VotingRecord as VoteSummary } from "../../components/LegislatorProfileModal";
-import { getRecordedVotes, safeSourceUrl, type ProfileScope, type VotesPage } from "@/lib/legislator-profile";
+import { getRecordedVotes, safeSourceUrl, type ProfileScope, type VotesPage, type VoteFilters } from "@/lib/legislator-profile";
 import { getRepresentativeTopicActivity, type RepresentativeTopicActivity } from "@/lib/recommendations";
 import { topRepresentativeTopics } from "@/lib/representative-card";
 import type { Research } from "@/lib/representative-research";
 import deck from "../../components/bill-deck.module.css";
 import styles from "./representative-page.module.css";
 import RepresentativeResearch from "../../components/RepresentativeResearch";
+import TrackRepresentativeButton from "../../components/TrackRepresentativeButton";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useUrlTab, representativeTabs, representativeTabKey } from "@/lib/use-url-tab";
 
 import {
   getRepresentative,
+  getTopics,
+  type TopicItem,
   getBillFilterOptions,
   getRepresentativeCommittees,
   getRepresentativeCosponsoredBills,
@@ -35,6 +38,18 @@ function BillRows({ bills }: { bills: BillListItem[] }) {
 }
 
 function FullVotes({ scope }: { scope: ProfileScope }) {
+  const resultsViewport = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<NonNullable<VoteFilters["position"]> | "">("");
+  const [topic, setTopic] = useState("");
+  const [topics, setTopics] = useState<TopicItem[]>([]);
+  const [topicsError, setTopicsError] = useState(false);
+  const [topicsRetry, setTopicsRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setTopicsError(false);
+    void getTopics().then(items => { if (active) setTopics(items); }).catch(() => { if (active) setTopicsError(true); });
+    return () => { active = false; };
+  }, [topicsRetry]);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<VotesPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,19 +58,28 @@ function FullVotes({ scope }: { scope: ProfileScope }) {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError(false);
-    void getRecordedVotes(scope, page, controller.signal).then(value => { if (!controller.signal.aborted) setData(value); }).catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    void getRecordedVotes(scope, page, controller.signal, { position: position || undefined, topicId: topic ? Number(topic) : undefined }).then(value => { if (!controller.signal.aborted) { setData(value); if (resultsViewport.current) resultsViewport.current.scrollTop = 0; } }).catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [scope, page, retry]);
+  }, [scope, page, retry, position, topic]);
   return <section className={styles.records}><h2>Voting record</h2>
-    {loading && <p role="status">Loading votes…</p>}
-    {error && <p role="alert">Could not load votes. <button onClick={() => setRetry(value => value + 1)}>Retry votes</button></p>}
-    <ul aria-busy={loading}>{data?.results.map(record => <li key={record.id}>
+    <div className={styles.voteFilters}>
+      <label>Vote<select value={position} onChange={event => { setPosition(event.target.value as typeof position); setPage(1); setLoading(true); }}><option value="">All votes</option><option value="yes">Yes</option><option value="no">No</option><option value="no_vote">No vote</option></select></label>
+      <label>Topic<select value={topic} onChange={event => { setTopic(event.target.value); setPage(1); setLoading(true); }}><option value="">All topics</option>{topics.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      {topicsError && <button onClick={() => setTopicsRetry(value => value + 1)}>Retry topics</button>}
+    </div>
+    <div className={styles.voteStatus}>
+      {loading && <span role="status" className={data ? "sr-only" : undefined}>Loading votes…</span>}
+      {error && <span role="alert">Could not load votes. <button onClick={() => setRetry(value => value + 1)}>Retry votes</button></span>}
+    </div>
+    <div ref={resultsViewport} className={styles.voteViewport} role="region" aria-label="Voting results" tabIndex={0}>
+    <ul aria-label="Vote results" aria-busy={loading} className={loading || error ? styles.pendingVotes : undefined}>{data?.results.map(record => <li key={record.id}>
       <span className={styles.position} data-position={record.position}>{({yes:"Yes",no:"No",present:"Present",not_voting:"Not voting",other:record.raw_position || "Other"})[record.position]}</span>
       <div>{record.bill ? <Link href={`/bills/${record.bill.id}`}>{record.bill.bill_number} · {record.bill.title}</Link> : <strong>{record.question || "Roll call"}</strong>}{record.bill && record.question && <p>{record.question}</p>}<small>{new Date(record.vote_date).toLocaleDateString("en-US", { timeZone: "UTC" })} · {record.chamber === "senate" ? "Senate" : "House"}</small></div>
       {safeSourceUrl(record.source_url) && <CardTooltip text={record.source_link_kind === "session_list" ? "Official session vote list" : "Official roll-call record"}><a href={record.source_url!} target="_blank" rel="noreferrer" aria-label="Vote source">↗</a></CardTooltip>}
     </li>)}</ul>
     {data && !data.results.length && !loading && <p className={styles.note}>No voting records available.</p>}
-    <nav className={styles.pagination} aria-label="Vote pages"><button disabled={loading || page === 1} onClick={() => setPage(value => value - 1)}>Prev</button><span>Page {page}</span><button disabled={loading || !data?.next} onClick={() => setPage(value => value + 1)}>Next</button></nav>
+    </div>
+    <nav className={styles.pagination} aria-label="Vote pages"><button disabled={loading || error || page === 1} onClick={() => setPage(value => value - 1)}>Prev</button><span>Page {page}</span><button disabled={loading || error || !data?.next} onClick={() => setPage(value => value + 1)}>Next</button></nav>
   </section>;
 }
 
@@ -208,7 +232,10 @@ function RepresentativeDetailContent() {
       <header className={styles.header}>
         <div className={styles.avatar}>{portrait && portrait !== failedPortrait ? <img src={portrait} alt={name} onError={() => setFailedPortrait(portrait)} /> : <span>{name.split(" ").map(part => part[0]).slice(0, 2).join("")}</span>}</div>
         <div><h1>{name}</h1><div className={styles.badges}><span>{({D:"Democrat",R:"Republican",I:"Independent"} as Record<string,string>)[representative.party] || representative.party}</span><span>{representative.state}{representative.district ? ` · District ${representative.district}` : ""}</span><span>{representative.chamber === "senate" ? "Senate" : "House"}</span></div></div>
-        <RepresentativeResearch representativeId={representative.id} cardName={name} onResearch={setResearch} />
+        <div className={styles.actions}>
+          <TrackRepresentativeButton key={representative.id} representativeId={representative.id} />
+          <RepresentativeResearch representativeId={representative.id} cardName={name} onResearch={setResearch} />
+        </div>
       </header>
       {research?.biography && <p className={styles.bio}>{research.biography.text}</p>}
       <div className={styles.topics}>{topRepresentativeTopics(activity).map(topic => <Link key={topic.id} href={`/bills?topic_id=${topic.id}`}>{topic.name}</Link>)}</div>

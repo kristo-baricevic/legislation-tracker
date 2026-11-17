@@ -14,6 +14,8 @@ def validate_period(period):
 
 def request_research(representative_id: int, period: int, user_id: int, *, refresh=True, include_history=True) -> ResearchRun:
     run = _request_period(representative_id, period, user_id, refresh=refresh, finance_only=not include_history)
+    from apps.congress.committee_sync import ensure_committee_rosters
+    ensure_committee_rosters()
     if include_history:
         from apps.campaign_finance.history import queue_history
         queue_history(run, explicit=True)
@@ -31,15 +33,16 @@ def _request_period(representative_id, period, user_id, *, refresh, finance_only
         if not refresh:
             from apps.campaign_finance.models import FinanceSnapshot
             saved = FinanceSnapshot.objects.filter(representative_id=representative_id, period=period, active=True, invalidated=False, published_at__isnull=False).select_related("run").first()
-            if saved:
+            if saved and saved.run.sections.get('finance', {}).get('reason') != 'outside_spending_only':
                 from apps.campaign_finance.identity import resolve_candidate
                 identity = resolve_candidate(representative_id, period)
                 if identity.status == "verified":
                     expected = set(identity.candidate_ids)
-                    scanned = set(saved.outside_scans.filter(complete=True).values_list("candidate_id", flat=True))
                     superseded = ResearchRun.objects.filter(representative_id=representative_id,
                         period=period, created_at__gt=saved.run.created_at).exists()
-                    if not superseded and expected and expected == scanned == set(saved.candidate_ids):
+                    if not superseded and expected and expected == set(saved.candidate_ids):
+                        from apps.campaign_finance.outside_backfill import queue_outside_period
+                        queue_outside_period(representative_id, period, user_id)
                         return saved.run
         run = ResearchRun.objects.create(representative_id=representative_id, period=period, requester_id=user_id)
         payload = {"run_id": str(run.pk), "refresh": refresh, "include_history": not finance_only}

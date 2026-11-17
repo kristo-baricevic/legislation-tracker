@@ -40,6 +40,9 @@ def unchanged_policy(policy):
 
 
 def process_research(work):
+    if work.payload_json.get('stage') == 'outside_backfill':
+        from apps.campaign_finance.outside_backfill import process_outside_backfill
+        return process_outside_backfill(work)
     if work.payload_json.get("stage") == "history":
         from apps.campaign_finance.history import process_history
         return process_history(work)

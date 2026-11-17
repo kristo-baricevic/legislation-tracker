@@ -105,6 +105,7 @@ WORK_KIND_DISPATCH_PRIORITY = {
     WORK_KIND_BILL_VERSIONS: 30,
     # A roster sync must not be starved by a full Congress bill poll.
     WORK_KIND_REPRESENTATIVE_DETAIL: 40,
+    "committee_roster": 35,
     WORK_KIND_BILL_RELATIONSHIPS: 50,
     WORK_KIND_BILL_VOTES: 60,
     WORK_KIND_ROLL_CALL_VOTE: 70,
@@ -704,13 +705,8 @@ def sync_representatives(congress=None):
             bioguide_id__in=seen_ids
         ).update(is_current=False)
 
-    try:
-        sync_committee_memberships.delay()
-    except Exception:
-        # The roster is durable only after its own validated sync; a later
-        # scheduled representative run will request it again if this handoff
-        # fails while the broker is unavailable.
-        logger.exception("sync_representatives: could not queue committee roster sync")
+    from apps.congress.committee_sync import ensure_committee_rosters
+    ensure_committee_rosters()
 
     return {
         "congress": congress,
@@ -752,6 +748,13 @@ def sync_committee_memberships(self, congress=None):
             )
         raise
     return [result.__dict__ for result in results]
+
+
+@shared_task
+def ensure_committee_roster_work():
+    from apps.congress.committee_sync import ensure_committee_rosters
+    work = ensure_committee_rosters()
+    return {"work_item_id": work.pk if work else None}
 
 
 @shared_task
@@ -1423,6 +1426,9 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
 def _process_durable_work(work_item):
     """Run one durable pipeline stage without publishing another broker message."""
     payload = work_item.payload_json
+    if work_item.kind == "committee_roster":
+        from apps.congress.committee_sync import sync_committee_memberships as sync
+        return [result.__dict__ for result in sync(congress=payload["congress"])]
     if work_item.kind == "representative_research":
         from apps.research.tasks import process_research
         return process_research(work_item)

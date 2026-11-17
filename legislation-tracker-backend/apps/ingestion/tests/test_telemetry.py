@@ -26,8 +26,8 @@ def work(key, status="pending", **kwargs):
 
 
 @pytest.mark.django_db
-def test_staff_reads_do_not_create_state_or_work_and_reject_scope():
-    client = authenticated_client(is_staff=True)
+def test_superuser_reads_do_not_create_state_or_work_and_reject_scope():
+    client = authenticated_client(is_staff=True, is_superuser=True)
     for path in ["telemetry", "source-readiness"]:
         assert APIClient().get(f"/api/ingestion/{path}/").status_code in [401, 403]
         assert (
@@ -63,7 +63,7 @@ def test_counts_are_scoped_and_latest_success_is_not_run_completion():
         source_updated_at=now,
         status="dead",
     )
-    data = authenticated_client(is_staff=True).get("/api/ingestion/telemetry/").json()
+    data = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/telemetry/").json()
     assert data["stale_leases"] == 1
     assert data["scheduled_pending"] == 1
     assert data["runnable_pending"] == 0
@@ -132,7 +132,7 @@ def test_incomplete_source_scan_and_stale_snapshot_are_unavailable(monkeypatch):
     )
     cache.set(source_inventory.snapshot_key("federal", 119), data)
     result = (
-        authenticated_client(is_staff=True)
+        authenticated_client(is_staff=True, is_superuser=True)
         .get("/api/ingestion/source-readiness/")
         .json()
     )
@@ -150,7 +150,7 @@ def test_start_is_coalesced_replayed_and_publication_failure_is_unknown(monkeypa
         "delay",
         lambda **kwargs: calls.append(kwargs) or SimpleNamespace(id="task-1"),
     )
-    client = authenticated_client(is_staff=True)
+    client = authenticated_client(is_staff=True, is_superuser=True)
     first = client.post(
         "/api/ingestion/poll-congress/",
         {"congress": 119},
@@ -232,7 +232,7 @@ def test_expired_idempotency_replay_never_enqueues_again(monkeypatch):
         "delay",
         lambda **kwargs: pytest.fail("expired replay must not enqueue"),
     )
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/poll-congress/",
         {"congress": 119},
         format="json",
@@ -240,7 +240,7 @@ def test_expired_idempotency_replay_never_enqueues_again(monkeypatch):
     )
     assert response.json()["status"] == "unknown"
     assert (
-        authenticated_client("other@example.com", is_staff=True)
+        authenticated_client("other@example.com", is_staff=True, is_superuser=True)
         .post("/api/ingestion/poll-congress/", {"congress": 119.9}, format="json")
         .status_code
         == 400
@@ -280,7 +280,7 @@ def test_revoked_discovery_claim_cannot_write_cursor_or_work(monkeypatch):
 def test_rollback_never_publishes_claim(monkeypatch):
     from django.db import transaction
 
-    client = authenticated_client(is_staff=True)
+    client = authenticated_client(is_staff=True, is_superuser=True)
     calls = []
     monkeypatch.setattr(
         tasks.poll_congress, "delay", lambda **kwargs: calls.append(kwargs)
@@ -405,7 +405,7 @@ def test_invalid_readiness_timestamp_is_unavailable(stamp):
             "already_scheduled_or_blocked": 0,
         },
     )
-    response = authenticated_client(is_staff=True).get(
+    response = authenticated_client(is_staff=True, is_superuser=True).get(
         "/api/ingestion/source-readiness/"
     )
     assert response.status_code == 200

@@ -150,9 +150,16 @@ export async function getIntroducedBills(scope: ProfileScope, pageNumber: number
   if (!page(value, isProfileBill) || value.results.some(bill => bill.session !== scope.congress || (bill.sponsor_id !== undefined && bill.sponsor_id !== scope.representativeId))) throw new Error("Invalid introduced-legislation response");
   return value;
 }
-export async function getRecordedVotes(scope: ProfileScope, pageNumber: number, signal?: AbortSignal): Promise<VotesPage> {
+export interface VoteFilters { position?: "yes" | "no" | "no_vote"; topicId?: number }
+
+export async function getRecordedVotes(scope: ProfileScope, pageNumber: number, signal?: AbortSignal, filters: VoteFilters = {}): Promise<VotesPage> {
   if (!positive(pageNumber)) throw new Error("Invalid page");
   const query = scopeQuery(scope); query.set("page", String(pageNumber));
+  if (filters.position) query.set("position", filters.position);
+  if (filters.topicId !== undefined) {
+    if (!positive(filters.topicId)) throw new Error("Invalid topic");
+    query.set("topic_id", String(filters.topicId));
+  }
   const value = await publicGet(`/api/representatives/${scope.representativeId}/voting-record/?${query}`, { signal });
   if (!object(value) || value.pagination_mode !== "live_pages" || !timestamp(value.page_read_at) || !coverage(value.coverage) || !page(value, recordedVote) || value.results.some(row => row.representative_id !== scope.representativeId || row.congress !== scope.congress || (scope.chamber && row.chamber !== scope.chamber))) throw new Error("Invalid voting-record response");
   return value as VotesPage;

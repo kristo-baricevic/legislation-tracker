@@ -43,8 +43,9 @@ class SnapshotsQuery(ResearchQuery):
 
 class OutsideSpendingQuery(SnapshotsQuery):
     all_periods = serializers.BooleanField(default=False)
+    scope = serializers.ChoiceField(choices=['all_years', 'last_ten_years'], default='all_years')
     revision = serializers.CharField(max_length=64, required=False)
-    position = serializers.ChoiceField(choices=["S", "O"], required=False)
+    position = serializers.ChoiceField(choices=["S", "O", "M"], required=False)
 
 
 class ConnectionsQuery(ResearchQuery):
@@ -204,6 +205,11 @@ class OutsideSpendingView(APIView):
         import json
         get_object_or_404(Representative, pk=representative_id)
         data = parameters(request, OutsideSpendingQuery)
+        from apps.campaign_finance.outside import outside_complete
+        from apps.ingestion.models import IngestionWorkItem
+        year = timezone.now().year
+        def in_scope(period):
+            return type(period) is int and 1980 <= period <= year + year % 2 and (data['scope'] == 'all_years' or period >= year - 9)
         revision_row, _ = OutsideSpendingRevision.objects.get_or_create(representative_id=representative_id)
         generation = (str(revision_row.epoch), revision_row.generation)
         periods = FinanceSnapshot.objects.filter(representative_id=representative_id, invalidated=False).values_list("period", flat=True).distinct() if data["all_periods"] else [data["period"]]
@@ -217,6 +223,9 @@ class OutsideSpendingView(APIView):
         if not data['all_periods']:
             runs = runs.filter(period=data['period'])
         runs = list(runs)
+        if data['all_periods']:
+            runs = [run for run in runs if in_scope(run.period)]
+            periods = {period for period in periods if in_scope(period)}
         for run in runs:
             if (run.work_item and run.work_item.status == 'dead') or run.status in {'failed', 'needs_review'}:
                 failed_periods.add(run.period)
@@ -224,11 +233,41 @@ class OutsideSpendingView(APIView):
                 pending_periods.add(run.period)
         if data['all_periods']:
             from apps.ingestion.models import IngestionWorkItem
+            from apps.campaign_finance.models import RepresentativeCandidate
+            # A missing run is missing coverage, not evidence of zero spending.
+            # Use saved provider periods; never perform source I/O on a read.
+            expected_periods = set()
+            year = timezone.now().year
+            for known, reporting in RepresentativeCandidate.objects.filter(
+                    representative_id=representative_id, verified=True).exclude(evidence_url='').values_list(
+                    'periods', 'candidate__reporting_periods'):
+                expected_periods.update(p for p in [*known, *reporting.get('periods', [])]
+                    if in_scope(p))
             periods = set(periods) | {run.period for run in runs}
+            failed_periods.update(expected_periods - periods)
             history_keys = [f'history:{pk}' for pk in ResearchRun.objects.filter(representative_id=representative_id).values_list('pk', flat=True)]
             history = IngestionWorkItem.objects.filter(kind='representative_research', dedupe_key__in=history_keys).order_by('-source_updated_at', '-pk').first()
             history_failed = bool(history and history.status == 'dead')
             collecting = bool(history and history.status in {'pending', 'dispatched', 'processing'})
+        else:
+            expected_periods = {data['period']}
+        # Outside-only work reuses the saved finance snapshot and has its own
+        # durable status; it need not keep a full research run open.
+        jobs = IngestionWorkItem.objects.filter(kind='representative_research',
+            dedupe_key__startswith=f'outside:{representative_id}:').order_by('-source_updated_at', '-pk')
+        seen_periods = set()
+        for job in jobs:
+            period = job.payload_json.get('period')
+            if period in seen_periods or (data['all_periods'] and not in_scope(period)) or (not data['all_periods'] and period != data['period']):
+                continue
+            seen_periods.add(period)
+            if job.status in {'pending', 'dispatched', 'processing'}:
+                pending_periods.add(period)
+                failed_periods.discard(period)
+                collecting = True
+            elif job.status == 'dead':
+                failed_periods.add(period)
+        periods = set(periods) | pending_periods
         candidates = list(FinanceSnapshot.objects.filter(representative_id=representative_id, period__in=periods, invalidated=False)
             .filter(Q(active=True) | Q(run_id__in=[run.pk for run in runs], published_at__isnull=True))
             .prefetch_related("outside_scans"))
@@ -236,8 +275,7 @@ class OutsideSpendingView(APIView):
         previews = {item.run_id: item for item in candidates if item.published_at is None}
         run_by_period = {run.period: run for run in runs}
         def complete(snapshot):
-            return bool(snapshot and snapshot.candidate_ids and
-                {scan.candidate_id for scan in snapshot.outside_scans.all() if scan.complete} == set(snapshot.candidate_ids))
+            return bool(snapshot and outside_complete(snapshot))
         for period in periods:
             run = run_by_period.get(period)
             preview = previews.get(run.pk) if run and period in pending_periods else None
@@ -258,37 +296,45 @@ class OutsideSpendingView(APIView):
                 collecting = True
             elif any(run.period == period for run in runs):
                 failed_periods.add(period)
-        coverage = {'failed_periods': sorted(failed_periods, reverse=True), 'history_failed': history_failed}
+        coverage = {'failed_periods': sorted(failed_periods, reverse=True), 'history_failed': history_failed,
+            'scope': data['scope'] if data['all_periods'] else 'period',
+            'start_year': min(periods | expected_periods) - 1 if periods or expected_periods else None,
+            'end_year': max(periods | expected_periods) if periods or expected_periods else None}
         status = 'collecting' if collecting else 'partial' if failed_periods or history_failed else 'available'
         revision = hashlib.sha256(json.dumps([generation, sorted(str(s.pk) for s in snapshots), status, coverage], sort_keys=True).encode()).hexdigest()
         if data.get("revision") and data["revision"] != revision:
             return Response({"detail": "Spending data changed; refresh from the first page."}, status=409)
-        empty = {"status": "not_researched", "support": None, "oppose": None, "results": [], "count": 0, "next_cursor": None}
+        empty = {"status": "not_researched", "support": None, "oppose": None, "mentions": None, "results": [], "count": 0, "next_cursor": None}
         if not snapshots:
             if status != 'available':
                 empty["status"] = status
             return Response({**empty, **coverage, "revision": revision})
         rows = OutsideSpendingTotal.objects.filter(scan__snapshot__in=snapshots)
-        cache_key = f"outside-totals:{revision}"
+        cache_key = f"outside-totals:v2:{revision}"
         try:
             totals = cache.get(cache_key)
         except Exception:
             totals = None
         if totals is None:
-            totals = rows.aggregate(S=Sum("amount", filter=Q(position="S")), O=Sum("amount", filter=Q(position="O")))
+            totals = rows.aggregate(S=Sum("amount", filter=Q(position__in=["S", "24F"])), O=Sum("amount", filter=Q(position__in=["O", "24N"])), M=Sum("amount", filter=Q(position="M")))
             totals = {side: value or 0 for side, value in totals.items()}
             try:
                 cache.set(cache_key, totals, timeout=3600)
             except Exception:
                 pass  # Cached totals are optional; revision changes invalidate immediately.
         if data.get("position"):
-            rows = rows.filter(position=data["position"])
+            rows = rows.filter(position__in={'S': ['S', '24F'], 'O': ['O', '24N'], 'M': ['M']}[data["position"]])
         rows = rows.select_related("scan__snapshot").order_by("-amount", "pk")
         count, offset = rows.count(), data["cursor"]
-        result = {"status": status, **coverage, "revision": revision, "support": str(totals["S"]), "oppose": str(totals["O"]), "count": count,
+        source_paths = {'independent': 'independent-expenditures', 'communication': 'communication-costs', 'electioneering': 'electioneering-communications'}
+        def source_url(row):
+            url = f"https://www.fec.gov/data/{source_paths[row.scan.category]}/?committee_id={row.spender_id}&candidate_id={row.scan.candidate_id}&cycle={row.scan.snapshot.period}"
+            position = {'24F': 'S', '24N': 'O'}.get(row.position, row.position)
+            return url + (f'&support_oppose_indicator={position}' if position != 'M' else '')
+        result = {"status": status, **coverage, "revision": revision, "support": str(totals["S"]), "oppose": str(totals["O"]), "mentions": str(totals["M"]), "count": count,
             "next_cursor": offset + 20 if offset + 20 < count else None,
-            "results": [{"id": row.pk, "name": row.spender_name, "amount": str(row.amount), "position": row.position, "period": row.scan.snapshot.period,
-                "source_url": f"https://www.fec.gov/data/independent-expenditures/?data_type=processed&committee_id={row.spender_id}&candidate_id={row.scan.candidate_id}&cycle={row.scan.snapshot.period}&support_oppose_indicator={row.position}"} for row in rows[offset:offset + 20]]}
+            "results": [{"id": row.pk, "name": row.spender_name, "amount": str(row.amount), "position": {'24F': 'S', '24N': 'O'}.get(row.position, row.position), "period": row.scan.snapshot.period,
+                "category": row.scan.category, "source_url": source_url(row)} for row in rows[offset:offset + 20]]}
         latest_revision = OutsideSpendingRevision.objects.get(representative_id=representative_id)
         if generation != (str(latest_revision.epoch), latest_revision.generation):
             return Response({"detail": "Spending data changed; refresh from the first page."}, status=409)

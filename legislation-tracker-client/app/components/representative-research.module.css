@@ -111,6 +111,8 @@
 .recordTabs button { padding: .35rem .65rem; border: 0; border-radius: .35rem; background: transparent; color: inherit; cursor: pointer; font-size: .8rem; }
 .recordTabs button[aria-pressed="true"] { background: var(--ink, #293e38); color: var(--background, #fff); }
 .outsideSpending { min-height: 0; }
+.outsideActions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .75rem; margin-left: auto; }
+.outsideSpending .contributorToolbar { margin-bottom: 1rem; }
 .donorList li.scrollSentinel { height: 1px; padding: 0; border: 0; }
 .spenderIdentity { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; min-width: 0; }
 .spenderIdentity > a { min-width: 0; overflow-wrap: anywhere; }

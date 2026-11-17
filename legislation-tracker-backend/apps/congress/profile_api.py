@@ -14,6 +14,8 @@ class ProfileQuerySerializer(StrictQuerySerializer):
 class ProfileVoteQuerySerializer(PaginatedQuerySerializer):
     congress = serializers.IntegerField(min_value=1, max_value=1000)
     chamber = serializers.ChoiceField(choices=("house", "senate"), required=False)
+    position = serializers.ChoiceField(choices=("yes", "no", "no_vote"), required=False)
+    topic_id = serializers.IntegerField(min_value=1, required=False)
 
 
 def recorded_vote_data(record):
