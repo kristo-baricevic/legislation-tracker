@@ -20,6 +20,14 @@ Correct the demonstrated financial validation failures, process large bills in b
 - [x] Bulk contribution-page persistence, preserving source revisions, refunds, duplicate detection and atomic cursor advancement.
 - [x] Chunked FEC reads under an interruptible total deadline. Keep byte-at-a-time deadline checking on platforms where the timer cannot safely be armed.
 
+## PR review corrections
+
+- Preserve explicit percentages as well as dollars in financial explanations; check amounts in headings and labels too.
+- Reject stage-invalid empty summaries before marking a provider call reusable.
+- Include validator version in confirmation identity and checkpoint guards, preventing an old successful-request identity from bypassing upgraded checks.
+- Split truncated summary groups by serialized size within the confirmed budget, including the final merge. Do not split/retry unknown outcomes or exceed the approved allowance.
+- Mark baseline audit probes as historical and update the current source-review documentation.
+
 ## Verification
 
 Tests use pinned sources and fake providers, not a paid model. Regressions were observed failing before the respective fixes. Coverage includes wrong amounts, omitted grants and percentage allocations, shifted source offsets, different users, source changes, process interruption, output truncation, bounded corrections, yielded deliveries, and a 90-section bill through final summary generation.

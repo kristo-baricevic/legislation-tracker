@@ -217,6 +217,17 @@ def test_reader_checkpoint_reuses_plan_but_detects_changed_source(source_bill, e
 
 
 @pytest.mark.django_db
+def test_validation_upgrade_changes_confirmation_identity(source_bill, enhancement_settings, monkeypatch):
+    install_reader(source_bill, count=0)
+    with enhancement_settings:
+        before = build_enhancement_preflight(source_bill)
+        monkeypatch.setattr('apps.legislation.enhancements.reader_cache.VALIDATOR_VERSION', 999)
+        after = build_enhancement_preflight(source_bill)
+    assert after.request_fingerprint != before.request_fingerprint
+    assert after.worker_guard != before.worker_guard
+
+
+@pytest.mark.django_db
 def test_source_compatibility_does_not_depend_on_execution_format(source_bill):
     from apps.legislation.enhancements.views import _source_compatible
     from types import SimpleNamespace

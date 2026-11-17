@@ -9,7 +9,17 @@ from .reader_citations import resolve_reader_citations
 from .reader_targets import snapshot_targets
 from .reader_discovery import resolve_discovery
 from jsonschema import ValidationError
-from .diagnostics import validation_diagnostic
+from .diagnostics import validation_diagnostic, output_error
+
+
+def _validate_response(output, request):
+    if request.request_envelope.get('source_review'):
+        return resolve_discovery(output, request.source_snapshot)
+    targets = snapshot_targets(request.source_snapshot)
+    valid = resolve_reader_citations(output, targets, request.source_snapshot)
+    if (targets and valid['summary']) or (not targets and not valid['summary']):
+        raise output_error('reader_coverage_incomplete', ['summary'])
+    return valid
 
 
 class ReaderDeliveryComplete(Exception):
@@ -35,10 +45,7 @@ class DurableReaderProvider:
             if not created:
                 if cached.status == 'validated':
                     output = remap(cached.result_json, {v: k for k, v in references.items()})
-                    if request.request_envelope.get('source_review'):
-                        resolve_discovery(output, request.source_snapshot)
-                    else:
-                        resolve_reader_citations(output, snapshot_targets(request.source_snapshot), request.source_snapshot)
+                    _validate_response(output, request)
                     return ProviderResult(output, ProviderUsage(0, 0, 0), cached.response_id, cached.resolved_model)
                 if cached.diagnostic_code == 'provider_output_limit':
                     raise ProviderError('invalid_output', validation_code='provider_output_limit', usage=ProviderUsage(0, 0, 0))
@@ -61,11 +68,7 @@ class DurableReaderProvider:
         try:
             self.paid_calls += 1
             response = self.provider.enhance_bill(api_key=api_key, request=request, timeout_seconds=timeout_seconds)
-            validator = resolve_discovery if request.request_envelope.get('source_review') else None
-            if validator:
-                validator(response.output, request.source_snapshot)
-            else:
-                resolve_reader_citations(response.output, snapshot_targets(request.source_snapshot), request.source_snapshot)
+            _validate_response(response.output, request)
         except Exception as exc:
             usage = getattr(exc, 'usage', locals().get('response', ProviderResult({}, ProviderUsage(), '', '')).usage)
             # Store no unvalidated prose or raw exception bodies.

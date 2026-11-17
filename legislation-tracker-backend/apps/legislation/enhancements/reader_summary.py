@@ -58,24 +58,39 @@ def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_c
         if calls + len(groups) > maximum_calls:
             raise ProviderError('request_too_large', usage=total.usage)
         reduced = []
-        for group in groups:
+        pending_groups = list(groups)
+        finished_groups = 0
+        while pending_groups:
+            group = pending_groups.pop(0)
+            if calls >= maximum_calls:
+                raise ProviderError('request_too_large', usage=total.usage)
             checkpoint()
             request = request_for(group)
+            calls += 1
             try:
                 response = provider.enhance_bill(api_key=api_key, request=request,
                     timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS)
             except ProviderError as error:
+                if (error.validation_code == 'provider_output_limit' and len(group) > 1
+                        and calls + len(pending_groups) + 3 <= maximum_calls):
+                    # Preserve whole items and their evidence. The extra call
+                    # merges the two child summaries; never exceed confirmation.
+                    weights = [len(canonical_json_bytes(item)) for item in group]
+                    pivot = min(range(1, len(group)), key=lambda i: abs(sum(weights[:i]) - sum(weights) / 2))
+                    pending_groups[0:0] = [group[:pivot], group[pivot:]]
+                    total = replace(total, usage=combine_usage(total.usage, error.usage))
+                    continue
                 error.usage = combine_usage(total.usage, error.usage)
                 raise
-            calls += 1
+            finished_groups += 1
             total = replace(response, usage=combine_usage(total.usage, response.usage))
             valid = resolve_reader_citations(response.output, [], request.source_snapshot)
             if not valid['summary'] or valid['explanations']:
                 raise ProviderError('invalid_output', validation_code='reader_coverage_incomplete', usage=total.usage)
             reduced.extend(valid['summary'])
-        if len(groups) == 1:
+        if finished_groups == 1:
             return replace(total, output={'schema_version': '1.4', 'summary': reduced, 'explanations': []}), calls
-        if len(reduced) >= len(items):
+        if len(canonical_json_bytes(reduced)) >= len(canonical_json_bytes(items)):
             # Do not spin or silently drop evidence when a group cannot shrink.
             raise ProviderError('request_too_large', usage=total.usage)
         items = reduced

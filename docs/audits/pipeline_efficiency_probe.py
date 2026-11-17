@@ -1,4 +1,8 @@
-"""Offline audit probes: assertions document current behavior, NOT desired behavior."""
+"""Historical audit probes for base commit 1636fa2, NOT release regressions.
+
+These reproduce the pre-fix defects and intentionally fail on the repaired code.
+Current regression coverage lives in apps/legislation/tests/test_reader_*.
+"""
 import copy
 import json
 from types import SimpleNamespace
@@ -110,4 +114,3 @@ def test_real_hr10906_plan_cost_shape(source_bill, enhancement_settings):
         'planned_calls': p.source_manifest['budget']['planned_calls'], 'maximum_calls': p.source_manifest['budget']['maximum_calls'],
         'request_bytes_before_retry_reserve': len(canonical_json_bytes(p.request_envelope)) + sum(len(r.request_bytes) for r in p.reader_batches),
         'maximum_output_tokens': p.source_manifest['budget']['maximum_output']}))
-

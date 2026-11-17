@@ -17,7 +17,7 @@ def percentages(text):
 
 def validate_numbers(item, *, path):
     evidence = '\n'.join(q['quote'] for q in item['source_quotes'])
-    prose = '\n'.join(str(item.get(key) or '') for key in ('text', 'amount_display'))
+    prose = '\n'.join(str(item.get(key) or '') for key in ('text', 'amount_display', 'label', 'title'))
     if _amounts(prose) - _amounts(evidence) or percentages(prose) - percentages(evidence):
         raise output_error('reader_amount_conflict', path)
 
@@ -43,5 +43,5 @@ def validate_financial_coverage(output, catalogs):
         supporting = [item for item in output['financial_items'] if any(
             q['source_ref'] == ref and q['quote_id'] == quote_id for q in item['source_quotes'])]
         prose = '\n'.join(item['amount_display'] + ' ' + item['text'] for item in supporting)
-        if _amounts(passage) - _amounts(prose):
+        if _amounts(passage) - _amounts(prose) or percentages(passage) - percentages(prose):
             raise output_error('reader_coverage_incomplete', ['financial_items', key])

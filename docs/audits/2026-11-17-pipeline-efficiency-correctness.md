@@ -1,6 +1,6 @@
 # Pipeline efficiency, cost and correctness audit
 
-Date: 2026-11-17. Audited the current working tree, including the uncommitted similarity changes. This is an audit, not an implementation or production certification. No paid model requests, live FEC requests, deployments or application data changes were made.
+Date: 2026-11-17. Historical pre-fix audit of commit 1636fa2 plus the then-uncommitted similarity changes. Findings below describe that baseline, not the repaired head. See [implementation status](../superpowers/plans/2026-11-17-pipeline-integrity-and-reuse.md) for fixes and remaining work. This is not a production certification. No paid model requests, live FEC requests, deployments or application data changes were made.
 
 ## Conclusion
 

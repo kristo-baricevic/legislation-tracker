@@ -65,9 +65,9 @@ review; a correct citation alone does not establish a correct explanation.
   ceiling and includes their maximum input/output allowances in confirmation.
   This bounds recovery cost; it does not cap the number of provisions.
 - Each paid call is recorded before dispatch. Validated responses are saved
-  immediately in existing enhancement-step records. An explicit retry of the
-  same enhancement reuses successful steps without another provider call.
-  An ambiguous dispatch is not automatically replayed.
+  in enhancement-step records and a shared content-addressed call cache.
+  Retries and other users reuse matching completed work without another
+  provider call. An ambiguous dispatch is not automatically replayed.
 - Usage totals come from durable step records so a cache hit cannot erase
   already incurred token usage. Reused results retain their resolved model.
 - Compatible validated legacy explanations may be reused for an explicitly
@@ -75,8 +75,13 @@ review; a correct citation alone does not establish a correct explanation.
   still match; the summary and full-source inventory are regenerated.
 - Quoted amendments stay with their enclosing section. Neighboring complete
   sections are not supplied as uncitable context, avoiding cross-batch duplicates.
-  Oversized sections retain their own governing context; requests exceeding the
-  configured input allowance are rejected before payment.
+  Oversized sections use bounded adjacent context and a hash of the entire
+  enclosing section. All source chunks are reviewed, but distant cross-references
+  still need semantic verification; local context is not proof of completeness.
+- Generate the summary last from the completed review. Large inventories use
+  bounded intermediate summaries. A truncated summary group is split by size
+  when the confirmed call budget can cover both children and their merge.
+  Timeouts and ambiguous outcomes are not automatically retried.
 
 ## Reader-level explanations
 

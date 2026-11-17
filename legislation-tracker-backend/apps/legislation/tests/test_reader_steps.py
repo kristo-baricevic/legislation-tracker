@@ -18,6 +18,29 @@ def test_cache_reference_remapping_does_not_edit_prose():
         'text': 'The name src_0042 appears in the source.', 'source_ref': 'src_0001'}
 
 
+@pytest.mark.django_db
+def test_empty_summary_is_not_saved_as_reusable_success(source_bill, enhancement_owner, enhancement_settings):
+    from apps.legislation.models import BillEnhancementCallCache
+    install_reader(source_bill, count=0)
+    with enhancement_settings:
+        p = build_enhancement_preflight(source_bill)
+        refs = {s['source_ref'] for s in p.request_envelope['source_packet']['sources']}
+        p = replace(p, source_snapshot=[s for s in p.source_snapshot if s['source_ref'] in refs])
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        attempt.status, attempt.run_token = 'running', 'test'
+        attempt.lease_expires_at = timezone.now() + timedelta(minutes=10)
+        attempt.save()
+        class Provider:
+            def enhance_bill(self, **kwargs):
+                return ProviderResult({'schema_version': '1.4', 'summary': [], 'explanations': []},
+                    ProviderUsage(10, 5, 15), 'test', 'test')
+        with pytest.raises(ProviderError) as error:
+            DurableReaderProvider(Provider(), attempt, 'test', 2).enhance_bill(api_key='offline', request=p, timeout_seconds=1)
+        assert error.value.validation_code == 'reader_coverage_incomplete'
+        assert BillEnhancementCallCache.objects.get().status == 'failed'
+        assert attempt.steps.get().status == 'failed'
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize('crash', [False, True])
 def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(

@@ -50,6 +50,21 @@ def test_percentage_allocation_cannot_be_classified_away():
             'money_checks': {'src_0001:p0001': 'not_financial'}}, sources)
 
 
+def test_percentage_allocation_must_retain_its_percentage():
+    sources = discovery_sources('SEC. 1. Schools\n20 percent of grant funds must go to school equipment.', 1)
+    _, output = review()
+    output['financial_items'][0].update(amount_display='Unspecified', text='Reserves grant funds for school equipment.')
+    with pytest.raises(ValidationError):
+        resolve_discovery(output, sources)
+
+
+def test_financial_heading_cannot_invent_an_amount():
+    sources, output = review()
+    output['financial_items'][0]['label'] = '$1 billion school grant'
+    with pytest.raises(ValidationError):
+        resolve_discovery(output, sources)
+
+
 def test_saved_nonpolicy_review_is_revalidated_not_just_citations():
     sources, output = review()
     saved = {'reviewed_sources': ['src_0001'], **resolve_discovery(output, sources)}

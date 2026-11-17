@@ -5,7 +5,7 @@ import re
 
 from .source_packet import canonical_json_bytes
 
-VALIDATOR_VERSION = 1
+VALIDATOR_VERSION = 2
 
 
 def remap(value, references):
