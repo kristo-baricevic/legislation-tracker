@@ -160,3 +160,5 @@ def _validate_quotes(item, sources, path, target=None):
             own_evidence |= any(start < right and end > left for left, right in target["evidence_ranges"])
     if not own_evidence:
         raise output_error("reader_target_invalid", path + ["source_quotes"])
+    from .reader_integrity import validate_numbers
+    validate_numbers(item, path=path)

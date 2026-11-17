@@ -37,6 +37,24 @@ def prevent_broker_publish(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_topic_matching_reuses_unchanged_inputs_and_invalidates_on_metadata(monkeypatch):
+    bill = Bill.objects.create(jurisdiction='federal', session=119, bill_number='HR 99', title='Education funding')
+    real = tasks.infer_topic_matches
+    calls = []
+    def counted(**kwargs):
+        calls.append(kwargs['bill'].summary)
+        return real(**kwargs)
+    monkeypatch.setattr(tasks, 'infer_topic_matches', counted)
+    tasks._update_topics_impl(bill_id=bill.pk)
+    tasks._update_topics_impl(bill_id=bill.pk)
+    assert len(calls) == 1
+    bill.summary = 'New funding for Medicare and Medicaid healthcare.'
+    bill.save()
+    tasks._update_topics_impl(bill_id=bill.pk)
+    assert len(calls) == 2
+
+
+@pytest.mark.django_db
 def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeypatch):
     bill = Bill.objects.create(
         jurisdiction="federal",
@@ -81,6 +99,9 @@ def test_generate_contract_creates_contract_and_skips_unchanged_document(monkeyp
         }
     ]
 
+    def no_repeated_extraction(**kwargs):
+        pytest.fail('Unchanged document was parsed again')
+    monkeypatch.setattr(tasks, 'extract_contract', no_repeated_extraction)
     second = tasks.generate_contract(document.id)
 
     assert second == {
@@ -140,6 +161,8 @@ def test_ingestion_persists_schema_hash_drift_without_legislative_activity(
     original_result = tasks.extract_contract(document=document, bill=bill)
     refreshed_json = deepcopy(original_result.contract_json)
     refreshed_json["extraction"]["warnings"] = ["schema-only-refresh"]
+    # A changed extractor release must invalidate deterministic cached work.
+    monkeypatch.setattr('apps.legislation.extraction.types.V2_EXTRACTOR_VERSION', 'federal-rules-2.0.1')
     monkeypatch.setattr(
         tasks,
         "extract_contract",

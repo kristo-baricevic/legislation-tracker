@@ -18,25 +18,57 @@ from .outside import persist_outside_page
 FILTERED_SCHEDULES = ("totals", "a_11b", "a_11c", "b_20b", "b_20c", "a_11ai", "b_20a")
 
 
+@transaction.atomic
 def persist_page(checkpoint, page):
     """Caller owns the work lease transaction; commit page and cursor together."""
     digest = hashlib.sha256(json.dumps(page["results"], sort_keys=True).encode()).hexdigest()
     if digest in checkpoint.page_hashes:
         raise ValueError("repeated_page")
+    rows = []
     for raw in page["results"]:
         row = (normalize_refund if checkpoint.schedule.startswith("b") else normalize_receipt)(raw)
         if row["committee_id"] != checkpoint.committee_id:
             raise ValueError("recipient_mismatch")
-        identity = ContributorIdentity.objects.filter(provider_key=row["identity_key"]).first()
-        if identity is None:
-            donor = Contributor.objects.create(name=row["name"], kind=row["contributor_kind"])
-            identity = ContributorIdentity.objects.create(provider_key=row["identity_key"], contributor=donor, verified=row["verified"])
+        rows.append(row)
+    by_identity = {row['identity_key']: row for row in rows}
+    identities = {identity.provider_key: identity for identity in
+        ContributorIdentity.objects.filter(provider_key__in=by_identity)}
+    missing = [key for key in by_identity if key not in identities]
+    if missing:
+        donors = Contributor.objects.bulk_create([Contributor(name=by_identity[key]['name'],
+            kind=by_identity[key]['contributor_kind']) for key in missing])
+        ContributorIdentity.objects.bulk_create([ContributorIdentity(provider_key=key,
+            contributor=donor, verified=by_identity[key]['verified'])
+            for key, donor in zip(missing, donors)], ignore_conflicts=True)
+        identities.update({identity.provider_key: identity for identity in
+            ContributorIdentity.objects.filter(provider_key__in=missing)})
+        # A concurrent snapshot may win the identity insert. Only discard the
+        # unused contributor rows this transaction just created, never donors
+        # referenced by another snapshot.
+        used = {identity.contributor_id for identity in identities.values()}
+        unused = [donor.pk for donor in donors if donor.pk not in used]
+        if unused:
+            Contributor.objects.filter(pk__in=unused).delete()
+    desired = {}
+    for row in rows:
+        identity = identities[row['identity_key']]
         fields = {key: row[key] for key in ("amount", "date", "kind", "source_url", "effective", "exclusion_reason", "filing_id", "source_metadata")}
-        saved, created = FinanceTransaction.objects.get_or_create(snapshot=checkpoint.snapshot, source_key=row["source_key"], defaults={"committee": checkpoint.committee, "contributor": identity.contributor, **fields})
-        if not created and (saved.contributor_id != identity.contributor_id or any(getattr(saved, key) != value for key, value in fields.items())):
-            # An upstream revision during a scan cannot silently change an
-            # already-counted record. Keep the previous published snapshot.
+        fields.update(committee_id=checkpoint.committee_id, contributor_id=identity.contributor_id)
+        if row['source_key'] in desired and desired[row['source_key']] != fields:
             raise ValueError("source_record_changed")
+        desired[row['source_key']] = fields
+    existing = set(FinanceTransaction.objects.filter(snapshot_id=checkpoint.snapshot_id,
+        source_key__in=desired).values_list('source_key', flat=True))
+    FinanceTransaction.objects.bulk_create([FinanceTransaction(snapshot_id=checkpoint.snapshot_id,
+        source_key=key, **fields) for key, fields in desired.items() if key not in existing], ignore_conflicts=True)
+    # Check both existing rows and conflicting concurrent inserts; no amended
+    # row may silently replace an already-counted record in this snapshot.
+    saved_rows = list(FinanceTransaction.objects.filter(snapshot_id=checkpoint.snapshot_id, source_key__in=desired))
+    if len(saved_rows) != len(desired):
+        raise ValueError('source_record_not_saved')
+    for saved in saved_rows:
+        if any(getattr(saved, key) != value for key, value in desired[saved.source_key].items()):
+            raise ValueError('source_record_changed')
     cursor = page["pagination"].get("last_indexes") or {}
     cursor = {key: value for key, value in cursor.items() if value is not None}
     receipt_parameters(checkpoint.committee_id, checkpoint.snapshot.period, cursor, checkpoint.schedule)

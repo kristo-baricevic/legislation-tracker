@@ -101,7 +101,7 @@ class CongressAPIError(Exception):
 
 
 @contextmanager
-def _total_request_deadline(seconds):
+def _total_request_deadline(seconds, *, error_factory=None):
     """Interrupt a stalled HTTP read instead of waiting for another chunk.
 
     ``requests`` applies its read timeout to individual socket reads.  A peer
@@ -123,22 +123,24 @@ def _total_request_deadline(seconds):
         and hasattr(signal, "setitimer")
     )
     if not can_interrupt:
-        yield
+        yield False
         return
 
     remaining, interval = signal.getitimer(signal.ITIMER_REAL)
     previous_handler = signal.getsignal(signal.SIGALRM)
     if remaining or interval:
-        yield
+        yield False
         return
 
     def _raise_total_timeout(_signum, _frame):
+        if error_factory is not None:
+            raise error_factory()
         raise CongressAPIError("Congress API request exceeded total timeout")
 
     signal.signal(signal.SIGALRM, _raise_total_timeout)
     signal.setitimer(signal.ITIMER_REAL, seconds)
     try:
-        yield
+        yield True
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)

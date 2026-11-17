@@ -2,6 +2,29 @@
 from apps.legislation.models import BillEnhancement
 
 
+def _reader_result_valid(saved):
+    import hashlib
+    from jsonschema import ValidationError
+    from apps.legislation.models import BillProcessingCache
+    from .source_packet import canonical_json_bytes
+    from .reader_cache import VALIDATOR_VERSION
+    from .schema import validate_enhancement_output
+    fingerprint = hashlib.sha256(canonical_json_bytes({'kind': 'reader-validation',
+        'version': VALIDATOR_VERSION, 'result': saved.result_json,
+        'sources': saved.source_snapshot_json})).hexdigest()
+    cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
+    if cached:
+        return cached.result_json['valid']
+    valid = True
+    try:
+        validate_enhancement_output(saved.result_json, saved.source_snapshot_json, expected_version='1.4')
+    except (ValidationError, KeyError, TypeError, ValueError):
+        valid = False
+    BillProcessingCache.objects.get_or_create(pk=fingerprint,
+        defaults={'kind': 'reader-validation', 'result_json': {'valid': valid}})
+    return valid
+
+
 def source_compatible(enhancement, bill):
     from .source_packet import _marked_active_document, _stored_document, _text_hash
     document = _marked_active_document(bill) or _stored_document(bill)
@@ -29,5 +52,7 @@ def shared_enhancement(bill, *, include_active=True):
             rows = rows.exclude(result_json=None).exclude(result_completeness="partial")
         for saved in rows:
             if source_compatible(saved, bill):
+                if status == BillEnhancement.Status.SUCCEEDED and saved.output_schema_version == '1.4' and not _reader_result_valid(saved):
+                    continue
                 return saved
     return None

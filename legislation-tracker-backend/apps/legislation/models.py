@@ -417,6 +417,30 @@ class BillEnhancementAttempt(models.Model):
         ]
 
 
+class BillProcessingCache(models.Model):
+    """Versioned, content-addressed deterministic work; no credentials."""
+    fingerprint = models.CharField(max_length=64, primary_key=True)
+    kind = models.CharField(max_length=24)
+    result_json = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class BillEnhancementCallCache(models.Model):
+    """Shared call reservation and validated response, independent of user lifetime.
+
+    Dispatching reservations are deliberately never expired into paid retries:
+    a crashed caller may have already incurred provider charges.
+    """
+    fingerprint = models.CharField(max_length=64, primary_key=True)
+    status = models.CharField(max_length=24, default='dispatching')
+    result_json = models.JSONField(null=True)
+    response_id = models.CharField(max_length=255, default='', blank=True)
+    resolved_model = models.CharField(max_length=255, default='', blank=True)
+    diagnostic_code = models.CharField(max_length=100, default='', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class BillEnhancementStep(models.Model):
     """Durable per-call authorization; dispatching after a crash is ambiguous."""
 
@@ -467,6 +491,17 @@ class BillTopic(models.Model):
             models.Index(fields=["bill"]),
             models.Index(fields=["topic", "bill"]),
         ]
+
+
+class BillSimilarityState(models.Model):
+    """Reusable features and an atomic, keyset-paginated comparison checkpoint."""
+
+    bill = models.OneToOneField(Bill, on_delete=models.CASCADE, primary_key=True,
+        related_name="similarity_state")
+    fingerprint = models.CharField(max_length=64)
+    features = models.JSONField(default=dict)
+    cursor = models.BigIntegerField(default=0)
+    completed_fingerprint = models.CharField(max_length=64, default="")
 
 
 class BillSimilarity(models.Model):

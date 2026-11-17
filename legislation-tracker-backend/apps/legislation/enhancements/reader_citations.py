@@ -108,7 +108,8 @@ def resolve_reader_citations(output, targets, sources):
     Draft202012Validator(READER_ID_SCHEMA).validate(output)
     catalogs = {
         source["source_ref"]: {p["quote_id"]: p["text"] for p in citation_passages(source)
-                               if p["quote_id"] is not None}
+                               if p["quote_id"] is not None and (source.get('allowed_quote_ids') is None
+                                   or p['quote_id'] in source['allowed_quote_ids'])}
         for source in sources
     }
     resolved = copy.deepcopy(output)

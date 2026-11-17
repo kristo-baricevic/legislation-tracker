@@ -57,3 +57,4 @@ class EnhancementPreflight:
     glossary_batches: tuple = ()
     reader_batches: tuple = ()
     reader_reuse: Any = None
+    worker_guard: str | None = None

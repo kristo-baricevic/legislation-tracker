@@ -221,7 +221,8 @@ def test_partial_donors_visible_but_not_published_and_revocation_hides_them(scop
     assert result.data["results"][0]["amount"] == "125.00"
     connections = APIClient().get(f"/api/representatives/{rep.pk}/connections/?period=2026").data
     assert connections["finance_status"] == "collecting"
-    assert connections["donors"][0]["amount"] == "125"
+    from decimal import Decimal
+    assert Decimal(connections["donors"][0]["amount"]) == Decimal('125')
     snapshot.refresh_from_db()
     assert snapshot.published_at is None and not snapshot.active
     snapshot.invalidated = True

@@ -7,6 +7,28 @@ from .test_enhancement_service import enhancement_owner, enhancement_settings, s
 
 
 @pytest.mark.django_db
+def test_old_success_with_wrong_money_cannot_bypass_new_validation(enhancement_owner, enhancement_settings, source_bill):
+    from .test_reader_enhancement_pipeline import install_reader
+    from .test_reader_financial_integrity import review
+    from apps.legislation.enhancements.reader_discovery import resolve_discovery
+    from apps.legislation.enhancements.shared import shared_enhancement
+    install_reader(source_bill, count=0)
+    sources, output = review()
+    with enhancement_settings:
+        credential = _valid_credential(enhancement_owner)
+        saved = create_enhancement_attempt(user=enhancement_owner, bill=source_bill,
+            confirmed=_confirmation(source_bill, credential)).enhancement
+        resolved = resolve_discovery(output, sources)
+        saved.source_snapshot_json = sources
+        saved.status = 'succeeded'
+        saved.result_json = {'schema_version': '1.4', 'summary': [], 'explanations': [],
+            'source_review': {'reviewed_sources': ['src_0001'], **resolved}}
+        saved.result_json['source_review']['financial_items'][0]['amount_display'] = '$1 billion'
+        saved.save()
+        assert shared_enhancement(source_bill, include_active=False) is None
+
+
+@pytest.mark.django_db
 def test_two_users_share_one_pending_paid_job(enhancement_owner, enhancement_settings, source_bill):
     other = get_user_model().objects.create_user(username="shared-reader")
     with enhancement_settings:

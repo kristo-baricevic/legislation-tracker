@@ -72,6 +72,7 @@ CONTRACT_SCHEMA_VERSION = LEGACY_SCHEMA_VERSION
 STUB_SCHEMA_VERSION = CONTRACT_SCHEMA_VERSION
 SIMILARITY_METHOD = "deterministic-v1"
 SIMILARITY_MIN_SCORE = 0.2
+SIMILARITY_DELIVERY_SECONDS = 10
 
 WORK_KIND_DOCUMENT_CONTRACT = "document_contract"
 WORK_KIND_METADATA_CONTRACT = "metadata_contract"
@@ -325,7 +326,7 @@ def _bill_similarity_features(bill):
     latest_contract_json = {}
     if bill.latest_contract_id:
         latest_contract_json = bill.latest_contract.contract_json or {}
-    topic_slugs = set(bill.bill_topics.values_list("topic__slug", flat=True))
+    topic_slugs = {item.topic.slug for item in bill.bill_topics.all()}
     text = " ".join(
         [
             bill.title or "",
@@ -659,7 +660,9 @@ def _generate_contract_impl(
             document.save(update_fields=["extracted_text", "parsed_at"])
 
     extraction_started = time.monotonic()
-    extraction_result = extract_contract(document=document, bill=bill)
+    from .processing_cache import cached_extraction
+    extraction_result = cached_extraction(document, bill, extract_contract,
+        force=reextract_source or generation_reason == 'schema_backfill')
     duration_ms = int((time.monotonic() - extraction_started) * 1_000)
     contract_json = extraction_result.contract_json
     evidence_spans = extraction_result.evidence
@@ -903,7 +906,8 @@ def _update_topics_impl(
             .order_by("topic__slug")
             .values_list("topic__slug", flat=True)
         )
-        matches = infer_topic_matches(bill=bill, contract=contract)
+        from .processing_cache import cached_topics
+        matches = cached_topics(bill, contract, infer_topic_matches, _KEYWORD_INDEX, GENERIC_SINGLE_HIT_KEYWORDS)
         new_slugs = [slug for slug, _confidence in matches]
         confidence_by_slug = dict(matches)
         contract_id_before_match = contract.id if contract else None
@@ -1021,57 +1025,23 @@ def backfill_update_topics(session=None):
 
 @shared_task
 def schedule_similarity_for_bill(bill_id):
-    return _schedule_similarity_for_bill_impl(bill_id)
+    # Legacy callers also get durable continuations instead of an unbounded scan.
+    result = _schedule_similarity_for_bill_impl(bill_id)
+    if result.get("has_more"):
+        enqueue_similarity(Bill.objects.get(pk=bill_id), source_updated_at=timezone.now())
+    return result
 
 
-def _schedule_similarity_for_bill_impl(bill_id):
+def _schedule_similarity_for_bill_impl(bill_id, *, chunk_size=100, work_item=None):
     """
     Phase 6: recompute deterministic BillSimilarity rows for one bill.
     """
-    bill = (
-        Bill.objects.select_related("latest_contract")
-        .prefetch_related("bill_topics__topic")
-        .filter(pk=bill_id)
-        .first()
-    )
-    if not bill:
-        logger.warning("schedule_similarity_for_bill: bill_id=%s not found", bill_id)
-        return {"bill_id": bill_id, "skipped": True, "reason": "not_found"}
-
-    candidates = (
-        Bill.objects.exclude(pk=bill.id)
-        .select_related("latest_contract")
-        .prefetch_related("bill_topics__topic")
-        .order_by("id")
-    )
-    computed = 0
-    removed = 0
-    for candidate in candidates:
-        score = compute_bill_similarity_score(bill, candidate)
-        bill_a_id, bill_b_id = _ordered_bill_pair(bill.id, candidate.id)
-        if score < SIMILARITY_MIN_SCORE:
-            deleted, _ = BillSimilarity.objects.filter(
-                bill_a_id=bill_a_id,
-                bill_b_id=bill_b_id,
-                method=SIMILARITY_METHOD,
-            ).delete()
-            removed += deleted
-            continue
-        BillSimilarity.objects.update_or_create(
-            bill_a_id=bill_a_id,
-            bill_b_id=bill_b_id,
-            method=SIMILARITY_METHOD,
-            defaults={"similarity_score": score},
-        )
-        computed += 1
-
-    logger.info(
-        "schedule_similarity_for_bill: bill_id=%s computed=%s removed=%s",
-        bill.id,
-        computed,
-        removed,
-    )
-    return {"bill_id": bill.id, "computed": computed, "removed": removed}
+    from .similarity import run_chunk
+    deadline = time.monotonic() + SIMILARITY_DELIVERY_SECONDS
+    result = run_chunk(bill_id, chunk_size=chunk_size, work_item=work_item)
+    while work_item is not None and result.get("has_more") and time.monotonic() < deadline:
+        result = run_chunk(bill_id, chunk_size=chunk_size, work_item=work_item)
+    return result
 
 
 @shared_task
@@ -1081,13 +1051,20 @@ def recompute_similarity_batch(session=None, batch_size=None):
         session = current_congress()
     bills = Bill.objects.all().order_by("id")
     bills = bills.filter(session=int(session))
-    bill_ids = bills.values_list("id", flat=True)
+    from .similarity import fingerprint
+    from apps.ingestion.models import IngestionWorkItem, IngestionWorkStatus
+    bills = bills.select_related("similarity_state").defer("similarity_state__features").prefetch_related("bill_topics__topic")
     if batch_size is not None:
-        bill_ids = bill_ids[: int(batch_size)]
+        bills = bills[: int(batch_size)]
     enqueued = 0
     recompute_requested_at = timezone.now()
-    for bill_id in bill_ids:
-        bill = Bill.objects.get(pk=bill_id)
+    active_ids = set(IngestionWorkItem.objects.filter(kind=WORK_KIND_SIMILARITY,
+        status__in=[IngestionWorkStatus.PENDING, IngestionWorkStatus.DISPATCHED, IngestionWorkStatus.PROCESSING])
+        .values_list("payload_json__bill_id", flat=True))
+    for bill in bills.iterator(chunk_size=100):
+        state = getattr(bill, "similarity_state", None)
+        if bill.pk in active_ids or (state and state.completed_fingerprint == fingerprint(bill)):
+            continue
         enqueue_similarity(bill, source_updated_at=recompute_requested_at)
         enqueued += 1
     logger.info(
@@ -1377,7 +1354,7 @@ def _require_quota_revalidation(attempt):
     )
 
 
-def _worker_preflight(attempt):
+def _worker_preflight(attempt, cached_preflight=None):
     if not llm_feature_available():
         return None, None, "feature_disabled"
     credential = attempt.credential
@@ -1399,7 +1376,13 @@ def _worker_preflight(attempt):
     ):
         return None, None, "credential_changed"
     try:
-        preflight = build_enhancement_preflight(enhancement.bill, reuse_result=attempt.reused_result_json)
+        if cached_preflight is not None and cached_preflight.worker_guard:
+            from .enhancements.reader_batches import reader_input_guard
+            if reader_input_guard(enhancement.bill) != cached_preflight.worker_guard:
+                return None, None, 'source_unavailable'
+            preflight = cached_preflight
+        else:
+            preflight = build_enhancement_preflight(enhancement.bill, reuse_result=attempt.reused_result_json)
     except PreflightUnavailable as exc:
         return None, None, exc.reason
     identity = (
@@ -1450,14 +1433,14 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
         provider = get_provider(attempt.enhancement.provider)
         if preflight.output_schema_version == "1.4":
             from .enhancements.reader_batches import execute_reader_batches
-            from .enhancements.reader_steps import DurableReaderProvider
+            from .enhancements.reader_steps import DurableReaderProvider, ReaderDeliveryComplete
             from .enhancements.source_first_worker import step_usage
             provider = DurableReaderProvider(provider, attempt, run_token, preflight.source_manifest['budget']['maximum_calls'])
 
             def reader_checkpoint(completed, completed_calls):
                 usage = step_usage(attempt.pk)
                 attempt.refresh_from_db()
-                _, _, changed = _worker_preflight(attempt)
+                _, _, changed = _worker_preflight(attempt, cached_preflight=preflight)
                 if changed:
                     raise ProviderError(changed, usage=usage)
                 now = timezone.now()
@@ -1481,6 +1464,21 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
 
             try:
                 result = execute_reader_batches(preflight, provider, api_key, reader_checkpoint)
+            except ReaderDeliveryComplete:
+                # Round-robin continuation, not a failed attempt or a paid retry.
+                # Old broker messages cannot reclaim the new dispatch token.
+                with transaction.atomic():
+                    updated = BillEnhancementAttempt.objects.filter(pk=attempt.pk,
+                        status=BillEnhancementAttempt.Status.RUNNING, run_token=run_token,
+                        lease_expires_at__gt=timezone.now()).update(
+                            status=BillEnhancementAttempt.Status.PENDING, run_token='', lease_expires_at=None,
+                            dispatch_token=uuid.uuid4().hex, dispatch_lease_expires_at=None,
+                            available_at=timezone.now())
+                    if not updated:
+                        return {'status': 'not_claimed'}
+                    BillEnhancement.objects.filter(pk=attempt.enhancement_id).update(status=BillEnhancement.Status.PENDING)
+                    transaction.on_commit(lambda: dispatch_bill_enhancement_attempts.delay())
+                return {'status': 'pending', 'resumable': True}
             except ProviderError as error:
                 error.usage = step_usage(attempt.pk)
                 raise
