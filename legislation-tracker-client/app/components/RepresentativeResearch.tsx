@@ -225,6 +225,7 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
       if (!controller.signal.aborted) setRetryError(e instanceof ApiError && [401, 403].includes(e.status) ? "Sign in to retry research." : "Could not restart research. Try again.");
     } finally { if (!controller.signal.aborted) setRetrying(false); }
   }
+  const pages = useRef<{ representativeId: number; value: import("@/lib/spending-pages").SpendingPages } | null>(null);
   const list = useRef<HTMLUListElement>(null);
   const end = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -232,20 +233,12 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
     let timer: ReturnType<typeof setTimeout> | undefined;
     setLoading(true);
     const load = async () => {
-      // Refresh the visible prefix together: background collection can reorder
-      // ranked rows, so appending stale offset pages could omit or repeat groups.
-      let result = await getOutsideSpending(representativeId, 0, controller.signal);
-      const rows = [...result.results];
-      while (result.next_cursor !== null && result.next_cursor <= cursor) {
-        const next = result.next_cursor;
-        result = await getOutsideSpending(representativeId, next, controller.signal);
-        rows.push(...result.results);
-        if (result.next_cursor !== null && result.next_cursor <= next) throw new Error("Invalid spending cursor");
-      }
-      return { ...result, results: [...new Map(rows.map(row => [row.id, row])).values()] };
+      const { loadSpendingPages } = await import("@/lib/spending-pages");
+      return loadSpendingPages((offset, revision) => getOutsideSpending(representativeId, offset, controller.signal, revision), cursor,
+        pages.current?.representativeId === representativeId ? pages.current.value : undefined);
     };
     load().then(result => {
-      if (!controller.signal.aborted) { setData(result); setError(false); if (result.status === "collecting") timer = setTimeout(() => setRetry(value => value + 1), 5000); }
+      if (!controller.signal.aborted) { pages.current = { representativeId, value: result }; setData(result); setError(false); if (result.status === "collecting") timer = setTimeout(() => setRetry(value => value + 1), 5000); }
     }).catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); clearTimeout(timer); };
   }, [representativeId, cursor, refreshToken, retry]);

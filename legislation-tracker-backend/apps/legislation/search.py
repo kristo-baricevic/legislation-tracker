@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from django.contrib.postgres.search import SearchHeadline, SearchQuery, SearchRank
 from django.db import connection
-from django.db.models import Exists, F, FloatField, OuterRef, Q, QuerySet, Subquery
+from django.db.models import Exists, F, FloatField, OuterRef, Q, QuerySet, Subquery, Window
+from django.db.models.functions import RowNumber
 
 from .models import Bill, BillSearchChunk
 
@@ -202,6 +203,13 @@ def matching_bill_queryset(
     return indexed_matches.union(unindexed_matches)
 
 
+def top_highlight_chunks(chunks):
+    return chunks.annotate(_highlight_order=Window(
+        expression=RowNumber(), partition_by=[F("bill_id")],
+        order_by=[F("_rank").desc(), F("id").asc()],
+    )).filter(_highlight_order__lte=3).order_by("bill_id", "-_rank", "id")
+
+
 def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> BillSearchPage:
     search_query = SearchQuery(query.q, search_type="websearch", config="english")
     matching = matching_bill_queryset(queryset=queryset, query_text=query.q)
@@ -232,9 +240,14 @@ def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> Bil
         bill_id: float(rank) if rank is not None else None
         for bill_id, rank in page_rows
     }
+    # Bound the rows BEFORE ts_headline runs, not after materializing all matches.
+    highlight_ids = list(top_highlight_chunks(
+        BillSearchChunk.objects.filter(bill_id__in=page_ids, search_vector=search_query)
+        .annotate(_rank=SearchRank(F("search_vector"), search_query))
+    ).values_list("pk", flat=True))
     chunks = (
         BillSearchChunk.objects.filter(
-            bill_id__in=page_ids, search_vector=search_query
+            pk__in=highlight_ids, bill_id__in=page_ids
         )
         .annotate(
             _rank=SearchRank(F("search_vector"), search_query),

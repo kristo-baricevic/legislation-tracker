@@ -6,12 +6,9 @@ def _reader_result_valid(saved):
     import hashlib
     from jsonschema import ValidationError
     from apps.legislation.models import BillProcessingCache
-    from .source_packet import canonical_json_bytes
     from .reader_cache import VALIDATOR_VERSION
     from .schema import validate_enhancement_output
-    fingerprint = hashlib.sha256(canonical_json_bytes({'kind': 'reader-validation',
-        'version': VALIDATOR_VERSION, 'result': saved.result_json,
-        'sources': saved.source_snapshot_json})).hexdigest()
+    fingerprint = hashlib.sha256(f"reader-validation:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
         return cached.result_json['valid']
@@ -25,16 +22,26 @@ def _reader_result_valid(saved):
     return valid
 
 
-def source_compatible(enhancement, bill):
-    from .source_packet import _marked_active_document, _stored_document, _text_hash
-    document = _marked_active_document(bill) or _stored_document(bill)
+def _source_identity(bill):
+    from apps.legislation.models import BillContract
+    documents = bill.documents.only("id", "bill_id", "reader_text_hash").order_by("-created_at", "-id")
+    document = (documents.filter(is_active_version=True).first()
+        or documents.exclude(extracted_text__isnull=True).exclude(extracted_text="").first()
+        or documents.exclude(raw_text__isnull=True).exclude(raw_text="").first())
+    contract = bill._state.fields_cache.get("latest_contract")
+    if contract is None and bill.latest_contract_id:
+        contract = BillContract.objects.only("id", "document_id", "contract_hash").filter(pk=bill.latest_contract_id).first()
+    return document, contract
+
+
+def source_compatible(enhancement, bill, *, identity=None):
+    document, contract = identity if identity is not None else _source_identity(bill)
     manifest = enhancement.source_manifest_json
     if not document or manifest.get("document_id") != document.pk:
         return False
-    if manifest.get("document_content_hash") != _text_hash(document.extracted_text or document.raw_text or ""):
+    if manifest.get("document_content_hash") != document.reader_text_hash:
         return False
     if enhancement.output_schema_version == "1.4":
-        contract = bill.latest_contract
         return bool(contract and contract.document_id == document.pk
                     and manifest.get("contract_id") == contract.pk
                     and manifest.get("contract_hash") == contract.contract_hash)
@@ -46,12 +53,13 @@ def shared_enhancement(bill, *, include_active=True):
     statuses = [BillEnhancement.Status.SUCCEEDED]
     if include_active:
         statuses += [BillEnhancement.Status.RUNNING, BillEnhancement.Status.PENDING]
+    identity = _source_identity(bill)
     for status in statuses:
-        rows = BillEnhancement.objects.filter(bill=bill, status=status).order_by("-created_at", "-id")
+        rows = BillEnhancement.objects.filter(bill=bill, status=status).defer("result_json", "source_snapshot_json").order_by("-created_at", "-id")
         if status == BillEnhancement.Status.SUCCEEDED:
             rows = rows.exclude(result_json=None).exclude(result_completeness="partial")
         for saved in rows:
-            if source_compatible(saved, bill):
+            if source_compatible(saved, bill, identity=identity):
                 if status == BillEnhancement.Status.SUCCEEDED and saved.output_schema_version == '1.4' and not _reader_result_valid(saved):
                     continue
                 return saved

@@ -26,6 +26,13 @@ def test_old_success_with_wrong_money_cannot_bypass_new_validation(enhancement_o
         saved.result_json['source_review']['financial_items'][0]['amount_display'] = '$1 billion'
         saved.save()
         assert shared_enhancement(source_bill, include_active=False) is None
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as queries:
+            assert shared_enhancement(source_bill, include_active=False) is None
+        # A cached validation verdict must not reload or serialize either large JSON field.
+        assert not any('"legislation_billenhancement"."source_snapshot_json"' in q["sql"].split(" FROM ")[0]
+            or '"legislation_billenhancement"."result_json"' in q["sql"].split(" FROM ")[0] for q in queries)
 
 
 @pytest.mark.django_db

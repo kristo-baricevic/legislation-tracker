@@ -112,6 +112,12 @@ class BillDocument(models.Model):
     source_url = models.URLField(max_length=1024, null=True, blank=True)
     raw_text = models.TextField(null=True, blank=True)
     extracted_text = models.TextField(null=True, blank=True)
+    # Database-maintained so bulk updates cannot leave lookup hashes stale.
+    reader_text_hash = models.GeneratedField(
+        expression=models.functions.SHA256(models.functions.Coalesce(
+            models.functions.NullIf("extracted_text", models.Value("")), "raw_text", models.Value(""), output_field=models.TextField(),
+        )), output_field=models.CharField(max_length=64), db_persist=True,
+    )
     # Exact version-specific official purpose from the original document form.
     # Kept separate so existing text offsets and source hashes never shift.
     source_purpose = models.TextField(blank=True, default="")
@@ -311,6 +317,12 @@ class BillEnhancement(models.Model):
         db_index=True,
     )
     result_json = models.JSONField(null=True, blank=True)
+    validation_digest = models.GeneratedField(
+        expression=models.functions.SHA256(models.functions.Concat(
+            models.functions.SHA256(models.functions.Coalesce(models.functions.Cast("result_json", models.TextField()), models.Value(""), output_field=models.TextField())),
+            models.functions.SHA256(models.functions.Cast("source_snapshot_json", models.TextField())),
+        )), output_field=models.CharField(max_length=64), db_persist=True,
+    )
     successful_attempt = models.OneToOneField(
         "BillEnhancementAttempt",
         on_delete=models.SET_NULL,

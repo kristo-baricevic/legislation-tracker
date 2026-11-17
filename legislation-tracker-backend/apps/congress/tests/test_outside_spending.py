@@ -8,6 +8,39 @@ from apps.campaign_finance.models import FinanceSnapshot
 pytestmark = pytest.mark.django_db
 
 
+def test_outside_pages_batch_periods_and_reuse_totals_until_data_changes():
+    from django.core.cache import cache
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+    from django.utils import timezone
+    from apps.campaign_finance.models import OutsideSpendingScan, OutsideSpendingTotal
+    cache.clear()
+    rep = Representative.objects.create(bioguide_id="T000097", name="Test")
+    for period in range(2016, 2028, 2):
+        run = ResearchRun.objects.create(representative=rep, period=period, status="succeeded")
+        snapshot = FinanceSnapshot.objects.create(run=run, representative=rep, period=period, active=True, published_at=timezone.now(), candidate_ids=["H0NY00001"])
+        scan = OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id="H0NY00001", complete=True)
+        row = OutsideSpendingTotal.objects.create(scan=scan, spender_id="C00000001", spender_name="Group", position="S", amount=100)
+    url = f"/api/representatives/{rep.pk}/outside-spending/?all_periods=true"
+    client = APIClient()
+    first = client.get(url).data
+    with CaptureQueriesContext(connection) as queries:
+        second = client.get(url).data
+    assert Decimal(second["support"]) == 600
+    assert len(queries) <= 12
+    assert not any("SUM(" in q["sql"] for q in queries)
+    assert second["revision"] == first["revision"]
+    from apps.legislation.models import Bill
+    Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 99")
+    assert client.get(url).data["revision"] == first["revision"]
+    OutsideSpendingTotal.objects.filter(pk=row.pk).update(amount=250)
+    third = client.get(url).data
+    assert Decimal(third["support"]) == 750
+    assert third["revision"] != first["revision"]
+    stale = client.get(url + f"&revision={first['revision']}&cursor=20")
+    assert stale.status_code == 409
+
+
 def test_all_periods_combines_cycles_without_counting_replaced_snapshots():
     from apps.campaign_finance.models import OutsideSpendingScan, OutsideSpendingTotal
     from django.utils import timezone

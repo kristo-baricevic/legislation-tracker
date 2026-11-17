@@ -265,6 +265,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         if self.action == "list":
+            qs = qs.select_related(None).select_related("sponsor").prefetch_related(None).prefetch_related("bill_topics__topic")
             query_serializer = BillListQuerySerializer
         elif self.action == "retrieve":
             query_serializer = BillDetailQuerySerializer
