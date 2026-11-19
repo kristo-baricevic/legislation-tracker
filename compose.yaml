@@ -1,0 +1,130 @@
+name: legislation-local
+
+x-backend: &backend
+  build: ./legislation-tracker-backend
+  image: legislation-local-backend
+  restart: unless-stopped
+  env_file: ${DOCKER_ENV_FILE:-.env.docker}
+  environment: &backend-env
+    DJANGO_SETTINGS_MODULE: config.settings.dev
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env.docker}
+    CONGRESS_API_KEY: ${CONGRESS_API_KEY:?Set CONGRESS_API_KEY in .env.docker}
+    FEC_API_KEY: ${FEC_API_KEY:?Set FEC_API_KEY in .env.docker}
+    DATABASE_URL: postgres://legislation:legislation@postgres:5432/legislation
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/0
+    CORS_ALLOWED_ORIGINS: http://localhost:${APP_PORT:-13000},http://127.0.0.1:${APP_PORT:-13000}
+    CSRF_TRUSTED_ORIGINS: http://localhost:${APP_PORT:-13000},http://127.0.0.1:${APP_PORT:-13000}
+    USE_LOCAL_DOCUMENT_STORAGE: "False"
+    AWS_ACCESS_KEY_ID: minioadmin
+    AWS_SECRET_ACCESS_KEY: minioadmin
+    AWS_STORAGE_BUCKET_NAME: legislation-tracker-documents
+    AWS_S3_ENDPOINT_URL: http://minio:9000
+    LLM_ENHANCEMENTS_ENABLED: ${LLM_ENHANCEMENTS_ENABLED:?Explicitly set LLM_ENHANCEMENTS_ENABLED in .env.docker}
+    LEGAL_NLP_V21_WRITE_ENABLED: "True"
+  depends_on: &backend-dependencies
+    migrate:
+      condition: service_completed_successfully
+    redis:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: legislation
+      POSTGRES_PASSWORD: legislation
+      POSTGRES_DB: legislation
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U legislation -d legislation]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes: [minio_data:/data]
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  preflight:
+    <<: *backend
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    command: python manage.py check_docker_startup --initialize-storage
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: python manage.py migrate --noinput
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+  api:
+    <<: *backend
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --access-logfile -
+    ports: ["127.0.0.1:${API_PORT:-18001}:8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live/', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+  worker:
+    <<: *backend
+    command: celery -A config worker -Q celery --concurrency=2 --prefetch-multiplier=1 -l info
+  research-worker:
+    <<: *backend
+    command: celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -l info
+  enhancement-worker:
+    <<: *backend
+    command: celery -A config worker -Q enhancements --concurrency=1 --prefetch-multiplier=1 -l info
+  beat:
+    <<: *backend
+    command: celery -A config beat -l info --schedule=/app/beat/celerybeat-schedule
+    volumes: [beat_data:/app/beat]
+  client:
+    build:
+      context: ./legislation-tracker-client
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-18001}
+    restart: unless-stopped
+    ports: ["127.0.0.1:${APP_PORT:-13000}:3000"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+# Override these names only to adopt existing volumes. Never run `down -v`
+# against a database you intend to keep.
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME:-legislation-local-postgres}
+    external: ${EXISTING_VOLUMES:-false}
+  redis_data:
+    name: ${REDIS_VOLUME:-legislation-local-redis}
+    external: ${EXISTING_VOLUMES:-false}
+  minio_data:
+    name: ${MINIO_VOLUME:-legislation-local-minio}
+    external: ${EXISTING_VOLUMES:-false}
+  beat_data:

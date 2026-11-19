@@ -1,3 +1,5 @@
 .DS_Store
 Untitled
 celerybeat-schedule.db
+.env.docker
+scripts/__pycache__/
