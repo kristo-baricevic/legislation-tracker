@@ -34,6 +34,9 @@ create replacement encryption keys or automatically launch paid enhancements.
 
 Startup regression tests:
 `rtk proxy python3 -m unittest discover -s scripts -p 'test_*.py'`.
+Run after building the backend image. These also check installed runtime
+dependencies and portrait processing without network or database access.
+Set `BACKEND_TEST_IMAGE` to test a separately tagged backend image.
 
 ## Run everything locally (no Docker)
 

@@ -240,7 +240,14 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
     };
     load().then(result => {
       if (!controller.signal.aborted) { pages.current = { representativeId, scope, value: result }; setData(result); setError(false); if (result.status === "collecting") timer = setTimeout(() => setRetry(value => value + 1), 5000); }
-    }).catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        // Keep same-scope saved results on a transient refresh failure, but
+        // never present another range's totals under the selected range.
+        if (pages.current?.representativeId !== representativeId || pages.current.scope !== scope) setData(null);
+        setError(true);
+      }
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); clearTimeout(timer); };
   }, [representativeId, cursor, refreshToken, retry, scope]);
   useEffect(() => {

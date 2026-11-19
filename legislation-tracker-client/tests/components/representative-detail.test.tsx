@@ -44,6 +44,25 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativeDetailPage", () => {
+  it("releases pending bill filters when the Congress changes", async () => {
+    type Page = Awaited<ReturnType<typeof getRepresentativeSponsoredBills>>;
+    let finish!: (value: Page) => void;
+    const empty = { count: 0, next: null, previous: null, results: [] };
+    vi.mocked(getRepresentativeSponsoredBills).mockImplementation(async (_id, congress, page, topic) => {
+      if (topic) return new Promise<Page>(resolve => { finish = resolve; });
+      return { ...empty, next: congress === 120 && page === 1 ? "?page=2" : null };
+    });
+    const view = render(<RepresentativeDetailPage />);
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Bills introduced topic" }), "9");
+    route.query = "congress=120";
+    view.rerender(<RepresentativeDetailPage />);
+    const more = await screen.findByRole("button", { name: "Load more sponsored bills" });
+    expect(more).toBeEnabled();
+    await act(async () => finish(empty));
+    expect(more).toBeEnabled();
+    await userEvent.click(more);
+    expect(screen.queryByRole("button", { name: "Load more sponsored bills" })).not.toBeInTheDocument();
+  });
   it("ignores an older topic response after selecting all topics", async () => {
     const bill = { id: 101, jurisdiction: "federal", session: 119, bill_number: "HR 101", title: "Unfiltered bill", status: "Introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] };
     type Page = Awaited<ReturnType<typeof getRepresentativeSponsoredBills>>;

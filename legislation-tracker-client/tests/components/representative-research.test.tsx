@@ -6,6 +6,51 @@ import RepresentativeResearch from "@/app/components/RepresentativeResearch";
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
 
+it("does not label all-years totals as last-ten-years results after a failed range change", async () => {
+  let fail = true;
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (!url.includes("outside-spending")) return Response.json(empty);
+    const recent = url.includes("scope=last_ten_years");
+    if (recent && fail) return Response.json({ detail: "Offline" }, { status: 503 });
+    return Response.json({ status: "available", scope: recent ? "last_ten_years" : "all_years",
+      support: recent ? "20" : "500", oppose: "0", count: 1, next_cursor: null,
+      results: [{ id: 1, name: recent ? "Recent donor" : "Historical donor", amount: recent ? "20" : "500",
+        position: "S", period: recent ? 2024 : 2014, source_url: "https://www.fec.gov/" }] });
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  await screen.findByRole("link", { name: "Historical donor" });
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Outside spending years" }), "last_ten_years");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load spending");
+  expect(screen.queryByRole("link", { name: "Historical donor" })).not.toBeInTheDocument();
+  expect(screen.queryByText("$500.00")).not.toBeInTheDocument();
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("link", { name: "Recent donor" })).toBeVisible();
+});
+
+it("retains the correct range's saved records when loading another page fails", async () => {
+  let intersect: IntersectionObserverCallback = () => {};
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback: IntersectionObserverCallback) { intersect = callback; }
+    observe() {} disconnect() {}
+  });
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (!url.includes("outside-spending")) return Response.json(empty);
+    if (url.includes("cursor=20")) return Response.json({ detail: "Offline" }, { status: 503 });
+    return Response.json({ status: "available", scope: "all_years", support: "500", oppose: "0",
+      count: 21, next_cursor: 20, results: [{ id: 1, name: "Saved donor", amount: "500",
+        position: "S", period: 2014, source_url: "https://www.fec.gov/" }] });
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  const saved = await screen.findByRole("link", { name: "Saved donor" });
+  act(() => intersect([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load spending");
+  expect(saved).toBeVisible();
+  expect(screen.getByRole("combobox", { name: "Outside spending years" })).toHaveValue("all_years");
+});
+
 it("switches outside-spending years without blanking saved rows and labels mentions separately", async () => {
   let resolveRecent: ((response: Response) => void) | undefined;
   const result = (recent: boolean) => ({ status: "available", scope: recent ? "last_ten_years" : "all_years",
