@@ -19,6 +19,7 @@ export { topicColor, readable, dateLabel } from "./BillCard";
 export default function BillDeck() {
   const [tracking, setTracking] = React.useState<TrackingSummary | null>(null);
   const [signedIn, setSignedIn] = React.useState(false);
+  const [isSuperuser, setIsSuperuser] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
@@ -41,7 +42,7 @@ export default function BillDeck() {
   const [followError, setFollowError] = React.useState("");
 
   React.useEffect(() => subscribePersonalizedChanges(() => {
-    setTracking(null); setSignedIn(false); setReady(false); setError("");
+    setTracking(null); setSignedIn(false); setIsSuperuser(false); setReady(false); setError("");
     if (recommendationOwnsBill.current) setSelected(null);
     setPending(null); setFollowError("");
     setAttempt(value => value + 1);
@@ -56,6 +57,7 @@ export default function BillDeck() {
         const session = await getSession({ scope, signal: abort.signal });
         if (!live || !isPersonalizedScopeCurrent(scope)) return;
         setSignedIn(Boolean(session));
+        setIsSuperuser(session?.user.is_superuser === true);
         if (session) { const result = await getMyTracking({ scope, signal: abort.signal }); if (live && isPersonalizedScopeCurrent(scope)) setTracking(result); }
         if (live) setError("");
       } catch { if (live && isPersonalizedScopeCurrent(scope)) setError("Your followed bills could not be loaded. Retry to reconnect."); }
@@ -126,7 +128,7 @@ export default function BillDeck() {
     </section>}
     {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}
     <RecommendationsPreview renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
-    {ready && <IngestionTelemetryLive key={`${signedIn}:${Boolean(tracking?.is_staff)}`} />}
+    {ready && signedIn && isSuperuser && <IngestionTelemetryLive />}
     {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}
   </div>;
 }

@@ -453,7 +453,7 @@ class BillContractSerializer(serializers.ModelSerializer):
 
     evidence_spans = EvidenceSpanSerializer(many=True, read_only=True)
     document_version_label = serializers.CharField(
-        source="document.version_label", read_only=True
+        source="document.version_label", read_only=True, allow_null=True, default=None
     )
 
     class Meta:
@@ -473,7 +473,7 @@ class BillContractSerializer(serializers.ModelSerializer):
 class BillContractSummarySerializer(serializers.ModelSerializer):
     reader_brief = serializers.SerializerMethodField()
     document_version_label = serializers.CharField(
-        source="document.version_label", read_only=True
+        source="document.version_label", read_only=True, allow_null=True, default=None
     )
     coverage_note = serializers.SerializerMethodField()
     orientation = serializers.SerializerMethodField()

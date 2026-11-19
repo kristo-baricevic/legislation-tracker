@@ -4,6 +4,40 @@ Monorepo: **Django** API (`legislation-tracker-backend`) + **Next.js** app (`leg
 
 ---
 
+## Run the complete app in Docker
+
+From this repository root, copy `.env.docker.example` to `.env.docker` and fill in
+the required Congress API key, FEC API key, and Django secret. Then run:
+
+```bash
+rtk proxy bash scripts/docker-up.sh
+```
+
+Open http://localhost:13000. This starts PostgreSQL, Redis, document storage,
+the API, frontend, ingestion worker, research worker, enhancement worker, and
+Celery Beat scheduler. Configuration checks and migrations must succeed before
+the app and workers start. Configuration is shared by every backend service.
+The backend-directory Compose file is **dependencies only**, not an app launcher.
+
+For an existing installation, set `EXISTING_VOLUMES=true` and the volume names in `.env.docker` to the
+existing volumes **before starting**. Stop the old app workers, scheduler, and
+database/storage containers first; never run two PostgreSQL servers against the
+same volume or two schedulers against the same queue. Do not use `down -v`.
+Stop this stack with `rtk proxy docker compose --env-file .env.docker down`;
+named volumes remain intact.
+
+Enhancement workers start automatically. Explicitly set enhancement enablement
+in `.env.docker`, preserving the existing app's setting. Enabling it requires the encryption
+key ring and active key ID; restore the original keys when reusing a database.
+The startup command rejects incomplete enhancement configuration. It does not
+create replacement encryption keys or automatically launch paid enhancements.
+
+Startup regression tests:
+`rtk proxy python3 -m unittest discover -s scripts -p 'test_*.py'`.
+Run after building the backend image. These also check installed runtime
+dependencies and portrait processing without network or database access.
+Set `BACKEND_TEST_IMAGE` to test a separately tagged backend image.
+
 ## Run everything locally (no Docker)
 
 Use this path if you have **PostgreSQL** and **Redis** installed on your machine (Homebrew, apt, or postgres.org — not Docker containers).

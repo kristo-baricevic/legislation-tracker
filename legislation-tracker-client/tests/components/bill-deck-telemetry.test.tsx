@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import BillDeck from "@/app/components/BillDeck";
+import Home from "@/app/page";
 import { authGet, authPost, getBill, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
 vi.mock("@/app/components/RecommendationsPreview", () => ({ default: () => <h2>Recommendation section</h2> }));
 
@@ -40,6 +41,13 @@ beforeEach(() => {
   vi.mocked(getMyTracking).mockResolvedValue({ bills: [], topics: [], legislators: [], is_staff: false });
 });
 
+it.each(["false", "true"])("always uses the card dashboard despite saved preference %s", async preference => {
+  localStorage.setItem("legislation-tracker-dashboard-cards", preference);
+  render(<Home />);
+  expect(await screen.findByRole("heading", { name: "Follow the bills that matter to you." })).toBeVisible();
+  expect(screen.queryByRole("checkbox", { name: "Use card dashboard on this browser" })).not.toBeInTheDocument();
+});
+
 it("keeps followed bills in one collection with sorting and topic filtering", async () => {
   const makeBill = (id: number, title: string, date: string, topic: string) => ({ id, title, bill_number: `HR ${id}`, session: 119, jurisdiction: "federal", status: "introduced", sponsor_id: null, sponsor_name: null, sponsor_bioguide_id: null, introduced_at: date, last_action_at: date, topics: [{ topic_id: id, name: topic, slug: topic, confidence_score: 1 }] });
   const bills = [makeBill(1, "Alpha", "2025-01-01", "Health"), makeBill(2, "Zulu", "2025-02-01", "Education")];
@@ -59,19 +67,36 @@ it("keeps followed bills in one collection with sorting and topic filtering", as
   expect(screen.queryByRole("heading", { name: "Education" })).not.toBeInTheDocument();
 });
 
-it("keeps the live telemetry panel visible without exposing samples or starting work", async () => {
+it("hides ingestion from regular accounts without starting work", async () => {
   render(<BillDeck />);
   await screen.findByRole("heading", { name: "Your collection starts with a bill" });
   expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Legislation ingestion" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Start discovery and ingestion" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("button", { name: "Expand legislation ingestion" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Show ingestion telemetry preview")).not.toBeInTheDocument();
   expect(authGet).not.toHaveBeenCalled();
   expect(authPost).not.toHaveBeenCalled();
 });
 
-it("shows real telemetry to staff on refresh without requiring sample mode", async () => {
+it("hides ingestion from staff who are not superusers", async () => {
+  vi.mocked(getMyTracking).mockResolvedValue({ bills: [], topics: [], legislators: [], is_staff: true });
+  render(<BillDeck />);
+  await screen.findByRole("heading", { name: "Your collection starts with a bill" });
+  expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
+  expect(authGet).not.toHaveBeenCalled();
+});
+
+it("hides ingestion while session is loading and when signed out", async () => {
+  vi.mocked(getSession).mockResolvedValue(null);
+  render(<BillDeck />);
+  expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
+  await screen.findByRole("heading", { name: "Start your collection" });
+  expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
+});
+
+it("shows real telemetry only to superusers", async () => {
+  vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "admin@example.com", is_superuser: true } });
   vi.mocked(getMyTracking).mockResolvedValue({ bills: [], topics: [], legislators: [], is_staff: true });
   vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness")
     ? { available: false, missing_unqueued_metadata: null }

@@ -136,7 +136,7 @@ function ResearchPanel({ representativeId, compact, profileView = false, finance
   if (financeView) return <section className={`${styles.panel} ${styles.funding} ${modalView ? styles.modalFunding : ""}`} aria-label="Campaign funding">
     <div className={styles.fundingToolbar} aria-label="Funding controls">
       <div className={styles.recordTabs} aria-label="Funding type"><button aria-pressed={fundingView === "donations"} onClick={() => setFundingView("donations")}>Donations</button><button aria-pressed={fundingView === "outside"} onClick={() => setFundingView("outside")}>Outside spending</button></div>
-      {fundingView === "donations" ? <label>Period <select aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Loading…"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label> : <span className={styles.note}>All years</span>}
+      {fundingView === "donations" && <label>Period <select aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Loading…"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error} <button onClick={() => void selectPeriod(period)}>Retry</button></p>}
     <div className={styles.fundingLoadStatus} role="status">{!data && !error ? "Loading funding…" : overviewReady && active ? "Donations updating in background" : ""}</div>
@@ -198,6 +198,7 @@ function AllYearsDonations({ representativeId, modalView, refreshToken }: { repr
 
 function OutsideSpendingTable({ representativeId, refreshToken, collecting = false }: { representativeId: number; refreshToken: string; collecting?: boolean }) {
   const [data, setData] = useState<OutsideSpending | null>(null);
+  const [scope, setScope] = useState<import("@/lib/representative-research").OutsideSpendingScope>("all_years");
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [cursor, setCursor] = useState(0);
@@ -225,7 +226,7 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
       if (!controller.signal.aborted) setRetryError(e instanceof ApiError && [401, 403].includes(e.status) ? "Sign in to retry research." : "Could not restart research. Try again.");
     } finally { if (!controller.signal.aborted) setRetrying(false); }
   }
-  const pages = useRef<{ representativeId: number; value: import("@/lib/spending-pages").SpendingPages } | null>(null);
+  const pages = useRef<{ representativeId: number; scope: string; value: import("@/lib/spending-pages").SpendingPages } | null>(null);
   const list = useRef<HTMLUListElement>(null);
   const end = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -234,14 +235,21 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
     setLoading(true);
     const load = async () => {
       const { loadSpendingPages } = await import("@/lib/spending-pages");
-      return loadSpendingPages((offset, revision) => getOutsideSpending(representativeId, offset, controller.signal, revision), cursor,
-        pages.current?.representativeId === representativeId ? pages.current.value : undefined);
+      return loadSpendingPages((offset, revision) => getOutsideSpending(representativeId, offset, controller.signal, revision, scope), cursor,
+        pages.current?.representativeId === representativeId && pages.current.scope === scope ? pages.current.value : undefined);
     };
     load().then(result => {
-      if (!controller.signal.aborted) { pages.current = { representativeId, value: result }; setData(result); setError(false); if (result.status === "collecting") timer = setTimeout(() => setRetry(value => value + 1), 5000); }
-    }).catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      if (!controller.signal.aborted) { pages.current = { representativeId, scope, value: result }; setData(result); setError(false); if (result.status === "collecting") timer = setTimeout(() => setRetry(value => value + 1), 5000); }
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        // Keep same-scope saved results on a transient refresh failure, but
+        // never present another range's totals under the selected range.
+        if (pages.current?.representativeId !== representativeId || pages.current.scope !== scope) setData(null);
+        setError(true);
+      }
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [representativeId, cursor, refreshToken, retry]);
+  }, [representativeId, cursor, refreshToken, retry, scope]);
   useEffect(() => {
     if (loading || error || data?.next_cursor == null || !end.current || !list.current) return;
     const observer = new IntersectionObserver(entries => {
@@ -252,14 +260,17 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
   }, [data?.next_cursor, loading, error]);
   const money = (amount: string | null) => amount === null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(amount));
   return <section className={`${styles.contributors} ${styles.outsideSpending}`} aria-label="Outside spending">
-    <div className={styles.note}>Independent spending <CardTooltip text="Money groups spent independently supporting or opposing this candidate. Not money received by the campaign. FEC processed Schedule E totals; excludes other forms of outside spending."><span tabIndex={0} aria-label="About independent spending">ⓘ</span></CardTooltip>{data?.status === "collecting" ? " · Updating" : ""}</div>
-    {(Boolean(data?.failed_periods?.length) || data?.history_failed) && <div role="status" className={styles.note}>
-      {data?.failed_periods?.length ? `${data.failed_periods.map(year => `${year - 1}–${year}`).join(", ")} records could not be collected.` : "Some reporting periods could not be checked."}{" "}
-      <button type="button" disabled={retrying} onClick={() => void retryMissing()}>{retrying ? "Retrying…" : "Retry missing records"}</button>
-    </div>}
+    <div className={styles.contributorToolbar} role="toolbar" aria-label="Outside spending controls"><div className={styles.note}>Outside spending <CardTooltip text={`FEC independent expenditures, communication costs, and electioneering communications. Not campaign donations. Electioneering records identify mentions, not support or opposition.${data?.start_year ? ` Displayed records: ${data.start_year}–${data.end_year}.` : ""}`}><span tabIndex={0} aria-label="About outside spending">ⓘ</span></CardTooltip>{data?.status === "collecting" || loading ? " · Updating" : ""}</div>
+      <div className={styles.outsideActions}>
+      {(Boolean(data?.failed_periods?.length) || data?.history_failed) && <CardTooltip text={data?.failed_periods?.length ? `Retry missing records for ${data.failed_periods.map(year => `${year - 1}–${year}`).join(", ")}. Totals are incomplete.` : "Retry missing reporting periods. Totals are incomplete."}>
+        <button type="button" aria-label="Retry missing records" disabled={retrying} onClick={() => void retryMissing()}>{retrying ? "Retrying…" : "Retry"}</button>
+      </CardTooltip>}
+      <label><span className={styles.note}>Years </span><select aria-label="Outside spending years" value={scope} onChange={event => { setLoading(true); setScope(event.target.value as typeof scope); setCursor(0); }}><option value="last_ten_years">Last 10 years</option><option value="all_years">All available years</option></select></label>
+      </div>
+    </div>
     {retryError && <p role="alert">{retryError}</p>}
-    <dl className={styles.fundingTotals}><div><dt>Supporting</dt><dd>{money(data?.support ?? null)}</dd></div><div><dt>Opposing</dt><dd>{money(data?.oppose ?? null)}</dd></div></dl>
-    <ul ref={list} className={styles.donorList} aria-label="Outside spending records" aria-busy={loading} tabIndex={0}>{data?.results.map(item => <li key={item.id}><div className={styles.spenderIdentity}><SourceLink url={item.source_url}>{item.name}</SourceLink><span className={`${styles.positionPill} ${item.position === "S" ? styles.supports : styles.opposes}`}>{item.position === "S" ? "Supports" : "Opposes"}</span>{item.period && <span className={`${styles.positionPill} ${styles.yearPill}`}>{item.period - 1}–{item.period}</span>}</div><strong>{money(item.amount)}</strong></li>)}<li ref={end} className={styles.scrollSentinel} aria-hidden="true" /></ul>
+    <dl className={styles.fundingTotals}><div><dt>Supporting</dt><dd>{money(data?.support ?? null)}</dd></div><div><dt>Opposing</dt><dd>{money(data?.oppose ?? null)}</dd></div>{Number(data?.mentions) > 0 && <div><dt>Mentions</dt><dd>{money(data?.mentions ?? null)}</dd></div>}</dl>
+    <ul ref={list} className={styles.donorList} aria-label="Outside spending records" aria-busy={loading} tabIndex={0}>{data?.results.map(item => <li key={item.id}><div className={styles.spenderIdentity}><SourceLink url={item.source_url}>{item.name}</SourceLink><span className={`${styles.positionPill} ${item.position === "S" ? styles.supports : item.position === "O" ? styles.opposes : styles.yearPill}`}>{item.position === "S" ? "Supports" : item.position === "O" ? "Opposes" : "Mentions"}</span>{item.period && <span className={`${styles.positionPill} ${styles.yearPill}`}>{item.period - 1}–{item.period}</span>}{item.category && <span className={`${styles.positionPill} ${styles.yearPill}`}>{{ independent: "Independent", communication: "Communication costs", electioneering: "Electioneering" }[item.category]}</span>}</div><strong>{money(item.amount)}</strong></li>)}<li ref={end} className={styles.scrollSentinel} aria-hidden="true" /></ul>
     <div className={styles.listStatus}>{error ? <span role="alert">Could not load spending. <button onClick={() => setRetry(value => value + 1)}>Retry</button></span> : !data ? <span role="status">Loading spending…</span> : data.status === "not_researched" ? collecting ? "Collecting spending records…" : "Use Research to collect outside spending." : !data.results.length ? data.status === "collecting" ? "Collecting spending records…" : "No outside spending in collected records." : null}</div>
   </section>;
 }

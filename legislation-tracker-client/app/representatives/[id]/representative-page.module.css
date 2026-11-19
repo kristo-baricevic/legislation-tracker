@@ -2,6 +2,7 @@
 .header { display: flex; align-items: center; gap: 1.25rem; }
 .header h1 { font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 650; margin: 0 0 .65rem; }
 .header > :last-child { margin-left: auto; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
 .avatar { width: 90px; height: 90px; flex: 0 0 90px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--wash); font-size: 1.5rem; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
 .badges, .topics { display: flex; flex-wrap: wrap; gap: .5rem; }
@@ -27,6 +28,12 @@
 .committees span { font-size: .85rem; color: var(--muted); }
 .records li { display: grid; grid-template-columns: 5rem minmax(0,1fr) auto; gap: 1rem; align-items: start; padding: 1rem 0; border-bottom: 1px solid var(--line); }
 .records a { font-weight: 550; }
+.voteFilters { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+.voteStatus { min-height: 2.25rem; font-size: .85rem; }
+.voteViewport { height: 28rem; overflow-y: auto; scrollbar-gutter: stable; overflow-anchor: none; }
+.pendingVotes { opacity: .55; }
+.voteFilters label { display: grid; gap: .35rem; font-size: .85rem; }
+.voteFilters select { min-width: 9rem; max-width: 100%; padding: .55rem .75rem; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--foreground); }
 .records a:hover { text-decoration: underline; }
 .records p, .records small { color: var(--muted); font-size: .8rem; margin: .25rem 0; }
 .records small { display: block; }
@@ -34,3 +41,7 @@
 .position[data-position="yes"] { background: #c9dece; color: #24432f; }
 .position[data-position="no"] { background: #ecd1cc; color: #69372e; }
 @media(max-width: 600px) { .page { padding: 1.5rem 1rem; } .header { flex-wrap: wrap; gap: .75rem; } .avatar { width: 64px; height: 64px; flex-basis: 64px; } .header > div:nth-child(2) { flex: 1; } .tabBar { align-items: flex-start; flex-direction: column; } .tabBar button { padding: .5rem; font-size: .85rem; } .committees li { flex-direction: column; gap: .3rem; } .records li { gap: .5rem; grid-template-columns: 4.5rem minmax(0,1fr) auto; } }
+.billHistoryToolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.billHistoryToolbar h2 { margin: 0; }
+.billHistoryToolbar select { max-width: 100%; min-height: 2.5rem; border: 1px solid var(--border, #d7ddd5); border-radius: .5rem; padding: .5rem .75rem; background: var(--paper, #fff); color: inherit; font: inherit; }
+.billHistoryResults { min-height: 22rem; }

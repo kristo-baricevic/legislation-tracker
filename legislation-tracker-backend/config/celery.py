@@ -62,6 +62,10 @@ app.conf.beat_schedule = {
         "task": "apps.ingestion.tasks.sync_representatives",
         "schedule": 86400.0,
     },
+    "ensure-committee-rosters": {
+        "task": "apps.ingestion.tasks.ensure_committee_roster_work",
+        "schedule": 3600.0,
+    },
     "discover-roll-calls": {
         "task": "apps.ingestion.tasks.discover_roll_calls",
         "schedule": 900.0,

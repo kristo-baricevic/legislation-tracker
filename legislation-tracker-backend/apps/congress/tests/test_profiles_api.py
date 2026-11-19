@@ -15,6 +15,55 @@ from apps.legislation.models import Bill, BillTopic, Topic
 pytestmark = pytest.mark.django_db
 
 
+@pytest.mark.parametrize("endpoint", ["sponsored-bills", "cosponsored-bills"])
+def test_bill_history_topic_filter_applies_before_pagination(endpoint):
+    representative = member()
+    topic = Topic.objects.create(name="History filter", slug="history-filter")
+    expected = []
+    for number in range(30):
+        bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number=f"HR {number}", title="Test", sponsor=representative)
+        BillCosponsor.objects.create(bill=bill, representative=representative)
+        if number < 2:
+            BillTopic.objects.create(bill=bill, topic=topic)
+            expected.append(bill.pk)
+    client = APIClient()
+    url = f"/api/representatives/{representative.pk}/{endpoint}/"
+    response = client.get(url, {"congress": 119, "topic_id": topic.pk})
+    assert response.status_code == 200
+    assert response.data["count"] == 2
+    rows = response.data["results"]
+    assert {row["bill"]["id"] if endpoint == "cosponsored-bills" else row["id"] for row in rows} == set(expected)
+    assert client.get(url, {"congress": 119, "topic_id": -1}).status_code == 400
+    assert client.get(url, {"congress": 119}).data["count"] == 30
+
+
+def test_vote_filters_apply_before_pagination_and_combine_with_topic():
+    representative = member()
+    topic, _ = Topic.objects.get_or_create(slug="schools", defaults={"name": "Schools"})
+    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 9", title="Schools")
+    BillTopic.objects.create(bill=bill, topic=topic)
+    for roll in range(1, 32):
+        row = record(representative, roll, position="yes" if roll < 29 else "no")
+        if roll >= 28:
+            row.vote.bill = bill
+            row.vote.save(update_fields=["bill"])
+    for roll, position in [(32, "present"), (33, "not_voting"), (34, "other")]:
+        record(representative, roll, position=position)
+    url = f"/api/representatives/{representative.id}/voting-record/"
+    client = APIClient()
+    response = client.get(url, {"congress": 119, "position": "no", "topic_id": topic.id})
+    assert response.status_code == 200
+    assert response.json()["count"] == 3
+    assert {r["position"] for r in response.json()["results"]} == {"no"}
+    response = client.get(url, {"congress": 119, "position": "yes", "topic_id": topic.id})
+    assert response.json()["count"] == 1
+    response = client.get(url, {"congress": 119, "position": "no_vote"})
+    assert response.json()["count"] == 2
+    assert {r["position"] for r in response.json()["results"]} == {"present", "not_voting"}
+    for invalid in ({"position": "unknown"}, {"topic_id": -1}):
+        assert client.get(url, {"congress": 119, **invalid}).status_code == 400
+
+
 def test_vote_topic_totals_cover_all_records_without_topic_join_inflation():
     representative = member()
     bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 1", title="Schools")

@@ -19,7 +19,7 @@ def test_amendment_and_deleted_record_replace_current_scan_not_history(settings,
     RepresentativeCandidate.objects.create(representative=rep, candidate=candidate, periods=[2026], verified=True, evidence_url="https://www.fec.gov/data/candidate/H0NY00001/")
     current_records = []
     def page(path, params):
-        if path == "schedules/schedule_e/by_candidate/":
+        if path in {"schedules/schedule_e/by_candidate/", "communication_costs/by_candidate/", "electioneering/by_candidate/"}:
             return {"results": [], "pagination": {"pages": 1}}
         if path.endswith("/committees/"):
             return {"results": [{"committee_id": "C00000001", "name": "Campaign", "designation": "P"}], "pagination": {"pages": 1}}

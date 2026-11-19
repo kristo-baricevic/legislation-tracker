@@ -1,4 +1,4 @@
-"""Durably queue the last ten calendar years, independently of receipts."""
+"""Queue ten years of donations and all available outside-spending cycles."""
 from django.db import transaction
 from django.utils import timezone
 
@@ -32,10 +32,11 @@ def process_history(work):
     if identity.status != 'verified':
         return {'status': 'identity_unavailable'}
     # Include whole reporting cycles overlapping the last ten calendar years.
-    # Older saved records remain available; they are not automatically backfilled.
+    # Outside-spending aggregates are cheap and backfilled for all known cycles.
     # A failed discovery raises for durable retry instead of marking history done.
     year = timezone.now().year
-    periods = [period for period in discover_periods(run.representative, strict=True)
+    all_periods = discover_periods(run.representative, strict=True)
+    periods = [period for period in all_periods
                if year - 9 <= period <= year + year % 2]
     with transaction.atomic():
         if fenced_work(work) is None:
@@ -47,4 +48,7 @@ def process_history(work):
             if period != run.period:
                 request_research(run.representative_id, period, run.requester_id,
                                  refresh=False, include_history=False)
+        from .outside_backfill import queue_outside_period
+        for period in all_periods:
+            queue_outside_period(run.representative_id, period, run.requester_id)
     return {'status': 'succeeded', 'periods': periods}

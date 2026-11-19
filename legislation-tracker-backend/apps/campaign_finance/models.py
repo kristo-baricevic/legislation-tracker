@@ -120,18 +120,21 @@ class FinanceResearchCheckpoint(models.Model):
 class OutsideSpendingScan(models.Model):
     snapshot = models.ForeignKey(FinanceSnapshot, on_delete=models.CASCADE, related_name="outside_scans")
     candidate_id = models.CharField(max_length=9)
+    category = models.CharField(max_length=20, default="independent", choices=[
+        ("independent", "Independent expenditures"), ("communication", "Communication costs"),
+        ("electioneering", "Electioneering communications")])
     page = models.PositiveIntegerField(default=1)
     complete = models.BooleanField(default=False)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["snapshot", "candidate_id"], name="outside_scan_candidate_unique")]
+        constraints = [models.UniqueConstraint(fields=["snapshot", "candidate_id", "category"], name="outside_scan_category_unique")]
 
 
 class OutsideSpendingTotal(models.Model):
     scan = models.ForeignKey(OutsideSpendingScan, on_delete=models.CASCADE, related_name="totals")
     spender_id = models.CharField(max_length=9)
     spender_name = models.CharField(max_length=255)
-    position = models.CharField(max_length=1, choices=[("S", "Supporting"), ("O", "Opposing")])
+    position = models.CharField(max_length=3, choices=[("S", "Supporting"), ("O", "Opposing"), ("M", "Mentioned"), ("24F", "Supporting communication"), ("24N", "Opposing communication")])
     amount = models.DecimalField(max_digits=20, decimal_places=2)
 
     class Meta:

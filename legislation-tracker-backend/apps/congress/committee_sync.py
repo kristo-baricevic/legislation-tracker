@@ -31,6 +31,31 @@ class CommitteeSnapshotValidationError(CommitteeRosterError):
     """A fetched roster is not safe to use as a replacement snapshot."""
 
 
+def ensure_committee_rosters():
+    """Share current rosters across research requests; durable retries own failures."""
+    from apps.ingestion.models import IngestionWorkItem
+    from apps.ingestion.work_queue import enqueue_ingestion_work
+
+    congress = current_congress()
+    now = timezone.now()
+    fresh = set(CommitteeRosterSnapshot.objects.filter(
+        congress=congress, updated_at__gte=now - timedelta(days=1),
+    ).values_list("chamber", flat=True))
+    if fresh == {"house", "senate"} and CommitteeMembership.objects.filter(congress=congress).exists():
+        return None
+    active = IngestionWorkItem.objects.filter(
+        kind="committee_roster", congress=congress,
+        status__in=("pending", "dispatched", "processing"),
+    ).order_by("id").first()
+    if active:
+        return active
+    return enqueue_ingestion_work(
+        kind="committee_roster", dedupe_key=f"committees:{congress}",
+        source_updated_at=now.replace(hour=0, minute=0, second=0, microsecond=0),
+        congress=congress, payload_json={"congress": congress},
+    )
+
+
 @dataclass(frozen=True)
 class CommitteeSyncResult:
     congress: int

@@ -6,6 +6,78 @@ import RepresentativeResearch from "@/app/components/RepresentativeResearch";
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
 
+it("does not label all-years totals as last-ten-years results after a failed range change", async () => {
+  let fail = true;
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (!url.includes("outside-spending")) return Response.json(empty);
+    const recent = url.includes("scope=last_ten_years");
+    if (recent && fail) return Response.json({ detail: "Offline" }, { status: 503 });
+    return Response.json({ status: "available", scope: recent ? "last_ten_years" : "all_years",
+      support: recent ? "20" : "500", oppose: "0", count: 1, next_cursor: null,
+      results: [{ id: 1, name: recent ? "Recent donor" : "Historical donor", amount: recent ? "20" : "500",
+        position: "S", period: recent ? 2024 : 2014, source_url: "https://www.fec.gov/" }] });
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  await screen.findByRole("link", { name: "Historical donor" });
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Outside spending years" }), "last_ten_years");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load spending");
+  expect(screen.queryByRole("link", { name: "Historical donor" })).not.toBeInTheDocument();
+  expect(screen.queryByText("$500.00")).not.toBeInTheDocument();
+  fail = false;
+  await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("link", { name: "Recent donor" })).toBeVisible();
+});
+
+it("retains the correct range's saved records when loading another page fails", async () => {
+  let intersect: IntersectionObserverCallback = () => {};
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback: IntersectionObserverCallback) { intersect = callback; }
+    observe() {} disconnect() {}
+  });
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (!url.includes("outside-spending")) return Response.json(empty);
+    if (url.includes("cursor=20")) return Response.json({ detail: "Offline" }, { status: 503 });
+    return Response.json({ status: "available", scope: "all_years", support: "500", oppose: "0",
+      count: 21, next_cursor: 20, results: [{ id: 1, name: "Saved donor", amount: "500",
+        position: "S", period: 2014, source_url: "https://www.fec.gov/" }] });
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  const saved = await screen.findByRole("link", { name: "Saved donor" });
+  act(() => intersect([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load spending");
+  expect(saved).toBeVisible();
+  expect(screen.getByRole("combobox", { name: "Outside spending years" })).toHaveValue("all_years");
+});
+
+it("switches outside-spending years without blanking saved rows and labels mentions separately", async () => {
+  let resolveRecent: ((response: Response) => void) | undefined;
+  const result = (recent: boolean) => ({ status: "available", scope: recent ? "last_ten_years" : "all_years",
+    start_year: recent ? 2017 : 1995, end_year: 2026, support: "0", oppose: "0", mentions: "250",
+    count: 1, next_cursor: null, results: [{ id: recent ? 2 : 1, name: recent ? "Recent group" : "Saved group",
+      amount: "250", position: "M", category: "electioneering", period: recent ? 2020 : 2014,
+      source_url: "https://www.fec.gov/" }] });
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (!url.includes("outside-spending")) return Response.json(empty);
+    if (url.includes("scope=last_ten_years")) return new Promise<Response>(resolve => { resolveRecent = resolve; });
+    return Response.json(result(false));
+  }));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  const saved = await screen.findByRole("link", { name: "Saved group" });
+  expect(screen.getByText("Electioneering")).toBeVisible();
+  expect(screen.queryByText("Opposes")).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Outside spending years" }), "last_ten_years");
+  await waitFor(() => expect(resolveRecent).toBeDefined());
+  expect(saved).toBeInTheDocument();
+  expect(screen.queryByText(/^1995–2026$/)).not.toBeInTheDocument();
+  await act(async () => resolveRecent!(Response.json(result(true))));
+  expect(await screen.findByRole("link", { name: "Recent group" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Saved group" })).not.toBeInTheDocument();
+  expect(screen.queryByText(/^2017–2026$/)).not.toBeInTheDocument();
+});
+
 it.each([false, true])("keeps saved spending visible while retrying gaps (permission denied: %s)", async denied => {
   let retried = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
@@ -23,13 +95,17 @@ it.each([false, true])("keeps saved spending visible while retrying gaps (permis
   render(<RepresentativeResearch representativeId={1} financeView />);
   await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
   const saved = await screen.findByRole("link", { name: "Saved group" });
-  expect(await screen.findByText(/2019–2020.*could not be collected/)).toBeVisible();
+  expect(screen.queryByText(/2019–2020.*could not be collected/)).not.toBeInTheDocument();
+  expect(screen.getByRole("toolbar", { name: "Outside spending controls" })).toContainElement(screen.getByRole("button", { name: "Retry missing records" }));
+  await userEvent.hover(screen.getByRole("button", { name: "Retry missing records" }));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("2019–2020");
+  await userEvent.unhover(screen.getByRole("button", { name: "Retry missing records" }));
   await userEvent.click(screen.getByRole("button", { name: "Retry missing records" }));
   if (denied) {
     expect(await screen.findByRole("alert")).toHaveTextContent("Sign in to retry research.");
     expect(screen.getByRole("button", { name: "Retry missing records" })).toBeEnabled();
   } else {
-    await waitFor(() => expect(screen.queryByText(/2019–2020.*could not be collected/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry missing records" })).not.toBeInTheDocument());
   }
   expect(saved).toBeInTheDocument();
 });

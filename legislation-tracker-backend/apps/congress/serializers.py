@@ -50,6 +50,10 @@ class RepresentativeInsightQuerySerializer(PaginatedQuerySerializer):
     congress = serializers.IntegerField(min_value=1)
 
 
+class RepresentativeBillQuerySerializer(RepresentativeInsightQuerySerializer):
+    topic_id = serializers.IntegerField(min_value=1, required=False)
+
+
 class RepresentativeCompareQuerySerializer(StrictQuerySerializer):
     ids = serializers.CharField(max_length=64)
     congress = serializers.IntegerField(min_value=1)

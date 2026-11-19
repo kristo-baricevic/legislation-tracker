@@ -131,7 +131,7 @@ def test_cached_count_invalidates_when_observation_basis_changes(monkeypatch, ch
         **readiness.observe_discoverable(119),
     }
     cache.set(snapshot_key("federal", 119), snapshot)
-    client = authenticated_client(is_staff=True)
+    client = authenticated_client(is_staff=True, is_superuser=True)
     assert client.get("/api/ingestion/source-readiness/").json()["ready_to_start"] == 0
     if change == "cursor":
         IngestionState.objects.filter(pk=state.pk).update(

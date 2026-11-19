@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Count, Max
 from django.utils import timezone
-from rest_framework.permissions import IsAdminUser
+from .permissions import IsSuperuser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -34,7 +34,7 @@ def scope_from(data):
 
 
 class IngestionTelemetryView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSuperuser]
 
     def get(self, request):
         try:
@@ -105,7 +105,7 @@ class IngestionTelemetryView(APIView):
 
 
 class SourceReadinessView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSuperuser]
 
     def get(self, request):
         try:

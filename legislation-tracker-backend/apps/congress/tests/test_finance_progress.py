@@ -63,6 +63,9 @@ def test_overview_ready_while_donation_collection_continues(scope):
     assert finance_progress(snapshot)["overview_ready"] is False
     totals.complete = True
     totals.save()
+    assert finance_progress(snapshot)["overview_ready"] is False
+    for category in ['communication', 'electioneering']:
+        OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id=snapshot.candidate_ids[0], category=category, complete=True)
     progress = finance_progress(snapshot)
     assert progress["overview_ready"] is True
     assert progress["collecting"] is True
@@ -188,6 +191,8 @@ def test_totals_are_downloaded_before_receipts(scope, monkeypatch):
     rep, run, snapshot, committee = scope
     from apps.campaign_finance.models import OutsideSpendingScan
     OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id=snapshot.candidate_ids[0], complete=True)
+    for category in ['communication', 'electioneering']:
+        OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id=snapshot.candidate_ids[0], category=category, complete=True)
     FinanceResearchCheckpoint.objects.create(snapshot=snapshot, committee=committee, schedule="a")
     totals = FinanceResearchCheckpoint.objects.create(snapshot=snapshot, committee=committee, schedule="totals")
     work = run.work_item
@@ -274,12 +279,12 @@ def test_new_scan_fetches_totals_and_committee_donors_before_individuals(scope, 
         assert params["line_number"] in {"F3-11B", "F3-11C", "F3-20B", "F3-20C", "F3-11AI", "F3-20A"}
         return {"results": [], "pagination": {"last_indexes": {}}}
     monkeypatch.setattr("apps.campaign_finance.research.get_page", upstream)
-    for _ in range(13):
+    for _ in range(16):
         process_ingestion_work_item.apply(args=[work.pk]).get()
         work.refresh_from_db()
         if work.status == "succeeded":
             break
-    assert calls == ["candidate/H0NY00001/committees/", "schedules/schedule_e/by_candidate/", "committee/C00000001/totals/", "F3-11B", "F3-11C", "F3-20B", "F3-20C", "F3-11AI", "F3-20A"]
+    assert calls == ["candidate/H0NY00001/committees/", "communication_costs/by_candidate/", "electioneering/by_candidate/", "schedules/schedule_e/by_candidate/", "committee/C00000001/totals/", "F3-11B", "F3-11C", "F3-20B", "F3-20C", "F3-11AI", "F3-20A"]
     saved = FinanceSnapshot.objects.get(run=run)
     assert saved.active and saved.published_at
     assert saved.normalization_version == "fec-2-filtered"

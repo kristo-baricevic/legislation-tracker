@@ -75,7 +75,7 @@ export default function IngestionTelemetryLive() {
         }
         catch {
             if (current === epoch.current)
-                setError("Telemetry unavailable. Check the backend connection and staff access, then retry.");
+                setError("Telemetry unavailable. Check the backend connection and superuser access, then retry.");
         }
         finally {
             if (current === epoch.current)
@@ -137,7 +137,7 @@ export default function IngestionTelemetryLive() {
           <button className={dashboard.primary} disabled={busy || !scope || !Number.isInteger(Number(scope)) || Number(scope) < 1 || Number(scope) > 200} onClick={() => void start()}>Start discovery and ingestion</button>
         </div>
       </div>
-      <div className={dashboard.snapshot}><span className={dashboard.badge}>{telemetry ? "Snapshot loaded" : "Not loaded"}</span><span>{telemetry ? `Updated ${date(telemetry.observed_at)}` : "Refresh to load counts. You can start ingestion without refreshing."}</span><span>Staff access required</span></div>
+      <div className={dashboard.snapshot}><span className={dashboard.badge}>{telemetry ? "Snapshot loaded" : "Not loaded"}</span><span>{telemetry ? `Updated ${date(telemetry.observed_at)}` : "Refresh to load counts. You can start ingestion without refreshing."}</span><span>Superuser access required</span></div>
       {error && <p role="alert" className={dashboard.alert}>{error}</p>}
       <p role="status" className={notice ? dashboard.notice : undefined}>{notice}</p>
       <div className={dashboard.metrics}>

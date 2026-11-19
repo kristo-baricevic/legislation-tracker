@@ -24,12 +24,13 @@ class FakeAsyncResult:
     id = "task-123"
 
 
-def authenticated_client(email="operator@example.com", *, is_staff=False):
+def authenticated_client(email="operator@example.com", *, is_staff=False, is_superuser=False):
     user = get_user_model().objects.create_user(
         username=email,
         email=email,
         password="password",
         is_staff=is_staff,
+        is_superuser=is_superuser,
     )
     client = APIClient()
     client.force_authenticate(user=user)
@@ -121,7 +122,7 @@ def test_poll_congress_endpoint_enqueues_task_for_staff_user(monkeypatch):
         lambda **kwargs: calls.append(kwargs) or FakeAsyncResult(),
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/poll-congress/",
         {"jurisdiction": "federal", "congress": 118},
         format="json",
@@ -155,7 +156,7 @@ def test_sync_representatives_endpoint_enqueues_roster_sync_for_staff_user(monke
         lambda **kwargs: calls.append(kwargs) or FakeAsyncResult(),
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/sync-representatives/",
         {"congress": 119},
         format="json",
@@ -178,7 +179,7 @@ def test_sync_representatives_endpoint_rejects_a_historical_congress(monkeypatch
         lambda **kwargs: pytest.fail("historical roster must not be queued"),
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/sync-representatives/",
         {"congress": 118},
         format="json",
@@ -206,7 +207,7 @@ def test_staff_can_list_dead_lettered_ingestion_work():
         error_message="Congress unavailable",
     )
 
-    response = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
+    response = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/failures/")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -250,7 +251,7 @@ def test_staff_can_replay_dead_lettered_ingestion_work(monkeypatch):
         lambda: calls.append(True) or FakeAsyncResult(),
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         f"/api/ingestion/failures/{failure.id}/replay/",
         {},
         format="json",
@@ -366,7 +367,7 @@ def test_staff_can_replay_a_dead_lettered_document_stage(monkeypatch):
         raising=False,
     )
 
-    listed = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
+    listed = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/failures/")
     replayed = authenticated_client("replay-operator@example.com", is_staff=True).post(
         f"/api/ingestion/failures/{failure.id}/replay/",
         {},
@@ -406,7 +407,7 @@ def test_staff_can_replay_a_dead_lettered_contract_stage(monkeypatch):
         or FakeAsyncResult(),
     )
 
-    listed = authenticated_client(is_staff=True).get("/api/ingestion/failures/")
+    listed = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/failures/")
     replayed = authenticated_client(
         "contract-operator@example.com", is_staff=True
     ).post(
@@ -654,7 +655,7 @@ def test_stage_replay_remains_recoverable_when_the_web_process_stops_after_claim
     ],
 )
 def test_ingestion_endpoints_validate_integer_params(path, payload, error):
-    response = authenticated_client(is_staff=True).post(path, payload, format="json")
+    response = authenticated_client(is_staff=True, is_superuser=True).post(path, payload, format="json")
 
     assert response.status_code == 400
     assert response.json() == {"error": error}
@@ -669,7 +670,7 @@ def test_backfill_documents_endpoint_enqueues_task_for_staff_user(monkeypatch):
         lambda **kwargs: calls.append(kwargs) or FakeAsyncResult(),
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/backfill-documents/",
         {"session": 119},
         format="json",
@@ -694,7 +695,7 @@ def test_backfill_topics_endpoint_enqueues_task_for_staff_user(monkeypatch):
         raising=False,
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/backfill-topics/",
         {"session": 119},
         format="json",
@@ -789,7 +790,7 @@ def test_manual_bill_request_rejects_values_that_cannot_be_persisted(
         views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
     )
 
-    response = authenticated_client(is_staff=True).post(
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
         "/api/ingestion/bills/",
         payload,
         format="json",
@@ -806,7 +807,7 @@ def test_manual_bill_request_canonicalizes_numeric_bill_numbers(monkeypatch):
     monkeypatch.setattr(
         views.dispatch_ingestion_work, "delay", lambda: FakeAsyncResult()
     )
-    client = authenticated_client(is_staff=True)
+    client = authenticated_client(is_staff=True, is_superuser=True)
 
     first = client.post(
         "/api/ingestion/bills/",

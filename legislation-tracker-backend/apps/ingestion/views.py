@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.congress.current import current_congress
+from apps.ingestion.permissions import IsSuperuser
 from apps.ingestion.models import (
     BillTrackingRequest,
     IngestionTaskFailure,
@@ -153,7 +154,7 @@ class IngestionWorkStatusView(APIView):
 class PollCongressView(APIView):
     """Enqueue an immediate Congress polling task."""
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSuperuser]
 
     def post(self, request):
         from .telemetry_views import start_discovery

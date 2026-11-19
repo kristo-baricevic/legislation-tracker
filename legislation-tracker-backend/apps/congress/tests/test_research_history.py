@@ -73,8 +73,8 @@ def test_backfill_researches_saved_cycle_missing_outside_spending(history_scope)
         published_at=timezone.now(), candidate_ids=['S6IL00151'])
     request_research(rep.pk, 2026, user.pk)
     run_history(rep)
-    replacement = ResearchRun.objects.get(representative=rep, period=2020, status='queued')
-    assert replacement.work_item.payload_json['stage'] == 'finance'
+    assert ResearchRun.objects.filter(representative=rep, period=2020).count() == 1
+    assert IngestionWorkItem.objects.filter(dedupe_key=f'outside:{rep.pk}:2020', payload_json__stage='outside_backfill').exists()
     snapshot.refresh_from_db()
     assert snapshot.active
 
@@ -89,8 +89,8 @@ def test_default_research_repairs_selected_cycle_missing_outside_scan(history_sc
     client.force_authenticate(user)
     response = client.post(f'/api/representatives/{rep.pk}/research/', {'period': 2026}, format='json')
     assert response.status_code == 202
-    assert response.data['status'] == 'queued'
-    assert response.data['id'] != str(old.pk)
+    assert response.data['id'] == str(old.pk)
+    assert IngestionWorkItem.objects.filter(dedupe_key=f'outside:{rep.pk}:2026', status='pending').count() == 1
     snapshot.refresh_from_db()
     assert snapshot.active
     again = client.post(f'/api/representatives/{rep.pk}/research/', {'period': 2026}, format='json')
@@ -105,6 +105,8 @@ def test_all_years_retains_failed_period_and_retry_clears_failure(history_scope,
     snapshot = FinanceSnapshot.objects.create(representative=rep, run=current, period=2026, active=True,
         published_at=timezone.now(), candidate_ids=['S6IL00151'])
     OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', complete=True)
+    for category in ['communication', 'electioneering']:
+        OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', category=category, complete=True)
     old = request_research(rep.pk, 2020, user.pk, include_history=False)
     if failure == 'dead':
         old.work_item.status = 'dead'

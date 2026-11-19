@@ -13,7 +13,7 @@ RUN pip install --upgrade pip && pip install --require-hashes -r requirements/pr
 
 COPY . .
 RUN python manage.py collectstatic --noinput \
-    && mkdir -p /app/local_media \
+    && mkdir -p /app/local_media /app/beat \
     && chown -R app:app /app
 
 USER app
