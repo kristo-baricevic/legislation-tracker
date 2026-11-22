@@ -9,6 +9,10 @@ def test_production_dependencies_are_hash_locked_and_used_by_docker():
     dockerfile = (ROOT / "Dockerfile").read_text()
 
     assert "cryptography>=50,<51" in base
+    # Agnostic provider SDKs are pinned in base.txt now; production.lock
+    # regeneration (with hashes) lands with B3/B4 when they are first imported.
+    assert "anthropic>=" in base
+    assert "google-genai>=" in base
     assert "--hash=sha256:" in lock
     assert "cryptography==" in lock
     assert "requirements/production.lock" in dockerfile

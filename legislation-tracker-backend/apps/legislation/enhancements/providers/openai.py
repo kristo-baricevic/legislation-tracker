@@ -10,34 +10,20 @@ from django.conf import settings
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
-from .base import CredentialCheck, ProviderError, ProviderResult, ProviderUsage
+from .base import CredentialCheck, ProviderCapabilities, ProviderError, ProviderResult, ProviderUsage
+from . import harness
 
 
 def _value(obj: Any, name: str, default=None):
-    if isinstance(obj, dict):
-        return obj.get(name, default)
-    return getattr(obj, name, default)
+    return harness.value(obj, name, default)
 
 
 def _usage(response) -> ProviderUsage:
-    usage = _value(response, "usage")
-    if usage is None:
-        return ProviderUsage()
-    return ProviderUsage(
-        input_tokens=_value(usage, "input_tokens"),
-        output_tokens=_value(usage, "output_tokens"),
-        total_tokens=_value(usage, "total_tokens"),
-    )
+    return harness.usage_from_response(response)
 
 
 def _contains_refusal(response) -> bool:
-    for output_item in _value(response, "output", []) or []:
-        if _value(output_item, "type") != "message":
-            continue
-        for content in _value(output_item, "content", []) or []:
-            if _value(content, "type") == "refusal":
-                return True
-    return False
+    return harness.contains_refusal(response)
 
 
 def _mapped_error(error: Exception) -> ProviderError:
@@ -77,21 +63,35 @@ def _mapped_error(error: Exception) -> ProviderError:
     return ProviderError("provider_unavailable", retry_allowed=True)
 
 
-def _wire_schema(value):
-    """Preserve local constraints while omitting unsupported API keywords."""
-    if isinstance(value, dict):
-        return {
-            key: _wire_schema(item)
-            for key, item in value.items()
-            if key != "uniqueItems"
-        }
-    if isinstance(value, list):
-        return [_wire_schema(item) for item in value]
-    return value
+def _wire_schema(value, *, unsupported_keywords=()):
+    return harness.wire_schema(value, unsupported_keywords=unsupported_keywords)
 
 
 class OpenAIEnhancementProvider:
     provider_name = "openai"
+    capabilities = ProviderCapabilities(
+        wire_api="openai_responses",
+        schema_profile="openai_json_schema_strict",
+        reasoning_mapping={
+            "none": "none",
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+        },
+        privacy_flags={
+            "store": False,
+            "truncation": "disabled",
+            "tools": [],
+            "prompt_cache_options": {"mode": "explicit", "ttl": "30m"},
+        },
+        validation_profile="openai_responses",
+        usage_shape="openai_usage",
+        refusal_completion_profile="openai_refusal_incomplete",
+        error_profile="openai_status_code",
+        unsupported_schema_keywords=frozenset({"uniqueItems"}),
+    )
 
     def __init__(self, *, client_factory: Callable[..., Any] | None = None):
         if client_factory is None:
@@ -156,23 +156,7 @@ class OpenAIEnhancementProvider:
             "bill": request.request_envelope["bill"],
             "source_packet": request.request_envelope["source_packet"],
         }
-        schema = PROVIDER_OUTPUT_SCHEMA
-        if request.request_envelope.get("output_schema_version") == "1.4":
-            from ..reader_targets import READER_SCHEMA
-            from ..reader_citations import READER_ID_SCHEMA, READER_PROMPT_VERSION
-            schema = request.request_envelope.get("output_schema", READER_ID_SCHEMA) if request.request_envelope.get("prompt_version") == READER_PROMPT_VERSION else READER_SCHEMA
-        elif request.request_envelope.get("coverage_candidate_version") == "2":
-            from ..coverage_contract import response_schema
-
-            schema = response_schema(
-                input_payload["source_packet"]["coverage_checklist"]
-            )
-        elif request.request_envelope.get("coverage_candidate_version") == "3":
-            from ..coverage_contract import provision_schema
-
-            schema = provision_schema(
-                input_payload["source_packet"]["coverage_checklist"]
-            )
+        schema = harness.select_bill_schema(request, input_payload)
         result = self._generate(
             api_key=api_key,
             request=request,
@@ -183,21 +167,11 @@ class OpenAIEnhancementProvider:
             schema_name="bill_enhancement_v1_1",
         )
         if schema is PROVIDER_OUTPUT_SCHEMA:
-            from dataclasses import replace
-            from ..schema import add_derived_source_refs
-            return replace(result, output=add_derived_source_refs(result.output))
+            result = harness.apply_derived_source_refs(result)
         return result
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
-        envelope = dict(
-            input=payload, instructions=REPAIR_INSTRUCTIONS, schema=REPAIR_SCHEMA
-        )
-        size = len(json.dumps(envelope, ensure_ascii=False).encode())
-        if size > min(
-            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
-            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
-        ):
-            raise ProviderError("request_too_large", usage=ProviderUsage(0, 0, 0))
+        harness.ensure_citation_repair_fits(payload)
         return self._generate(
             api_key=api_key,
             request=request,
@@ -209,34 +183,11 @@ class OpenAIEnhancementProvider:
         )
 
     def _source_first(self, *, api_key, request, timeout_seconds, stage):
-        from jsonschema import ValidationError
-
-        from ..source_first_prompts import PROVISION_INSTRUCTIONS, SYNOPSIS_INSTRUCTIONS
-        from ..source_first_prompts import REPAIR_INSTRUCTIONS as REPAIR
-        from ..source_first_transport import prepare_transport
-
-        instructions = {
-            "generation": PROVISION_INSTRUCTIONS,
-            "repair": REPAIR,
-            "synopsis": SYNOPSIS_INSTRUCTIONS,
-        }[stage]
-        transport = prepare_transport(
+        instructions, transport = harness.prepare_source_first(
             stage, request.request_envelope["source_first_payload"]
         )
         payload, schema = transport.payload, transport.schema
-        size = len(
-            json.dumps(
-                {"input": payload, "instructions": instructions, "schema": schema},
-                ensure_ascii=False,
-            ).encode()
-        )
-        if size > min(
-            120000,
-            100000,
-            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
-            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
-        ):
-            raise ProviderError("request_too_large", usage=ProviderUsage(0, 0, 0))
+        harness.ensure_source_first_fits(instructions, payload, schema)
         result = self._generate(
             api_key=api_key,
             request=request,
@@ -246,74 +197,7 @@ class OpenAIEnhancementProvider:
             schema=schema,
             schema_name=f"source_first_{stage}",
         )
-        try:
-            return replace(result, output=transport.decode(result.output))
-        except (ValidationError, KeyError, TypeError) as error:
-            # Only server-owned schema keys and validator names; never persist
-            # arbitrary exception messages or provider-supplied field names.
-            fields = {
-                "provisions",
-                "unit_id",
-                "status",
-                "summary",
-                "details",
-                "claims",
-                "unresolved_reason",
-                "actor",
-                "action",
-                "modality",
-                "money",
-                "conditions",
-                "exceptions",
-                "evidence_ids",
-                "amount",
-                "currency",
-                "measure",
-                "comparator",
-                "purpose",
-                "period",
-                "base",
-                "operator",
-                "children",
-                "text",
-                "condition_id",
-                "source_item_ids",
-                "explanations",
-                "unresolved_items",
-                "item_id",
-                "reason",
-                "explanation_ids",
-                "financial_patches",
-                "claim_index",
-            }
-            path = "/".join(
-                str(part) if type(part) is int or part in fields else "unknown"
-                for part in getattr(error, "absolute_path", ())
-            )
-            validator = getattr(error, "validator", None)
-            rule = (
-                validator
-                if isinstance(validator, str)
-                else (
-                    str(error)
-                    if str(error)
-                    in {
-                        "unrelated_source_item",
-                        "source_item_assignment",
-                        "condition_depth",
-                        "invalid_evidence_ids",
-                    }
-                    else "decode"
-                )
-            )
-            raise ProviderError(
-                "invalid_output",
-                validation_code="source_first_wire_schema",
-                validation_detail={"rule": rule, "path": path[:256]},
-                usage=result.usage,
-                response_id=result.response_id,
-                resolved_model=result.resolved_model,
-            ) from None
+        return harness.decode_source_first_output(transport, result)
 
     def generate_provisions(self, *, api_key, request, timeout_seconds):
         return self._source_first(
@@ -351,6 +235,7 @@ class OpenAIEnhancementProvider:
         schema_name,
     ):
         client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
+        max_output_tokens = harness.resolve_max_output_tokens(request, schema_name)
         try:
             response = client.responses.create(
                 model=request.requested_model,
@@ -361,17 +246,16 @@ class OpenAIEnhancementProvider:
                     separators=(",", ":"),
                     ensure_ascii=False,
                 ),
-                max_output_tokens=request.request_envelope["max_output_tokens"]
-                if getattr(request, "output_schema_version", None) == "1.4"
-                else min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
-                if schema_name.startswith("source_first_")
-                else settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+                max_output_tokens=max_output_tokens,
                 reasoning={"effort": request.reasoning_effort},
                 text={
                     "format": {
                         "type": "json_schema",
                         "name": schema_name,
-                        "schema": _wire_schema(schema),
+                        "schema": _wire_schema(
+                            schema,
+                            unsupported_keywords=self.capabilities.unsupported_schema_keywords,
+                        ),
                         "strict": True,
                     }
                 },
@@ -422,38 +306,17 @@ class OpenAIEnhancementProvider:
                 if _value(content, "type") == "output_text"
                 and isinstance(_value(content, "text"), str)
             )
-        try:
-            output = json.loads(output_text)
-        except (TypeError, ValueError) as error:
-            from ..diagnostics import json_parse_diagnostic
-            parser = json_parse_diagnostic(error, output_text)
-            parts = [
-                _value(content, "text", "")
-                for item in (_value(response, "output", []) or [])
-                for content in (_value(item, "content", []) or [])
-                if _value(content, "type") == "output_text"
-                and isinstance(_value(content, "text"), str)
-            ]
-            parser.update(output_text_parts=len(parts), output_text_part_length=sum(map(len, parts)))
-            raise ProviderError(
-                "invalid_output",
-                validation_code="provider_invalid_json",
-                validation_detail={"parser": parser},
-                usage=usage,
-                response_id=response_id,
-                resolved_model=resolved_model,
-            ) from None
-        if not isinstance(output, dict):
-            raise ProviderError(
-                "invalid_output",
-                validation_code="provider_output_not_object",
-                usage=usage,
-                response_id=response_id,
-                resolved_model=resolved_model,
-            )
-        return ProviderResult(
-            output=output,
+        parts = [
+            _value(content, "text", "")
+            for item in (_value(response, "output", []) or [])
+            for content in (_value(item, "content", []) or [])
+            if _value(content, "type") == "output_text"
+            and isinstance(_value(content, "text"), str)
+        ]
+        return harness.parse_json_output(
+            output_text,
             usage=usage,
             response_id=response_id,
             resolved_model=resolved_model,
+            text_parts=parts,
         )
