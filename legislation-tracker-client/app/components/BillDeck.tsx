@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React from "react";
 import { getMyTracking, trackBill, untrackBill, type BillListItem, type TrackingSummary } from "@/lib/api";
-import { dashboardSession, dashboardValue, peekDashboardValue } from "@/lib/dashboard-cache";
+import { dashboardSession, dashboardValue } from "@/lib/dashboard-cache";
 import BillDeckModal from "./BillDeckModal";
 import IngestionTelemetryLive from "./IngestionTelemetryLive";
 import RecommendationsPreview from "./RecommendationsPreview";
@@ -18,7 +18,7 @@ import { STAGES, stageFor } from "@/lib/bill-stage";
 export { topicColor, readable, dateLabel } from "./BillCard";
 
 export default function BillDeck() {
-  const [tracking, setTracking] = React.useState<TrackingSummary | null>(() => peekDashboardValue<TrackingSummary>("tracking") ?? null);
+  const [tracking, setTracking] = React.useState<TrackingSummary | null>(null);
   const [signedIn, setSignedIn] = React.useState(Boolean(tracking));
   const [isSuperuser, setIsSuperuser] = React.useState(false);
   const [ready, setReady] = React.useState(Boolean(tracking));

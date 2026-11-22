@@ -2,10 +2,12 @@
 
 import json
 from contextlib import contextmanager
+from zoneinfo import ZoneInfo
 
 from django.core.cache import cache
 from django.db import DatabaseError, connection, transaction
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.cache import patch_vary_headers
 from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +15,17 @@ from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 FALLBACK_TOPIC = "general-legislation"
+
+
+def activity_day():
+    return timezone.localdate(timezone=ZoneInfo("America/New_York"))
+
+
+def activity_revision():
+    from apps.changelog.models import BillActivityClock
+    return BillActivityClock.objects.values_list("committed_sequence", flat=True).first() or 0
+
+
 USABLE_TOPIC = ~Q(topic__slug=FALLBACK_TOPIC) & (
     Q(confidence_score__isnull=True)
     | (Q(confidence_score__gt=0) & Q(confidence_score__lt=float("inf")))

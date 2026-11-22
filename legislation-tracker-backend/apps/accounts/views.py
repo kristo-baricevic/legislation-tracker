@@ -175,12 +175,11 @@ class SessionStatusView(APIView):
         dashboard = {}
         if request.query_params.get("dashboard") == "1":
             from hashlib import sha256
-            from django.utils import timezone
             from django.db.models import Count, Max
-            from apps.changelog.models import BillActivityClock
+            from .recommendation_support import activity_day, activity_revision
             from apps.congress.current import current_congress
             from apps.research.models import ResearchRun, RepresentativeBiography, RepresentativePortrait
-            activity = BillActivityClock.objects.values_list("committed_sequence", flat=True).first() or 0
+            activity = activity_revision()
             follows = [model.objects.filter(user=request.user).aggregate(n=Count("id"), last=Max("id"))
                        for model in (TrackedBill, TrackedTopic, TrackedLegislator)]
             runs = ResearchRun.objects.aggregate(start=Max("created_at"), end=Max("finished_at"))
@@ -192,7 +191,7 @@ class SessionStatusView(APIView):
             # the user's collection unless it includes a followed legislator.
             tracked_activity = (activity if follows[2]["n"] else
                 TrackedBill.objects.filter(user=request.user).aggregate(last=Max("bill__last_activity_sequence"))["last"])
-            dashboard = {"dashboard_revision": stamp(activity, follows, timezone.localdate()),
+            dashboard = {"dashboard_revision": stamp(activity, follows, activity_day()),
                          "tracking_revision": stamp(tracked_activity, follows, research if follows[2]["n"] else None),
                          "research_revision": stamp(research), "current_congress": current_congress()}
         return Response(

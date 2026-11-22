@@ -19,7 +19,7 @@ import {
   untrackBill,
 } from "@/lib/api";
 import type { BillContractSummary } from "@/lib/contracts";
-import { peekDashboardValue } from "@/lib/dashboard-cache";
+import { dashboardSession, peekDashboardValue } from "@/lib/dashboard-cache";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
@@ -150,7 +150,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   useEffect(() => {
     let cancelled = false;
     setTrackingError(null);
-    void getSession()
+    // Check the server's tracking revision before trusting a warm dashboard
+    // snapshot. Follows may have changed on another device.
+    void (peekDashboardValue<TrackingSummary>("tracking") ? dashboardSession() : getSession())
       .then((session) => {
         if (cancelled) return;
         const signedIn = Boolean(session);

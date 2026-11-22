@@ -56,10 +56,12 @@ function formatAmount(item: LegalNlpFinancialItem): string | null {
   if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) {
     if (!item.amount) return null;
     const amount = Number(item.amount);
-    const bound = item.display_text.match(/\b(at least|not less than|up to|at most|no more than|not more than)\s+(\d+(?:\.\d+)?)\s*(?:percent\b|%)/i);
-    const prefix = bound && Number(bound[2]) === amount
-      ? (/least|less/i.test(bound[1]) ? "At least " : "Up to ")
-      : item.amount_type === "ceiling" ? "Up to " : "";
+    const mentions = item.display_text.matchAll(/\b(?:(at least|not less than|no less than|up to|at most|no more than|not more than)\s+)?(\d+(?:\.\d+)?)\s*(?:percent\b|%)/gi);
+    const bounds = new Set<string>();
+    for (const [, qualifier, value] of Array.from(mentions)) {
+      if (Number(value) === amount) bounds.add(!qualifier ? "" : /least|less/i.test(qualifier) ? "At least " : "Up to ");
+    }
+    const prefix = item.amount_type === "ceiling" ? "Up to " : bounds.size === 1 ? [...bounds][0] : "";
     return `${prefix}${amount}%`;
   }
   if (!item.amount) return null;

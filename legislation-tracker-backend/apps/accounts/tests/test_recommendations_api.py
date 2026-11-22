@@ -93,6 +93,18 @@ def test_database_failure_is_private_and_has_retry_hint():
     assert response["Retry-After"] == "5"
 
 
+def test_new_activity_changes_a_warm_recommendation_card_without_waiting_for_expiry():
+    from apps.changelog.models import BillActivityClock
+    api, user = client()
+    subject = topic()
+    TrackedTopic.objects.create(user=user, topic=subject)
+    candidate = bill(1234, topics=[subject])
+    assert api.get(PATH).json()["results"][0]["bill"]["title"] == candidate.title
+    Bill.objects.filter(pk=candidate.pk).update(title="Updated title")
+    BillActivityClock.objects.update_or_create(pk=1, defaults={"committed_sequence": 91234})
+    assert api.get(PATH).json()["results"][0]["bill"]["title"] == "Updated title"
+
+
 def test_expired_foreign_cursor_is_uniform_invalid():
     from django.core import signing
 

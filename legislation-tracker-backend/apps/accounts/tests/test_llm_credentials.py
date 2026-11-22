@@ -1,3 +1,4 @@
+import base64
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -158,7 +159,9 @@ def test_contextual_envelope_rejects_tampering_and_suffix_mismatch(
             decrypt_credential(credential)
 
         credential.key_suffix = "cret"
-        credential.encrypted_envelope = credential.encrypted_envelope[:-1] + "A"
+        token = bytearray(base64.urlsafe_b64decode(credential.encrypted_envelope))
+        token[-1] ^= 1
+        credential.encrypted_envelope = base64.urlsafe_b64encode(token).decode("ascii")
         credential.save(update_fields=["key_suffix", "encrypted_envelope"])
         with pytest.raises(CredentialDecryptionError, match="decrypt"):
             decrypt_credential(credential)

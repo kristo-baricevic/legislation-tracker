@@ -352,7 +352,8 @@ def test_catalog_recovers_after_cold_build_gate_is_released():
     rep = representative()
     capture = timezone.now()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v3:{DEFAULT_POLICY.version}:{day}"
+    from apps.accounts.recommendation_support import activity_revision
+    key = f"representative-topic-activity:v4:{DEFAULT_POLICY.version}:{day}:{activity_revision()}"
     assert cache.add(key + ":gate", "synthetic-other-builder", timeout=30)
     with pytest.raises(RecommendationError):
         representative_activity_catalog(captured_at=capture)

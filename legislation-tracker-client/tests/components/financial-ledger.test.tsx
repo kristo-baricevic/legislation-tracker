@@ -38,6 +38,16 @@ function item(id: string, financial_action: LegalNlpFinancialItem["financial_act
 describe("FinancialLedger", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it.each([
+    ["Up to 2% may fund administration; at least 20% must fund grants.", "At least 20%"],
+    ["At least 20% must fund grants; exactly 20% must fund training.", "20%"],
+  ])("keeps percentage bounds attached to the right amount: %s", async (display_text, label) => {
+    const record = { ...item("grant", "set_aside", "limit"), amount: "20", amount_type: "percentage" as const, currency: null, display_text };
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 1, next: null, previous: null, results: [record] });
+    render(<FinancialLedger contractId={12} totalCount={1} />);
+    expect(await screen.findByText(label, { exact: true })).toBeVisible();
+  });
+
   it("keeps raw funding accounts and section references in the source popover", async () => {
     const record = { ...item("technical-help", "limitation", "limit"), amount: "2", amount_type: "percentage" as const, currency: null,
       display_text: "Up to 2% of remaining funding may pay for technical help.",

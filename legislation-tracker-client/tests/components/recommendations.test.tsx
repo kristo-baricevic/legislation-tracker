@@ -26,6 +26,19 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
+  it("does not reveal cached private recommendations before confirming the returning session", async () => {
+    mockRequests(() => Response.json(page));
+    const view = render(<BillRecommendations onOpenBill={() => true} />);
+    await screen.findByRole("link", { name: bill.title });
+    view.unmount();
+    let release!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(done => { release = done; })));
+    render(<BillRecommendations onOpenBill={() => true} />);
+    expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument();
+    await act(async () => release(Response.json({ authenticated: true, user: { email: "reader@example.com" } })));
+    expect(await screen.findByRole("link", { name: bill.title })).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it.each([["D", "democrat"], ["R", "republican"]])("uses structured party %s for plain-name recommendation cards", async (party, theme) => {
     mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Jane Doe", bioguide_id: "A000001", score: .4, reasons: [], topic_activity_evidence: { ...activity, representative: { ...activity.representative, name: "Jane Doe", party } } }], activity_as_of: activity.captured_at }));
     render(<RepresentativeRecommendations renderName={member => <button>{member.name} profile</button>} />);

@@ -16,6 +16,8 @@ from apps.congress.topic_activity import (
 from .models import TrackedLegislator, TrackedTopic
 from .recommendation_support import (
     FALLBACK_TOPIC,
+    activity_day,
+    activity_revision,
     PrivateRecommendationView,
     RecommendationThrottle,
     read_snapshot,
@@ -217,7 +219,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             for item in topics
             if item["topic__slug"] != FALLBACK_TOPIC
         }
-        fingerprint = hashlib.sha256(json.dumps([topics, reps], sort_keys=True).encode()).hexdigest()
+        fingerprint = hashlib.sha256(json.dumps([topics, reps, activity_revision(), activity_day().isoformat()], sort_keys=True).encode()).hexdigest()
         key = f"representative-recommendations:v2:user:{request.user.pk}"
         cached = cache_call("get", key)
         if cached and cached["fingerprint"] == fingerprint:

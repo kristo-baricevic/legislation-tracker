@@ -1,14 +1,13 @@
 "use client";
 import React from "react";
 import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges, type PersonalizedRequestOptions, type PersonalizedScope } from "@/lib/api";
-import { dashboardSession, dashboardValue, forgetDashboardValue, peekDashboardValue } from "@/lib/dashboard-cache";
+import { dashboardSession, dashboardValue, forgetDashboardValue } from "@/lib/dashboard-cache";
 
 // Private, tab-local cache: never persisted to browser storage or shared across identities.
 
 export function useRecommendations<T>(key: string, load: (options: PersonalizedRequestOptions) => Promise<T>, onInvalidate?: () => void) {
   const [state, setState] = React.useState<{ data: T | null; scope: PersonalizedScope | null; loading: boolean; signedIn: boolean; error: string }>(() => {
-    const data = peekDashboardValue<T>(key) ?? null;
-    return { data, scope: data ? capturePersonalizedScope() : null, loading: !data, signedIn: !!data, error: "" };
+    return { data: null, scope: null, loading: true, signedIn: false, error: "" };
   });
   const [revision, reload] = React.useReducer(value => value + 1, 0);
   const controller = React.useRef<AbortController | null>(null);
