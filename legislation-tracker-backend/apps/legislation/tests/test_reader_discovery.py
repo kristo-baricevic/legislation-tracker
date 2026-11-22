@@ -167,4 +167,3 @@ def test_xml_review_batches_cover_every_section_and_pack_small_ones():
     import pytest
     with pytest.raises(ValueError):
         xml_batch_coverage(text, sections, scans[1:])
-

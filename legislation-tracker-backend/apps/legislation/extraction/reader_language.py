@@ -83,8 +83,10 @@ def _plain(text):
 def concise_rule(line):
     """Reader projection only: keep the complete legal statement and evidence unchanged."""
     original = explain_line(line)
-    if line.get("kind") == "amendment" or re.search(r'["“”]', original):
+    if line.get("kind") == "amendment":
         return original
+    if re.search(r'["“”]', original):
+        return _plain(original) if not re.search(r'["“”]', re.sub(r'(“[^”]*”|"[^"]*")', '', original)) else original
     original = re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "-", original)
     text = _plain(" ".join(original.split()))
     text = re.sub(r"^(Source text \(not simplified\): )?(?:[\w ,’-]+\.)--(?=\w)", r"\1", text)

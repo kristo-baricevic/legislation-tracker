@@ -10,7 +10,7 @@ def test_xml_sections_own_quoted_amendments_not_contents_or_adjacent_headers(bod
     from apps.legislation.enhancements.xml_sections import xml_boundaries
     xml = f"""<bill><{body}><title><enum>I</enum><toc><toc-entry>Sec. 1. Grants</toc-entry></toc>
     <section id="a"><enum>1.</enum><header>Grants</header><text>Pay $5.</text>
-    <quoted-block><section id="quoted"><enum>99.</enum><text>Pay $4.</text></section></quoted-block></section>
+    <quoted-block><amendment-body><section id="quoted"><enum>99.</enum><text>Pay $4.</text></section></amendment-body></quoted-block></section>
     </title><title><enum>II</enum><section id="b"><enum>1.</enum><header>Dates</header>
     <text>Starts in May.</text></section></title></{body}><attestation>Signed</attestation></bill>""".encode()
     text = extract_document_text(xml, "application/xml", "bill.xml")
@@ -45,3 +45,17 @@ def test_older_flattened_legis_body_text_keeps_its_existing_citation_offsets():
     raw = b"<bill><legis-body><section id='s'><enum>12.</enum><header>Grants</header><text>Pay $5.</text></section></legis-body></bill>"
     text = "12.\nGrants\nPay $5."
     assert xml_boundaries(raw, text) == (("s", 0, len(text), "Sec. 12", "Grants"),)
+
+
+def test_missing_object_blocks_preflight_without_a_server_error(monkeypatch):
+    from types import SimpleNamespace
+    from botocore.exceptions import ClientError
+    from apps.legislation.enhancements import xml_sections
+    from apps.legislation.enhancements.source_packet import PreflightUnavailable
+    def missing(*args):
+        raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    monkeypatch.setattr(xml_sections.default_storage, "open", missing)
+    doc = SimpleNamespace(object_storage_key="bill.xml", file_size_bytes=100)
+    with pytest.raises(PreflightUnavailable) as error:
+        xml_sections.stored_xml_sections(doc, "bill")
+    assert error.value.reason == "source_unavailable"

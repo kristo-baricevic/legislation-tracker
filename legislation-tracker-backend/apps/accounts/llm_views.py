@@ -150,7 +150,8 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                     provider=provider,
                     api_key=api_key,
                     enabled=(
-                        requested_enabled if requested_enabled is not None else True
+                        requested_enabled if requested_enabled is not None else
+                        credential.enabled if credential is not None else True
                     ),
                 )
                 credential.selected_model = model

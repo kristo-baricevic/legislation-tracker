@@ -58,9 +58,11 @@ def test_model_selection_persists_and_never_sends_old_key_to_another_provider(au
         assert {"provider": "openrouter", "model": "openrouter/free", "free": True} in catalog
         authenticated_client.put(url, {"api_key": "original-secret"}, format="json")
         selection = {"provider": "openrouter", "requested_model": "openrouter/free"}
+        authenticated_client.put(url, {"enabled": False}, format="json")
         assert authenticated_client.put(url, selection, format="json").status_code == 400
         assert authenticated_client.put(url, {**selection, "api_key": "router-secret"}, format="json").status_code == 200
         saved = authenticated_client.get(url).json()
+        assert saved["enabled"] is False
         assert authenticated_client.put(url, {"api_key": "old-tab-secret"}, format="json").status_code == 409
         assert authenticated_client.get(url).json() == saved
         assert (saved["provider"], saved["requested_model"], saved["key_suffix"]) == ("openrouter", "openrouter/free", "cret")

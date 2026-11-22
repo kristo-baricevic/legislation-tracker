@@ -2,6 +2,7 @@
 from hashlib import sha256
 from xml.parsers import expat
 
+from botocore.exceptions import BotoCoreError, ClientError
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from django.conf import settings
@@ -141,6 +142,7 @@ def stored_xml_sections(document, text):
         if document.content_hash and sha256(raw).hexdigest() != document.content_hash:
             raise ValueError("xml_hash_mismatch")
         return xml_boundaries(raw, text)
-    except (ValueError, KeyError, ElementTree.ParseError, DefusedXmlException, OSError) as exc:
+    except (ValueError, KeyError, ElementTree.ParseError, DefusedXmlException, OSError,
+            BotoCoreError, ClientError) as exc:
         raise PreflightUnavailable("Stored XML could not be aligned with the bill text",
                                    reason="source_unavailable") from exc

@@ -393,7 +393,9 @@ def _render_congress_xml_element(
         elif child_tag == "quoted-block":
             lines.append(_QUOTED_BLOCK_START)
             for quoted_child in child:
-                if _xml_tag(quoted_child) in _XML_STRUCTURAL_TAGS:
+                if _xml_tag(quoted_child) in _XML_STRUCTURAL_TAGS or _xml_tag(quoted_child) in {
+                    "amendment-body", "engrossed-amendment-body", "legis-body"
+                }:
                     _render_congress_xml_element(quoted_child, lines, observe)
                 elif _xml_tag(quoted_child) in _XML_TEXT_TAGS:
                     value = _normalized_inline_text(quoted_child)
