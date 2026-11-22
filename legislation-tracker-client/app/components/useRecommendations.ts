@@ -1,16 +1,19 @@
 "use client";
 import React from "react";
-import { capturePersonalizedScope, getSession, isPersonalizedScopeCurrent, subscribePersonalizedChanges, type PersonalizedRequestOptions, type PersonalizedScope } from "@/lib/api";
+import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges, type PersonalizedRequestOptions, type PersonalizedScope } from "@/lib/api";
+import { dashboardSession, dashboardValue, forgetDashboardValue, peekDashboardValue } from "@/lib/dashboard-cache";
 
 // Private, tab-local cache: never persisted to browser storage or shared across identities.
-const results = new WeakMap<object, { data: unknown; scope: PersonalizedScope; expires: number }>();
-const CACHE_MS = 5 * 60 * 1000;
 
-export function useRecommendations<T>(load: (options: PersonalizedRequestOptions) => Promise<T>, onInvalidate?: () => void) {
-  const [state, setState] = React.useState<{ data: T | null; scope: PersonalizedScope | null; loading: boolean; signedIn: boolean; error: string }>({ data: null, scope: null, loading: true, signedIn: false, error: "" });
+export function useRecommendations<T>(key: string, load: (options: PersonalizedRequestOptions) => Promise<T>, onInvalidate?: () => void) {
+  const [state, setState] = React.useState<{ data: T | null; scope: PersonalizedScope | null; loading: boolean; signedIn: boolean; error: string }>(() => {
+    const data = peekDashboardValue<T>(key) ?? null;
+    return { data, scope: data ? capturePersonalizedScope() : null, loading: !data, signedIn: !!data, error: "" };
+  });
   const [revision, reload] = React.useReducer(value => value + 1, 0);
   const controller = React.useRef<AbortController | null>(null);
-  React.useEffect(() => subscribePersonalizedChanges(() => {
+  React.useEffect(() => subscribePersonalizedChanges(({ kind }) => {
+    if (kind === "revalidate") { reload(); return; }
     controller.current?.abort();
     onInvalidate?.();
     setState({ data: null, scope: null, loading: true, signedIn: false, error: "" });
@@ -22,17 +25,11 @@ export function useRecommendations<T>(load: (options: PersonalizedRequestOptions
     const initial = capturePersonalizedScope();
     void (async () => {
       try {
-        const session = await getSession({ scope: initial, signal: abort.signal });
+        const session = await dashboardSession();
         if (abort.signal.aborted || !isPersonalizedScopeCurrent(initial)) return;
         if (!session) { setState({ data: null, scope: initial, loading: false, signedIn: false, error: "" }); return; }
-        const cached = results.get(load);
-        if (cached && cached.expires > Date.now() && isPersonalizedScopeCurrent(cached.scope)) {
-          setState({ data: cached.data as T, scope: initial, loading: false, signedIn: true, error: "" });
-          return;
-        }
-        const data = await load({ scope: initial, signal: abort.signal });
+        const data = await dashboardValue(key, () => load({ scope: initial }));
         if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) {
-          results.set(load, { data, scope: initial, expires: Date.now() + CACHE_MS });
           setState({ data, scope: initial, loading: false, signedIn: true, error: "" });
         }
       } catch (error) {
@@ -40,9 +37,9 @@ export function useRecommendations<T>(load: (options: PersonalizedRequestOptions
       }
     })();
     return () => abort.abort();
-  }, [load, revision]);
+  }, [key, load, revision]);
   const retry = () => {
-    results.delete(load);
+    forgetDashboardValue(key);
     controller.current?.abort();
     onInvalidate?.();
     setState({ data: null, scope: null, loading: true, signedIn: false, error: "" });

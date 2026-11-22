@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getSession, logout } from "../../lib/api";
+import { dashboardSession } from "@/lib/dashboard-cache";
 
 export default function AuthNav() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function AuthNav() {
 
   useEffect(() => {
     let active = true;
-    getSession()
+    (pathname === "/" ? dashboardSession() : getSession())
       .then((session) => {
         if (active) setHasSession(Boolean(session));
       })

@@ -18,6 +18,15 @@ async function fixtures(page: Page, empty = false) {
     else if (path === "/api/tracking/bills/") { following = true; response = { id: 1, bill, created_at: "2025-01-01" }; }
     else if (path === "/api/representatives/") response = { count: 1, next: null, previous: null, results: [{ id: 1, name: "Test Representative", state: "NY" }] };
     else if (path === "/api/bills/") response = { count: 2, next: null, previous: null, results: [bill, other] };
+    else if (path === "/api/bills/1/changes/") response = { results: [], stream_head_cursor: null, page_end_cursor: null,
+      older_cursor: null, unread_count: 0, personalized: true, has_more_newer: false, initial_window_truncated: false };
+    else if (path === "/api/bills/1/votes/" || path === "/api/bills/1/contracts/") response = { count: 0, results: [], next: null, previous: null };
+    else if (path === "/api/bills/1/" && url.searchParams.has("contract_view")) response = {
+      ...bill, documents, summary_preview: "Raises the deduction limit.", summary_has_more: false,
+      summary_source: "source_metadata", summary_version_code: "Introduced", summary_action_date: null,
+      summary_last_updated_at: null, processing_status: "complete", sponsor: 1, source_api_id: null,
+      congress_gov_url: null, latest_contract: null, created_at: "2025-01-01", updated_at: "2025-01-01"
+    };
     else if (path === "/api/bills/1/") response = { ...bill, documents, summary: "This bill increases the limitation on the deduction for state and local taxes.", summary_source: "source_metadata", summary_version_code: "Introduced", latest_contract: null };
     else if (path === "/api/bills/1/comparisons/documents/") response = { before: Number(url.searchParams.get("before")), after: Number(url.searchParams.get("after")), sections: [{ section_key: `section-for-version-${url.searchParams.get("after")}`, operation: "modified" }], total_change_count: 1, returned_change_count: 1, truncated: false, fallback: false, truncation_reasons: [] };
     else if (path === "/api/bills/filter-options/") response = { jurisdictions: ["federal"], current_congress: 119 };
@@ -28,6 +37,53 @@ async function fixtures(page: Page, empty = false) {
     await route.fulfill({ json: response });
   });
 }
+
+test("dashboard to bill and back reuses unchanged cards without loading the directory", async ({ page }) => {
+  const paths: string[] = [];
+  page.on("request", req => { if (req.method() === "GET") paths.push(new URL(req.url()).pathname); });
+  await fixtures(page);
+  await page.route("**/api/tracking/recommendations/**", route => route.fulfill({json: {
+    algorithm: "fixture", generated_at: "2026-11-21T12:00:00Z", count: 1, next_cursor: null,
+    unsupported_follow_types: [], candidate_pool_truncated: false, ranking_limit_reached: false,
+    empty_reason: null, results: [{bill: other, score: 1, reasons: []}]
+  }}));
+  const member = { id: 5, name: "Test Senator", bioguide_id: "T000005", chamber: "senate", state: "NY" };
+  await page.route("**/api/tracking/representative-recommendations/", route => route.fulfill({json: {
+    results: [{representative_id: 5, ...member, reasons: [], topic_activity_evidence: {
+      representative: member, channels: {sponsor: {topics: []}, active_cosponsor: {topics: []}}
+    }}]
+  }}));
+  await page.route("**/api/representatives/5/card/", route => route.fulfill({json: {
+    biography: {text: "Represents New York."}, portrait: null, latest_bill: null
+  }}));
+  await page.route("**/api/representatives/5/research/**", route => route.fulfill({json: {
+    status: "not_started", period: 2026, run: null, portrait: null, biography: null, snapshot: null
+  }}));
+  await page.goto("/");
+  const title = page.getByRole("button", { name: bill.title, exact: true });
+  await expect(title).toBeVisible();
+  await expect(page.getByText("Represents New York.")).toBeVisible();
+  await expect(page.getByRole("link", {name: other.title})).toBeVisible();
+  expect(paths).not.toContain("/api/representatives/");
+  expect(paths).toContain("/api/tracking/");
+  await title.click();
+  await page.getByRole("dialog").getByRole("link", { name: bill.title }).click();
+  await expect(page).toHaveURL(/\/bills\/1$/);
+  await expect(page.getByRole("heading", { name: "H.R. 1589 · Congress 119" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tracked bill", exact: true })).toBeVisible();
+  expect(paths.filter(p => p === "/api/tracking/")).toHaveLength(1);
+  paths.length = 0;
+  const checked = page.waitForResponse(r => new URL(r.url()).pathname === "/api/auth/session/current/" && r.status() === 200);
+  await page.goBack();
+  await checked;
+  await expect(title).toBeVisible();
+  await expect(page.getByText("Represents New York.")).toBeVisible();
+  await expect(page.getByRole("link", {name: other.title})).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh bill recommendations" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Refresh representative recommendations" })).toBeEnabled();
+  expect(paths.filter(p => p.startsWith("/api/tracking/") || p.startsWith("/api/representatives/") || p === "/api/bills/filter-options/")).toEqual([]);
+  expect(paths.filter(p => p === "/api/auth/session/current/")).toHaveLength(1);
+});
 
 test("readers see the live panel without samples or automatic ingestion requests", async ({ page }) => {
   const writes: string[] = [];

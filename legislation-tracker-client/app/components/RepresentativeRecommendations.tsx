@@ -20,7 +20,7 @@ export default function RepresentativeRecommendations({ renderName }: Representa
     if (restoreFocus.current || section.current?.contains(document.activeElement)) heading.current?.focus();
     restoreFocus.current = false;
   }, []);
-  const state = useRecommendations(getRepresentativeRecommendations, invalidate);
+  const state = useRecommendations("rep-recommendations", getRepresentativeRecommendations, invalidate);
   const [pending, setPending] = React.useState<number | null>(null);
   const [error, setError] = React.useState<{ text: string; session: number; interest: number } | null>(null);
   async function follow(id: number) {

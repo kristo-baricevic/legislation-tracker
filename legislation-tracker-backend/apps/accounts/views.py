@@ -172,10 +172,34 @@ class SessionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
+        dashboard = {}
+        if request.query_params.get("dashboard") == "1":
+            from hashlib import sha256
+            from django.utils import timezone
+            from django.db.models import Count, Max
+            from apps.changelog.models import BillActivityClock
+            from apps.congress.current import current_congress
+            from apps.research.models import ResearchRun, RepresentativeBiography, RepresentativePortrait
+            activity = BillActivityClock.objects.values_list("committed_sequence", flat=True).first() or 0
+            follows = [model.objects.filter(user=request.user).aggregate(n=Count("id"), last=Max("id"))
+                       for model in (TrackedBill, TrackedTopic, TrackedLegislator)]
+            runs = ResearchRun.objects.aggregate(start=Max("created_at"), end=Max("finished_at"))
+            research = [*runs.values(), *(m.objects.order_by("-pk").values_list("pk", flat=True).first()
+                                         for m in (RepresentativeBiography, RepresentativePortrait))]
+            def stamp(*parts):
+                return sha256(repr(parts).encode()).hexdigest()[:24]
+            # Activity elsewhere can affect discovery, but needn't invalidate
+            # the user's collection unless it includes a followed legislator.
+            tracked_activity = (activity if follows[2]["n"] else
+                TrackedBill.objects.filter(user=request.user).aggregate(last=Max("bill__last_activity_sequence"))["last"])
+            dashboard = {"dashboard_revision": stamp(activity, follows, timezone.localdate()),
+                         "tracking_revision": stamp(tracked_activity, follows, research if follows[2]["n"] else None),
+                         "research_revision": stamp(research), "current_congress": current_congress()}
         return Response(
             {
                 "authenticated": True,
                 "user": {"email": request.user.email, "is_superuser": request.user.is_superuser},
+                **dashboard,
             }
         )
 

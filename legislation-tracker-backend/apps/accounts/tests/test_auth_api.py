@@ -53,6 +53,35 @@ def test_session_reports_superuser_status_not_staff_status(superuser):
     assert response.json()["user"]["is_superuser"] is superuser
 
 
+@pytest.mark.django_db
+def test_dashboard_revisions_change_only_for_relevant_data():
+    from apps.changelog.models import BillActivityClock
+    from apps.accounts.models import TrackedBill
+    from apps.legislation.models import Bill
+    from apps.congress.models import Representative
+    from apps.research.models import ResearchRun
+    user = create_user()
+    client = APIClient()
+    client.force_authenticate(user)
+    def read():
+        res = client.get("/api/auth/session/current/?dashboard=1")
+        assert res.status_code == 200
+        return res.json()
+    first = read()
+    assert read() == first
+    BillActivityClock.objects.update_or_create(pk=1, defaults={"committed_sequence": 1337})
+    changed = read()
+    assert changed["dashboard_revision"] != first["dashboard_revision"]
+    assert changed["tracking_revision"] == first["tracking_revision"]
+    rep = Representative.objects.create(bioguide_id="T000001", name="Test Member", state="NY")
+    bill = Bill.objects.create(bill_number="HR 1", session=119, jurisdiction="federal", sponsor=rep)
+    TrackedBill.objects.create(user=user, bill=bill)
+    assert read()["tracking_revision"] != changed["tracking_revision"]
+    assert client.get("/api/tracking/").json()["bills"][0]["bill"]["sponsor_state"] == "NY"
+    ResearchRun.objects.create(representative=rep, period=2026)
+    assert read()["research_revision"] != changed["research_revision"]
+
+
 def bootstrap_csrf(client):
     response = client.get("/api/auth/csrf/")
     assert response.status_code == 200

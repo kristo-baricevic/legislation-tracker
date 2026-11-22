@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getResearch, startResearch, getContributors, type Research, type Contributors, type FinanceProgress } from "@/lib/representative-research";
+import { dashboardValue, useDashboardRepVersion } from "@/lib/dashboard-cache";
 import styles from "./representative-research.module.css";
 import ContributorExplorer from "./ContributorExplorer";
 import CardTooltip from "./CardTooltip";
@@ -20,13 +21,15 @@ function SourceLink({ url, children, "aria-describedby": description }: { url: s
   return /^https:\/\//.test(url) ? <a href={url} aria-describedby={description} target="_blank" rel="noreferrer">{children}</a> : <span aria-describedby={description}>{children}</span>;
 }
 
-type ResearchProps = { representativeId: number; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
+type ResearchProps = { representativeId: number; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; dashboardCard?: boolean; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
 export default function RepresentativeResearch({ representativeId, compact = false, ...props }: ResearchProps) {
   return <ResearchPanel key={representativeId} representativeId={representativeId} compact={compact} {...props} />;
 }
 
-function ResearchPanel({ representativeId, compact, profileView = false, financeView = false, modalView = false, cardName, onResearch, onPortrait }: ResearchProps) {
+function ResearchPanel({ representativeId, compact, profileView = false, financeView = false, modalView = false, cardName, dashboardCard = false, onResearch, onPortrait }: ResearchProps) {
   const year = new Date().getFullYear();
+  const version = useDashboardRepVersion();
+  const cardVersion = dashboardCard ? version : 0;
   const [period, setPeriod] = useState(year + year % 2);
   const [availablePeriods, setAvailablePeriods] = useState<number[]>([]);
   const [allYears, setAllYears] = useState(false);
@@ -59,7 +62,10 @@ function ResearchPanel({ representativeId, compact, profileView = false, finance
     let timer: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       try {
-        const result = await getResearch(representativeId, period, controller.signal);
+        const result = dashboardCard
+          ? await dashboardValue(`rep:${representativeId}:research:${period}`, () => getResearch(representativeId, period),
+              value => value.status !== "queued" && value.status !== "running")
+          : await getResearch(representativeId, period, controller.signal);
         if (controller.signal.aborted) return;
         const periods = result.available_periods ?? [];
         setAvailablePeriods(periods);
@@ -80,7 +86,7 @@ function ResearchPanel({ representativeId, compact, profileView = false, finance
     };
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [representativeId, period, reload, cardName, busy]);
+  }, [representativeId, period, reload, cardName, dashboardCard, cardVersion, busy]);
   async function research() {
     if (busy) return;
     if (active) { setError(""); setReload(n => n + 1); return; }

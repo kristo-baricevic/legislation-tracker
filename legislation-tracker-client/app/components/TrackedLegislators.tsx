@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { dashboardValue, useDashboardRepVersion } from "@/lib/dashboard-cache";
 import Link from "next/link";
 import { getApiBase, getRepresentativeCard, type TrackedLegislatorItem } from "@/lib/api";
 import { getRepresentativeTopicActivity, type RepresentativeTopicActivity } from "@/lib/recommendations";
@@ -26,13 +27,14 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
   const [loadedActivity, setLoadedActivity] = React.useState<RepresentativeTopicActivity | null>(null);
   const [loadError, setLoadError] = React.useState(false);
   const [retry, setRetry] = React.useState(0);
+  const version = useDashboardRepVersion();
   React.useEffect(() => {
     const controller = new AbortController();
     setLoadError(false);
-    if (!facts) void getRepresentativeCard(rep.id, controller.signal).then(value => { if (!controller.signal.aborted) setLoadedFacts(value); }).catch(() => { if (!controller.signal.aborted) setLoadError(true); });
-    if (!activity) void getRepresentativeTopicActivity(rep.id, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setLoadedActivity(value); }).catch(() => { if (!controller.signal.aborted) setLoadError(true); });
+    if (!facts) void dashboardValue(`rep:${rep.id}:card`, () => getRepresentativeCard(rep.id)).then(value => { if (!controller.signal.aborted) setLoadedFacts(value); }).catch(() => { if (!controller.signal.aborted) setLoadError(true); });
+    if (!activity) void dashboardValue(`rep:${rep.id}:activity`, () => getRepresentativeTopicActivity(rep.id)).then(value => { if (!controller.signal.aborted) setLoadedActivity(value); }).catch(() => { if (!controller.signal.aborted) setLoadError(true); });
     return () => controller.abort();
-  }, [rep.id, facts, activity, retry]);
+  }, [rep.id, facts, activity, retry, version]);
   const cardFacts = facts ?? loadedFacts;
   const topics = topRepresentativeTopics(activity ?? loadedActivity);
   const plainName = rep.name.replace(/^(Rep\.|Sen\.|Del\.|Resident Commissioner)\s*/i, "").replace(/\s*\[[^\]]*\]\s*$/, "");
@@ -61,7 +63,7 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
     {loadError && <button className={styles.retry} onClick={() => setRetry(value => value + 1)}>Retry card details</button>}
     <footer className={styles.cardFooter}>
       {actions && <div className={styles.cardActions}>{actions}</div>}
-      <RepresentativeResearch representativeId={rep.id} cardName={name} onResearch={setResearch} />
+      <RepresentativeResearch representativeId={rep.id} cardName={name} dashboardCard onResearch={setResearch} />
     </footer>
     </div>
   </article>;

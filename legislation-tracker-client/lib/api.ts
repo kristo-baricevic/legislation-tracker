@@ -106,6 +106,10 @@ async function responseError(res: Response, fallback: string): Promise<ApiError>
 }
 
 export interface AuthSession {
+  dashboard_revision?: string;
+  tracking_revision?: string;
+  research_revision?: string;
+  current_congress?: number;
   authenticated: true;
   user: {
     email: string;
@@ -199,20 +203,20 @@ async function tryRefreshSession(options: PersonalizedRequestOptions & { scope: 
   return result;
 }
 
-export async function getSession(retriedOrOptions: boolean | PersonalizedRequestOptions = false): Promise<AuthSession | null> {
+export async function getSession(retriedOrOptions: boolean | PersonalizedRequestOptions = false, dashboard = false): Promise<AuthSession | null> {
   if (sessionTransitionInProgress()) return null;
   const options = typeof retriedOrOptions === "boolean" ? {} : retriedOrOptions;
   const scope = options.scope ?? capturePersonalizedScope();
   const retried = typeof retriedOrOptions === "boolean" && retriedOrOptions;
   assertPersonalizedScope(scope, options.signal);
   const base = getApiBase();
-  const res = await fetch(`${base}/api/auth/session/current/`, {
+  const res = await fetch(`${base}/api/auth/session/current/${dashboard ? "?dashboard=1" : ""}`, {
     credentials: "include",
     ...(options.signal ? { signal: options.signal } : {}),
   });
   assertPersonalizedScope(scope, options.signal);
   if (res.status === 401 && !retried && (await tryRefreshSession({ ...options, scope }))) {
-    return getSessionResponse({ ...options, scope });
+    return getSessionResponse({ ...options, scope }, dashboard);
   }
   if (res.status === 401 || res.status === 403) { markSessionLost(); return null; }
   if (!res.ok) throw await responseError(res, "Failed to load session");
@@ -222,9 +226,9 @@ export async function getSession(retriedOrOptions: boolean | PersonalizedRequest
   return result;
 }
 
-async function getSessionResponse(options: PersonalizedRequestOptions & { scope: PersonalizedScope }): Promise<AuthSession | null> {
+async function getSessionResponse(options: PersonalizedRequestOptions & { scope: PersonalizedScope }, dashboard: boolean): Promise<AuthSession | null> {
   assertPersonalizedScope(options.scope, options.signal);
-  const response = await fetch(`${getApiBase()}/api/auth/session/current/`, { credentials: "include", ...(options.signal ? { signal: options.signal } : {}) });
+  const response = await fetch(`${getApiBase()}/api/auth/session/current/${dashboard ? "?dashboard=1" : ""}`, { credentials: "include", ...(options.signal ? { signal: options.signal } : {}) });
   assertPersonalizedScope(options.scope, options.signal);
   if (response.status === 401 || response.status === 403) { markSessionLost(); return null; }
   if (!response.ok) throw await responseError(response, "Failed to load session");
@@ -337,6 +341,7 @@ export interface BillListItem {
   status: string;
   sponsor_name: string | null;
   sponsor_id?: number | null;
+  sponsor_state?: string | null;
   sponsor_bioguide_id?: string | null;
   congress_gov_url?: string | null;
   introduced_at: string | null;

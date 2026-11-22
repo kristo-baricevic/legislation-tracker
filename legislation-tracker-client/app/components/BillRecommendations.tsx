@@ -42,7 +42,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
     onDismissBill?.();
     if (ownsFocus) heading.current?.focus();
   }, [onDismissBill]);
-  const state = useRecommendations(getBillRecommendationsFirst, invalidate);
+  const state = useRecommendations("bill-recommendations", getBillRecommendationsFirst, invalidate);
   React.useEffect(() => () => { onDismissBill?.(); }, [onDismissBill]);
   const [pending, setPending] = React.useState<{ id: number; generation: string } | null>(null);
   const [error, setError] = React.useState<{ text: string; generation: string } | null>(null);

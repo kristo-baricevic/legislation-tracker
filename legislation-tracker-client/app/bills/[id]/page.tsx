@@ -13,11 +13,13 @@ import {
   getVotes,
   trackBill,
   type BillDetailSummary,
+  type TrackingSummary,
   type VoteDetailItem,
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
 import type { BillContractSummary } from "@/lib/contracts";
+import { peekDashboardValue } from "@/lib/dashboard-cache";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import BillEnhancementPanel from "./bill-enhancement-panel";
@@ -154,7 +156,8 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         const signedIn = Boolean(session);
         setHasAccount(signedIn);
         if (!signedIn || Number.isNaN(id)) return;
-        void getMyTracking()
+        const saved = peekDashboardValue<TrackingSummary>("tracking");
+        void (saved ? Promise.resolve(saved) : getMyTracking())
           .then((summary) => {
             if (!cancelled) {
               setIsTracked(summary.bills.some((item) => item.bill.id === id));

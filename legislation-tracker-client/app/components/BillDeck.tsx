@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import React from "react";
-import { getBillFilterOptions, getMyTracking, getSession, getAllCurrentRepresentatives, trackBill, untrackBill, type BillListItem, type TrackingSummary, type RepresentativeItem } from "@/lib/api";
+import { getMyTracking, trackBill, untrackBill, type BillListItem, type TrackingSummary } from "@/lib/api";
+import { dashboardSession, dashboardValue, peekDashboardValue } from "@/lib/dashboard-cache";
 import BillDeckModal from "./BillDeckModal";
 import IngestionTelemetryLive from "./IngestionTelemetryLive";
 import RecommendationsPreview from "./RecommendationsPreview";
@@ -17,15 +18,13 @@ import { STAGES, stageFor } from "@/lib/bill-stage";
 export { topicColor, readable, dateLabel } from "./BillCard";
 
 export default function BillDeck() {
-  const [tracking, setTracking] = React.useState<TrackingSummary | null>(null);
-  const [signedIn, setSignedIn] = React.useState(false);
+  const [tracking, setTracking] = React.useState<TrackingSummary | null>(() => peekDashboardValue<TrackingSummary>("tracking") ?? null);
+  const [signedIn, setSignedIn] = React.useState(Boolean(tracking));
   const [isSuperuser, setIsSuperuser] = React.useState(false);
-  const [ready, setReady] = React.useState(false);
+  const [ready, setReady] = React.useState(Boolean(tracking));
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
-  const [representatives, setRepresentatives] = React.useState<RepresentativeItem[]>([]);
   const [currentCongress, setCurrentCongress] = React.useState<number | null>(null);
-  const [repError, setRepError] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [topic, setTopic] = React.useState("");
   const [sponsor, setSponsor] = React.useState("");
@@ -41,31 +40,31 @@ export default function BillDeck() {
   const [pending, setPending] = React.useState<number | null>(null);
   const [followError, setFollowError] = React.useState("");
 
-  React.useEffect(() => subscribePersonalizedChanges(() => {
+  React.useEffect(() => subscribePersonalizedChanges(({ kind }) => {
+    if (kind === "revalidate") { setAttempt(value => value + 1); return; }
     setTracking(null); setSignedIn(false); setIsSuperuser(false); setReady(false); setError("");
-    if (recommendationOwnsBill.current) setSelected(null);
+    setSelected(null);
     setPending(null); setFollowError("");
     setAttempt(value => value + 1);
   }), []);
 
   React.useEffect(() => {
     let live = true;
-    const abort = new AbortController();
     const scope = capturePersonalizedScope();
     void (async () => {
       try {
-        const session = await getSession({ scope, signal: abort.signal });
+        const session = await dashboardSession();
         if (!live || !isPersonalizedScopeCurrent(scope)) return;
         setSignedIn(Boolean(session));
+        if (!session) setTracking(null);
         setIsSuperuser(session?.user.is_superuser === true);
-        if (session) { const result = await getMyTracking({ scope, signal: abort.signal }); if (live && isPersonalizedScopeCurrent(scope)) setTracking(result); }
+        setCurrentCongress(session?.current_congress ?? null);
+        if (session) { const result = await dashboardValue("tracking", () => getMyTracking({ scope })); if (live && isPersonalizedScopeCurrent(scope)) setTracking(result); }
         if (live) setError("");
-      } catch { if (live && isPersonalizedScopeCurrent(scope)) setError("Your followed bills could not be loaded. Retry to reconnect."); }
+      } catch { if (live && isPersonalizedScopeCurrent(scope)) { setTracking(null); setIsSuperuser(false); setError("Your followed bills could not be loaded. Retry to reconnect."); } }
       finally { if (live && isPersonalizedScopeCurrent(scope)) setReady(true); }
     })();
-    void getBillFilterOptions().then(options => { if (live && Number.isInteger(options.current_congress) && options.current_congress > 0) setCurrentCongress(options.current_congress); }).catch(() => { if (live) setCurrentCongress(null); });
-    void getAllCurrentRepresentatives().then(result => { if (live) { setRepresentatives(result); setRepError(""); } }).catch(() => { if (live) setRepError("Sponsor state filters are unavailable until the representative directory reconnects."); });
-    return () => { live = false; abort.abort(); };
+    return () => { live = false; };
   }, [attempt]);
 
   const followed = new Set(tracking?.bills.map(item => item.bill.id));
@@ -78,7 +77,7 @@ export default function BillDeck() {
   const presentStages = new Set(source.map(bill => stageFor(bill.status)?.key));
   const stageOptions = STAGES.filter(item => presentStages.has(item.key));
   const statuses = [...new Set(source.map(bill => bill.status).filter(value => value && !stageFor(value)))].sort();
-  const stateBySponsor = new Map(representatives.map(rep => [rep.id, rep.state]));
+  const stateBySponsor = new Map(source.map(bill => [bill.sponsor_id ?? -1, bill.sponsor_state ?? undefined]));
   const states = [...new Set(source.map(bill => stateBySponsor.get(bill.sponsor_id ?? -1)).filter((value): value is string => Boolean(value)))].sort();
   const visible = source.filter(bill => (!query || `${bill.bill_number} ${bill.title}`.toLowerCase().includes(query.toLowerCase())) && (!topic || bill.topics.some(item => String(item.topic_id) === topic)) && (!sponsor || sponsorKey(bill) === sponsor) && (!state || stateBySponsor.get(bill.sponsor_id ?? -1) === state) && (!status || (stageFor(bill.status)?.key ?? `raw:${bill.status}`) === status));
   visible.sort((a, b) => {
@@ -106,12 +105,11 @@ export default function BillDeck() {
     <div className={styles.filters}>
       <label>Search bills<input type="search" placeholder="Title or bill number" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <label>Topic<select aria-label="Topic" value={topic} onChange={event => setTopic(event.target.value)}><option value="">All topics</option>{[...topics].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-      <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => { const representative = representatives.find(rep => key === `id:${rep.id}`); return <option key={key} value={key}>{name}{representative ? ` · ${representative.state} · ${representative.chamber}` : " · Affiliation unavailable"}</option>; })}</select></label>
-      <label>Sponsor state<select aria-label="Sponsor state" disabled={Boolean(repError)} value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</select></label>
+      <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+      <label>Sponsor state<select aria-label="Sponsor state" value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</select></label>
       <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{stageOptions.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}{statuses.map(value => <option key={value} value={`raw:${value}`}>{readable(value)}</option>)}</select></label>
       <label>Sort bills<select value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></select></label>
     </div>
-    {repError && <p className={styles.note}>{repError} <button onClick={() => setAttempt(value => value + 1)}>Retry directory</button></p>}
     {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
     {followError && <p role="alert">{followError}</p>}
     {!ready && <p role="status" className={styles.empty}>Loading your followed bills…</p>}

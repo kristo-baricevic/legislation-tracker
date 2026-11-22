@@ -32,6 +32,8 @@ it("opens dashboard bill titles in a modal whose title links to the full page", 
 });
 
 beforeEach(() => {
+  // Each case starts a separate signed-in session.
+  window.dispatchEvent(new StorageEvent("storage", { key: "legislation-tracker-session-epoch" }));
   vi.clearAllMocks();
   localStorage.clear();
   localStorage.setItem("legislation-tracker-ingestion-telemetry", "true");

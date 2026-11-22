@@ -32,7 +32,7 @@ describe("recommendation rows", () => {
     await screen.findByRole("button", { name: "Jane Doe profile" });
     expect(screen.getByRole("article")).toHaveAttribute("data-party", theme);
   });
-  it("expires cached recommendations after five minutes", async () => {
+  it("does not discard unchanged recommendations just because time passed", async () => {
     mockRequests(() => Response.json(page));
     const view = render(<BillRecommendations onOpenBill={() => true} />);
     await screen.findByRole("link", { name: bill.title });
@@ -41,7 +41,7 @@ describe("recommendation rows", () => {
     try {
       render(<BillRecommendations onOpenBill={() => true} />);
       await screen.findByRole("link", { name: bill.title });
-      expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(2);
+      expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(1);
     } finally { clock.mockRestore(); }
   });
   it("reuses recommendations across navigation until explicitly refreshed", async () => {

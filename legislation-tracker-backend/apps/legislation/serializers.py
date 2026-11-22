@@ -530,6 +530,7 @@ class BillListSerializer(serializers.ModelSerializer):
     """For list view: bill fields + sponsor name + topics."""
 
     sponsor_name = serializers.SerializerMethodField()
+    sponsor_state = serializers.CharField(source="sponsor.state", read_only=True, default=None)
     sponsor_id = serializers.IntegerField(read_only=True, allow_null=True)
     sponsor_bioguide_id = serializers.CharField(
         source="sponsor.bioguide_id", read_only=True, allow_null=True, default=None
@@ -549,6 +550,7 @@ class BillListSerializer(serializers.ModelSerializer):
             "title",
             "status",
             "sponsor_name",
+            "sponsor_state",
             "sponsor_id",
             "sponsor_bioguide_id",
             "congress_gov_url",
