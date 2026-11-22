@@ -53,7 +53,15 @@ function pathLabel(item: LegalNlpFinancialItem): string {
 function formatAmount(item: LegalNlpFinancialItem): string | null {
   if (item.amount_type === "unspecified") return "Amount not extracted";
   if (item.amount_type === "such_sums") return "Such sums as necessary";
-  if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) return item.amount ? `${Number(item.amount)}%` : null;
+  if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) {
+    if (!item.amount) return null;
+    const amount = Number(item.amount);
+    const bound = item.display_text.match(/\b(at least|not less than|up to|at most|no more than|not more than)\s+(\d+(?:\.\d+)?)\s*(?:percent\b|%)/i);
+    const prefix = bound && Number(bound[2]) === amount
+      ? (/least|less/i.test(bound[1]) ? "At least " : "Up to ")
+      : item.amount_type === "ceiling" ? "Up to " : "";
+    return `${prefix}${amount}%`;
+  }
   if (!item.amount) return null;
   const amount = Number(item.amount);
   if (!Number.isFinite(amount)) return item.amount;

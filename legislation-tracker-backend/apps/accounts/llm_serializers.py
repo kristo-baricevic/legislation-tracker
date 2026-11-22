@@ -16,6 +16,7 @@ class LLMCredentialUpdateSerializer(serializers.Serializer):
         max_length=32,
     )
     enabled = serializers.BooleanField(required=False)
+    requested_model = serializers.CharField(max_length=128, required=False)
 
     def validate(self, attrs):
         if not attrs:

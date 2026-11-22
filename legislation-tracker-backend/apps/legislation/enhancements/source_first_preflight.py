@@ -1,8 +1,11 @@
 from dataclasses import asdict
 
 from django.conf import settings
+from .model_selection import target as planning_target
 
-from .provision_pipeline import BudgetExceeded, digest, encoded, plan_analysis
+from collections import Counter
+
+from .provision_pipeline import BudgetExceeded, digest, encoded, _plan_built_graph
 from .source_first_prompts import PROMPT_VERSION
 from .source_first_schema import VERSION
 from .source_graph import build_source_graph
@@ -14,12 +17,14 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
 
     if not text.strip():
         raise PreflightUnavailable("Source text unavailable")
-    graph = build_source_graph(str(document.pk), document.version_label, text)
+    from .xml_sections import stored_xml_sections
+    graph = build_source_graph(str(document.pk), document.version_label, text,
+                               xml_sections=stored_xml_sections(document, text))
     try:
-        plan = plan_analysis(
+        plan = _plan_built_graph(
             graph,
             {
-                "model": settings.LLM_ENHANCEMENT_MODEL,
+                "model": planning_target()[1],
                 "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
                 "output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
                 "per_call_input": min(
@@ -29,9 +34,12 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
             },
             reuse_result=reuse_result,
         )
-    except BudgetExceeded:
+    except BudgetExceeded as exc:
         raise PreflightUnavailable(
-            "Analysis exceeds confirmed limits", reason="budget_exceeded"
+            "No executable analysis plan", reason=str(exc),
+            coverage={"total_units": len(graph.units), "planned_units": 0,
+                      "reused_units": len(exc.reused), "unresolved_units": len(exc.reasons),
+                      "reasons": dict(Counter(exc.reasons.values()))},
         ) from None
     budget = {
         "maximum_calls": plan.maximum_calls,
@@ -40,13 +48,13 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
     }
     identity = {
         "plan": plan.fingerprint,
-        "provider": settings.LLM_ENHANCEMENT_PROVIDER,
+        "provider": planning_target()[0],
         "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
         "output_limit": min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS),
     }
     envelope = {"source_first_plan": identity, "budget": budget}
     return EnhancementPreflight(
-        provider=settings.LLM_ENHANCEMENT_PROVIDER,
+        provider=planning_target()[0],
         requested_model=plan.model,
         reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
         prompt_version=PROMPT_VERSION,
@@ -59,7 +67,12 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
             "document_version_label": document.version_label,
             "source_kind": "pinned_passages",
             "budget": budget,
-            "coverage": graph.coverage,
+            "coverage": {**graph.coverage, "total_units": len(graph.units),
+                         "planned_units": sum(len(c.unit_ids) for c in plan.calls),
+                         "reused_units": len(graph.units) - len(plan.unresolved_unit_ids)
+                                         - sum(len(c.unit_ids) for c in plan.calls),
+                         "unresolved_units": len(plan.unresolved_unit_ids),
+                         "reasons": dict(Counter(dict(plan.unresolved_reasons).values()))},
             "unresolved_unit_ids": list(plan.unresolved_unit_ids),
             "truncated": False,
         },

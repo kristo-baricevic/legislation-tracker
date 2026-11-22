@@ -11,6 +11,7 @@ from apps.accounts.models import LLMCredential
 from apps.legislation.models import Bill, BillEnhancement, BillEnhancementAttempt
 
 from .dispatch import request_enhancement_dispatch
+from .model_selection import credential_target, planning_for, selectable
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement
 
@@ -53,11 +54,11 @@ def credential_is_current(credential: LLMCredential | None) -> bool:
     return bool(
         credential
         and credential.enabled
-        and credential.provider == settings.LLM_ENHANCEMENT_PROVIDER
+        and selectable(credential_target(credential))
         and credential.validation_status == LLMCredential.ValidationStatus.VALID
         and credential.validated_revision == credential.revision
         and credential.validated_provider == credential.provider
-        and credential.validated_model == settings.LLM_ENHANCEMENT_MODEL
+        and credential.validated_model == credential_target(credential)[1]
     )
 
 
@@ -106,7 +107,7 @@ def _locked_credential(user) -> LLMCredential:
         raise EnhancementServiceError("credential_not_configured")
     if not credential.enabled:
         raise EnhancementServiceError("credential_disabled")
-    if credential.provider != settings.LLM_ENHANCEMENT_PROVIDER:
+    if not selectable(credential_target(credential)):
         raise EnhancementServiceError("credential_changed")
     return credential
 
@@ -116,10 +117,11 @@ def _require_current_validation(credential: LLMCredential) -> None:
         raise EnhancementServiceError("credential_unverified")
 
 
-def _build_locked_preflight(bill_id: int):
+def _build_locked_preflight(bill_id: int, credential):
     bill = Bill.objects.select_for_update().get(pk=bill_id)
     try:
-        return bill, build_enhancement_preflight(bill)
+        with planning_for(credential_target(credential)):
+            return bill, build_enhancement_preflight(bill)
     except PreflightUnavailable as exc:
         raise EnhancementServiceError(exc.reason) from exc
 
@@ -169,8 +171,8 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
             latest = shared.attempts.order_by("-sequence").first()
             if latest is not None:
                 return AttemptCreation(shared, latest, False)
-        locked_bill, preflight = _build_locked_preflight(bill.pk)
         credential = _locked_credential(user)
+        locked_bill, preflight = _build_locked_preflight(bill.pk, credential)
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
         enhancement = (
@@ -235,7 +237,7 @@ def retry_enhancement_attempt(
         raise EnhancementServiceError("feature_unavailable", http_status=503)
 
     with transaction.atomic():
-        locked_bill, preflight = _build_locked_preflight(bill.pk)
+        locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
         enhancement = (
             BillEnhancement.objects.select_for_update()
             .filter(pk=enhancement_id, user=user, bill=locked_bill)
@@ -249,10 +251,12 @@ def retry_enhancement_attempt(
             if latest is not None:
                 return AttemptCreation(shared, latest, False)
         credential = _locked_credential(user)
+        _, preflight = _build_locked_preflight(locked_bill.pk, credential)
         base_fingerprint = preflight.request_fingerprint
         reused_result = reusable_publication(enhancement, credential)
         if reused_result:
-            preflight = build_enhancement_preflight(locked_bill, reuse_result=reused_result)
+            with planning_for(credential_target(credential)):
+                preflight = build_enhancement_preflight(locked_bill, reuse_result=reused_result)
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
         if enhancement.request_fingerprint != base_fingerprint:

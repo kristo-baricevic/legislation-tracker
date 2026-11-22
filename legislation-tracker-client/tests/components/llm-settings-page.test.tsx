@@ -34,6 +34,8 @@ const configured = {
   validated_revision: null,
   validated_at: null,
   requested_model: "gpt-5.6-luna",
+  models: [{provider: "openai", model: "gpt-5.6-luna", free: false},
+    {provider: "openrouter", model: "openrouter/free", free: true}],
 };
 
 describe("LLM settings", () => {
@@ -83,5 +85,16 @@ describe("LLM settings", () => {
 
     await waitFor(() => expect(validateLLMCredential).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Valid")).toBeVisible();
+  });
+
+  it("marks the free route and requires its own key before switching", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    const select = await screen.findByRole("combobox", { name: "Model" });
+    await user.selectOptions(select, screen.getByRole("option", {name: /openrouter\/free.*Free/i}));
+    expect(screen.getByRole("button", {name: "Save model"})).toBeDisabled();
+    await user.type(screen.getByLabelText("OpenRouter API key"), "new-router-key");
+    await user.click(screen.getByRole("button", {name: "Save model"}));
+    expect(updateLLMSettings).toHaveBeenCalledWith({provider: "openrouter", requested_model: "openrouter/free", api_key: "new-router-key"});
   });
 });

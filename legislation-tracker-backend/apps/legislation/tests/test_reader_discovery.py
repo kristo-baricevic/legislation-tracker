@@ -153,3 +153,18 @@ def test_money_marked_financial_requires_a_returned_cited_item():
     with pytest.raises(ValidationError):
         resolve_discovery({'financial_items': [], 'additional_changes': [],
                            'money_checks': {'src_0001:p0001': 'financial'}}, sources)
+def test_xml_review_batches_cover_every_section_and_pack_small_ones():
+    from apps.legislation.enhancements.reader_discovery import discovery_sources, xml_batch_coverage
+    text = "Intro\n" + ("a" * 300 + "\n") * 101 + "end"
+    sections = (("one", 6, 307, "1", ""), ("two", 307, 608, "2", ""),
+                ("long", 608, len(text)-3, "3", ""))
+    scans = discovery_sources(text, 1, xml_sections=sections)
+    assert "".join(s["quoted_text"] for s in scans) == text
+    assert len(scans) < 8 and scans[0]["end_char"] >= 608
+    assert any(s.get("section_context_complete") is False for s in scans)
+    c = xml_batch_coverage(text, sections, scans)
+    assert c["sections_planned"] == 3 and c["sections_omitted"] == 0
+    import pytest
+    with pytest.raises(ValueError):
+        xml_batch_coverage(text, sections, scans[1:])
+

@@ -52,17 +52,23 @@ def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_c
     total = ProviderResult({}, ProviderUsage(0, 0, 0), '', '')
     calls = 0
     while True:
-        groups, pending = [], []
-        for item in items:
-            candidate = request_for([*pending, item])
-            if pending and not _within_limits(candidate.request_bytes):
-                groups.append(pending)
-                pending = []
-            if not pending and not _within_limits(request_for([item]).request_bytes):
+        groups, start = [], 0
+        while start < len(items):
+            # Request size grows as findings/passages are added. Find the same
+            # maximal fitting prefix without serializing every prefix.
+            if not _within_limits(request_for(items[start:start+1]).request_bytes):
                 raise ProviderError('request_too_large', usage=total.usage)
-            pending.append(item)
-        if pending:
-            groups.append(pending)
+            low, high = start + 1, min(start + 2, len(items))
+            while high > low and _within_limits(request_for(items[start:high]).request_bytes):
+                low, high = high, min(start + 2*(high-start), len(items))
+            while high - low > 1:
+                mid = (low + high)//2
+                if _within_limits(request_for(items[start:mid]).request_bytes):
+                    low = mid
+                else:
+                    high = mid
+            groups.append(items[start:low])
+            start = low
         if calls + len(groups) > maximum_calls:
             raise ProviderError('request_too_large', usage=total.usage)
         reduced = []

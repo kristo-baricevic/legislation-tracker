@@ -267,3 +267,12 @@ def test_validate_credential():
     assert check.valid is True
     assert len(models.calls) == 1
     assert models.calls[0]["config"].max_output_tokens == 16
+
+
+def test_gemini_can_repair_citations_without_changing_models():
+    models = FakeModels(result=_completed_response())
+    provider = GeminiEnhancementProvider(client_factory=FakeClientFactory(models))
+    request = _request()
+    provider.repair_citations(api_key="test", request=request, payload={"claims": []}, timeout_seconds=30)
+    assert models.calls[0]["model"] == request.requested_model
+    assert json.loads(models.calls[0]["contents"]) == {"claims": []}

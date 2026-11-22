@@ -1355,8 +1355,17 @@ def _require_quota_revalidation(attempt):
 
 
 def _worker_preflight(attempt, cached_preflight=None):
+    from .enhancements.model_selection import credential_target, planning_for, selectable
     if not llm_feature_available():
         return None, None, "feature_disabled"
+    pair = credential_target(attempt.credential)
+    if attempt.credential and (not selectable(pair) or pair != (attempt.enhancement.provider, attempt.enhancement.requested_model)):
+        return None, None, "credential_changed"
+    with planning_for(pair):
+        return _selected_worker_preflight(attempt, cached_preflight)
+
+
+def _selected_worker_preflight(attempt, cached_preflight=None):
     credential = attempt.credential
     enhancement = attempt.enhancement
     if (

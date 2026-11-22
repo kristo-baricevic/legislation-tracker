@@ -5,6 +5,7 @@ of governing context. This trades throughput for not dropping list conditions.
 """
 
 import hashlib
+import json
 import re
 from dataclasses import replace
 
@@ -82,7 +83,7 @@ def _safe_subsection_starts(raw):
     return [m.start() for m in markers]
 
 
-def build_source_graph(document_id: str, version: str, text: str) -> SourceGraph:
+def build_source_graph(document_id: str, version: str, text: str, *, xml_sections=()) -> SourceGraph:
     fingerprint = _hash(
         f"{document_id}\0{version}\0{NORMALIZATION_VERSION}\0{_hash(text)}"
     )
@@ -95,6 +96,9 @@ def build_source_graph(document_id: str, version: str, text: str) -> SourceGraph
     # Exclude contents only when an explicit contents heading precedes duplicate
     # section labels and their later operative occurrence. Case alone is not proof.
     toc = re.search(r"(?im)^(?:[ \t]*\([a-z]\)[ \t]*)?[ \t]*TABLE OF CONTENTS\b", text)
+    if xml_sections:
+        fingerprint = _hash(fingerprint + ":xml-sections-v1:" + json.dumps(xml_sections))
+        toc = None  # Ignore text guesses; XML excludes contents and quoted law.
     if toc:
         operative = [
             s for s in sections if re.match(r"\s*(?:SEC\.|SECTION)\s", s.span.text)
@@ -113,6 +117,8 @@ def build_source_graph(document_id: str, version: str, text: str) -> SourceGraph
             )
         ]
     starts = [(s.span.start_char, s.label, s.heading or "") for s in sections]
+    if xml_sections:
+        starts = [(left, label, title) for _, left, _, label, title in xml_sections]
     recognized = bool(starts)
     if not starts:
         starts = [(0, "Full document", "")]
@@ -125,9 +131,19 @@ def build_source_graph(document_id: str, version: str, text: str) -> SourceGraph
         )
     parents = {}
     expanded = []
+    xml_gaps = {}
     for index, (start, label, heading) in enumerate(starts):
         end = starts[index + 1][0] if index + 1 < len(starts) else len(text)
-        cuts = _safe_subsection_starts(text[start:end])
+        if xml_sections:
+            stop = xml_sections[index][2]
+            if stop < end:
+                raw = text[stop:end]
+                pid = _hash(f"{fingerprint}:{stop}:{end}")
+                passages[pid] = Passage(pid, stop, end, raw, _hash(raw), "context", ("Between sections",))
+                if raw.strip():
+                    xml_gaps[end] = pid
+            end = stop
+        cuts = [] if xml_sections else _safe_subsection_starts(text[start:end])
         if cuts:
             prefix_end = start + cuts[0]
             prefix_id = _hash(f"{fingerprint}:{start}:{prefix_end}")
@@ -235,6 +251,8 @@ def build_source_graph(document_id: str, version: str, text: str) -> SourceGraph
             unit.own_passage_ids
         )
         own_start = passages[unit.own_passage_ids[0]].start
+        if own_start in xml_gaps:
+            context.add(xml_gaps[own_start])
         if own_start in parents:
             context.add(parents[own_start][1])
         unresolved = list(unit.unresolved_dependencies)
@@ -298,12 +316,13 @@ def build_source_graph(document_id: str, version: str, text: str) -> SourceGraph
         text,
         str(document_id),
         version,
+        xml_sections,
     )
 
 
 def audit_graph(graph: SourceGraph, text: str) -> list[str]:
     """Re-derive source ownership/context; catch omissions and corrupted snapshots."""
-    expected = build_source_graph(graph.document_id, graph.version, text)
+    expected = build_source_graph(graph.document_id, graph.version, text, xml_sections=graph.xml_sections)
     errors = []
     if graph.document_fingerprint != expected.document_fingerprint:
         errors.append("document_identity")

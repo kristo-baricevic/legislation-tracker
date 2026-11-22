@@ -187,6 +187,14 @@ class GeminiEnhancementProvider:
             result = harness.apply_derived_source_refs(result)
         return result
 
+    def repair_citations(self, *, api_key, request, payload, timeout_seconds):
+        harness.ensure_citation_repair_fits(payload)
+        return self._generate(
+            api_key=api_key, request=request, timeout_seconds=timeout_seconds,
+            input_payload=payload, instructions=REPAIR_INSTRUCTIONS, schema=REPAIR_SCHEMA,
+            schema_name="citation_repair_v1",
+        )
+
     def _source_first(self, *, api_key, request, timeout_seconds, stage):
         instructions, transport = harness.prepare_source_first(
             stage, request.request_envelope["source_first_payload"]

@@ -7,6 +7,26 @@ from apps.legislation.tests.test_enhancement_service import source_bill, enhance
 from apps.legislation.tests.test_reader_enhancement_pipeline import install_reader
 
 
+@pytest.mark.django_db
+def test_large_xml_without_contract_routes_to_complete_review(source_bill, enhancement_settings, monkeypatch):
+    from apps.legislation.enhancements.source_packet import PreflightUnavailable
+    doc = source_bill.documents.get()
+    section = "Schools must report attendance annually.\n" * 200
+    doc.extracted_text = section * 16
+    doc.save()
+    rows = [(str(i), i * len(section), (i + 1) * len(section), f"Sec. {i+1}", "")
+            for i in range(16)]
+    monkeypatch.setattr("apps.legislation.enhancements.xml_sections.stored_xml_sections",
+                        lambda document, text: rows)
+    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True, LLM_READER_MAX_CALLS=0):
+        plan = build_enhancement_preflight(source_bill)
+        assert plan.source_manifest["source_kind"] == "xml_full_review"
+        assert plan.source_manifest["coverage"]["sections_planned"] == 16
+        assert plan.source_manifest["coverage"]["source_chars_planned"] == len(doc.extracted_text)
+        with override_settings(LLM_READER_MAX_CALLS=1), pytest.raises(PreflightUnavailable):
+            build_enhancement_preflight(source_bill)
+
+
 def test_large_section_context_is_bounded_and_every_source_byte_is_reviewed():
     text = 'SEC. 1. Grants\n' + ''.join(
         f'Program {i}: The Secretary shall provide grants to eligible schools.\n' for i in range(3000))

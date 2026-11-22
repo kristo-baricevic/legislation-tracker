@@ -198,7 +198,7 @@ describe("FinancialLedger", () => {
     });
     render(<FinancialLedger contractId={12} totalCount={2} />);
     expect(await screen.findByText("2 of 2 provisions shown")).toBeVisible();
-    expect(screen.getByText("5%")).toBeVisible();
+    expect(screen.getByText("Up to 5%")).toBeVisible();
     expect(screen.queryByText("$5")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Financial action"), "set_aside");
     await user.click(screen.getByRole("button", { name: "Apply money filters" }));

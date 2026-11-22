@@ -1,98 +1,71 @@
-# Large bill handling
+# Large bill handling: short output, complete review
 
-Status: findings + plan. Nothing here is implemented yet.
+## Scope and baseline
 
-## Why this exists
+This document covers the **source-first provision planner**, not the separate reader-batch pipeline. On the original sample of 16,925 documents, the median was 7,034 characters, the 90th percentile 35,101, and the largest 3.77 million. Only 59 exceeded 400,000 characters. Do not add retrieval or selective reading to solve a planning problem in the tail.
 
-Enhancement preflight must fully plan a bill before any provider call. On very large
-bills that planning step is unusable today, and a second failure mode returns a
-"successful" plan that covers nothing.
+Previously, planning documents 18340 and 11639 did not finish within 90 seconds. Document 18343 took 24.6 seconds and incorrectly returned a valid plan containing no calls and no reusable work.
 
-## Measured on the local dataset (16,925 bills with source chunks)
+## Stage 1: local preflight (implemented)
 
-| | chars | ~tokens |
-|---|---|---|
-| median bill | 7,034 | ~1.8k |
-| p90 | 35,101 | ~8.8k |
-| largest | 3.77M | ~942k |
+- Build the source graph once from the document. Independently supplied graphs still undergo the integrity audit. Keep original passages, offsets, amendments, repeals and effective dates.
+- Check source eligibility and a lower bound on request bytes before building provider payloads. Compute inputs for feasible units once and reuse them during packing. Check actual serialized request and estimated output sizes before admitting each batch.
+- Keep existing cost limits. Once enough individually feasible units prove that even perfect packing would exceed the generation-call ceiling, stop serializing. Still account for every remaining unit. On atomic refusal, a budget-blocked unit is **not** a claim that it would fit individually.
+- A unit is planned, validated for reuse, or unresolved. Return counts and reasons in preflight. No newly planned **or** reusable units means an explicit zero-coverage refusal; partial plans must not be presented as complete. Reusing all verified work is not a failure.
 
-Distribution: 10.1% of bills exceed 35k chars, 2.6% exceed 100k, 0.35% (59 bills)
-exceed 400k, and 4 exceed 2M.
+### Dry run on the three original documents
 
-Implication: sending the whole bill to the model is correct for the median and the
-p90. Retrieval-on-demand (vector search, tool fetching) would save nothing on a
-1.8k-token bill and would break the coverage guarantee. The problem is only the
-tail, and there the problem is planning, not payload size.
+Run `python manage.py benchmark_source_planner 18340 11639 18343`. This command reads stored text, verifies the union of passage ranges against it, and checks that each graph unit has exactly one disposition. It never instantiates a provider. Single local run; times exclude database I/O.
 
-## Bug 1 — `plan_analysis` is quadratic in units
+| Document | Characters | Graph | Planner | Units accounted for | Executable |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 18340 · S. 1071 · Public Law | 3,582,163 | 8.401 s | 0.161 s | 2,228 / 2,228 | 0 |
+| 11639 · S. 2296 · Engrossed in Senate | 3,006,823 | 12.142 s | 0.154 s | 1,351 / 1,351 | 0 |
+| 18343 · S. 1071 · Engrossed Amendment House | 3,370,908 | 10.065 s | 0.005 s | 36 / 36 | 0 |
 
-`apps/legislation/enhancements/provision_pipeline.py`
+18340: 2,046 budget-blocked, 180 lacking explainable source, 2 over the per-request input limit. 11639: 1,160 budget-blocked and 191 lacking explainable source. 18343: all 36 units over the input limit. No spending or bill analysis took place. Source-span and unit accounting establish that no text was silently discarded, **not** that every legal section was correctly identified or explained.
 
-`plan_analysis` builds a fully serialized payload for every unit
-(`singles = {unit.id: make([unit.id])}`), then rebuilds candidate payloads again
-inside the packing loop. Cost grows with units × candidates.
+**Concrete section-boundary gap:** 18340 and 18343 are two versions of S. 1071, not two different bills. The latter has numbered headings split across lines (e.g. `8801.` followed by `Pilot program for sound insulation repair and replacement`). A text scan found 1,413 number-only lines followed by capitalized text; this is a diagnostic, not an authoritative count of sections. Many sections remain inside large units. Before paying to analyze this version, test its section inventory against the official XML structure and distinguish contents entries from operative headings.
 
-Measured (local stack, `config.settings.dev`):
+## Stage 2: enable complete analysis within an approved budget (planned)
 
-| document | chars | units | graph | plan |
-|---|---|---|---|---|
-| 18340 | 3.58M | 2,228 | 10.6s | **did not finish in 90s** |
-| 11639 | 3.01M | 1,351 | 12.0s | **did not finish in 90s** |
-| 18343 | 3.37M | 36 | 11.4s | 24.6s |
+**Section inventory fix (implemented and locally verified).** The source-first
+planner now aligns operative sections from stored Congress bill/amendment XML
+to the existing citation text. For 18343: **1,134 matched, 0 missing, 0 extra,
+0 duplicated**; all 3,370,908 source characters accounted for. This includes
+one unnumbered opening resolution; 282 nested section elements are not counted
+as separate bill sections. The section IDs, order and XML hash were pinned
+independently. Run the full local regression with:
 
-Source-graph construction is fine (~11s for 3.5M chars). The cost is entirely in
-planning.
+```sh
+python manage.py benchmark_source_planner 18343 --expected-inventory apps/legislation/tests/fixtures/xml_inventory/s1071_eah.json
+```
 
-Fix: compute each unit's payload and estimated input once, memoize it, and pack
-batches using memoized estimates instead of re-serializing. Target: planning time
-linear in units.
+Graph including XML alignment: 11.880 s; planner: 0.183 s. The resulting plan
+still refuses under existing limits (961 generation-budget, 166 unexplained
+source, 7 input-limit). No provider was called. The earlier 36-unit result above
+is the text-only baseline, not the current XML result.
 
-## Bug 2 — a zero-coverage plan reports success
+1. Remove only provably non-operative duplication, e.g. repeated page furniture, with mappings to original text. Never strip strike/insert instructions, repeals, expiration dates, amounts or governing exceptions.
+2. Batch by actual input size and expected output, not an arbitrary target number of sections. Replace the existing eight-unit/four-generation-call ceilings only with tested, explicit limits. Split oversized units at safe boundaries carrying their governing clauses, definitions and source offsets. Report indivisible or ambiguous units.
+3. Validate findings against the source. Persist completed batches against exact source, prompt, schema and model identity. Interrupt and resume a test run: completed batches must not incur another charge. Show the full estimated cost and enforce the confirmed maximum **before** dispatch.
+4. Write a short reader summary from verified findings, not a chain of increasingly lossy summaries. Keep detailed amounts, conditions, exceptions and citations accessible independently of the brief.
 
-Document 18343 (36 units, 3.37M chars) returned `calls=0, input=0` and no error:
-every unit was skipped as unresolved, and the result looked like a valid plan.
+## Release gates
 
-An enhancement built on that plan would complete with no analysed content.
+**Document 18343, full XML batch plan (local; no provider calls).** The large-XML
+path uses the resumable full-text reviewer instead of the small provision planner.
+Run the command above with `--summary-scenario` to reproduce. The pinned XML
+inventory matched in order: 1,134 sections, none missing or duplicated, and
+3,370,908 characters assigned to review without gaps or overlap. Planning took
+15.7 seconds. A cold run needs 215 review calls. A simulation with one 160-character
+finding per selectable passage required 49 summary calls (264 total); the real
+number depends on the findings. The confirmed plan ranges from 216 to 438 calls.
+Estimated standard-price cost: about $0.53 using four serialized bytes per input
+token and prior local output usage. Conservative token-budget ceiling: $8.54
+(rounded up). Neither figure is a charge. Section coverage measures what gets sent,
+not whether a model will interpret it correctly.
 
-Fix: a plan that resolves no units must fail preflight with an explicit reason
-(categorised like the existing `budget_exceeded` path), never return as valid.
-Unresolved units must also be surfaced to the caller with a count and reason
-rather than only appearing in `source_manifest.unresolved_unit_ids`.
-
-## Strategy for bills that genuinely do not fit
-
-Current hard limits: `max_generation = min(4, generation_calls)`, per-call input
-≈100k tokens, total input ceiling 600k tokens, output ceiling 48k.
-
-2,228 units cannot fit in 4 calls at 8 units per call. Two levers, in order:
-
-1. **Deterministic text reduction (cheapest, highest value).** Strip boilerplate
-   that no provision depends on — page headers/footers, amendatory instructions
-   ("strike X and insert Y"), repealed and expired text — before building units.
-   This reduces tokens without reducing coverage. No model involved.
-2. **Hierarchical summarization.** Summarize each unit once (bounded call), then
-   plan provisions over summaries and hydrate evidence from the original text for
-   citation. Turns one impossible context into N bounded calls with a deterministic
-   second pass.
-
-Only after both: raise the call ceiling, and present the estimated cost to the user
-for approval before spending. A server-side refusal is the last resort, not the
-first response.
-
-## Explicit non-goals
-
-- **No vector database for this pipeline.** Embeddings (~$0.02 per 3.5M-char bill)
-  are cheap but do not reduce the generation call that actually costs money, and
-  retrieval would drop text the coverage guarantee requires. Revisit embeddings
-  only for cross-bill near-duplicate detection, where boilerplate repetition makes
-  the saving real.
-- No model-based selection of which sections to read.
-- No silent truncation of source text.
-
-## Acceptance
-
-1. Planning is linear: the 2,228-unit bill plans in seconds, not >90s.
-2. A plan that resolves zero units fails preflight with an explicit reason.
-3. Tests cover both: a synthetic high-unit-count bill for timing, and a
-   zero-resolvable-unit bill for the refusal path.
-4. Unresolved units are reported to the caller, not only in the manifest.
+- Dry-run accounting, zero/partial/reused cases and high-unit regression tests. Repeat timings on the same documents when changing limits or parsers.
+- Before a paid large-bill run: verify against a pinned answer key that an amendment, a funding amount with its correct base, and a meaning-changing exception survive batching; missing evidence must never count as success.
+- Separately evaluate whether a reader can explain purpose, affected people and money in 30 seconds. H.R. 9300 is a readability case, not a substitute for a large-bill coverage test.

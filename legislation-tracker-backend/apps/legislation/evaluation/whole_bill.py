@@ -365,6 +365,19 @@ def run_benchmark(*, replay_path=None, selected=None):
             ),
         )
         nlp["status"] = "evaluated"
+        # Keep extraction metrics; separately measure reader copy for the
+        # very same IDs so shortening cannot make a troublesome item vanish.
+        from apps.legislation.extraction.reader_language import concise_rule, change_groups
+        nlp["reader_copy_review"] = [
+            {"id": item.get("id"), "category": item["category"],
+             "raw_words": len(item["text"].split()), "text": concise_rule(item)
+             if item["category"] == "line_item" else item["text"]}
+            for item in items
+        ]
+        nlp["reader_group_lengths"] = [
+            {"id": g["id"], "members": g["member_ids"], "words": len(g["reader_text"].split())}
+            for g in change_groups(output.contract_json)
+        ]
         nlp["contract"] = output.contract_json
         nlp["evidence"] = [asdict(span) for span in output.evidence]
         ai = assess(case, [], pipeline="ai")

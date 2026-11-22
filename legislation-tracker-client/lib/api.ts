@@ -1296,6 +1296,7 @@ export function triggerTopicBackfill(params: {
 }
 
 export interface LLMSettings {
+  models: {provider: string; model: string; free: boolean}[];
   feature_available: boolean;
   configured: boolean;
   provider: string;
@@ -1313,7 +1314,7 @@ export function getLLMSettings(): Promise<LLMSettings> {
 }
 
 export function updateLLMSettings(
-  values: { api_key?: string; enabled?: boolean },
+  values: { api_key?: string; enabled?: boolean; provider?: string; requested_model?: string },
 ): Promise<LLMSettings> {
   return authPut<LLMSettings>("/api/settings/llm/", values);
 }

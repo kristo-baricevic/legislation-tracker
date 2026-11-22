@@ -12,6 +12,7 @@ from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from apps.legislation.enhancements.provider_registry import get_provider
+from apps.legislation.enhancements.model_selection import catalog, credential_target, selectable
 from apps.legislation.enhancements.providers.base import ProviderError
 
 from .llm_credentials import (
@@ -55,8 +56,8 @@ def _effective_validation_status(credential: LLMCredential | None) -> str:
         credential.validation_status != LLMCredential.ValidationStatus.UNVERIFIED
         and credential.validated_revision == credential.revision
         and credential.validated_provider == credential.provider
-        and credential.validated_model == settings.LLM_ENHANCEMENT_MODEL
-        and credential.provider == _configured_provider()
+        and credential.validated_model == credential_target(credential)[1]
+        and selectable(credential_target(credential))
     ):
         return credential.validation_status
     return LLMCredential.ValidationStatus.UNVERIFIED
@@ -73,7 +74,8 @@ def _settings_payload(credential: LLMCredential | None) -> dict:
         "validation_status": _effective_validation_status(credential),
         "validated_revision": credential.validated_revision if credential else None,
         "validated_at": credential.validated_at if credential else None,
-        "requested_model": settings.LLM_ENHANCEMENT_MODEL,
+        "requested_model": credential_target(credential)[1],
+        "models": catalog(),
     }
 
 
@@ -95,7 +97,7 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
         requested_enabled = values.get("enabled")
 
         if not llm_feature_available() and (
-            api_key is not None or requested_enabled is True
+            api_key is not None or requested_enabled is True or "requested_model" in values
         ):
             return Response(
                 {"error": "feature_unavailable"},
@@ -103,6 +105,7 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
             )
 
         with transaction.atomic():
+            type(request.user).objects.select_for_update().get(pk=request.user.pk)
             credential = (
                 LLMCredential.objects.select_for_update()
                 .filter(user=request.user)
@@ -112,7 +115,8 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                 "provider",
                 credential.provider if credential else _configured_provider(),
             )
-            if provider != _configured_provider():
+            model = values.get("requested_model", credential_target(credential)[1])
+            if not selectable((provider, model)):
                 return Response(
                     {"provider": ["This provider is not available."]},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -131,6 +135,8 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                     {"api_key": ["Replacing the provider requires the API key."]},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if credential and model != credential_target(credential)[1] and api_key is None:
+                api_key = decrypt_credential(credential)
             if api_key is not None:
                 credential = LLMCredential.objects.create_for_key(
                     user=request.user,
@@ -140,6 +146,8 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                         requested_enabled if requested_enabled is not None else True
                     ),
                 )
+                credential.selected_model = model
+                credential.save(update_fields=["selected_model"])
             if (
                 requested_enabled is not None
                 and credential.enabled != requested_enabled
@@ -171,7 +179,7 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
                 {"error": "credential_not_configured"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if credential.provider != _configured_provider():
+        if not selectable(credential_target(credential)):
             return Response(
                 {"error": "provider_changed"},
                 status=status.HTTP_409_CONFLICT,
@@ -183,6 +191,7 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
             "revision": credential.revision,
             "provider": credential.provider,
             "encrypted_envelope": credential.encrypted_envelope,
+            "selected_model": credential.selected_model,
         }
         try:
             api_key = decrypt_credential(credential)
@@ -195,7 +204,7 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
         try:
             check = get_provider(snapshot["provider"]).validate_credential(
                 api_key=api_key,
-                requested_model=settings.LLM_ENHANCEMENT_MODEL,
+                requested_model=credential_target(credential)[1],
                 timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
             )
         except ProviderError as exc:
@@ -230,7 +239,7 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
             validation_status=validation_status,
             validated_revision=snapshot["revision"],
             validated_provider=snapshot["provider"],
-            validated_model=settings.LLM_ENHANCEMENT_MODEL,
+            validated_model=credential_target(credential)[1],
             validated_at=timezone.now(),
         )
         if updated == 0:

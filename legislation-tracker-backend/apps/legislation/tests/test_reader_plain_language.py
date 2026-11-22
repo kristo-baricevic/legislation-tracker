@@ -5,6 +5,24 @@ from io import StringIO
 from apps.legislation.models import Bill, BillContract
 
 
+def test_competitive_grant_brief_replaces_purpose_not_an_extra_eligibility_list():
+    from apps.legislation.extraction.reader_language import bill_brief
+    payload = {"orientation": {"purpose_clause": "This bill would fund programs that help towns repair roads."},
+               "line_items": [{"id": "award", "kind": "requirement", "action": "award competitive grants to counties to support repairs"}],
+               "financial_items": [{"amount_type": "percentage", "financial_action": "set_aside", "source_account": "amount appropriated"}]}
+    brief = bill_brief(payload)
+    assert brief["summary"] == "Counties could compete for grants to help towns repair roads."
+    assert "counties" not in brief["money"].lower()
+
+
+def test_percentage_reservations_distinguish_shares_from_total():
+    from apps.legislation.extraction.reader_language import bill_brief
+    rule = {"financial_action": "set_aside", "amount_type": "percentage", "source_account": "amount appropriated for transit"}
+    assert "not a dollar total" in bill_brief({"financial_items": [rule]})["money"]
+    amount = {"financial_action": "appropriation", "amount_type": "fixed", "amount": "1000"}
+    assert "not a dollar total" not in bill_brief({"financial_items": [rule, amount]})["money"]
+
+
 @pytest.mark.django_db
 def test_backfill_is_idempotent_and_keeps_original_identity_and_evidence():
     bill = Bill.objects.create(jurisdiction="federal", session=118, bill_number="HR 99", title="Test", status="Introduced")

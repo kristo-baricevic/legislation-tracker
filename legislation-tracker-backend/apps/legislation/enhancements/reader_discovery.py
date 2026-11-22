@@ -73,13 +73,36 @@ def policy_passages(sources):
             if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids'])]
 
 
-def discovery_sources(text, first_ref):
+def xml_batch_coverage(text, sections, scans):
+    """Check the actual batch ranges, not just the parser's inventory."""
+    cursor = 0
+    for source in scans:
+        start, end = source['start_char'], source['end_char']
+        if start != cursor or not start < end <= len(text) or source['quoted_text'] != text[start:end]:
+            raise ValueError("source_batch_range_mismatch")
+        cursor = end
+    if cursor != len(text):
+        raise ValueError("source_batch_range_mismatch")
+    previous = 0
+    seen = set()
+    for identifier, left, right, *_ in sections:
+        if identifier in seen or not previous <= left < right <= cursor:
+            raise ValueError("source_batch_section_mismatch")
+        seen.add(identifier)
+        previous = right
+    return {"sections_planned": len(seen), "sections_omitted": 0,
+            "source_chars_planned": cursor}
+
+
+def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000):
     # Keep sections together when possible; never truncate a large document.
     # A quoted amendment can contain its own SEC. header. It is still part of
     # the enclosing bill section, not a safe place to separate its conditions.
     boundaries = []
     depth = 0
-    for match in re.finditer(r'\[\[QUOTED_BLOCK_START\]\]|\[\[QUOTED_BLOCK_END\]\]|^SEC\.\s', text, re.M):
+    if xml_sections:
+        boundaries = [edge for _, a, b, *_ in xml_sections for edge in (a, b)]
+    for match in (() if xml_sections else re.finditer(r'\[\[QUOTED_BLOCK_START\]\]|\[\[QUOTED_BLOCK_END\]\]|^SEC\.\s', text, re.M)):
         if match.group() == '[[QUOTED_BLOCK_START]]':
             depth += 1
         elif match.group() == '[[QUOTED_BLOCK_END]]':
@@ -89,16 +112,23 @@ def discovery_sources(text, first_ref):
     boundaries = sorted({0, len(text), *boundaries})
     ranges = []
     for left, right in zip(boundaries, boundaries[1:]):
-        while right - left > 12000:
-            end = text.rfind('\n', left + 4000, left + 10000)
-            end = end + 1 if end >= 0 else left + 10000
+        while right - left > 12000 if not xml_sections else len(text[left:min(right,left+xml_batch_bytes+1)].encode()) > xml_batch_bytes:
+            if xml_sections:
+                chunk = text[left:min(right, left+xml_batch_bytes)].encode()[:xml_batch_bytes].decode(errors="ignore")
+                stop = left + len(chunk)
+                floor = left + len(chunk)//2
+            else:
+                stop, floor = left + 10000, left + 4000
+            end = text.rfind('\n', floor, stop)
+            end = end + 1 if end >= 0 else stop
             ranges.append((left, end))
             left = end
         if right > left:
             ranges.append((left, right))
     sources = []
     for start, end in ranges:
-        if sources and end - sources[-1]['start_char'] <= 7000:
+        if sources and (len(text[sources[-1]['start_char']:end].encode()) <= xml_batch_bytes if xml_sections
+                        else end - sources[-1]['start_char'] <= 7000):
             source = sources[-1]
             source['end_char'] = end
             source['quoted_text'] = text[source['start_char']:end]

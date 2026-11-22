@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from django.conf import settings
+from .model_selection import target as planning_target
 
 from apps.legislation.models import BillDocument
 
@@ -18,9 +19,10 @@ MAX_SOURCE_TEXT_LENGTH = 4_000
 
 
 class PreflightUnavailable(ValueError):
-    def __init__(self, message: str, *, reason: str = "source_unavailable"):
+    def __init__(self, message: str, *, reason: str = "source_unavailable", coverage=None):
         super().__init__(message)
         self.reason = reason
+        self.coverage = coverage
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -79,8 +81,8 @@ def _request_envelope(
     bill, sources: list[dict[str, Any]], *, truncated: bool, coverage=None
 ) -> dict[str, Any]:
     return {
-        "provider": settings.LLM_ENHANCEMENT_PROVIDER,
-        "requested_model": settings.LLM_ENHANCEMENT_MODEL,
+        "provider": planning_target()[0],
+        "requested_model": planning_target()[1],
         "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
         "prompt_version": PROMPT_VERSION,
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
@@ -196,7 +198,18 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
     document = active_document or _stored_document(bill)
     if document is None:
         raise PreflightUnavailable("No stored source text is available for this bill")
+    return build_document_preflight(document, reuse_result=reuse_result)
+
+
+def build_document_preflight(document, *, reuse_result=None):
+    bill = document.bill
     text = document.extracted_text or document.raw_text or ""
+    if not reuse_result and len(text) > settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES:
+        from .xml_sections import stored_xml_sections
+        sections = stored_xml_sections(document, text)
+        if sections:
+            from .reader_batches import build_reader_preflight
+            return build_reader_preflight(document, xml_sections=sections)
     if getattr(settings, "LLM_SOURCE_FIRST_ENABLED", False):
         from .source_first_preflight import build_source_first_preflight
         return build_source_first_preflight(document, text, reuse_result=reuse_result)
@@ -258,8 +271,8 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
             "maximum_output": (2 + len(batches)) * settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
         }
     preflight = EnhancementPreflight(
-        provider=settings.LLM_ENHANCEMENT_PROVIDER,
-        requested_model=settings.LLM_ENHANCEMENT_MODEL,
+        provider=planning_target()[0],
+        requested_model=planning_target()[1],
         reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
         prompt_version=PROMPT_VERSION,
         output_schema_version=OUTPUT_SCHEMA_VERSION,

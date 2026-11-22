@@ -361,7 +361,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
         <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">Summary</h2>
         <BillAnalysisBoundary><ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-4 space-y-3">
           <p className="text-base leading-7">{contract.reader_brief.summary}{contract.reader_brief.source_id && <SourceEvidence contractId={contract.id} lineItemId={contract.reader_brief.source_id} textUrl={document?.text_url} downloadUrl={document?.download_url} number={1} />}</p>
-          {contract.reader_brief.money && <p className="text-base leading-7"><span className="font-semibold">Money: </span>{contract.reader_brief.money}</p>}
+          {contract.reader_brief.money && <p className="text-base leading-7">{contract.reader_brief.money}</p>}
         </div> : sourceLabel ? (
           <div className="mt-4">
             <p className="text-sm font-semibold text-slate-700 dark:text-green-500">{sourceLabel}{bill.summary_action_date ? ` · ${bill.summary_action_date}` : ""}</p>

@@ -75,6 +75,7 @@ class LLMCredential(models.Model):
         related_name="llm_credential",
     )
     provider = models.CharField(max_length=32, default="openai")
+    selected_model = models.CharField(max_length=128, blank=True, default="")
     encrypted_envelope = models.TextField()
     key_suffix = models.CharField(max_length=4)
     encryption_key_id = models.CharField(max_length=64)

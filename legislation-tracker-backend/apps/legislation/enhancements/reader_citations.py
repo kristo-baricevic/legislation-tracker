@@ -5,7 +5,7 @@ import re
 
 from jsonschema import Draft202012Validator
 
-from .citations import citation_spans
+from .citations import _canonical, spans_in_canonical_source
 from .diagnostics import output_error
 from .reader_targets import READER_SCHEMA, validate_reader_explanations
 
@@ -45,6 +45,7 @@ def citation_passages(source):
     uniquely. Nothing is inferred or repaired from generated prose.
     """
     text = source["quoted_text"]
+    canonical = _canonical(text)
     passages = []
     start = 0
     while start < len(text):
@@ -54,7 +55,7 @@ def citation_passages(source):
             if boundaries and boundaries[-1].end() >= 100:
                 end = start + boundaries[-1].end()
         quote = text[start:end]
-        selectable = len(citation_spans(text, quote)) == 1
+        selectable = len(spans_in_canonical_source(canonical, quote)) == 1
         passages.append({
             "quote_id": f"p{len(passages) + 1:04d}" if selectable else None,
             "text": quote,
