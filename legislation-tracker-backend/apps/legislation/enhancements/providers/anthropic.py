@@ -16,7 +16,10 @@ def _value(obj: Any, name: str, default=None):
 
 
 def _usage(response) -> ProviderUsage:
-    return harness.usage_from_response(response)
+    usage = harness.usage_from_response(response)
+    if usage.total_tokens is None and usage.input_tokens is not None and usage.output_tokens is not None:
+        return ProviderUsage(usage.input_tokens, usage.output_tokens, usage.input_tokens + usage.output_tokens)
+    return usage
 
 
 def _mapped_error(error: Exception, *, timeout_seconds: int = 0) -> ProviderError:
@@ -58,7 +61,25 @@ def _mapped_error(error: Exception, *, timeout_seconds: int = 0) -> ProviderErro
 
 
 def _wire_schema(value, *, unsupported_keywords=()):
-    return harness.wire_schema(value, unsupported_keywords=unsupported_keywords)
+    from anthropic import transform_schema
+
+    def normalize(schema):
+        # The SDK accepts union branches, but not JSON Schema's type-array shorthand.
+        out = dict(schema)
+        if isinstance(out.get("type"), list):
+            variants = out.pop("type")
+            return {"anyOf": [normalize({**out, "type": t}) for t in variants]}
+        for key in ("properties", "$defs"):
+            if key in out:
+                out[key] = {k: normalize(v) for k, v in out[key].items()}
+        for key in ("anyOf", "oneOf", "allOf"):
+            if key in out:
+                out[key] = [normalize(v) for v in out[key]]
+        if isinstance(out.get("items"), dict):
+            out["items"] = normalize(out["items"])
+        return out
+
+    return transform_schema(normalize(value))
 
 
 class AnthropicEnhancementProvider:
@@ -259,6 +280,9 @@ class AnthropicEnhancementProvider:
                 resolved_model=resolved_model,
             )
 
+        if stop_reason not in {"end_turn", "stop_sequence"}:
+            raise ProviderError("invalid_output", validation_code="provider_incomplete",
+                                usage=usage, response_id=response_id, resolved_model=resolved_model)
         content = _value(response, "content", None)
         parts = []
         if content:

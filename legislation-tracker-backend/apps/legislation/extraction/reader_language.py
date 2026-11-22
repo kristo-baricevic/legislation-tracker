@@ -7,7 +7,7 @@ import re
 import hashlib
 import copy
 
-VERSION = "brief-4"
+VERSION = "brief-5"
 PHRASES = (
     ("prior to", "before"), ("subsequent to", "after"),
     ("in order to", "to"), ("in the event that", "if"),
@@ -83,7 +83,7 @@ def _plain(text):
 def concise_rule(line):
     """Reader projection only: keep the complete legal statement and evidence unchanged."""
     original = explain_line(line)
-    if line.get("kind") == "amendment":
+    if line.get("kind") == "amendment" or re.search(r'["“”]', original):
         return original
     original = re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "-", original)
     text = _plain(" ".join(original.split()))
@@ -93,7 +93,7 @@ def concise_rule(line):
         (r"to award grants to qualifying organizations with applications that propose to include", "for applicants proposing"),
         (r"an evidence tier (\d+) reform or practice", r"a tier \1 approach"),
         (r"evidence tier (\d+) reforms or practices", r"tier \1 approaches"),
-        (r"make grants to or enter into contracts with 1 or more organizations to", "fund one or more organizations to"),
+        (r"make grants to or enter into contracts with 1 or more organizations to", "give grants or contracts to one or more organizations to"),
         (r"disseminate information on the impact of", "share the effects of"),
         (r"for the purpose of improving the effectiveness of|for improving the effectiveness of", "to improve"),
         (r"research-backed reforms and practices", "research-backed approaches"),
@@ -105,7 +105,7 @@ def concise_rule(line):
     if text.startswith("Source text (not simplified):"):
         content = text.split(": ", 1)[1]
         head, sep, examples = content.partition(" that may include the following:")
-        if sep and " must " in head and not re.search(r"\b(except|unless|only|subject to|prohibited)\b", examples, re.I):
+        if sep and " must " in head and not re.search(r"\b(except|unless|only|subject to|prohibited|shall|must|required|may not|provided that|if)\b", examples, re.I):
             groups = re.split(r"(?:^|\s)\(\d+\)\s+", examples.strip())[1:]
             if groups:
                 names = [re.split(r", which may include|, including a combination of|[.;]\s*\(", g, maxsplit=1, flags=re.I)[0].strip(" .;") for g in groups]
@@ -249,7 +249,8 @@ def bill_brief(payload, source_purpose=""):
                 if match[1].lower() == "eligible entities":
                     definition = next((d.get("definition") for d in payload.get("definitions", [])
                                        if d.get("term", "").lower() == "eligible entity" and d.get("definition_type") == "means"), None)
-                    if definition and all(word in definition.lower() for word in ("institution of higher education", "educational organization", "partnership")):
+                    from .glossary import PARAPHRASES, normalized
+                    if definition and ("eligible entity", normalized(definition)) in PARAPHRASES:
                         recipient = "eligible colleges and education partnerships"
                 goal = re.fullmatch(r"This bill would fund programs that help (.+)\.", purpose)
                 if goal and "competitive" in grants[0]["action"].lower():

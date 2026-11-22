@@ -15,8 +15,17 @@ from apps.ingestion.document_download import (
 
 def xml_boundaries(raw, text):
     root = ElementTree.fromstring(raw)
-    bodies = [e for e in root.iter() if _xml_tag(e) in
-              {"legis-body", "engrossed-amendment-body", "amendment-body"}]
+    def outer_bodies(node):
+        tag = _xml_tag(node)
+        if tag in {"toc", "table-of-contents", "quoted-block", "quoted-text"}:
+            return
+        if tag in {"legis-body", "engrossed-amendment-body", "amendment-body"}:
+            yield node
+            return
+        for child in node:
+            yield from outer_bodies(child)
+
+    bodies = list(outer_bodies(root))
     if not bodies:
         return ()  # Other XML vocabularies retain the text parser.
     elements = []

@@ -99,6 +99,10 @@ def test_one_bounded_structured_request():
     assert result.resolved_model == "claude-test-model-2026-08-01"
     assert result.usage.input_tokens == 120
     assert result.usage.output_tokens == 45
+    assert result.usage.total_tokens == 165
+    conditions = call["output_config"]["format"]["schema"]["properties"]["obligations"]["items"]["properties"]["conditions"]
+    assert {branch["type"] for branch in conditions["anyOf"]} == {"string", "null"}
+    assert all("maxLength" not in branch for branch in conditions["anyOf"])
 
 
 def test_multiple_text_blocks_concatenated():

@@ -68,6 +68,8 @@ def _mapped_error(error: Exception) -> ProviderError:
         return ProviderError("model_access_denied")
 
     status_code = getattr(error, "status_code", None)
+    if status_code == 402:
+        return ProviderError("quota_exhausted")
     if status_code == 401:
         return ProviderError("invalid_credentials")
     if status_code == 403:
@@ -512,6 +514,9 @@ class OpenAICompatibleEnhancementProvider:
                 resolved_model=resolved_model,
             )
 
+        if finish_reason != "stop":
+            raise ProviderError("invalid_output", validation_code="provider_incomplete",
+                                usage=usage, response_id=response_id, resolved_model=resolved_model)
         output_text = content if isinstance(content, str) else ("" if content is None else str(content))
 
         # Distinct validation codes for fenced / multi-object output.

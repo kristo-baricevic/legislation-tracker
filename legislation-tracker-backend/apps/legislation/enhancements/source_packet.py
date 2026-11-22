@@ -201,10 +201,15 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
     return build_document_preflight(document, reuse_result=reuse_result)
 
 
+def needs_large_document_review(text):
+    return len(text.encode("utf-8")) > min(settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+                                           settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS)
+
+
 def build_document_preflight(document, *, reuse_result=None):
     bill = document.bill
     text = document.extracted_text or document.raw_text or ""
-    if not reuse_result and len(text) > settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES:
+    if not reuse_result and needs_large_document_review(text):
         from .xml_sections import stored_xml_sections
         sections = stored_xml_sections(document, text)
         if sections:

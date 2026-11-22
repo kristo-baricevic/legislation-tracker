@@ -113,10 +113,14 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
             )
             provider = values.get(
                 "provider",
-                credential.provider if credential else _configured_provider(),
+                _configured_provider() if api_key is not None else credential_target(credential)[0],
             )
+            # Older clients submitted only an OpenAI key. Never attach it to
+            # whichever third-party provider another settings tab just saved.
+            if api_key is not None and "provider" not in values and credential and provider != credential.provider:
+                return Response({"error": "credential_changed"}, status=status.HTTP_409_CONFLICT)
             model = values.get("requested_model", credential_target(credential)[1])
-            if not selectable((provider, model)):
+            if not selectable((provider, model)) and values != {"enabled": False}:
                 return Response(
                     {"provider": ["This provider is not available."]},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -136,7 +140,10 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if credential and model != credential_target(credential)[1] and api_key is None:
-                api_key = decrypt_credential(credential)
+                try:
+                    api_key = decrypt_credential(credential)
+                except CredentialDecryptionError:
+                    return Response({"error": "credential_unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             if api_key is not None:
                 credential = LLMCredential.objects.create_for_key(
                     user=request.user,

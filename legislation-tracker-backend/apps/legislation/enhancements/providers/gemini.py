@@ -23,9 +23,10 @@ def _usage(response) -> ProviderUsage:
     if usage is None:
         return ProviderUsage()
     thoughts = _value(usage, "thoughts_token_count")
+    visible = _value(usage, "candidates_token_count")
     return ProviderUsage(
         input_tokens=_value(usage, "prompt_token_count"),
-        output_tokens=_value(usage, "candidates_token_count"),
+        output_tokens=None if visible is None else visible + (thoughts or 0),
         total_tokens=_value(usage, "total_token_count"),
     )
 
@@ -329,7 +330,7 @@ class GeminiEnhancementProvider:
                 response_id=response_id,
                 resolved_model=resolved_model,
             )
-        if finish_reason_str not in ("", "STOP", "FINISH_REASON_UNSPECIFIED", "CONTINUATION"):
+        if finish_reason_str != "STOP":
             raise ProviderError(
                 "invalid_output",
                 validation_code="provider_incomplete",

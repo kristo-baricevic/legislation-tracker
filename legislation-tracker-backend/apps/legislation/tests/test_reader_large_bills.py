@@ -11,7 +11,8 @@ from apps.legislation.tests.test_reader_enhancement_pipeline import install_read
 def test_large_xml_without_contract_routes_to_complete_review(source_bill, enhancement_settings, monkeypatch):
     from apps.legislation.enhancements.source_packet import PreflightUnavailable
     doc = source_bill.documents.get()
-    section = "Schools must report attendance annually.\n" * 200
+    # Bytes exceed the input cap even though the character count fits.
+    section = "学校は出席を報告する。\n" * 270
     doc.extracted_text = section * 16
     doc.save()
     rows = [(str(i), i * len(section), (i + 1) * len(section), f"Sec. {i+1}", "")
@@ -25,6 +26,19 @@ def test_large_xml_without_contract_routes_to_complete_review(source_bill, enhan
         assert plan.source_manifest["coverage"]["source_chars_planned"] == len(doc.extracted_text)
         with override_settings(LLM_READER_MAX_CALLS=1), pytest.raises(PreflightUnavailable):
             build_enhancement_preflight(source_bill)
+
+
+def test_xml_review_reuse_only_stops_when_reader_contract_becomes_available():
+    from types import SimpleNamespace
+    from apps.legislation.enhancements.shared import source_compatible
+    contract = SimpleNamespace(document_id=1, schema_version="2.0-legal-nlp", contract_json={})
+    bill = SimpleNamespace(latest_contract=contract)
+    document = SimpleNamespace(pk=1, reader_text_hash="abc", bill=bill)
+    saved = SimpleNamespace(output_schema_version="1.4", source_manifest_json={
+        "document_id": 1, "document_content_hash": "abc", "source_kind": "xml_full_review"})
+    assert source_compatible(saved, bill, identity=(document, contract))
+    contract.schema_version = contract.contract_json["schema_version"] = "2.1-legal-nlp"
+    assert not source_compatible(saved, bill, identity=(document, contract))
 
 
 def test_large_section_context_is_bounded_and_every_source_byte_is_reviewed():

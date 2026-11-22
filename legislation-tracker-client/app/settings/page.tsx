@@ -55,7 +55,7 @@ function LLMSettingsSection() {
     try {
       const updated = await updateLLMSettings({
         ...(submittedKey ? {api_key: submittedKey} : {}),
-        ...(changed && selected ? {provider, requested_model: selected.model} : {}),
+        provider, requested_model: selected?.model ?? settings.requested_model,
       });
       setSettings(updated);
       setDraft("");

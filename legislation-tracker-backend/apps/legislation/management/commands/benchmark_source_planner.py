@@ -10,6 +10,7 @@ from django.conf import settings
 
 from apps.legislation.models import BillDocument
 from apps.legislation.enhancements.source_graph import build_source_graph
+from apps.legislation.enhancements.source_packet import needs_large_document_review
 from apps.legislation.enhancements.xml_sections import stored_xml_sections
 from apps.legislation.enhancements.provision_pipeline import BudgetExceeded, _plan_built_graph
 
@@ -35,7 +36,7 @@ class Command(BaseCommand):
                 raise CommandError(f"Missing source text: {pk}")
             start = perf_counter()
             bounds = stored_xml_sections(doc, text)
-            if bounds and len(text) > settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES and not options["legacy_small_plan"]:
+            if bounds and needs_large_document_review(text) and not options["legacy_small_plan"]:
                 from apps.legislation.enhancements.source_packet import build_document_preflight
                 from apps.legislation.enhancements.reader_discovery import xml_batch_coverage
                 p = build_document_preflight(doc)

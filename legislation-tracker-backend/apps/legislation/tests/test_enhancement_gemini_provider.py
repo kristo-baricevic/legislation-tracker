@@ -60,7 +60,7 @@ def _completed_response():
         usage_metadata=SimpleNamespace(
             prompt_token_count=120,
             candidates_token_count=45,
-            total_token_count=165,
+            total_token_count=172,
             thoughts_token_count=7,
         ),
         candidates=[
@@ -109,8 +109,8 @@ def test_enhancement_uses_one_bounded_non_persistent_structured_request():
     assert result.response_id == "resp_test_123"
     assert result.resolved_model == "gemini-2.5-flash-2026-08-01"
     assert result.usage.input_tokens == 120
-    assert result.usage.output_tokens == 45
-    assert result.usage.total_tokens == 165
+    assert result.usage.output_tokens == 52
+    assert result.usage.total_tokens == 172
 
 
 def test_multi_part_candidate_normalizes_text():
@@ -235,7 +235,7 @@ def test_usage_and_resolved_model():
     factory = FakeClientFactory(models)
     provider = GeminiEnhancementProvider(client_factory=factory)
     result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
-    assert result.usage.total_tokens == 165
+    assert result.usage.total_tokens == 172
     assert result.resolved_model == "gemini-2.5-flash-2026-08-01"
 
 
