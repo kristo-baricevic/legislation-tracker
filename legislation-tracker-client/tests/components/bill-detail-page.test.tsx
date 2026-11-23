@@ -382,10 +382,10 @@ describe("BillDetailPage", () => {
     expect(await screen.findByRole("heading", { name: "HR 11 · Congress 119" })).toBeVisible();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading contract history" })).not.toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "What this bill does" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("tab", { name: "Votes & sponsor" }));
-    expect(screen.getByText("Loading vote history…")).toBeVisible();
+    expect(await screen.findByRole("status", { name: "Loading vote history" })).toBeVisible();
     expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1, view: "summary" });
     expect(getVotes).toHaveBeenLastCalledWith(11, { page: 1 });
   });

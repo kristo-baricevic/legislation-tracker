@@ -32,7 +32,6 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
   }, [id, active, revision, onCard]);
   async function research() {
     if (busy) return;
-    if (active) { setRevision(value => value + 1); return; }
     const controller = new AbortController(); action.current = controller;
     setBusy(true); setError(false);
     try {

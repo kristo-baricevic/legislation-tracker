@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getResearch, startResearch, getContributors, type Research, type Contributors, type FinanceProgress } from "@/lib/representative-research";
@@ -48,7 +49,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   useEffect(() => { if (data) onResearch?.(data); }, [data, onResearch]);
   const active = data?.status === "queued" || data?.status === "running";
   const overviewReady = data?.finance_progress?.overview_ready === true;
-  const overviewPending = active && !overviewReady;
+  const overviewPending = active && !overviewReady && !error;
   const progressLabel = busy ? "Starting…" : data?.status === "queued" ? "Queued…" : "Researching…";
   const displayedPeriod = busy && data ? data.period : period;
   useEffect(() => () => action.current?.abort(), []);
@@ -90,7 +91,6 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   }, [representativeId, period, reload, cardName, dashboardCard, cardVersion, busy]);
   async function research() {
     if (busy) return;
-    if (active) { setError(""); setReload(n => n + 1); return; }
     const controller = new AbortController();
     action.current = controller;
     actionFailed.current = false;
@@ -143,10 +143,10 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   if (financeView) return <section className={`${styles.panel} ${styles.funding} ${modalView ? styles.modalFunding : ""}`} aria-label="Campaign funding">
     <div className={styles.fundingToolbar} aria-label="Funding controls">
       <div className={styles.recordTabs} aria-label="Funding type"><button aria-pressed={fundingView === "donations"} onClick={() => setFundingView("donations")}>Donations</button><button aria-pressed={fundingView === "outside"} onClick={() => setFundingView("outside")}>Outside spending</button></div>
-      {fundingView === "donations" && <label>Period <select aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Loading…"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
+      {fundingView === "donations" && <label>Period <select aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error} <button onClick={() => void selectPeriod(period)}>Retry</button></p>}
-    <div className={styles.fundingLoadStatus} role="status">{!data && !error ? "Loading funding…" : overviewReady && active ? "Donations updating in background" : ""}</div>
+    <div className={styles.fundingLoadStatus}><LoadingSpinner active={!data && !error} label="Loading funding…" />{overviewReady && active && <span role="status">Donations updating in background</span>}</div>
     <div className={styles.fundingContent} aria-label="Funding results" aria-busy={busy} inert={busy}>
     {fundingView === "outside" ? <OutsideSpendingTable scope={outsideScope} setScope={setOutsideScope} representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? <AllYearsDonations representativeId={representativeId} modalView={modalView} refreshToken={`${reload}:${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : <>
       {data?.finance_progress && <CampaignTotals progress={data.finance_progress} concise />}
@@ -160,16 +160,17 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     <div className={styles.controls}>
       <button type="button" className={styles.primary} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : overviewReady && active ? "Researched" : data?.biography || data?.snapshot ? "Refresh research" : "Research"}</button>
       {compact && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "Hide research" : "View research"}</button>}
-      {!compact && <label>Reporting period <select aria-label="Reporting period" value={availablePeriods.includes(period) ? period : ""} disabled={busy || !availablePeriods.length} onChange={e => void selectPeriod(Number(e.target.value))}>{!availablePeriods.includes(period) && <option value="" disabled>{data ? "No data" : "Loading…"}</option>}{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
+      {!compact && <label>Reporting period <select aria-label="Reporting period" value={availablePeriods.includes(period) ? period : ""} disabled={busy || !availablePeriods.length} onChange={e => void selectPeriod(Number(e.target.value))}>{!availablePeriods.includes(period) && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error} <button type="button" onClick={() => { setError(""); setReload(n => n + 1); }}>Retry status</button></p>}
     {data?.run?.error && <p role="alert">{data.run.error} Saved information is unchanged.</p>}
-    {overviewPending && data?.status !== "queued" && <p role="status">Loading campaign overview…</p>}
+    {overviewPending && data?.status !== "queued" && <p role="status">Collecting campaign overview…</p>}
     {expanded && <>
       {!profileView && data?.run && <div className={styles.progress}>{Object.entries(data.run.sections).map(([name, section]) => <span key={name}>{name === "finance" ? "Campaign finance" : name === "photo" ? "Photo" : "Biography"}: {section.status.replaceAll("_", " ")}</span>)}</div>}
+      <LoadingSpinner active={!data && !error} label="Loading saved research…" />
       <div className={styles.bio}>
         {!profileView && data?.portrait && <img src={data.portrait.url} alt="Official representative portrait" width={88} height={110} onError={e => { e.currentTarget.hidden = true; }} />}
-        <div>{data?.biography && !(profileView && data.biography.kind === "official_service_facts") ? <><h3>About this representative</h3><p>{data.biography.text}</p><small><SourceLink url={data.biography.source.url}>{data.biography.source.attribution || "Biography source"}</SourceLink>{data.biography.source.license && ` · ${data.biography.source.license}`}{!profileView && <> · Last researched {new Date(data.biography.source.fetched_at).toLocaleDateString()}</>}</small></> : profileView ? null : <p>{data ? "Not researched yet. Research gathers a biography, photo and campaign finance records." : "Loading saved research…"}</p>}{data?.portrait && <small><SourceLink url={data.portrait.source.url}>{data.portrait.source.attribution || "Photo source"}</SourceLink></small>}</div>
+        <div>{data?.biography && !(profileView && data.biography.kind === "official_service_facts") ? <><h3>About this representative</h3><p>{data.biography.text}</p><small><SourceLink url={data.biography.source.url}>{data.biography.source.attribution || "Biography source"}</SourceLink>{data.biography.source.license && ` · ${data.biography.source.license}`}{!profileView && <> · Last researched {new Date(data.biography.source.fetched_at).toLocaleDateString()}</>}</small></> : profileView ? null : <p>{data ? "Not researched yet. Research gathers a biography, photo and campaign finance records." : ""}</p>}{data?.portrait && <small><SourceLink url={data.portrait.source.url}>{data.portrait.source.attribution || "Photo source"}</SourceLink></small>}</div>
       </div>
       {data?.run && Object.entries(data.run.sections).map(([name, section]) => section.reason && reasons[section.reason] ? profileView ? name === "finance" && section.reason !== "itemized_receipts_only" ? <p className={styles.note} key={name}>Campaign funding unavailable — {section.reason === "candidate_not_found" ? "no matching campaign found." : "research needs attention."}</p> : null : <p className={styles.note} key={name}>{reasons[section.reason]}</p> : null)}
       {data?.finance_progress && <CampaignTotals progress={data.finance_progress} />}
@@ -277,7 +278,7 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
     {retryError && <p role="alert">{retryError}</p>}
     <dl className={styles.fundingTotals}><div><dt>Supporting</dt><dd>{money(data?.support ?? null)}</dd></div><div><dt>Opposing</dt><dd>{money(data?.oppose ?? null)}</dd></div>{Number(data?.mentions) > 0 && <div><dt>Mentions</dt><dd>{money(data?.mentions ?? null)}</dd></div>}</dl>
     <ul ref={list} className={styles.donorList} aria-label="Outside spending records" aria-busy={loading} tabIndex={0}>{data?.results.map(item => <li key={item.id}><div className={styles.spenderIdentity}><SourceLink url={item.source_url}>{item.name}</SourceLink><span className={`${styles.positionPill} ${item.position === "S" ? styles.supports : item.position === "O" ? styles.opposes : styles.yearPill}`}>{item.position === "S" ? "Supports" : item.position === "O" ? "Opposes" : "Mentions"}</span>{item.period && <span className={`${styles.positionPill} ${styles.yearPill}`}>{item.period - 1}–{item.period}</span>}{item.category && <span className={`${styles.positionPill} ${styles.yearPill}`}>{{ independent: "Independent", communication: "Communication costs", electioneering: "Electioneering" }[item.category]}</span>}</div><strong>{money(item.amount)}</strong></li>)}<li ref={end} className={styles.scrollSentinel} aria-hidden="true" /></ul>
-    <div className={styles.listStatus}>{error ? <span role="alert">Could not load spending. <button onClick={() => setRetry(value => value + 1)}>Retry</button></span> : !data ? <span role="status">Loading spending…</span> : data.status === "not_researched" ? collecting ? "Collecting spending records…" : "Use Research to collect outside spending." : !data.results.length ? data.status === "collecting" ? "Collecting spending records…" : "No outside spending in collected records." : null}</div>
+    <div className={styles.listStatus}><LoadingSpinner active={!data && !error} label="Loading spending…" />{error ? <span role="alert">Could not load spending. <button onClick={() => setRetry(value => value + 1)}>Retry</button></span> : !data ? null : data.status === "not_researched" ? collecting ? "Collecting spending records…" : "Use Research to collect outside spending." : !data.results.length ? data.status === "collecting" ? "Collecting spending records…" : "No outside spending in collected records." : null}</div>
   </section>;
 }
 
@@ -303,7 +304,7 @@ function ContributorTable({ representativeId, period, snapshot, refreshToken, co
       <label>Sort <select value={sort} onChange={event => { setLoading(true); setSort(event.target.value); setCursor(0); }}><option value="amount">Amount</option><option value="date">Date</option><option value="name">Name</option></select></label>
     </div>
     {error && <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry contributors</button></p>}
-    <div className={styles.listStatus} aria-live="polite">{loading ? "Loading contributors…" : "\u00a0"}</div>
+    <div className={styles.listStatus}><LoadingSpinner active={loading} label="Loading contributors…" /></div>
     <>
       {data?.status === "collecting" && <CardTooltip text="Records are still being collected. Amounts and rankings may change."><span className={styles.collecting} tabIndex={0}>Updating ⓘ</span></CardTooltip>}
       <ul className={styles.donorList} aria-busy={loading} aria-label={displayed.kind === "refund" ? "Refund records" : "Contribution records"} tabIndex={0}>
@@ -325,7 +326,7 @@ function ContributorTable({ representativeId, period, snapshot, refreshToken, co
   return <section><div className={styles.controls}><h3>Campaign contributors</h3><label>Sort <select value={sort} onChange={e => { setSort(e.target.value); setCursor(0); }}><option value="amount">Amount</option><option value="date">Date</option><option value="name">Name</option></select></label></div>
     <label>Record type <select value={kind} onChange={e => { setKind(e.target.value); setCursor(0); setData(null); }}><option value="contribution">Contributions</option><option value="refund">Refunds</option></select></label>
     {error && <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry contributors</button></p>}
-    {loading && <p role="status">Loading contributors…</p>}
+    <LoadingSpinner active={loading} label="Loading contributors…" />
     {data && <>{data.status === "collecting" && <p className={styles.note}>{concise ? "Still collecting — amounts and rankings may change." : "Partial results — records are still being collected. Amounts and rankings may change."}</p>}{!concise && <p className={styles.note}>{data.count} reported {kind === "refund" ? "refunds" : "contributions"} in this view. Coverage: {data.status}. Contributions are not the same as total campaign receipts.</p>}
       <div className={styles.table}><table><thead><tr><th>{kind === "refund" ? "Refund recipient" : "Contributor"}</th><th>Amount</th>{!concise && <th>Campaign committee</th>}<th>Date</th>{!concise && <th>Evidence</th>}</tr></thead><tbody>{data.results.map(row => <tr key={row.id}><td>{concise ? <CardTooltip text={`${row.type} · ${row.committee}. Open the FEC record.`}><SourceLink url={row.source_url}>{row.name}</SourceLink></CardTooltip> : <>{row.name}<small>{row.type}</small></>}</td><td>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(row.amount))}</td>{!concise && <td>{row.committee}</td>}<td>{row.date || "Not reported"}</td>{!concise && <td><SourceLink url={row.source_url}>FEC record</SourceLink></td>}</tr>)}</tbody></table></div>{!data.results.length && <p>{data.status === "collecting" ? "No contributor records loaded yet. Collection is still running." : "No publishable contributor records were found in this scope. This does not mean the campaign received no contributions."}</p>}
       <nav className={styles.controls} aria-label="Contributor pages"><span>{data.count ? `${cursor + 1}–${Math.min(cursor + data.results.length, data.count)} of ${data.count} records` : "0 records"}</span>{(cursor > 0 || data.next_cursor !== null) && <><button disabled={loading || cursor === 0} onClick={() => setCursor(Math.max(0, cursor - 20))}>Prev</button><button disabled={loading || data.next_cursor === null} onClick={() => setCursor(data.next_cursor!)}>Next</button></>}</nav></>}

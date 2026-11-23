@@ -945,6 +945,7 @@ export interface RepresentativesPage {
 }
 
 export async function getRepresentatives(params?: {
+  tracking?: "tracked" | "untracked";
   party?: string;
   search?: string;
   state?: string;
@@ -961,8 +962,10 @@ export async function getRepresentatives(params?: {
   if (params?.is_current != null) sp.set("is_current", String(params.is_current));
   if (params?.page != null) sp.set("page", String(params.page));
   if (params?.page_size != null) sp.set("page_size", String(params.page_size));
+  if (params?.tracking) sp.set("tracking", params.tracking);
   const q = sp.toString();
-  return publicGet<RepresentativesPage>(`/api/representatives/${q ? `?${q}` : ""}`);
+  const path = `/api/representatives/${q ? `?${q}` : ""}`;
+  return params?.tracking ? authGet<RepresentativesPage>(path) : publicGet<RepresentativesPage>(path);
 }
 
 export async function getAllCurrentRepresentatives(): Promise<RepresentativeItem[]> {

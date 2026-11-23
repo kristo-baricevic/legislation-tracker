@@ -128,3 +128,14 @@ it("shows real telemetry only to superusers", async () => {
   expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
   expect(authPost).not.toHaveBeenCalled();
 });
+
+it("delays dashboard loading feedback and lets ready content appear immediately", async () => {
+  let finish!: (value: Awaited<ReturnType<typeof getMyTracking>>) => void;
+  vi.mocked(getMyTracking).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  render(<BillDeck />);
+  expect(screen.queryByRole("status", { name: "Loading your followed bills" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: "Loading your followed bills" })).toBeVisible();
+  await act(async () => finish({ bills: [], topics: [], legislators: [], is_staff: false }));
+  expect(screen.getByText("Your collection starts with a bill")).toBeVisible();
+  expect(screen.queryByRole("status", { name: "Loading your followed bills" })).not.toBeInTheDocument();
+});

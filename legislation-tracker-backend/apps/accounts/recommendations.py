@@ -111,17 +111,12 @@ def load_profile(user_id):
 
 
 def candidate_query(profile):
-    user_id = profile.user_id
-    followed_reps = TrackedLegislator.objects.filter(user_id=user_id).values(
-        "representative_id"
-    )
-    seed_bills = TrackedBill.objects.filter(user_id=user_id)
+    # load_profile already captured these follows in the request's read snapshot.
+    # Reusing IDs avoids repeating correlated follow-table joins for each score.
+    followed_reps = list(profile.representatives)
     usable = BillTopic.objects.filter(USABLE_TOPIC, bill_id=OuterRef("pk"))
-    seed_topics = BillTopic.objects.filter(
-        USABLE_TOPIC, bill__tracked_by_users__user_id=user_id
-    ).values("topic_id")
-    direct_topic = Exists(usable.filter(topic__tracked_by_users__user_id=user_id))
-    seed_topic = Exists(usable.filter(topic_id__in=seed_topics))
+    direct_topic = Exists(usable.filter(topic_id__in=[key for key, score in profile.topics.items() if score == 100]))
+    seed_topic = Exists(usable.filter(topic_id__in=list(profile.topic_seeds)))
     active_cosponsor = Exists(
         BillCosponsor.objects.filter(
             bill_id=OuterRef("pk"),
@@ -132,7 +127,7 @@ def candidate_query(profile):
     query = (
         Bill.objects.filter(jurisdiction__in=("federal", "state"), session__gt=0)
         .exclude(Q(title__regex=r"^\s*$") | Q(bill_number__regex=r"^\s*$"))
-        .exclude(pk__in=seed_bills.values("bill_id"))
+        .exclude(pk__in=list(profile.seeds))
         .annotate(
             recommendation_t=Case(
                 When(direct_topic, then=Value(100)),
@@ -144,9 +139,7 @@ def candidate_query(profile):
                 When(sponsor_id__in=followed_reps, then=Value(100)),
                 When(active_cosponsor, then=Value(75)),
                 When(
-                    sponsor_id__in=seed_bills.filter(
-                        bill__sponsor_id__isnull=False
-                    ).values("bill__sponsor_id"),
+                    sponsor_id__in=list(profile.sponsor_seeds),
                     then=Value(35),
                 ),
                 default=Value(0),

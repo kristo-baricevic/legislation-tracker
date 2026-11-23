@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useRef, useState } from "react";
 import { StableResults } from "@/app/components/StableResults";
@@ -203,7 +204,7 @@ function OriginalFinancialLedger({
             <button type="button" disabled={loading} onClick={() => void load(requestedPage.current, true)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
           </div>
         )}
-        {loading && items.length === 0 && <p aria-live="polite" className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading money provisions…</p>}
+        <LoadingSpinner active={loading && items.length === 0} label="Loading money provisions…" />
         {!loading && !error && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">{totalCount === 0 ? "No financial provisions have been extracted for this bill. Filters are unavailable until financial records exist; this does not mean the bill has no financial effects." : "No recognized financial provisions match these filters."}</p>}
 
         {items.length > 0 && (

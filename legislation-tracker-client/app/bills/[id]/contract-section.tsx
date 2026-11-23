@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useState } from "react";
 
@@ -333,14 +334,18 @@ function CompactContractSection({ contract, bill }: { contract: BillContractSumm
     };
   }, [attempt, contract.id]);
 
-  if (resolved) return <ContractSection contract={resolved} bill={bill} />;
-  if (error) {
-    return (
-      <div role="alert" className="mb-6 text-sm text-red-700 dark:text-red-300">
-        <p>Could not load the existing bill analysis.</p>
-        <button type="button" onClick={() => setAttempt((value) => value + 1)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill analysis</button>
-      </div>
-    );
+  function renderContent() {
+    if (resolved) return <ContractSection contract={resolved} bill={bill} />;
+    if (error) {
+      return (
+        <div role="alert" className="mb-6 text-sm text-red-700 dark:text-red-300">
+          <p>Could not load the existing bill analysis.</p>
+          <button type="button" onClick={() => setAttempt((value) => value + 1)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill analysis</button>
+        </div>
+      );
+    }
+    return null;
   }
-  return <p className="mb-6 text-sm text-slate-600 dark:text-green-600">Loading bill analysis…</p>;
+  return <><LoadingSpinner reserveSpace active={!resolved && !error} label="Loading bill analysis…" />{renderContent()}</>;
+
 }

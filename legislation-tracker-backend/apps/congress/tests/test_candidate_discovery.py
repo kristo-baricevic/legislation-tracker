@@ -19,6 +19,29 @@ def test_unique_exact_identity_can_be_verified():
     assert verified_match(representative(), [candidate()], 2026, 2026) == "H8NY15148"
 
 
+@pytest.mark.parametrize("title", ["REP.", "SEN.", "Representative", "Senator", "HON."])
+def test_provider_titles_are_not_name_parts(title):
+    assert verified_match(representative(), [candidate(name=f"OCASIO-CORTEZ, ALEXANDRIA {title}")], 2026, 2026) == "H8NY15148"
+
+
+def test_normalization_preserves_real_name_parts():
+    from apps.congress.names import normalize_person_name
+    assert normalize_person_name("Rep. O’Neill-Smith, José B. Jr. [D-NY-14]") == "O’Neill-Smith, José B. Jr."
+    assert normalize_person_name("Sen, Amit") == "Sen, Amit"
+    assert normalize_person_name("Robert B. Aderholt REP.") == "Robert B. Aderholt"
+    assert normalize_person_name(normalize_person_name("Rep. Jane Doe [D-NY-1]")) == "Jane Doe"
+
+
+@pytest.mark.django_db
+def test_names_are_normalized_at_sponsor_and_directory_ingestion():
+    from apps.ingestion.tasks import get_or_create_representative_from_sponsor, _member_profile
+    rep = get_or_create_representative_from_sponsor({"bioguideId": "A000055", "fullName": "Rep. Aderholt, Robert B. [R-AL-4]", "state": "AL", "district": 4})
+    assert rep.name == "Aderholt, Robert B."
+    assert rep.chamber == "house"
+    profile = _member_profile({"bioguideId": "A000055", "name": "Aderholt, Robert B. REP."}, {})
+    assert profile["name"] == "Aderholt, Robert B."
+
+
 @pytest.mark.parametrize("rows", [[candidate(district="13")], [candidate(state="CA")], [candidate(office="S")], [candidate(name="OCASIO-CORTEZ, OTHER")], [candidate(), candidate(candidate_id="H8NY15149")]])
 def test_mismatch_or_ambiguity_never_auto_verifies(rows):
     assert verified_match(representative(), rows, 2026, 2026) is None
@@ -62,15 +85,19 @@ def test_existing_verified_mapping_extends_only_after_fresh_match(monkeypatch, m
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("found", [True, False])
-def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, found):
+@pytest.mark.parametrize("previously_blocked", [True, False])
+def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, found, previously_blocked):
     from datetime import timedelta
     from django.utils import timezone
     from django.contrib.auth import get_user_model
     from apps.congress.models import Representative
     from apps.research.services import request_research
     from apps.campaign_finance.research import process_finance
-    from apps.campaign_finance.models import RepresentativeCandidate
+    from apps.campaign_finance.models import RepresentativeCandidate, CandidateIdentity
     rep = Representative.objects.create(bioguide_id="O000172", name="Rep. Ocasio-Cortez, Alexandria [D-NY-14]", chamber="house", state="NY", district="14", is_current=True)
+    if previously_blocked:
+        identity = CandidateIdentity.objects.create(fec_id="H8NY15148", name="OCASIO-CORTEZ, ALEXANDRIA REP.", office="H", state="NY")
+        RepresentativeCandidate.objects.create(representative=rep, candidate=identity, periods=[2026], verified=False)
     run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username="reader").pk)
     work = run.work_item
     work.status = "processing"; work.dispatch_token = "lease"; work.lease_expires_at = timezone.now() + timedelta(minutes=5); work.save()

@@ -3,7 +3,7 @@ import type { RecommendationEmptyReason } from "@/lib/recommendations";
 import styles from "./recommendations.module.css";
 
 export function RecommendationState({ loading, error, signedIn, empty, retry, kind = "bills" }: { loading: boolean; error: string; signedIn: boolean; empty?: RecommendationEmptyReason | null; retry: () => void; kind?: "bills" | "representatives" }) {
-  if (loading) return <p role="status" className={styles.empty}>Loading recommendations…</p>;
+  if (loading) return null;
   if (error) return <div role="alert" className={styles.empty}>{error} <button className={styles.action} onClick={retry}>Retry recommendations</button></div>;
   if (!signedIn) return <p className={styles.empty}><Link href="/login">Log in</Link> to discover legislation from your followed interests.</p>;
   const message = empty === "no_follows" ? "Follow a topic or representative to start discovering related legislation."

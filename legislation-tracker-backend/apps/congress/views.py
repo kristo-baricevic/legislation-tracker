@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from django.db.models import Q
+from django.db.models import Q, Prefetch, F
 
 from django.utils import timezone
 from rest_framework import viewsets
@@ -27,6 +27,8 @@ from .serializers import (
     BillCosponsorSerializer,
     CommitteeMembershipSerializer,
     CommitteeSerializer,
+    CommitteeDirectoryQuerySerializer,
+    CommitteeDirectorySerializer,
     RepresentativeCompareQuerySerializer,
     RepresentativeInsightQuerySerializer,
     RepresentativeBillQuerySerializer,
@@ -45,6 +47,21 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     serializer_class = RepresentativeSerializer
     queryset = Representative.objects.all().order_by("state", "name", "id")
+
+    def get_authenticators(self):
+        # Public browsing must still work with an expired login cookie.
+        if self.request.GET.get("tracking") in {"tracked", "untracked"}:
+            from rest_framework.settings import api_settings
+            return [auth() for auth in api_settings.DEFAULT_AUTHENTICATION_CLASSES]
+        return []
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        if request.query_params.get("tracking"):
+            from django.utils.cache import patch_vary_headers
+            response["Cache-Control"] = "private, no-store"
+            patch_vary_headers(response, ["Cookie", "Authorization"])
+        return response
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -70,6 +87,14 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action != "list":
             return qs
         params = query.validated_data
+        tracking = params.get("tracking")
+        if tracking:
+            from rest_framework.exceptions import NotAuthenticated
+            from apps.accounts.models import TrackedLegislator
+            if not self.request.user.is_authenticated:
+                raise NotAuthenticated("Log in to filter tracked representatives.")
+            ids = TrackedLegislator.objects.filter(user=self.request.user).values("representative_id")
+            qs = qs.filter(pk__in=ids) if tracking == "tracked" else qs.exclude(pk__in=ids)
 
         for token in params.get("search", "").split():
             qs = qs.filter(name__icontains=token)
@@ -275,8 +300,60 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
 class CommitteeViewSet(viewsets.ReadOnlyModelViewSet):
     authentication_classes = []
     permission_classes = [AllowAny]
-    serializer_class = CommitteeSerializer
+    serializer_class = CommitteeDirectorySerializer
     queryset = Committee.objects.select_related("parent").order_by("chamber", "name")
+
+    def directory_scope(self):
+        from .current import current_congress
+        query = CommitteeDirectoryQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        return query.validated_data.get("congress", current_congress()), query.validated_data.get("chamber")
+
+    def get_queryset(self):
+        congress, chamber = self.directory_scope()
+        members = CommitteeMembership.objects.filter(congress=congress, is_current=True).select_related("representative").order_by(F("rank").asc(nulls_last=True), "representative__name", "id")
+        qs = super().get_queryset().filter(is_current=True)
+        if chamber:
+            qs = qs.filter(chamber=chamber)
+        query = CommitteeDirectoryQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        filters = query.validated_data
+        for token in filters.get("search", "").split():
+            qs = qs.filter(name__icontains=token)
+        if filters.get("level"):
+            qs = qs.filter(parent__isnull=filters["level"] == "committee")
+        if filters.get("member"):
+            matching_members = members
+            for token in filters["member"].replace(",", " ").split():
+                matching_members = matching_members.filter(representative__name__icontains=token)
+            qs = qs.filter(pk__in=matching_members.values("committee_id"))
+        if filters.get("topic_id"):
+            from apps.legislation.models import Bill
+            sponsors = Bill.objects.filter(jurisdiction="federal", session=congress, bill_topics__topic_id=filters["topic_id"]).values("sponsor_id")
+            qs = qs.filter(pk__in=members.filter(representative_id__in=sponsors).values("committee_id"))
+        return qs.prefetch_related(Prefetch("memberships", queryset=members, to_attr="directory_members"))
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data["congress"] = self.directory_scope()[0]
+        return response
+
+    @action(detail=True, methods=["get"], url_path="introduced-bills")
+    def introduced_bills(self, request, pk=None):
+        from apps.legislation.models import Bill
+        from apps.accounts.dashboard_bill_cards import add_card_summaries
+        congress, _ = self.directory_scope()
+        committee = self.get_object()
+        members = CommitteeMembership.objects.filter(committee=committee, congress=congress, is_current=True).values("representative_id")
+        bills = Bill.objects.filter(jurisdiction="federal", session=congress, sponsor_id__in=members).select_related("sponsor").prefetch_related("bill_topics__topic").order_by(F("introduced_at").desc(nulls_last=True), "-id")
+        query = CommitteeDirectoryQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        if query.validated_data.get("topic_id"):
+            bills = bills.filter(bill_topics__topic_id=query.validated_data["topic_id"])
+        page = self.paginate_queryset(bills)
+        cards = BillListSerializer(page, many=True).data
+        add_card_summaries([{"bill": card} for card in cards])
+        return self.get_paginated_response(cards)
 
 
 class VoteViewSet(viewsets.ReadOnlyModelViewSet):

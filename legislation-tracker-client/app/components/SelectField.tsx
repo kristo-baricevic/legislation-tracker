@@ -13,6 +13,7 @@ interface SelectFieldProps {
   options: SelectOption[];
   onChange: (value: string) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 export default function SelectField({
@@ -21,6 +22,7 @@ export default function SelectField({
   options,
   onChange,
   className = "",
+  disabled = false,
 }: SelectFieldProps) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -66,7 +68,8 @@ export default function SelectField({
         id={`${id}-button`}
         type="button"
         aria-haspopup="listbox"
-        aria-expanded={open}
+        disabled={disabled}
+        aria-expanded={open && !disabled}
         aria-labelledby={`${id}-label ${id}-button`}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
@@ -82,7 +85,7 @@ export default function SelectField({
           v
         </span>
       </button>
-      {open && (
+      {open && !disabled && (
         <div
           role="listbox"
           aria-labelledby={`${id}-label`}

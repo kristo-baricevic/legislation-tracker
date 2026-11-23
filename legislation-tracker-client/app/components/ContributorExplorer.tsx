@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React, { useEffect, useRef, useState } from "react";
 import { getConnections, type Connections } from "@/lib/representative-research";
 import styles from "./representative-research.module.css";
@@ -35,7 +36,7 @@ export default function ContributorExplorer({ representativeId, period, refreshT
     <h3>Follow the contributions</h3>
     <p className={styles.note}>Choose a contributor to see which researched campaigns received money. Contributions do not establish support for a bill or topic.</p>
     {error && <p role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry connections</button></p>}
-    {loading && !data && <p role="status">Loading connections…</p>}
+    <LoadingSpinner active={loading && !data} label="Loading connections…" />
     {data?.finance_status === "collecting" && <p className={styles.note}>Partial connections — donor records are still being collected. Amounts and rankings may change.</p>}
     {!loading && data && !data.donors.length && <p>{data.finance_status === "not_researched" ? "No campaign contribution data has been saved yet." : "No verified committee contributors are available for this reporting period."}</p>}
     {data && data.donors.length > 0 && <>
@@ -76,7 +77,8 @@ function MemberActivity({ member, period, close }: { member: { id: number; name:
     <div className={styles.explorerHeader}><h4>{member.name}: legislative activity</h4><button onClick={close}>Close activity</button></div>
     <p className={styles.note}>Recorded activity during {period - 1}–{period}. This does not show the contributor’s position on these bills.</p>
     <StableResults page={shownCursor} busy={loading} label="Legislative activity results">
-    {error ? <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry activity</button></p> : !data && <p role="status">Loading activity…</p>}
+    <LoadingSpinner active={loading && !error} label="Loading activity…" />
+    {error && <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry activity</button></p>}
     {data && <><ul className={styles.activityRows}>{data.bills.map(bill => <li key={bill.id}>
       <small>{bill.relations.filter(label => !label.startsWith("Recorded vote")).join(" · ")}</small>
       <a href={`/bills/${bill.id}`}>{bill.number}: {bill.title}</a>

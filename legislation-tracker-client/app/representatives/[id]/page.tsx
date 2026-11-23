@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
 import BillCard from "../../components/BillCard";
@@ -68,7 +69,7 @@ function FullVotes({ scope }: { scope: ProfileScope }) {
       {topicsError && <button onClick={() => setTopicsRetry(value => value + 1)}>Retry topics</button>}
     </div>
     <div className={styles.voteStatus}>
-      {loading && <span role="status" className={data ? "sr-only" : undefined}>Loading votes…</span>}
+      <LoadingSpinner active={loading} label="Loading votes…" />
       {error && <span role="alert">Could not load votes. <button onClick={() => setRetry(value => value + 1)}>Retry votes</button></span>}
     </div>
     <div ref={resultsViewport} className={styles.voteViewport} role="region" aria-label="Voting results" tabIndex={0}>
@@ -285,7 +286,7 @@ function RepresentativeDetailContent() {
   const name = (representative?.name ?? "").replace(/^(Rep\.|Sen\.)\s*/, "").replace(/\s*\[.*\]$/, "").replace(/^([^,]+),\s*(.+)$/, "$2 $1");
   const portrait = research?.portrait?.url || representative?.image_url;
   return <main className={styles.page}>
-    {loading && <p role="status">Loading representative…</p>}
+    <LoadingSpinner centered active={loading} label="Loading representative…" />
     {error && <p role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!loading && representative && <>
       <header className={styles.header}>
@@ -334,7 +335,7 @@ export default function RepresentativeDetailPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[60vh] items-center justify-center font-sans text-slate-600 dark:text-green-500">
-          Loading representative…
+          <LoadingSpinner centered label="Loading representative…" />
         </div>
       }
     >

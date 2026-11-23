@@ -1,4 +1,6 @@
 "use client";
+import { useDashboardLoading } from "./DashboardLoading";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React from "react";
 import { capturePersonalizedScope, getMyTracking, isPersonalizedScopeCurrent, trackLegislator, untrackLegislator } from "@/lib/api";
 import { dashboardValue } from "@/lib/dashboard-cache";
@@ -22,6 +24,7 @@ export default function RepresentativeRecommendations({ renderName }: Representa
     restoreFocus.current = false;
   }, []);
   const state = useRecommendations("rep-recommendations", getRepresentativeRecommendations, invalidate, true);
+  const dashboardLoading = useDashboardLoading("representatives", state.loading);
   const [followed, setFollowed] = React.useState<Set<number>>(new Set());
   const [followedProfiles, setFollowedProfiles] = React.useState<import("@/lib/api").TrackedLegislatorItem[]>([]);
   React.useEffect(() => {
@@ -53,6 +56,7 @@ export default function RepresentativeRecommendations({ renderName }: Representa
   }
   return <section ref={section} className={cards.section} aria-labelledby="representative-recommendations-title">
     <div className={cards.heading}><h2 ref={heading} tabIndex={-1} id="representative-recommendations-title">Representatives to discover</h2><button className={styles.action} aria-label="Refresh representative recommendations" aria-disabled={state.loading} aria-busy={state.loading} onClick={state.retry}>Refresh</button></div>
+    {!dashboardLoading && <LoadingSpinner reserveSpace active={state.loading} label="Loading recommendations…" />}
     {state.data && <div className="min-h-5 text-sm text-red-700" aria-live="polite">{state.error && <span role="alert">{state.error}</span>}</div>}
     {state.data?.results.length ? <>
       <div className={cards.row} role="region" aria-label="Recommended representatives" tabIndex={0}>{state.data.results.map(item => <LegislatorCard key={item.representative_id} representative={{ ...item.topic_activity_evidence.representative, id: item.representative_id, name: item.name, bioguide_id: item.bioguide_id }} facts={item.card} renderName={renderName} activity={item.topic_activity_evidence}

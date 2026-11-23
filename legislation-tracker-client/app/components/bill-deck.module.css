@@ -49,7 +49,7 @@
 .heading h1 { font-family: var(--font-reading), Georgia, "Times New Roman", serif; font-size: clamp(1.9rem, 3vw, 2.5rem); font-weight: 600; letter-spacing: 0; line-height: 1.15; margin: 0 0 .65rem; }
 .heading p { color: var(--muted); max-width: 62ch; margin: 0; }
 .link, .deck a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
-.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding-bottom: 1.3rem; border-bottom: 1px solid var(--line); }
+.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding-bottom: 1.3rem; }
 .segment { display: flex; gap: .3rem; background: var(--wash); padding: .3rem; border: 1px solid var(--line); border-radius: var(--radius); }
 .segment button { border: 0; background: transparent; border-radius: calc(var(--radius) - 3px); padding: .5rem 1rem; }
 .segment button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
@@ -69,7 +69,7 @@
 .topicSection h2 small { color: var(--muted); font-weight: 400; font-size: .85rem; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; }
 .followedRow { display: grid; grid-auto-flow: column; grid-auto-columns: clamp(300px, 85vw, 340px); gap: 1.2rem; overflow-x: auto; padding-bottom: 1rem; }
-.list { display: grid; gap: .85rem; max-width: 900px; }
+.list { display: grid; gap: .85rem; max-width: 900px; margin-inline: auto; }
 .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
 .bar { height: 6px; flex-shrink: 0; background: var(--topic, var(--line)); }
 .cardBody { padding: 1.25rem 1.3rem 1.2rem; display: flex; flex-direction: column; gap: 1.1rem; flex: 1; }

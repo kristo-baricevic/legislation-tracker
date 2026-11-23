@@ -49,7 +49,7 @@ it("uses the saved explanation only for the exact matching contract and source w
   vi.mocked(getReaderItems).mockClear();
   view.rerender(<BillModalDetails billId={1876} contractId={7} contractHash="hash" document={document} enhancement={enhancement} />);
   expect(screen.getByText("Prevent fraud")).toBeVisible();
-  expect(screen.queryByText("Loading breakdown…")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: "Loading breakdown" })).not.toBeInTheDocument();
   expect(getReaderItems).not.toHaveBeenCalled();
 });
 it("loads explanations with pagination and retries a failed page", async () => {

@@ -121,9 +121,19 @@ def test_dashboard_rows_prefer_current_shared_summary_then_original():
     assert api.get(PATH).json()["results"][0]["bill"]["card_summary"] == "Enhanced brief."
     TrackedBill.objects.create(user=user, bill=candidate)
     assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Enhanced brief."
+    card = api.get("/api/bills/").json()["results"][0]
+    assert card["card_summary"] == "Enhanced brief."
+    assert card["enhancement_status"] == "succeeded"
+    assert card["enhancement_id"] == row.pk
+    row.result_json = {"schema_version": "2.0-source-first", "synopsis": {"text": "Source-first brief."}}
+    row.save()
+    assert api.get("/api/bills/").json()["results"][0]["card_summary"] == "Source-first brief."
     row.source_manifest_json = {"document_id": doc.pk, "document_content_hash": "outdated"}
     row.save()
     assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Original brief."
+    card = api.get("/api/bills/").json()["results"][0]
+    assert card["card_summary"] == "Original brief."
+    assert card["enhancement_status"] is None
 
 
 def test_expired_foreign_cursor_is_uniform_invalid():

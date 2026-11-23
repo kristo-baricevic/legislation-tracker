@@ -172,7 +172,7 @@ describe("RepresentativeDetailPage", () => {
     view.rerender(<RepresentativeDetailPage />);
     expect(heading).toBeInTheDocument();
     expect(votes).toBeInTheDocument();
-    expect(screen.queryByText("Loading representative…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading representative" })).not.toBeInTheDocument();
     route.query = "congress=119&tab=bills";
     view.rerender(<RepresentativeDetailPage />);
     expect(votes).toBeInTheDocument();

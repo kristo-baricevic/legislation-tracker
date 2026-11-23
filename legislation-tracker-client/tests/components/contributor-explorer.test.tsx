@@ -57,7 +57,7 @@ it("keeps the selected contributor and controls stable during a background updat
   view.rerender(<ContributorExplorer representativeId={1} period={2026} refreshToken="2" />);
   expect(screen.getByRole("button", { name: "Jane Doe" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Education PAC" })).toBeEnabled();
-  expect(screen.queryByText("Loading connections…")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: "Loading connections" })).not.toBeInTheDocument();
   await act(async () => { finish!(Response.json(data)); });
   expect(within(screen.getByRole("navigation", { name: "Contributor connections pages" })).queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
 });

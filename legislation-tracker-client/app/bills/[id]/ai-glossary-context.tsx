@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { BillEnhancement } from "@/lib/api";
@@ -30,16 +31,10 @@ export const useAiGlossary = () => useContext(Context);
 
 export function BillAnalysisBoundary({ children }: { children: ReactNode }) {
   const { analysisPending } = useAiGlossary();
-  if (!analysisPending) return <>{children}</>;
-  return <section role="status" aria-label="Loading bill analysis" aria-busy="true" className="min-h-80 rounded-lg border border-slate-200 bg-white p-6">
-    <span className="sr-only">Loading bill analysis</span>
-    <div aria-hidden="true" className="space-y-4 motion-safe:animate-pulse">
-      <div className="h-6 w-28 rounded bg-slate-200" />
-      <div className="h-4 w-full rounded bg-slate-100" />
-      <div className="h-4 w-4/5 rounded bg-slate-100" />
-      <div className="mt-8 h-10 w-full rounded bg-slate-100" />
-    </div>
-  </section>;
+  return <>
+    <LoadingSpinner reserveSpace active={analysisPending} label="Loading bill analysis…" />
+    {!analysisPending && children}
+  </>;
 }
 
 export function ReaderModeSwitch() {

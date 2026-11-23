@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -123,17 +124,7 @@ export default function TopicsPage() {
         )}
       </div>
 
-      {topicsLoading && (
-        <p aria-live="polite" className={topics.length ? "sr-only" : "mb-4 font-sans text-sm text-muted"}>
-          {topics.length > 0 ? "Refreshing topics…" : "Loading topics…"}
-        </p>
-      )}
-
-      {loggedIn && followedLoading && (
-        <p aria-live="polite" className="sr-only">
-          Refreshing followed topics…
-        </p>
-      )}
+      <LoadingSpinner centered active={topicsLoading && topics.length === 0} label="Loading topics…" />
 
       {topicsError && (
         <p

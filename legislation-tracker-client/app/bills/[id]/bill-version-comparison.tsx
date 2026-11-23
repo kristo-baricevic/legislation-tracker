@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -59,7 +60,7 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
   return <div className="space-y-4">
     <StableResults page={shownPage} busy={loading} label="Changed passages">
     {error && <div role="alert"><p>{error}</p><button className={button} onClick={() => setRetry(value => value + 1)}>Retry comparison</button></div>}
-    {(!comparison || !sections) && !error && <p role="status">Loading changed passages…</p>}
+    <LoadingSpinner active={(!comparison || !sections) && !error} label="Loading changed passages…" />
     {comparison && sections && <>
     <p className="text-sm text-slate-600 dark:text-green-600">
       Exact changed passages from the selected bill texts—not a summary of their legal effects.

@@ -14,6 +14,13 @@ const bill: BillListItem = {
   ],
 };
 
+it("marks only successfully enhanced cards for the purple edge treatment", () => {
+  const view = render(<BillCard bill={{ ...bill, enhancement_status: "succeeded" }} footer={null} />);
+  expect(screen.getByRole("article")).toHaveAttribute("data-enhanced", "true");
+  view.rerender(<BillCard bill={{ ...bill, enhancement_status: "running" }} footer={null} />);
+  expect(screen.getByRole("article")).toHaveAttribute("data-enhanced", "false");
+});
+
 it("shows the sponsor as an avatar rather than a visible name", async () => {
   render(<BillCard bill={{ ...bill, sponsor_id: 12, sponsor_name: "Bruce Westerman", sponsor_bioguide_id: "W000821" }} onOpen={() => {}} footer={null} />);
   expect(await screen.findByRole("img", { name: "Bruce Westerman" })).toBeVisible();

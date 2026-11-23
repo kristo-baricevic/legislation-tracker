@@ -23,7 +23,7 @@ export default function BillCard({ bill, onOpen, footer, accentTopicId, sponsorS
   const primary = bill.topics.find(topic => topic.topic_id === accentTopicId) ?? bill.topics[0];
   const color = topicColor(primary?.topic_id ?? 0);
   const stage = stageFor(bill.status);
-  return <article className={styles.card} style={{ "--topic": color } as CSSProperties}>
+  return <article className={styles.card} data-enhanced={bill.enhancement_status === "succeeded"} style={{ "--topic": color } as CSSProperties}>
     <div className={styles.bar} aria-hidden="true" />
     <div className={styles.cardBody}>
       <div className={styles.cardMeta}>

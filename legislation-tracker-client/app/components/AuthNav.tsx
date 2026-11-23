@@ -48,15 +48,19 @@ export default function AuthNav() {
       <Link href="/bills" {...linkState("/bills")}>
         Bills
       </Link>
-      <Link href="/topics" {...linkState("/topics")}>
-        Topics
-      </Link>
       <Link
         href="/representatives"
         {...linkState("/representatives")}
       >
         Representatives
       </Link>
+      <Link href="/topics" {...linkState("/topics")}>
+        Topics
+      </Link>
+      <Link href="/committees" {...linkState("/committees")}>
+        Committees
+      </Link>
+      <span className="inline-flex h-8 w-32 shrink-0 items-center gap-4">
       {hasSession === null ? <span className="inline-block w-32" aria-label="Loading account" aria-busy="true" /> : hasSession ? (
         <>
           <Link
@@ -89,6 +93,7 @@ export default function AuthNav() {
           </Link>
         </>
       )}
+      </span>
     </nav>
   );
 }

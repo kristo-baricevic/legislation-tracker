@@ -33,6 +33,8 @@ def add_card_summaries(rows):
             result = saved.result_json or {}
             clauses = result.get("summary") or result.get("overview") or []
             summary = " ".join(c["text"] for c in clauses if isinstance(c, dict) and c.get("text")) or summary
+            if result.get("schema_version") == "2.0-source-first":
+                summary = (result.get("synopsis") or {}).get("text") or summary
         card.update(card_summary=" ".join(summary.split())[:800], enhancement_status=saved.status if saved else None,
                     enhancement_id=saved.pk if saved else None)
     return rows

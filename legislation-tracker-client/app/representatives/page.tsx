@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
-import RepresentativeResearch from "../components/RepresentativeResearch";
+import LoadingSpinner from "../components/LoadingSpinner";
 import RepresentativeAvatar from "./representative-avatar";
 import {
   getMyTracking,
@@ -34,8 +34,8 @@ const CHAMBER_OPTIONS: SelectOption[] = [
   { value: "senate", label: "Senate" },
 ];
 
-function RepresentativesTable() {
-  const [view, setView] = useState<"avatars" | "table">("avatars");
+function RepresentativesDirectory() {
+  const [trackingFilter, setTrackingFilter] = useState<"" | "tracked" | "untracked">("");
   const [page, setPage] = useState<{
     count: number;
     next: string | null;
@@ -65,9 +65,8 @@ function RepresentativesTable() {
   }
   const [hasAccount, setHasAccount] = useState<boolean | null>(null);
   const [trackedLegislatorIds, setTrackedLegislatorIds] = useState<number[]>([]);
-  const [trackingLegislatorId, setTrackingLegislatorId] = useState<number | null>(
-    null,
-  );
+  const trackingRequests = useRef(new Set<number>());
+  const [trackingLegislatorIds, setTrackingLegislatorIds] = useState<Set<number>>(new Set());
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [currentCongress, setCurrentCongress] = useState<number | null>(null);
 
@@ -87,6 +86,7 @@ function RepresentativesTable() {
       state: stateFilter || undefined,
       chamber: chamberFilter || undefined,
       party: partyFilter || undefined,
+      tracking: trackingFilter || undefined,
       page: pageNum,
     })
       .then((data) => {
@@ -105,7 +105,7 @@ function RepresentativesTable() {
     return () => {
       cancelled = true;
     };
-  }, [search, stateFilter, chamberFilter, partyFilter, pageNum, retry]);
+  }, [search, stateFilter, chamberFilter, partyFilter, trackingFilter, pageNum, retry]);
 
   useEffect(() => {
     if (!sentinel.current || !page?.next || loading || error || name.trim() !== search) return;
@@ -118,7 +118,7 @@ function RepresentativesTable() {
     }, { rootMargin: "300px" });
     observer.observe(sentinel.current);
     return () => { active = false; observer.disconnect(); };
-  }, [page, loading, error, name, search, view]);
+  }, [page, loading, error, name, search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,8 +153,10 @@ function RepresentativesTable() {
   }, []);
 
   async function toggleLegislatorTracking(representativeId: number) {
+    if (trackingRequests.current.has(representativeId)) return;
+    trackingRequests.current.add(representativeId);
     const isTracked = trackedLegislatorIds.includes(representativeId);
-    setTrackingLegislatorId(representativeId);
+    setTrackingLegislatorIds(new Set(trackingRequests.current));
     setTrackingError(null);
     try {
       if (isTracked) {
@@ -168,12 +170,14 @@ function RepresentativesTable() {
           ids.includes(representativeId) ? ids : [...ids, representativeId],
         );
       }
+      if (trackingFilter) { resetResults(); setRetry(value => value + 1); }
     } catch (e) {
       setTrackingError(
         e instanceof Error ? e.message : "Failed to update tracked legislator",
       );
     } finally {
-      setTrackingLegislatorId(null);
+      trackingRequests.current.delete(representativeId);
+      setTrackingLegislatorIds(new Set(trackingRequests.current));
     }
   }
 
@@ -184,14 +188,10 @@ function RepresentativesTable() {
           <h1 className="tracker-heading text-ink">
             Representatives
           </h1>
-          <button type="button" onClick={() => setView(current => current === "avatars" ? "table" : "avatars")}
-            className="shrink-0 cursor-pointer rounded-full border border-control px-4 py-2 text-sm font-semibold text-ink hover:bg-wash">
-            {view === "avatars" ? "Table view" : "Avatar view"}
-          </button>
         </div>
 
         <div className="mb-4 tracker-panel">
-          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="block min-w-0 text-sm text-muted">
               <span className="mb-1 block">Search by name</span>
               <input type="search" value={name} maxLength={200} placeholder="Name"
@@ -221,11 +221,14 @@ function RepresentativesTable() {
             <SelectField label="Party" value={partyFilter}
               options={[{ value: "", label: "All" }, { value: "D", label: "Democrat" }, { value: "R", label: "Republican" }, { value: "I", label: "Independent" }]}
               onChange={value => { if (value !== partyFilter) { resetResults(); setPartyFilter(value); } }} />
+            <SelectField label="Tracking" value={trackingFilter} disabled={hasAccount !== true}
+              options={[{ value: "", label: "All" }, { value: "tracked", label: "Tracked" }, { value: "untracked", label: "Untracked" }]}
+              onChange={value => { if (value !== trackingFilter) { resetResults(); setTrackingFilter(value as typeof trackingFilter); } }} />
           </div>
         </div>
 
-        {hasAccount === false && (
-          <p className="mb-4 text-sm text-muted">
+        <p className="mb-4 min-h-5 text-sm text-muted">
+          {hasAccount === false && <>
             <Link
               href="/login"
               className="text-ink underline hover:text-ink"
@@ -233,8 +236,8 @@ function RepresentativesTable() {
               Log in
             </Link>{" "}
             to track legislators.
-          </p>
-        )}
+          </>}
+        </p>
 
         {trackingError && (
           <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
@@ -249,73 +252,26 @@ function RepresentativesTable() {
           </div>
         )}
 
-        {loading && !page && <p role="status" className="text-muted">Loading…</p>}
+        <div className="min-h-12">
+          <LoadingSpinner centered active={loading && !page} label="Loading representatives…" />
+        </div>
 
         {page && (
           <>
             <p className="mb-4 text-muted">
               {page.count ? <>{page.count} representative{page.count !== 1 ? "s" : ""}</> : "No representatives found."}
             </p>
-            {view === "avatars" ? <ul aria-label="Representatives" aria-busy={loading} className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <ul aria-label="Representatives" aria-busy={loading} className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {page.results.map(rep => <RepresentativeAvatar key={rep.id} rep={rep} congress={currentCongress}>
                 {hasAccount && <button type="button" aria-pressed={trackedLegislatorIds.includes(rep.id)} aria-label={`${trackedLegislatorIds.includes(rep.id) ? "Untrack" : "Track"} ${rep.name}`}
-                  onClick={() => toggleLegislatorTracking(rep.id)} disabled={trackingLegislatorId !== null}
+                  onClick={() => toggleLegislatorTracking(rep.id)} disabled={trackingLegislatorIds.has(rep.id)} aria-busy={trackingLegislatorIds.has(rep.id)}
                   className={`mt-auto cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold disabled:opacity-50 ${trackedLegislatorIds.includes(rep.id) ? "border-ink bg-ink text-background" : "border-control text-ink hover:bg-wash"}`}>
-                  {trackingLegislatorId === rep.id ? "Saving…" : trackedLegislatorIds.includes(rep.id) ? "✓ Tracked" : "+ Track"}
+                  {trackingLegislatorIds.has(rep.id) ? "Saving…" : trackedLegislatorIds.includes(rep.id) ? "✓ Tracked" : "+ Track"}
                 </button>}
               </RepresentativeAvatar>)}
-            </ul> : <div className="tracker-table" role="region" aria-label="Representative results" aria-busy={loading} tabIndex={0}>
-              <table className="w-full table-fixed text-left">
-                <thead>
-                  <tr className="border-b border-line bg-wash">
-                    <th className="truncate p-3 font-semibold text-ink">Name</th>
-                    <th className="truncate p-3 font-semibold text-ink">State</th>
-                    <th className="truncate p-3 font-semibold text-ink">Chamber</th>
-                    <th className="truncate p-3 font-semibold text-ink">Party</th>
-                    <th className="truncate p-3 font-semibold text-ink">District</th>
-                    <th className="p-3 font-semibold text-ink">Research</th>
-                    {hasAccount && (
-                      <th className="truncate p-3 font-semibold text-ink">Tracking</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {page.results.map((rep) => (
-                    <tr
-                      key={rep.id}
-                      className="border-b border-line hover:bg-wash"
-                    >
-                      <td className="truncate p-3 font-medium">
-                        <Link href={`/representatives/${rep.id}${currentCongress ? `?congress=${currentCongress}` : ""}`}>{rep.name}</Link>
-                      </td>
-                      <td className="truncate p-3">{rep.state}</td>
-                      <td className="truncate p-3 capitalize">{rep.chamber}</td>
-                      <td className="truncate p-3">{rep.party}</td>
-                      <td className="p-3">{rep.district ?? "—"}</td>
-                      <td className="p-3"><RepresentativeResearch representativeId={rep.id} compact /></td>
-                      {hasAccount && (
-                        <td className="p-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleLegislatorTracking(rep.id)}
-                            disabled={trackingLegislatorId !== null}
-                            className="cursor-pointer border border-control px-3 py-1.5 text-sm font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {trackingLegislatorId === rep.id
-                              ? "Saving..."
-                              : trackedLegislatorIds.includes(rep.id)
-                                ? "Tracked legislator"
-                                : "Track legislator"}
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>}
+            </ul>
             <div ref={sentinel} className="mt-6 min-h-10 text-center text-sm text-muted">
-              {loading && <p role="status">{pageNum === 1 ? "Updating results…" : "Loading more representatives…"}</p>}
+              <LoadingSpinner active={loading && pageNum > 1} label="Loading more representatives…" />
               {error && <div role="alert"><p>{error}</p><button type="button" className="mt-2 cursor-pointer underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button></div>}
               {!loading && !error && !page.next && page.results.length > 0 && <p>All {page.count} representatives shown</p>}
             </div>
@@ -327,5 +283,5 @@ function RepresentativesTable() {
 }
 
 export default function RepresentativesPage() {
-  return <RepresentativesTable />;
+  return <RepresentativesDirectory />;
 }
