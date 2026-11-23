@@ -23,6 +23,14 @@ def test_large_html_without_nlp_contract_never_falls_back_to_selective_legacy_su
     scans = [s for s in plan.source_snapshot if s.get('discovery_source')]
     assert ''.join(s['quoted_text'] for s in scans) == doc.extracted_text
     assert plan.source_manifest['coverage']['complete_document'] is True
+    from types import SimpleNamespace
+    from apps.legislation.enhancements.shared import source_compatible
+    saved = SimpleNamespace(output_schema_version=plan.output_schema_version,
+                            source_manifest_json=plan.source_manifest)
+    assert source_compatible(saved, source_bill)
+    doc.extracted_text += "\nThe report must be public."
+    doc.save()
+    assert not source_compatible(saved, source_bill)
 
 
 @pytest.mark.django_db
@@ -46,14 +54,15 @@ def test_large_xml_without_contract_routes_to_complete_review(source_bill, enhan
             build_enhancement_preflight(source_bill)
 
 
-def test_xml_review_reuse_only_stops_when_reader_contract_becomes_available():
+@pytest.mark.parametrize("source_kind", ["xml_full_review", "reader_targets"])
+def test_document_review_reuse_only_stops_when_reader_contract_becomes_available(source_kind):
     from types import SimpleNamespace
     from apps.legislation.enhancements.shared import source_compatible
-    contract = SimpleNamespace(document_id=1, schema_version="2.0-legal-nlp", contract_json={})
+    contract = SimpleNamespace(pk=2, document_id=1, schema_version="2.0-legal-nlp", contract_json={})
     bill = SimpleNamespace(latest_contract=contract)
     document = SimpleNamespace(pk=1, reader_text_hash="abc", bill=bill)
     saved = SimpleNamespace(output_schema_version="1.4", source_manifest_json={
-        "document_id": 1, "document_content_hash": "abc", "source_kind": "xml_full_review"})
+        "document_id": 1, "document_content_hash": "abc", "source_kind": source_kind})
     assert source_compatible(saved, bill, identity=(document, contract))
     contract.schema_version = contract.contract_json["schema_version"] = "2.1-legal-nlp"
     assert not source_compatible(saved, bill, identity=(document, contract))

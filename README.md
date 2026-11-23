@@ -140,7 +140,7 @@ API: **http://127.0.0.1:8000/** — admin at `/admin/`, auth under `/api/auth/`.
 
 ### 4. Celery (ingestion, scheduled polls, file downloads, contracts)
 
-Background work needs **Redis**, three workers and a scheduler, each in its own terminal (same venv, same `legislation-tracker-backend` directory):
+Background work needs **Redis**, five workers and a scheduler, each in its own terminal (same venv, same `legislation-tracker-backend` directory):
 
 **Workers — one command per terminal**
 
@@ -148,11 +148,17 @@ Background work needs **Redis**, three workers and a scheduler, each in its own 
 cd legislation-tracker-backend
 source .venv/bin/activate
 celery -A config worker -Q celery -l info
+# Separate terminal: consume ingestion stages and discovery queues.
+celery -A config worker -Q bill,bill_versions,bill_votes,bill_relationships,document_download,document_contract,metadata_contract,topic_update,search_index,representative_detail,roll_call_vote,committee_roster,discovery,vote_discovery --concurrency=1 --prefetch-multiplier=1 -n ingestion@%h -l info
 # Separate terminals: user-requested work must not wait behind ingestion.
 celery -A config worker -Q enhancements --concurrency=1 --prefetch-multiplier=1 -n enhancements@%h -l info
 celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -n research@%h -l info
 celery -A config worker -Q similarity --concurrency=1 --prefetch-multiplier=1 -n similarity@%h -l info
 ```
+
+For local development, the ingestion worker above consumes the stage queues together.
+The `celery` worker coordinates jobs but does not consume those queues. Use the
+Docker Compose setup for separate workers per ingestion stage.
 
 **Separate terminal — beat (scheduler)**
 

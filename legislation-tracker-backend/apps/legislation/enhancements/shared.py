@@ -52,7 +52,7 @@ def source_compatible(enhancement, bill, *, identity=None):
     if manifest.get("document_content_hash") != document.reader_text_hash:
         return False
     if enhancement.output_schema_version == "1.4":
-        if manifest.get("source_kind") == "xml_full_review" and manifest.get("contract_id") is None:
+        if manifest.get("source_kind") in {"xml_full_review", "reader_targets"} and manifest.get("contract_id") is None:
             from .reader_targets import reader_contract
             return reader_contract(document) is None
         return bool(contract and contract.document_id == document.pk

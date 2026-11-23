@@ -95,10 +95,10 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
     <div className={styles.heading}><h2 ref={heading} tabIndex={-1} id="bill-recommendations-title">Bills to discover</h2><button className={styles.action} aria-disabled={state.loading} aria-busy={state.loading} onClick={state.retry}>Refresh bill recommendations</button></div>
     {state.data && <div className="min-h-5 text-sm text-red-700" aria-live="polite">{state.error && <span role="alert">{state.error}</span>}</div>}
     {state.data?.results.length ? <>
-      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback) => <article className={styles.card} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
+      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
         <div className={styles.bar} aria-hidden="true" /><div className={styles.body}>
           <p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p>
-          <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(item.bill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
+          <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
           {summary}
           {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <ReasonBadges reasons={item.reasons} />

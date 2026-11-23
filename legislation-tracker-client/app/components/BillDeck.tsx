@@ -118,10 +118,10 @@ export default function BillDeck() {
     {ready && !error && signedIn && !visible.length && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : <>Browse the <Link href="/bills">Bills page</Link> and follow a bill to keep it here.</>}</p>{!tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
     {visible.length > 0 && <section className={styles.topicSection}>
       <h2>Following<small>{visible.length}</small></h2>
-      <div role="region" aria-label="Followed bills" tabIndex={0} className={styles.followedRow}>{visible.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback) => <BillCard feedback={feedback} summary={summary} bill={bill}
+      <div role="region" aria-label="Followed bills" tabIndex={0} className={styles.followedRow}>{visible.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback, currentBill) => <BillCard feedback={feedback} summary={summary} bill={currentBill}
         accentTopicId={bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id))?.topic_id}
         sponsorState={stateBySponsor.get(bill.sponsor_id ?? -1)}
-        onOpen={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(bill); }}
+        onOpen={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(currentBill); }}
         footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}
       />}</DashboardBillReader>)}</div>
     </section>}
