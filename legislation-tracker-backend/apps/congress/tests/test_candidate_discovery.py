@@ -24,6 +24,13 @@ def test_provider_titles_are_not_name_parts(title):
     assert verified_match(representative(), [candidate(name=f"OCASIO-CORTEZ, ALEXANDRIA {title}")], 2026, 2026) == "H8NY15148"
 
 
+@pytest.mark.parametrize("title", ["Rep", "Sen", "Del"])
+def test_abbreviated_prefix_without_period_is_normalized(title):
+    from apps.congress.names import normalize_person_name
+    assert normalize_person_name(f"{title} Smith, Jane [D-NY-14]") == "Smith, Jane"
+    assert normalize_person_name("Amit Sen") == "Amit Sen"
+
+
 def test_normalization_preserves_real_name_parts():
     from apps.congress.names import normalize_person_name
     assert normalize_person_name("Rep. O’Neill-Smith, José B. Jr. [D-NY-14]") == "O’Neill-Smith, José B. Jr."
@@ -85,7 +92,7 @@ def test_existing_verified_mapping_extends_only_after_fresh_match(monkeypatch, m
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("found", [True, False])
-@pytest.mark.parametrize("previously_blocked", [True, False])
+@pytest.mark.parametrize("previously_blocked", [True, False, "missing_evidence"])
 def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, found, previously_blocked):
     from datetime import timedelta
     from django.utils import timezone
@@ -97,7 +104,7 @@ def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, fou
     rep = Representative.objects.create(bioguide_id="O000172", name="Rep. Ocasio-Cortez, Alexandria [D-NY-14]", chamber="house", state="NY", district="14", is_current=True)
     if previously_blocked:
         identity = CandidateIdentity.objects.create(fec_id="H8NY15148", name="OCASIO-CORTEZ, ALEXANDRIA REP.", office="H", state="NY")
-        RepresentativeCandidate.objects.create(representative=rep, candidate=identity, periods=[2026], verified=False)
+        RepresentativeCandidate.objects.create(representative=rep, candidate=identity, periods=[2024, 2026], verified=previously_blocked == "missing_evidence", evidence_url="")
     run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username="reader").pk)
     work = run.work_item
     work.status = "processing"; work.dispatch_token = "lease"; work.lease_expires_at = timezone.now() + timedelta(minutes=5); work.save()
@@ -109,7 +116,9 @@ def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, fou
     run.refresh_from_db(); work.refresh_from_db()
     if found:
         assert run.status == "running"
-        assert RepresentativeCandidate.objects.get(representative=rep).verified
+        mapping = RepresentativeCandidate.objects.get(representative=rep)
+        assert mapping.verified and mapping.evidence_url
+        assert mapping.periods == [2026]
         assert work.payload_json["stage"] == "finance"
     else:
         assert run.status == "partial"

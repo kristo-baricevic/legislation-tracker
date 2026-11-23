@@ -301,7 +301,7 @@ class CommitteeViewSet(viewsets.ReadOnlyModelViewSet):
     authentication_classes = []
     permission_classes = [AllowAny]
     serializer_class = CommitteeDirectorySerializer
-    queryset = Committee.objects.select_related("parent").order_by("chamber", "name")
+    queryset = Committee.objects.select_related("parent").order_by("chamber", "name", "id")
 
     def directory_scope(self):
         from .current import current_congress

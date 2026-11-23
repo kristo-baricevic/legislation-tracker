@@ -5,6 +5,16 @@ from apps.legislation.models import Bill
 
 pytestmark = pytest.mark.django_db
 
+def test_same_named_committees_have_a_unique_pagination_order():
+    from apps.congress.views import CommitteeViewSet
+    # Subcommittees can share a name; the last ordering field must break ties.
+    assert CommitteeViewSet.queryset.query.order_by == ("chamber", "name", "id")
+    committees = [Committee.objects.create(system_code=f"same{i}", name="Oversight", chamber="house") for i in range(3)]
+    client = APIClient()
+    first = client.get("/api/committees/?page_size=2").data
+    second = client.get("/api/committees/?page_size=2&page=2").data
+    assert [row["id"] for row in first["results"] + second["results"]] == [committee.pk for committee in committees]
+
 def test_directory_scopes_members_and_bills():
     committee = Committee.objects.create(system_code="ssfi", name="Finance", chamber="senate")
     Committee.objects.create(system_code="hsfi", name="House Finance", chamber="house")

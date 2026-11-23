@@ -523,6 +523,18 @@ describe("BillDetailPage", () => {
     expect(screen.getByRole("link", { name: "Second Vote Representative" })).toBeVisible();
   });
 
+  it("retains vote history without inserting a spinner while the next page loads", async () => {
+    vi.mocked(getVotes).mockResolvedValueOnce({ count: 21, next: "?page=2", previous: null, results: [{ id: 33, bill: 10, chamber: "house", session_number: 1, roll_number: 17, vote_date: "2026-08-19T00:00:00Z", result: "Passed", yeas: 220, nays: 210 }] });
+    render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
+    expect(await screen.findByText(/roll call 17: Passed/)).toBeVisible();
+    vi.mocked(getVotes).mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(screen.getByRole("button", { name: "Next vote history page" }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+    expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
+    expect(screen.queryByRole("status", { name: "Loading vote history" })).not.toBeInTheDocument();
+  });
+
   it("clears selected member positions when the vote history page changes", async () => {
     const user = userEvent.setup();
     vi.mocked(getVotes)

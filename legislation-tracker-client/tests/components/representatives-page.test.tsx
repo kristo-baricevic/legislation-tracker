@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepresentativesPage from "@/app/representatives/page";
 import userEvent from "@testing-library/user-event";
+import { beginSessionTransition, endSessionTransition } from "@/lib/personalized-scope";
 import { getBillFilterOptions, getRepresentatives, getSession, getMyTracking, trackLegislator } from "@/lib/api";
 
 vi.mock("next/link", () => ({
@@ -19,6 +20,23 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativesPage", () => {
+  it("clears private tracking results on logout and ignores a late old-account response", async () => {
+    const initial = await getRepresentatives();
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    render(<RepresentativesPage />);
+    await screen.findByRole("button", { name: "Track Representative Example" });
+    let finish!: (value: typeof initial) => void;
+    vi.mocked(getRepresentatives).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    await userEvent.click(screen.getByRole("button", { name: "Tracking All" }));
+    await userEvent.click(screen.getByRole("option", { name: "Tracked" }));
+    vi.mocked(getSession).mockResolvedValue(null);
+    await act(async () => { beginSessionTransition(); endSessionTransition(null); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tracking All" })).toBeDisabled());
+    await act(async () => finish({ ...initial, results: [{ ...initial.results[0], name: "Private old follow" }] }));
+    expect(screen.queryByRole("link", { name: "Private old follow" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Track Representative Example" })).not.toBeInTheDocument();
+  });
   it("isolates pending tracking to each clicked representative without refetching the directory", async () => {
     const initial = await getRepresentatives();
     const rep = initial.results[0];

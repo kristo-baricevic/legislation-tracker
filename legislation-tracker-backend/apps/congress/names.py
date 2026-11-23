@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 _TITLE = r"(?:Rep\.|Sen\.|Del\.|Hon\.|Representative|Senator|Delegate|Resident Commissioner)"
+_PREFIX = r"(?:Rep\.?|Sen\.?|Del\.?|Hon\.?|Representative|Senator|Delegate|Resident Commissioner)"
 
 
 def normalize_person_name(value):
@@ -15,6 +16,6 @@ def normalize_person_name(value):
     previous = None
     while name != previous:
         previous = name
-        name = re.sub(rf"^{_TITLE}\s+", "", name, flags=re.I)
+        name = re.sub(rf"^{_PREFIX}\s+", "", name, flags=re.I)
         name = re.sub(rf"(?:\s+|,\s*){_TITLE}$", "", name, flags=re.I).strip()
     return name

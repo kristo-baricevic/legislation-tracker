@@ -5,6 +5,7 @@ import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import LoadingSpinner from "../components/LoadingSpinner";
 import RepresentativeAvatar from "./representative-avatar";
+import { capturePersonalizedScope, subscribePersonalizedChanges } from "@/lib/personalized-scope";
 import {
   getMyTracking,
   getBillFilterOptions,
@@ -283,5 +284,11 @@ function RepresentativesDirectory() {
 }
 
 export default function RepresentativesPage() {
-  return <RepresentativesDirectory />;
+  const [session, setSession] = useState(() => capturePersonalizedScope().sessionGeneration);
+  useEffect(() => subscribePersonalizedChanges(change => {
+    if (change.kind === "session") setSession(change.scope.sessionGeneration);
+  }), []);
+  // Never retain a previous account's private filter results or pending writes.
+  // Ordinary tracking changes intentionally preserve all existing card nodes.
+  return <RepresentativesDirectory key={session} />;
 }

@@ -369,7 +369,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               <dd className="mt-1 leading-6">{bill.status}</dd>
             </div>}
           </dl>
-          <LoadingSpinner active={voteHistoryLoading} label="Loading vote history…" />
+          <LoadingSpinner active={voteHistoryLoading && votes === null} label="Loading vote history…" />
           {voteHistoryError && (
             <div
               role="alert"

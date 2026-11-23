@@ -138,7 +138,7 @@ def process_finance(work):
                     continue
                 candidate, _ = CandidateIdentity.objects.update_or_create(fec_id=fec_id, defaults={"name": normalize_person_name(item.get("name", ""))[:255], "office": item.get("office", ""), "state": item.get("state", "")})
                 mapping, created = RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "verified": fec_id == matched, "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"})
-                if not created and fec_id == matched and not mapping.verified:
+                if not created and fec_id == matched and (not mapping.verified or not mapping.evidence_url):
                     # Fresh current-period proof does not verify historical periods.
                     mapping.periods = [run.period]
                     mapping.verified = True
