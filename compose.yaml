@@ -22,6 +22,8 @@ x-backend: &backend
     AWS_S3_ENDPOINT_URL: http://minio:9000
     LLM_ENHANCEMENTS_ENABLED: ${LLM_ENHANCEMENTS_ENABLED:?Explicitly set LLM_ENHANCEMENTS_ENABLED in .env.docker}
     LEGAL_NLP_V21_WRITE_ENABLED: "True"
+    SIMILARITY_WORK_CONCURRENCY: ${SIMILARITY_WORK_CONCURRENCY:-6}
+    RESEARCH_WORK_CONCURRENCY: ${RESEARCH_WORK_CONCURRENCY:-2}
   depends_on: &backend-dependencies
     migrate:
       condition: service_completed_successfully
@@ -93,13 +95,73 @@ services:
       retries: 12
   worker:
     <<: *backend
-    command: celery -A config worker -Q celery --concurrency=2 --prefetch-multiplier=1 -l info
+    command: celery -A config worker -Q celery --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-worker:
+    <<: *backend
+    command: celery -A config worker -Q bill --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-versions-worker:
+    <<: *backend
+    command: celery -A config worker -Q bill_versions --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-votes-worker:
+    <<: *backend
+    command: celery -A config worker -Q bill_votes --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-relationships-worker:
+    <<: *backend
+    command: celery -A config worker -Q bill_relationships --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  document-download-worker:
+    <<: *backend
+    command: celery -A config worker -Q document_download --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  document-contract-worker:
+    <<: *backend
+    command: celery -A config worker -Q document_contract --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  metadata-contract-worker:
+    <<: *backend
+    command: celery -A config worker -Q metadata_contract --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  topic-update-worker:
+    <<: *backend
+    command: celery -A config worker -Q topic_update --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  search-index-worker:
+    <<: *backend
+    command: celery -A config worker -Q search_index --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  representative-detail-worker:
+    <<: *backend
+    command: celery -A config worker -Q representative_detail --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  roll-call-vote-worker:
+    <<: *backend
+    command: celery -A config worker -Q roll_call_vote --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  committee-roster-worker:
+    <<: *backend
+    command: celery -A config worker -Q committee_roster --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  discovery-worker:
+    <<: *backend
+    command: celery -A config worker -Q discovery --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  vote-discovery-worker:
+    <<: *backend
+    command: celery -A config worker -Q vote_discovery --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  similarity-worker:
+    <<: *backend
+    command: celery -A config worker -Q similarity --concurrency=${SIMILARITY_WORK_CONCURRENCY:-6} --prefetch-multiplier=1 -l info
   research-worker:
     <<: *backend
-    command: celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -l info
+    command: celery -A config worker -Q research --concurrency=${RESEARCH_WORK_CONCURRENCY:-2} --prefetch-multiplier=1 -l info
   enhancement-worker:
     <<: *backend
-    command: celery -A config worker -Q enhancements --concurrency=1 --prefetch-multiplier=1 -l info
+    command: celery -A config worker -Q enhancements --concurrency=${ENHANCEMENT_WORK_CONCURRENCY:-2} --prefetch-multiplier=1 -l info
   beat:
     <<: *backend
     command: celery -A config beat -l info --schedule=/app/beat/celerybeat-schedule

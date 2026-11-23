@@ -13,11 +13,21 @@ async function fixtures(page: Page, empty = false) {
     let response: unknown = {};
     if (path === "/api/auth/session/current/") response = { authenticated: true, user: { email: "fixture@example.com" } };
     else if (path === "/api/auth/csrf/") response = { csrf_token: "fixture" };
+    else if (path === "/api/tracking/topics/") response = [];
     else if (path === "/api/tracking/") response = { bills: following ? [{ id: 1, bill, created_at: "2025-01-01" }] : [], topics: empty ? [] : [{ id: 1, topic: { id: 1, name: "Taxation", slug: "taxation" }, created_at: "2025-01-01" }], legislators: [], is_staff: false };
     else if (path === "/api/tracking/bills/1/") { following = false; await route.fulfill({ status: 204 }); return; }
     else if (path === "/api/tracking/bills/") { following = true; response = { id: 1, bill, created_at: "2025-01-01" }; }
     else if (path === "/api/representatives/") response = { count: 1, next: null, previous: null, results: [{ id: 1, name: "Test Representative", state: "NY" }] };
     else if (path === "/api/bills/") response = { count: 2, next: null, previous: null, results: [bill, other] };
+    else if (path === "/api/bills/1/changes/") response = { results: [], stream_head_cursor: null, page_end_cursor: null,
+      older_cursor: null, unread_count: 0, personalized: true, has_more_newer: false, initial_window_truncated: false };
+    else if (path === "/api/bills/1/votes/" || path === "/api/bills/1/contracts/") response = { count: 0, results: [], next: null, previous: null };
+    else if (path === "/api/bills/1/" && url.searchParams.has("contract_view")) response = {
+      ...bill, documents, summary_preview: "Raises the deduction limit.", summary_has_more: false,
+      summary_source: "source_metadata", summary_version_code: "Introduced", summary_action_date: null,
+      summary_last_updated_at: null, processing_status: "complete", sponsor: 1, source_api_id: null,
+      congress_gov_url: null, latest_contract: null, created_at: "2025-01-01", updated_at: "2025-01-01"
+    };
     else if (path === "/api/bills/1/") response = { ...bill, documents, summary: "This bill increases the limitation on the deduction for state and local taxes.", summary_source: "source_metadata", summary_version_code: "Introduced", latest_contract: null };
     else if (path === "/api/bills/1/comparisons/documents/") response = { before: Number(url.searchParams.get("before")), after: Number(url.searchParams.get("after")), sections: [{ section_key: `section-for-version-${url.searchParams.get("after")}`, operation: "modified" }], total_change_count: 1, returned_change_count: 1, truncated: false, fallback: false, truncation_reasons: [] };
     else if (path === "/api/bills/filter-options/") response = { jurisdictions: ["federal"], current_congress: 119 };
@@ -28,6 +38,374 @@ async function fixtures(page: Page, empty = false) {
     await route.fulfill({ json: response });
   });
 }
+
+for (const width of [1280, 390]) test(`refreshing topics and recommendations keeps geometry at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await fixtures(page);
+  let refreshing = false;
+  let release!: () => void;
+  await page.route("**/api/topics/", async route => {
+    if (refreshing) await new Promise<void>(resolve => { release = resolve; });
+    await route.fulfill({ json: [{ id: 1, name: "Taxation", slug: "taxation" }] });
+  });
+  await page.goto("/topics");
+  const topic = page.getByRole("link", { name: "Taxation", exact: true });
+  await expect(topic).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh followed topics" })).toBeEnabled();
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const before = await topic.boundingBox();
+  refreshing = true;
+  await page.getByRole("button", { name: "Refresh topics", exact: true }).click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  expect(await topic.boundingBox()).toEqual(before);
+  release();
+  await expect(page.getByRole("button", { name: "Refresh topics", exact: true })).toBeEnabled();
+  expect(await topic.boundingBox()).toEqual(before);
+  let refreshRecs = false;
+  let releaseRecs!: () => void;
+  await page.route("**/api/tracking/recommendations/**", async route => {
+    if (refreshRecs) await new Promise<void>(resolve => { releaseRecs = resolve; });
+    await route.fulfill({json: {algorithm:"fixture",generated_at:"2026-11-22",count:1,next_cursor:null,unsupported_follow_types:[],candidate_pool_truncated:false,ranking_limit_reached:false,empty_reason:null,results:[{bill:other,score:1,reasons:[]}]}});
+  });
+  await page.goto("/");
+  const refresh = page.getByRole("button", { name: "Refresh bill recommendations" });
+  const row = page.getByRole("region", { name: "Recommended bills", exact: true });
+  await expect(row).toBeVisible();
+  await refresh.scrollIntoViewIfNeeded();
+  const box = await row.boundingBox();
+  const scroll = await page.evaluate(() => window.scrollY);
+  refreshRecs = true;
+  await refresh.click();
+  await expect.poll(() => Boolean(releaseRecs)).toBe(true);
+  expect(await row.boundingBox()).toEqual(box);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
+  releaseRecs();
+  await expect(refresh).toBeEnabled();
+  await expect(refresh).toBeFocused();
+  expect(await row.boundingBox()).toEqual(box);
+});
+
+for (const width of [1280, 390]) test(`catalog pagination retains content during requests at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({width,height:900});
+  await fixtures(page);
+  let release!: () => void;
+  await page.route("**/api/bills/?**", async route => {
+    const second = new URL(route.request().url()).searchParams.get("page") === "2";
+    if (second) await new Promise<void>(resolve => {release = resolve;});
+    await route.fulfill({json:{count:21,next:second?null:"next",previous:second?"prev":null,results:second?[other]:Array.from({length:20}, (_, i) => ({...bill,id:bill.id+i,title:i?`Catalog bill ${i}`:bill.title}))}});
+  });
+  await page.goto("/bills?session=119");
+  await expect(page.getByRole("link",{name:bill.title,exact:true})).toBeVisible();
+  const next = page.getByRole("button",{name:"Next",exact:true});
+  await next.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const box = await next.boundingBox();
+  const scroll = await page.evaluate(() => window.scrollY);
+  await next.click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await expect(page.getByRole("link",{name:bill.title,exact:true})).toBeAttached();
+  expect(await next.boundingBox()).toEqual(box);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
+  release();
+  await expect(page.getByRole("link",{name:other.title,exact:true})).toBeAttached();
+  await expect(page.getByRole("button",{name:"Previous",exact:true})).toBeEnabled();
+  expect(Math.abs((await next.boundingBox())!.y - box!.y)).toBeLessThan(1);
+  expect(Math.abs(await page.evaluate(() => window.scrollY) - scroll)).toBeLessThan(1);
+  await expect(page.getByRole("link", { name: other.title, exact: true })).toBeInViewport();
+});
+
+for (const width of [1280, 390]) test(`directory filters preserve portraits while pending at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({width,height:900});
+  await fixtures(page);
+  let release!: () => void;
+  await page.route("**/api/representatives/?**", async route => {
+    if (new URL(route.request().url()).searchParams.has("party")) await new Promise<void>(resolve => { release = resolve; });
+    await route.fulfill({json:{count:1,next:null,previous:null,results:[{id:1,name:"Test Representative",bioguide_id:"T000001",chamber:"house",party:"D",state:"NY",district:"1",first_name:"Test",last_name:"Representative",image_url:null,official_website_url:null,is_current:true}]}});
+  });
+  await page.goto("/representatives");
+  const results = page.getByRole("list",{name:"Representatives",exact:true});
+  await expect(results).toBeVisible();
+  const node = await results.elementHandle();
+  await page.getByRole("button",{name:"Party All",exact:true}).click();
+  await page.getByRole("option",{name:"Democrat",exact:true}).click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await expect(results).toHaveAttribute("aria-busy","true");
+  expect(await node!.evaluate(element => element.isConnected)).toBe(true);
+  await page.screenshot({path:info.outputPath(`directory-pending-${width}.png`)});
+  release();
+  await expect(results).toHaveAttribute("aria-busy","false");
+});
+
+for (const width of [1280, 390]) test(`bill tracking does not flash the wrong action at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({width,height:900});
+  await fixtures(page);
+  let release!: () => void;
+  await page.route("**/api/tracking/", async route => {
+    await new Promise<void>(resolve => {release = resolve;});
+    await route.fulfill({json:{bills:[{id:1,bill,created_at:"2026-01-01"}],topics:[],legislators:[],is_staff:false}});
+  });
+  await page.goto("/bills/1");
+  const control = page.getByRole("button",{name:"Loading follow status",exact:true});
+  await expect(control).toBeDisabled();
+  await expect(page.getByRole("button",{name:"Track bill",exact:true})).toHaveCount(0);
+  await page.screenshot({path:info.outputPath(`tracking-pending-${width}.png`)});
+  release();
+  await expect(page.getByRole("button",{name:"Tracked bill",exact:true})).toBeEnabled();
+});
+
+for (const width of [1280, 390]) test(`following a recommendation preserves cards, focus and scroll at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({width,height:900});
+  await fixtures(page);
+  let followed = false;
+  let release!: () => void;
+  let portraitRequests = 0;
+  await page.route("**/api/auth/session/current/**", route => route.fulfill({json:{authenticated:true,user:{email:"fixture@example.com"},dashboard_revision:followed ? "after" : "before",tracking_revision:followed ? "after" : "before",research_revision:"unchanged",current_congress:119}}));
+  await page.route("**/api/representatives/410/", route => {
+    portraitRequests++;
+    return route.fulfill({json:{id:410,name:"Katie Britt",bioguide_id:"B001319",image_url:"https://www.congress.gov/img/member/b001319_200.jpg"}});
+  });
+  await page.route("**/api/tracking/recommendations/**", route => route.fulfill({json: {
+    algorithm:"fixture", generated_at:"2026-11-21T12:00:00Z", count:1, next_cursor:null,
+    unsupported_follow_types:[], candidate_pool_truncated:false, ranking_limit_reached:false,
+    empty_reason:null, results:followed ? [] : [{bill:other,score:1,reasons:[{kind:"followed_representative",representative_id:410,name:"Katie Britt",relation:"sponsor"}]}],
+  }}));
+  await page.route("**/api/tracking/bills/", async route => {
+    followed = true;
+    await route.fulfill({json:{id:2,bill:other,created_at:"2026-11-22"}});
+  });
+  await page.route("**/api/tracking/", async route => {
+    if (followed) await new Promise<void>(resolve => { release = resolve; });
+    await route.fulfill({json:{bills:[{id:1,bill,created_at:"2025-01-01"}, ...(followed ? [{id:2,bill:other,created_at:"2026-11-22"}] : [])],topics:[],legislators:[]}});
+  });
+  await page.goto("/");
+  const row = page.getByRole("region",{name:"Recommended bills",exact:true});
+  const button = row.getByRole("button",{name:/Follow bill/});
+  await button.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const before = await button.boundingBox();
+  const scroll = await page.evaluate(() => window.scrollY);
+  const portrait = row.getByRole("img",{name:"Katie Britt"});
+  await expect(portrait).toBeAttached();
+  const portraitNode = await portrait.elementHandle();
+  await button.click();
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await expect(page.getByRole("region",{name:"Followed bills",exact:true})).toBeVisible();
+  await expect(row.getByRole("link",{name:other.title})).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
+  release();
+  await expect(page.getByRole("region",{name:"Followed bills",exact:true}).getByRole("article")).toHaveCount(2);
+  const saved = row.getByRole("button",{name:/Unfollow bill/});
+  await expect(saved).toBeFocused();
+  expect(await saved.boundingBox()).toEqual(before);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
+  expect(await portraitNode!.evaluate(node => node.isConnected)).toBe(true);
+  expect(portraitRequests).toBe(1);
+});
+
+for (const width of [1280, 390]) test(`bill modal pagination stays stable at ${width}px during loading, errors and short pages`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 });
+  await fixtures(page);
+  let finishBill!: () => void;
+  await page.route("**/api/bills/1/", async route => { await new Promise<void>(resolve => { finishBill = resolve; }); await route.fulfill({ json: {
+    ...bill, documents, summary: "Helps students stay in school.",
+    latest_contract: { id: 7, document: 3, contract_json: {} },
+  } }); });
+  let finish: (() => void) | undefined;
+  let failNext = false;
+  const item = (id: number) => ({ id: `item-${id}`, source_id: "source-1", section_id: "section-1", section_path: [{ level: "section", label: "1", heading: "School programs" }], kind: "requirement", display_text: `Schools must report student outcomes for program ${id}.`, actor: null, action: null, effect: null, exact_financial_count: 0, exact_financial_preview: [], timeline_count: 0, timeline_preview: [], definition_count: 0 });
+  await page.route("**/api/contracts/7/reader-items/**", async route => {
+    const second = new URL(route.request().url()).searchParams.get("page") === "2";
+    if (second) await new Promise<void>(resolve => { finish = resolve; });
+    if (second && failNext) { await route.fulfill({ status: 503, json: {} }); return; }
+    await route.fulfill({ json: { count: 7, next: second ? null : "page2", previous: second ? "page1" : null, results: second ? [item(7)] : [1,2,3,4,5,6].map(item), section_supplements: [] } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: bill.title, exact: true }).click();
+  const dialog = page.locator("dialog:modal");
+  await expect(dialog.getByText("Loading bill details…")).toBeVisible();
+  const loadingFrame = await dialog.boundingBox();
+  await expect.poll(() => Boolean(finishBill)).toBe(true);
+  finishBill();
+  const nav = dialog.getByRole("navigation", { name: "Bill explanation pages" });
+  const next = nav.getByRole("button", { name: "Next" });
+  await expect(next).toBeEnabled();
+  expect(await dialog.boundingBox()).toEqual(loadingFrame);
+  await next.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const geometry = () => dialog.evaluate(el => {
+    const rect = el.querySelector('[aria-label="Bill explanation pages"]')!.getBoundingClientRect();
+    const frame = el.getBoundingClientRect();
+    return { y: rect.y, height: rect.height, scroll: el.scrollTop, windowScroll: window.scrollY, frame: {x:frame.x,y:frame.y,width:frame.width,height:frame.height} };
+  });
+  const before = await geometry();
+  failNext = true;
+  await next.click();
+  await expect(next).toBeDisabled();
+  expect(await geometry()).toEqual(before);
+  await expect.poll(() => Boolean(finish)).toBe(true);
+  finish!(); finish = undefined;
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  expect(await geometry()).toEqual(before);
+  failNext = false;
+  // Retry using the same pager; no error banner may displace it.
+  await next.click();
+  await expect.poll(() => Boolean(finish)).toBe(true);
+  finish!();
+  await expect(nav).toContainText("Page 2");
+  expect(await geometry()).toEqual(before);
+  await nav.getByRole("button", { name: "Prev" }).click();
+  await expect(nav).toContainText("Page 1");
+  expect(await geometry()).toEqual(before);
+  await page.screenshot({ path: info.outputPath(`stable-modal-${width}.png`) });
+});
+
+test("both dashboard rows open a native estimate modal without starting work", async ({ page }) => {
+  await fixtures(page);
+  const starts: string[] = [];
+  page.on("request", request => {
+    if (request.method() === "POST" && request.url().includes("/enhancements/")) starts.push(request.url());
+  });
+  await page.route("**/api/tracking/recommendations/**", route => route.fulfill({ json: {
+    algorithm: "fixture", generated_at: "2026-11-21T12:00:00Z", count: 1, next_cursor: null,
+    unsupported_follow_types: [], candidate_pool_truncated: false, ranking_limit_reached: false,
+    empty_reason: null, results: [{ bill: { ...other, card_summary: "Helps schools buy books." }, score: 1, reasons: [] }],
+  } }));
+  await page.route("**/enhancements/estimate/", route => route.fulfill({ json: {
+    can_enhance: true, feature_available: true, credential_revision: 1, estimated_input_tokens: 1234,
+    max_output_tokens: 100, request_fingerprint: "request", source_fingerprint: "source", requested_model: "test",
+  } }));
+  await page.goto("/");
+  await expect(page.getByText("Helps schools buy books.")).toBeVisible();
+  for (const name of ["Followed bills", "Recommended bills"]) {
+    const opener = page.getByRole("region", { name, exact: true }).getByRole("button", { name: "Enhance", exact: true }).first();
+    await opener.click();
+    const modal = page.locator("dialog:modal");
+    await expect(modal).toContainText("1,234 estimated input tokens");
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await expect(opener).toBeFocused();
+  }
+  await page.route("**/enhancements/estimate/", route => route.fulfill({status: 503, json: {}}));
+  for (const name of ["Followed bills", "Recommended bills"]) {
+    const card = page.getByRole("region", { name, exact: true }).getByRole("article").first();
+    const enhance = card.getByRole("button", { name: "Enhance", exact: true });
+    const follow = card.getByRole("button", { name: /^(Unfollow|Follow bill)/ });
+    await enhance.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const boxes = () => Promise.all([enhance.boundingBox(), follow.boundingBox()]);
+    const before = await boxes();
+    await enhance.click();
+    await expect(card.getByRole("alert")).toBeVisible();
+    expect(await boxes()).toEqual(before);
+  }
+  expect(starts).toEqual([]);
+});
+
+for (const width of [1280, 390, 320]) test(`card actions stay side by side at the bottom right at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 });
+  await fixtures(page);
+  let failPortrait!: () => void;
+  await page.route("**/img/member/t000001_200.jpg", async route => {
+    await new Promise<void>(resolve => { failPortrait = resolve; });
+    await route.abort();
+  });
+  await page.route("**/api/tracking/recommendations/**", route => route.fulfill({ json: {
+    algorithm: "fixture", generated_at: "2026-11-21T12:00:00Z", count: 1, next_cursor: null,
+    unsupported_follow_types: [], candidate_pool_truncated: false, ranking_limit_reached: false,
+    results: [{ bill: other, score: 1, reasons: [] }], empty_reason: null,
+  } }));
+  await page.route("**/enhancements/estimate/", route => route.fulfill({status:503,json:{}}));
+  await page.goto("/");
+  for (const name of ["Followed bills", "Recommended bills"]) {
+    const card = page.getByRole("region", {name, exact:true}).getByRole("article").first();
+    const follow = card.getByRole("button", {name:/^(Unfollow|Follow bill)/});
+    const enhance = card.getByRole("button", {name:"Enhance", exact:true});
+    await enhance.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const f = (await follow.boundingBox())!, e = (await enhance.boundingBox())!, c = (await card.boundingBox())!;
+    const date = (await card.locator("time").locator("..").boundingBox())!;
+    expect(Math.abs(date.y + date.height / 2 - e.y - e.height / 2)).toBeLessThan(2);
+    expect(date.x + date.width).toBeLessThanOrEqual(f.x - 4);
+    expect(Math.abs(f.y + f.height / 2 - e.y - e.height / 2)).toBeLessThan(2);
+    expect(e.x).toBeGreaterThanOrEqual(f.x + f.width);
+    expect(c.x + c.width - e.x - e.width).toBeLessThan(28);
+    expect(c.y + c.height - Math.max(e.y + e.height, f.y + f.height)).toBeLessThan(85);
+    if (name === "Followed bills") {
+      await expect.poll(() => Boolean(failPortrait)).toBe(true);
+      failPortrait();
+      await expect(card.getByText("TR", {exact:true})).toBeVisible();
+      expect(await enhance.boundingBox()).toEqual(e);
+    }
+    await enhance.click();
+    await expect(card.getByRole("alert")).toBeVisible();
+    expect(await enhance.boundingBox()).toEqual(e);
+    expect(await follow.boundingBox()).toEqual(f);
+    await card.screenshot({path:info.outputPath(`${name.replaceAll(" ", "-")}-${width}.png`)});
+  }
+});
+
+test("estimate modal keeps its outer dimensions when details expand", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/enhancements/estimate/", route => route.fulfill({json:{
+    can_enhance:true, feature_available:true, credential_revision:1, source_fingerprint:"source", request_fingerprint:"request",
+    estimated_input_tokens:100, max_output_tokens:100, requested_model:"fixture",
+    reader_coverage:{selected_count:1,total_count:21,batch_count:1,unavailable_count:20,unavailable:Array.from({length:20},(_,i)=>({target_id:`item-${i}`,reason:"source_unavailable"}))},
+  }}));
+  await page.goto("/");
+  await page.getByRole("button", {name:"Enhance",exact:true}).first().click();
+  const modal = page.locator("dialog:modal");
+  await expect(modal).toBeVisible();
+  const before = await modal.boundingBox();
+  await modal.getByText("Items that will keep their original explanation",{exact:true}).click();
+  expect(await modal.boundingBox()).toEqual(before);
+});
+
+test("dashboard to bill and back reuses unchanged cards without loading the directory", async ({ page }) => {
+  const paths: string[] = [];
+  page.on("request", req => { if (req.method() === "GET") paths.push(new URL(req.url()).pathname); });
+  await fixtures(page);
+  await page.route("**/api/tracking/recommendations/**", route => route.fulfill({json: {
+    algorithm: "fixture", generated_at: "2026-11-21T12:00:00Z", count: 1, next_cursor: null,
+    unsupported_follow_types: [], candidate_pool_truncated: false, ranking_limit_reached: false,
+    empty_reason: null, results: [{bill: other, score: 1, reasons: []}]
+  }}));
+  const member = { id: 5, name: "Test Senator", bioguide_id: "T000005", chamber: "senate", state: "NY" };
+  await page.route("**/api/tracking/representative-recommendations/", route => route.fulfill({json: {
+    results: [{representative_id: 5, ...member, reasons: [], topic_activity_evidence: {
+      representative: member, channels: {sponsor: {topics: []}, active_cosponsor: {topics: []}}
+    }}]
+  }}));
+  await page.route("**/api/representatives/5/card/", route => route.fulfill({json: {
+    biography: {text: "Represents New York."}, portrait: null, latest_bill: null
+  }}));
+  await page.route("**/api/representatives/5/research/**", route => route.fulfill({json: {
+    status: "not_started", period: 2026, run: null, portrait: null, biography: null, snapshot: null
+  }}));
+  await page.goto("/");
+  const title = page.getByRole("button", { name: bill.title, exact: true });
+  await expect(title).toBeVisible();
+  await expect(page.getByText("Represents New York.")).toBeVisible();
+  await expect(page.getByRole("link", {name: other.title})).toBeVisible();
+  expect(paths).not.toContain("/api/representatives/");
+  expect(paths).toContain("/api/tracking/");
+  await title.click();
+  await page.getByRole("dialog").getByRole("link", { name: bill.title }).click();
+  await expect(page).toHaveURL(/\/bills\/1$/);
+  await expect(page.getByRole("heading", { name: "H.R. 1589 · Congress 119" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tracked bill", exact: true })).toBeVisible();
+  expect(paths.filter(p => p === "/api/tracking/")).toHaveLength(1);
+  paths.length = 0;
+  const checked = page.waitForResponse(r => new URL(r.url()).pathname === "/api/auth/session/current/" && r.status() === 200);
+  await page.goBack();
+  await checked;
+  await expect(title).toBeVisible();
+  await expect(page.getByText("Represents New York.")).toBeVisible();
+  await expect(page.getByRole("link", {name: other.title})).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh bill recommendations" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Refresh representative recommendations" })).toBeEnabled();
+  expect(paths.filter(p => p.startsWith("/api/tracking/") || p.startsWith("/api/representatives/") || p === "/api/bills/filter-options/")).toEqual([]);
+  expect(paths.filter(p => p === "/api/auth/session/current/")).toHaveLength(1);
+});
 
 test("readers see the live panel without samples or automatic ingestion requests", async ({ page }) => {
   const writes: string[] = [];
@@ -67,6 +445,7 @@ test("staff dashboard never exposes sample telemetry even with a legacy preferen
 
 test("staff operational telemetry refresh is read-only and start is an explicit mocked action", async ({page})=>{
   await fixtures(page);
+  await page.route("**/api/auth/session/current/**", route => route.fulfill({ json: { authenticated: true, user: { email: "admin@example.com", is_superuser: true } } }));
   await page.route("**/api/tracking/",route=>route.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:true}}));
   let starts=0;const keys:string[]=[];
   await page.route("**/api/ingestion/telemetry/**",route=>route.fulfill({json:{observed_at:"2026-10-09T18:00:00Z",last_discovery_completed_at:"2026-10-09T17:00:00Z",last_successful_work_item_at:"2026-10-09T17:15:00Z",counts_by_kind_and_status:[{kind:"bill",status:"pending",count:4},{kind:"bill_versions",status:"processing",count:2},{kind:"document_download",status:"blocked",count:1}],stale_leases:0,discovery_run:{id:starts ? "fixture-start" : "fixture-run",status:"succeeded",started_at:"2026-10-09T16:55:00Z",finished_at:"2026-10-09T17:00:00Z",discovered:6,created:4},recent_work_states:[{id:1,kind:"bill",status:"pending",updated_at:"2026-10-09T18:00:00Z"}]}}));
@@ -76,9 +455,14 @@ test("staff operational telemetry refresh is read-only and start is an explicit 
   await expect(page.getByLabel("Show ingestion telemetry preview")).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   const panel=page.getByRole("region",{name:"Legislation ingestion"});
+  await panel.getByRole("button", {name:"Expand legislation ingestion"}).click();
   await expect(panel.getByRole("button",{name:"Start discovery and ingestion",exact:true})).toBeEnabled();
-  await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  const refresh = panel.getByRole("button",{name:"Refresh telemetry"});
+  await refresh.scrollIntoViewIfNeeded();
+  const refreshPosition = await refresh.boundingBox();
+  await refresh.click();
   await expect(panel.getByText("Current pipeline backlog",{exact:true})).toBeVisible();
+  expect(await refresh.boundingBox()).toEqual(refreshPosition);
   await expect(panel.getByText("Source & technical details").locator("..")).not.toHaveAttribute("open", "");
   await panel.getByText("Source & technical details", {exact:true}).click();
   await expect(panel.getByText(/Stale — readiness is unavailable/)).toBeVisible();

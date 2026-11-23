@@ -273,7 +273,9 @@ def test_oversized_unstructured_document_is_not_cut_into_partial_rules(
     monkeypatch.setattr(source_packet, "canonical_json_bytes", counted_serializer)
 
     with pytest.raises(PreflightUnavailable, match="complete source section"):
-        build_enhancement_preflight(bill)
+        # Exercise the legacy selector directly: large documents now route to
+        # the complete reader planner instead of this selective path.
+        source_packet.select_document_sources(bill, text, "Introduced")
     assert serialization_calls <= 20
 
 
@@ -285,9 +287,10 @@ def test_preflight_fails_when_fixed_request_overhead_cannot_fit():
             LLM_ENHANCEMENT_MAX_REQUEST_BYTES=100,
             LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=50,
         ),
-        pytest.raises(PreflightUnavailable, match="fixed request overhead"),
+        pytest.raises(PreflightUnavailable) as error,
     ):
         build_enhancement_preflight(bill)
+    assert error.value.reason == "request_too_large"
 
 
 @pytest.mark.django_db

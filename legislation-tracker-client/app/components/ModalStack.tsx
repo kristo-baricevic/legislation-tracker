@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
+import styles from "./modal-frame.module.css";
 
 type Entry = { node: HTMLDialogElement; opener: HTMLElement | null; close: () => void; identity: string; fallbackFocus?: () => void };
 type Stack = { register: (entry: Entry) => () => void; isTop: (node: HTMLDialogElement) => boolean; contains: (identity: string) => boolean; canOpen: () => boolean; closeAll: () => void };
@@ -36,14 +37,14 @@ export function ModalStackProvider({ children }: { children: React.ReactNode }) 
           const top = entries.current.at(-1);
           const target = top ? (entry.opener?.isConnected && top.node.contains(entry.opener) ? entry.opener : controls(top.node)[0]) : pageOpener.current;
           if (target?.isConnected && target !== document.body && !target.closest("[hidden], [inert], [aria-hidden='true'], dialog:not([open])")) {
-            target.focus();
+            target.focus({ preventScroll: true });
             if (document.activeElement === target) return;
           }
-          if (top) { controls(top.node)[0]?.focus(); return; }
+          if (top) { controls(top.node)[0]?.focus({ preventScroll: true }); return; }
           pageFallbackFocus.current?.();
           const focused = document.activeElement;
           if (focused instanceof HTMLElement && focused !== document.body && focused.isConnected && !focused.closest("[hidden], [inert], [aria-hidden='true'], dialog")) return;
-          controls(document.body).find(control => !control.closest("dialog"))?.focus();
+          controls(document.body).find(control => !control.closest("dialog"))?.focus({ preventScroll: true });
         });
       };
     },
@@ -58,7 +59,7 @@ export function ModalStackProvider({ children }: { children: React.ReactNode }) 
 
 export function useModalStack() { return React.useContext(Context); }
 
-function ManagedDialog({ children, identity, titleId, className, onClose, fallbackFocus }: { children: React.ReactNode; identity: string; titleId: string; className: string; onClose: () => void; fallbackFocus?: () => void }) {
+function ManagedDialog({ children, identity, titleId, className, onClose, fallbackFocus, size = "reader" }: { children: React.ReactNode; identity: string; titleId: string; className: string; onClose: () => void; fallbackFocus?: () => void; size?: "reader" | "confirmation" }) {
   const stack = React.useContext(Context)!;
   const dialog = React.useRef<HTMLDialogElement>(null);
   const opener = React.useRef<HTMLElement | null>(null);
@@ -75,7 +76,7 @@ function ManagedDialog({ children, identity, titleId, className, onClose, fallba
     return () => { node.close(); unregister(); };
   }, [mounted, stack, identity]);
   if (!mounted) return null;
-  return createPortal(<dialog ref={dialog} className={className} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); event.stopPropagation(); if (stack.isTop(event.currentTarget)) close.current(); }} onKeyDown={event => {
+  return createPortal(<dialog ref={dialog} data-dialog-size={size} className={`${styles.frame} ${className}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); event.stopPropagation(); if (stack.isTop(event.currentTarget)) close.current(); }} onKeyDown={event => {
     if (!stack.isTop(event.currentTarget) || event.key !== "Tab") return;
     const items = controls(event.currentTarget), first = items[0], last = items.at(-1);
     if (!first || !last) { event.preventDefault(); event.currentTarget.focus(); }

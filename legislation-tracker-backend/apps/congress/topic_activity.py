@@ -26,6 +26,7 @@ from django.utils import timezone
 
 from apps.accounts.recommendation_support import (
     USABLE_TOPIC,
+    activity_revision,
     RecommendationError,
     bounded_json,
     cache_call,
@@ -730,7 +731,7 @@ def representative_activity_catalog(*, captured_at=None, policy=None):
     if capture > now or now.timestamp() - capture.timestamp() >= 300:
         raise RecommendationError()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v3:{policy.version}:{day}"
+    key = f"representative-topic-activity:v4:{policy.version}:{day}:{activity_revision()}"
     cached = cache_call("get", key)
     if (
         cached

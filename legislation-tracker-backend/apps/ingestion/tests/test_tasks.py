@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
+from unittest.mock import ANY
 
 import pytest
 from botocore.exceptions import ClientError
@@ -409,7 +410,7 @@ def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(
     monkeypatch.setattr(
         tasks.process_ingestion_work_item,
         "apply_async",
-        lambda args=None, kwargs=None: enqueued.append((args, kwargs)) or Result(),
+        lambda args=None, kwargs=None, **options: enqueued.append((args, kwargs)) or Result(),
     )
 
     result = tasks.dispatch_ingestion_work()
@@ -463,7 +464,7 @@ def test_dispatch_prioritizes_bill_completion_over_roll_call_backlog(monkeypatch
     monkeypatch.setattr(
         tasks.process_ingestion_work_item,
         "apply_async",
-        lambda args=None, kwargs=None: enqueued.append(args[0]) or Result(),
+        lambda args=None, kwargs=None, **options: enqueued.append(args[0]) or Result(),
     )
 
     assert tasks.dispatch_ingestion_work() == {"dispatched": 5}
@@ -474,6 +475,25 @@ def test_dispatch_prioritizes_bill_completion_over_roll_call_backlog(monkeypatch
         roll_call.id,
         bill.id,
     ]
+
+
+@pytest.mark.django_db
+def test_document_extraction_has_cpu_budget_without_relaxing_network_jobs(monkeypatch):
+    for kind in ('document_contract', 'bill'):
+        IngestionWorkItem.objects.create(kind=kind, dedupe_key='budget-' + kind,
+            source_updated_at=timezone.now(), payload_json={})
+    deliveries = {}
+    def publish(args, **options):
+        from types import SimpleNamespace
+        deliveries[IngestionWorkItem.objects.get(pk=args[0]).kind] = options
+        return SimpleNamespace(id='test-budget')
+    monkeypatch.setattr(tasks.process_ingestion_work_item, 'apply_async', publish)
+    assert tasks.dispatch_ingestion_work()['dispatched'] == 2
+    assert deliveries['document_contract']['soft_time_limit'] == 180
+    assert deliveries['document_contract']['time_limit'] == 210
+    assert deliveries['document_contract']['time_limit'] < tasks.WORK_LEASE_DURATION.total_seconds()
+    assert 'soft_time_limit' not in deliveries['bill']
+    assert tasks.process_ingestion_work_item.soft_time_limit == 60
 
 
 @pytest.mark.django_db
@@ -631,7 +651,7 @@ def test_queue_cleanup_migration_removes_only_superseded_pending_work():
 
 
 @pytest.mark.django_db
-def test_dispatch_leaves_new_work_pending_when_the_in_flight_cap_is_reached():
+def test_dispatch_leaves_same_stage_pending_when_its_in_flight_cap_is_reached():
     for number in range(tasks.MAX_DISPATCHED_INGESTION_WORK):
         IngestionWorkItem.objects.create(
             kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
@@ -642,7 +662,7 @@ def test_dispatch_leaves_new_work_pending_when_the_in_flight_cap_is_reached():
             lease_expires_at=timezone.now() + timedelta(minutes=10),
         )
     pending = IngestionWorkItem.objects.create(
-        kind="document_contract",
+        kind=tasks.WORK_KIND_ROLL_CALL_VOTE,
         dedupe_key="document:1",
         source_updated_at=timezone.now(),
         payload_json={"document_id": 1},
@@ -675,7 +695,7 @@ def test_dispatch_does_not_release_a_replacement_lease_after_enqueue_failure(
         payload_json={"bill_key": "119-hr-2"},
     )
 
-    def replace_lease_then_fail(args=None, kwargs=None):
+    def replace_lease_then_fail(args=None, kwargs=None, **options):
         IngestionWorkItem.objects.filter(pk=work.pk).update(
             status=IngestionWorkStatus.DISPATCHED,
             dispatch_token="replacement-lease",
@@ -711,7 +731,7 @@ def test_dispatch_does_not_overwrite_a_replacement_lease_task_id(monkeypatch):
     class Result:
         id = "stale-task"
 
-    def replace_lease_then_return(args=None, kwargs=None):
+    def replace_lease_then_return(args=None, kwargs=None, **options):
         IngestionWorkItem.objects.filter(pk=work.pk).update(
             status=IngestionWorkStatus.DISPATCHED,
             dispatch_token="replacement-lease",
@@ -1761,7 +1781,7 @@ def test_process_bill_keeps_bill_processing_after_enqueueing_downstream_work(
         ("bill_versions", {"bill_id": bill.id}),
         ("bill_votes", {"bill_id": bill.id}),
         ("search_index", {"bill_id": bill.id}),
-        ("similarity", {"bill_id": bill.id}),
+        ("similarity", {"bill_id": bill.id, "revision": ANY}),
     ]
 
 
@@ -2050,7 +2070,7 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
         ("bill_relationships", {"bill_id": bill.id}),
         ("bill_votes", {"bill_id": bill.id}),
         ("search_index", {"bill_id": bill.id}),
-        ("similarity", {"bill_id": bill.id}),
+        ("similarity", {"bill_id": bill.id, "revision": ANY}),
     ]
 
 
@@ -2832,7 +2852,7 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
 
     result = tasks.poll_tracked_bills()
 
-    assert result == {"enqueued": 3}
+    assert result == {"enqueued": 1}
     assert dispatched == [True]
     work_items = list(IngestionWorkItem.objects.order_by("dedupe_key"))
     assert [
@@ -2845,23 +2865,12 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
             datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
             {"bill_key": "119-hr-101"},
         ),
-        (
-            "119-hr-303",
-            IngestionWorkStatus.PENDING,
-            datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
-            {"bill_key": "119-hr-303"},
-        ),
-        (
-            "119-s-202",
-            IngestionWorkStatus.PENDING,
-            datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
-            {"bill_key": "119-s-202"},
-        ),
     ]
 
 
 @pytest.mark.django_db
-def test_poll_tracked_bills_replaces_the_previous_unstarted_refresh(monkeypatch):
+@pytest.mark.parametrize('outstanding_status', ['pending', 'dispatched', 'processing', 'blocked'])
+def test_poll_tracked_bills_preserves_the_previous_unstarted_refresh(monkeypatch, outstanding_status):
     user = get_user_model().objects.create_user(
         username="owner@example.com",
         email="owner@example.com",
@@ -2880,8 +2889,9 @@ def test_poll_tracked_bills_replaces_the_previous_unstarted_refresh(monkeypatch)
     monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
 
     assert tasks.poll_tracked_bills() == {"enqueued": 1}
+    IngestionWorkItem.objects.update(status=outstanding_status)
     current_time[0] = datetime(2026, 1, 2, 12, 8, tzinfo=UTC)
-    assert tasks.poll_tracked_bills() == {"enqueued": 1}
+    assert tasks.poll_tracked_bills() == {"enqueued": 0}
 
     assert list(
         IngestionWorkItem.objects.filter(
@@ -2890,10 +2900,12 @@ def test_poll_tracked_bills_replaces_the_previous_unstarted_refresh(monkeypatch)
         ).values_list("source_updated_at", "status")
     ) == [
         (
-            datetime(2026, 1, 2, 12, 5, tzinfo=UTC),
-            IngestionWorkStatus.PENDING,
+            datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
+            outstanding_status,
         )
     ]
+    IngestionWorkItem.objects.update(status=IngestionWorkStatus.SUCCEEDED)
+    assert tasks.poll_tracked_bills() == {"enqueued": 1}
 
 
 @pytest.mark.django_db

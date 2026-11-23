@@ -7,8 +7,10 @@ from django.core import signing
 from django.utils import timezone
 from rest_framework.response import Response
 
+from .dashboard_bill_cards import add_card_summaries
 from .recommendation_support import (
     PrivateRecommendationView,
+    activity_revision,
     RecommendationError,
     bounded_json,
     cache_call,
@@ -82,8 +84,10 @@ class BillRecommendationView(PrivateRecommendationView):
         offset = cursor["offset"] if cursor else 0
         with read_snapshot():
             profile = load_profile(request.user.pk)
+            revision = activity_revision() if not cursor else None
             cached = cache_call("get", key) if not cursor else None
             reuse = bool(cached and cached.get("algorithm") == ALGORITHM
+                         and cached.get("activity_revision") == revision
                          and cached["expires_at"] > now.timestamp()
                          and cached["fingerprint"] == profile.fingerprint
                          and cached["page_size"] == size)
@@ -119,6 +123,7 @@ class BillRecommendationView(PrivateRecommendationView):
                 snapshot = bounded_json(
                     {
                         **ranking,
+                        "activity_revision": revision,
                         "generated_at": now.isoformat(),
                         "expires_at": (
                             now + timedelta(seconds=SNAPSHOT_SECONDS)
@@ -170,6 +175,6 @@ class BillRecommendationView(PrivateRecommendationView):
                 },
                 "count": len(snapshot["results"]),
                 "next_cursor": token,
-                "results": snapshot["results"][offset:next_offset],
+                "results": add_card_summaries(snapshot["results"][offset:next_offset]),
             }
         )

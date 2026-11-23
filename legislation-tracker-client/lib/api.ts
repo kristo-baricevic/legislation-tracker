@@ -106,6 +106,10 @@ async function responseError(res: Response, fallback: string): Promise<ApiError>
 }
 
 export interface AuthSession {
+  dashboard_revision?: string;
+  tracking_revision?: string;
+  research_revision?: string;
+  current_congress?: number;
   authenticated: true;
   user: {
     email: string;
@@ -199,20 +203,20 @@ async function tryRefreshSession(options: PersonalizedRequestOptions & { scope: 
   return result;
 }
 
-export async function getSession(retriedOrOptions: boolean | PersonalizedRequestOptions = false): Promise<AuthSession | null> {
+export async function getSession(retriedOrOptions: boolean | PersonalizedRequestOptions = false, dashboard = false): Promise<AuthSession | null> {
   if (sessionTransitionInProgress()) return null;
   const options = typeof retriedOrOptions === "boolean" ? {} : retriedOrOptions;
   const scope = options.scope ?? capturePersonalizedScope();
   const retried = typeof retriedOrOptions === "boolean" && retriedOrOptions;
   assertPersonalizedScope(scope, options.signal);
   const base = getApiBase();
-  const res = await fetch(`${base}/api/auth/session/current/`, {
+  const res = await fetch(`${base}/api/auth/session/current/${dashboard ? "?dashboard=1" : ""}`, {
     credentials: "include",
     ...(options.signal ? { signal: options.signal } : {}),
   });
   assertPersonalizedScope(scope, options.signal);
   if (res.status === 401 && !retried && (await tryRefreshSession({ ...options, scope }))) {
-    return getSessionResponse({ ...options, scope });
+    return getSessionResponse({ ...options, scope }, dashboard);
   }
   if (res.status === 401 || res.status === 403) { markSessionLost(); return null; }
   if (!res.ok) throw await responseError(res, "Failed to load session");
@@ -222,9 +226,9 @@ export async function getSession(retriedOrOptions: boolean | PersonalizedRequest
   return result;
 }
 
-async function getSessionResponse(options: PersonalizedRequestOptions & { scope: PersonalizedScope }): Promise<AuthSession | null> {
+async function getSessionResponse(options: PersonalizedRequestOptions & { scope: PersonalizedScope }, dashboard: boolean): Promise<AuthSession | null> {
   assertPersonalizedScope(options.scope, options.signal);
-  const response = await fetch(`${getApiBase()}/api/auth/session/current/`, { credentials: "include", ...(options.signal ? { signal: options.signal } : {}) });
+  const response = await fetch(`${getApiBase()}/api/auth/session/current/${dashboard ? "?dashboard=1" : ""}`, { credentials: "include", ...(options.signal ? { signal: options.signal } : {}) });
   assertPersonalizedScope(options.scope, options.signal);
   if (response.status === 401 || response.status === 403) { markSessionLost(); return null; }
   if (!response.ok) throw await responseError(response, "Failed to load session");
@@ -329,6 +333,9 @@ export interface BillTopicItem {
 }
 
 export interface BillListItem {
+  card_summary?: string;
+  enhancement_status?: "pending" | "running" | "succeeded" | null;
+  enhancement_id?: number | null;
   id: number;
   jurisdiction: string;
   session: number;
@@ -337,6 +344,7 @@ export interface BillListItem {
   status: string;
   sponsor_name: string | null;
   sponsor_id?: number | null;
+  sponsor_state?: string | null;
   sponsor_bioguide_id?: string | null;
   congress_gov_url?: string | null;
   introduced_at: string | null;
@@ -1102,6 +1110,9 @@ export interface TrackedLegislatorItem {
   representative: RepresentativeItem;
   created_at: string;
   card?: {
+    top_topics?: { id: number; name: string; count: number }[];
+    topics_available?: boolean;
+    research?: {status: string; period: number; overview_ready: boolean};
     biography: { text: string; source: { url: string; attribution: string; license: string } } | null;
     portrait: { url: string; source: { url: string; attribution: string; license: string } } | null;
     latest_bill: { id: number; title: string; bill_number: string; introduced_at: string; session: number } | null;
@@ -1296,6 +1307,7 @@ export function triggerTopicBackfill(params: {
 }
 
 export interface LLMSettings {
+  models: {provider: string; model: string; free: boolean}[];
   feature_available: boolean;
   configured: boolean;
   provider: string;
@@ -1313,7 +1325,7 @@ export function getLLMSettings(): Promise<LLMSettings> {
 }
 
 export function updateLLMSettings(
-  values: { api_key?: string; enabled?: boolean },
+  values: { api_key?: string; enabled?: boolean; provider?: string; requested_model?: string },
 ): Promise<LLMSettings> {
   return authPut<LLMSettings>("/api/settings/llm/", values);
 }
@@ -1389,12 +1401,14 @@ export interface EnhancementResult {
 }
 
 export interface ReaderEnhancementIdentity {
-  contract_id: number;
-  contract_hash: string;
+  contract_id: number | null;
+  contract_hash: string | null;
   document_id: number;
   document_content_hash: string;
 }
 export interface ReaderExplanationItem extends ReaderEnhancementIdentity {
+  contract_id: number;
+  contract_hash: string;
   kind: "line_item" | "financial_item" | "definition";
   item_id: string;
   target_id: string;
@@ -1461,7 +1475,8 @@ export type EnhancementStatus =
   | "succeeded"
   | "failed"
   | "refused"
-  | "outcome_unknown";
+  | "outcome_unknown"
+  | "paused";
 
 export interface BillEnhancement {
   shared?: boolean;

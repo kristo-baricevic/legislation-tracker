@@ -58,6 +58,7 @@ export type RepresentativeRecommendationReason =
   | { kind: "followed_topic"; topic_id: number; name: string; shared_topics: ActivityTopic[]; channel_evidence: Record<string, unknown> }
   | { kind: "followed_representative_activity"; representative_id: number; name: string; shared_topics: ActivityTopic[]; channel_evidence: Record<string, unknown> };
 export interface RepresentativeRecommendation {
+  card?: import("./api").TrackedLegislatorItem["card"];
   representative_id: number; bioguide_id: string; name: string; score: number;
   reasons: RepresentativeRecommendationReason[]; topic_activity_evidence: RepresentativeTopicActivity;
 }

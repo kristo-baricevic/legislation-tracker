@@ -11,6 +11,8 @@ class ProviderUsage:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    visible_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,19 @@ class ProviderResult:
 class CredentialCheck:
     valid: bool
     category: str | None = None
+
+
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    wire_api: str
+    schema_profile: str
+    reasoning_mapping: dict[str, Any] = field(default_factory=dict)
+    privacy_flags: dict[str, Any] = field(default_factory=dict)
+    validation_profile: str = ""
+    usage_shape: str = ""
+    refusal_completion_profile: str = ""
+    error_profile: str = ""
+    unsupported_schema_keywords: frozenset[str] = field(default_factory=frozenset)
 
 
 class ProviderError(RuntimeError):
@@ -55,6 +70,7 @@ class ProviderError(RuntimeError):
 
 class EnhancementProvider(Protocol):
     provider_name: str
+    capabilities: ProviderCapabilities
 
     def generate_provisions(self, *, api_key: str, request, timeout_seconds: int) -> ProviderResult: ...
 

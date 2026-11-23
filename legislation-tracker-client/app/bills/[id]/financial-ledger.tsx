@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { StableResults } from "@/app/components/StableResults";
 
 import {
   getFinancialItems,
@@ -53,7 +54,17 @@ function pathLabel(item: LegalNlpFinancialItem): string {
 function formatAmount(item: LegalNlpFinancialItem): string | null {
   if (item.amount_type === "unspecified") return "Amount not extracted";
   if (item.amount_type === "such_sums") return "Such sums as necessary";
-  if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) return item.amount ? `${Number(item.amount)}%` : null;
+  if (item.amount_type === "percentage" || (item.amount_type === "ceiling" && item.currency == null)) {
+    if (!item.amount) return null;
+    const amount = Number(item.amount);
+    const mentions = item.display_text.matchAll(/\b(?:(at least|not less than|no less than|up to|at most|no more than|not more than)\s+)?(\d+(?:\.\d+)?)\s*(?:percent\b|%)/gi);
+    const bounds = new Set<string>();
+    for (const [, qualifier, value] of Array.from(mentions)) {
+      if (Number(value) === amount) bounds.add(!qualifier ? "" : /least|less/i.test(qualifier) ? "At least " : "Up to ");
+    }
+    const prefix = item.amount_type === "ceiling" ? "Up to " : bounds.size === 1 ? [...bounds][0] : "";
+    return `${prefix}${amount}%`;
+  }
   if (!item.amount) return null;
   const amount = Number(item.amount);
   if (!Number.isFinite(amount)) return item.amount;
@@ -96,7 +107,7 @@ function OriginalFinancialLedger({
   const requestedPage = useRef(1);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  async function load(targetPage: number, navigate = false) {
+  async function load(targetPage: number, _navigate = false) {
     requestedPage.current = targetPage;
     const activeRequest = ++requestId.current;
     setLoading(true);
@@ -116,10 +127,6 @@ function OriginalFinancialLedger({
       setFilteredCount(response.count);
       setPage(targetPage);
       setHasMore(Boolean(response.next));
-      if (navigate && !heading.current?.closest("[hidden]")) {
-        heading.current?.focus({ preventScroll: true });
-        heading.current?.scrollIntoView?.({ block: "start" });
-      }
     } catch {
       if (activeRequest === requestId.current) {
         setError("Could not load money provisions. Try again.");
@@ -178,8 +185,10 @@ function OriginalFinancialLedger({
           </label>
           <button type="button" onClick={applyFilters} className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:border-green-700 dark:text-green-300">Apply money filters</button>
         </fieldset>
+        <div className="min-h-12">
         {filterError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{filterError}</p>}
         {filtersApplied && !loading && !error && !filterError && <p role="status" className="mt-3 text-sm text-slate-700 dark:text-green-300">Filters applied: {filteredCount} matching provisions.</p>}
+        </div>
 
         {lineItemId && onClearLineItem && (
           <button type="button" onClick={onClearLineItem} className="mt-4 cursor-pointer text-sm font-semibold text-blue-900 underline dark:text-green-400">Show all money in this bill</button>
@@ -187,6 +196,7 @@ function OriginalFinancialLedger({
         <p className="mt-4 text-sm text-slate-600 dark:text-green-600">
           {items.length} of {lineItemId || sectionId || filters.action || filters.year != null ? `${filteredCount} matching` : totalCount} provisions shown
         </p>
+        <StableResults page={page} busy={loading} label="Financial provisions">
         {error && (
           <div role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
             <p>{error}</p>
@@ -213,9 +223,10 @@ function OriginalFinancialLedger({
             ))}
           </ol>
         )}
+        </StableResults>
         {filteredCount > 0 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
           <button type="button" disabled={loading || page <= 1} onClick={() => void load(page - 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
-          <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}{loading ? " · Loading…" : ""}</span>
+          <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}</span>
           <button type="button" disabled={loading || !hasMore} onClick={() => void load(page + 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
         </nav>}
       </div>

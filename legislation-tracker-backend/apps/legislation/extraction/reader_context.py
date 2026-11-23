@@ -5,7 +5,7 @@ Keep original spans. Never fill in cross-referenced law that is not in the sourc
 
 import re
 
-from .federal_clauses import _quoted_block_ranges
+from .federal_clauses import _quoted_block_ranges, _parent_section
 from .federal_structure import sentence_spans
 from .legal_rules import MODAL_RE
 from .types import ExtractedClaim, SourceSpan
@@ -41,12 +41,11 @@ def enrich_reader_claims(source, sections, claims):
     additions = []
     replaced_ranges = []
     quoted_ranges = _quoted_block_ranges(source)
-    by_path = {
-        tuple((p.level, p.label) for p in section.path): section for section in sections
-    }
     children = {}
     for section in sections:
-        parent = by_path.get(tuple((p.level, p.label) for p in section.path[:-1]))
+        # Labels repeat in quoted/amended laws. Parentage is source-local,
+        # not a document-wide dictionary keyed by labels such as "(a)".
+        parent = _parent_section(section, sections)
         if parent:
             children.setdefault(parent.source_id, []).append(section)
 
@@ -136,12 +135,13 @@ def enrich_reader_claims(source, sections, claims):
         action = _clean(introduction.text[modal.end() :])
         if not actor or modal.group().lower() not in {"shall", "must", "may"}:
             continue
-        if _is_choice(action, direct):
+        qualifying_list = bool(re.search(r'\b(?:that|which)$', action, re.I))
+        if _is_choice(action, direct) or qualifying_list:
             # A choice is one obligation, not a required duty for every leaf.
             # Keep its exact source-backed grouping, including cardinality.
             start, end = direct[0].span.start_char, direct[-1].span.end_char
             grouped_action = (
-                f"{action + ': ' if action else ''}{_clean(source[start:end])}"
+                f"{action + (' ' if qualifying_list else ': ') if action else ''}{_clean(source[start:end])}"
             )
             if len(actor) + len(grouped_action) < 3900 and not any(
                 a < end and start < b for a, b in quoted_ranges
@@ -160,7 +160,7 @@ def enrich_reader_claims(source, sections, claims):
                             "conditions": [],
                         },
                         [introduction, SourceSpan(source[start:end], start, end)],
-                        "reader.list.choice.v1",
+                        "reader.list.qualification.v1" if qualifying_list else "reader.list.choice.v1",
                     )
                 )
                 replaced_ranges.append((introduction.start_char, introduction.end_char))

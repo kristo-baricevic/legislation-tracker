@@ -22,6 +22,7 @@ from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
 from apps.legislation.models import Bill, Topic
 from apps.legislation.serializers import BillListSerializer
+from .dashboard_bill_cards import add_card_summaries
 from apps.legislation.throttles import BillSearchThrottle
 
 from .authentication import enforce_csrf
@@ -172,10 +173,35 @@ class SessionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
+        dashboard = {}
+        if request.query_params.get("dashboard") == "1":
+            from hashlib import sha256
+            from django.db.models import Count, Max
+            from .recommendation_support import activity_day, activity_revision
+            from apps.congress.current import current_congress
+            from apps.research.models import ResearchRun, RepresentativeBiography, RepresentativePortrait
+            activity = activity_revision()
+            from apps.legislation.models import BillEnhancement
+            reader_revision = BillEnhancement.objects.aggregate(last=Max("updated_at"))["last"]
+            follows = [model.objects.filter(user=request.user).aggregate(n=Count("id"), last=Max("id"))
+                       for model in (TrackedBill, TrackedTopic, TrackedLegislator)]
+            runs = ResearchRun.objects.aggregate(start=Max("created_at"), end=Max("finished_at"))
+            research = [*runs.values(), *(m.objects.order_by("-pk").values_list("pk", flat=True).first()
+                                         for m in (RepresentativeBiography, RepresentativePortrait))]
+            def stamp(*parts):
+                return sha256(repr(parts).encode()).hexdigest()[:24]
+            # Activity elsewhere can affect discovery, but needn't invalidate
+            # the user's collection unless it includes a followed legislator.
+            tracked_activity = (activity if follows[2]["n"] else
+                TrackedBill.objects.filter(user=request.user).aggregate(last=Max("bill__last_activity_sequence"))["last"])
+            dashboard = {"dashboard_revision": stamp(activity, follows, activity_day(), reader_revision),
+                         "tracking_revision": stamp(tracked_activity, follows, research if follows[2]["n"] else None, reader_revision),
+                         "research_revision": stamp(research), "current_congress": current_congress()}
         return Response(
             {
                 "authenticated": True,
                 "user": {"email": request.user.email, "is_superuser": request.user.is_superuser},
+                **dashboard,
             }
         )
 
@@ -420,15 +446,15 @@ class TrackingSummaryView(APIView):
             "bill__sponsor",
         )
         topics = TrackedTopic.objects.filter(user=request.user).select_related("topic")
-        from .legislator_cards import with_card_facts
-        legislators = with_card_facts(TrackedLegislator.objects.filter(
+        from .legislator_cards import cards_for_representatives
+        legislators = list(TrackedLegislator.objects.filter(
             user=request.user
         ).select_related("representative"))
         return Response(
             {
-                "bills": TrackedBillSerializer(bills, many=True).data,
+                "bills": add_card_summaries(TrackedBillSerializer(bills, many=True).data),
                 "topics": TrackedTopicSerializer(topics, many=True).data,
-                "legislators": TrackedLegislatorSerializer(legislators, many=True).data,
+                "legislators": TrackedLegislatorSerializer(legislators, many=True, context={"cards": cards_for_representatives(item.representative_id for item in legislators)}).data,
                 "is_staff": request.user.is_staff,
             }
         )

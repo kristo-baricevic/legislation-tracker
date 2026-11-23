@@ -25,6 +25,7 @@ from .service import (
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement, source_compatible
+from .model_selection import credential_target, planning_for
 
 
 class PrivateEnhancementMixin:
@@ -111,6 +112,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             return Response({**base, "unavailable_reason": "unsupported_jurisdiction"})
         credential = LLMCredential.objects.filter(user=request.user).first()
         base["credential_revision"] = credential.revision if credential else None
+        base["requested_model"] = credential_target(credential)[1]
         if not credential_is_current(credential):
             if credential is None:
                 reason = "credential_not_configured"
@@ -120,9 +122,10 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 reason = "credential_unverified"
             return Response({**base, "unavailable_reason": reason})
         try:
-            preflight = build_enhancement_preflight(bill)
+            with planning_for(credential_target(credential)):
+                preflight = build_enhancement_preflight(bill)
         except PreflightUnavailable as exc:
-            return Response({**base, "unavailable_reason": exc.reason})
+            return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
         matching = (
             BillEnhancement.objects.filter(
                 user=request.user,
@@ -134,7 +137,8 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
         )
         reused = reusable_publication(matching, credential) if matching else None
         if reused:
-            preflight = build_enhancement_preflight(bill, reuse_result=reused)
+            with planning_for(credential_target(credential)):
+                preflight = build_enhancement_preflight(bill, reuse_result=reused)
         return Response(
             {
                 **base,
@@ -150,8 +154,9 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": max(
-                    p.request_envelope.get("max_output_tokens", settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
-                    for p in (preflight, *preflight.reader_batches)
+                    preflight.source_manifest.get('budget', {}).get('maximum_request_output', 0),
+                    max(p.request_envelope.get("max_output_tokens", settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+                        for p in (preflight, *preflight.reader_batches))
                 ),
                 "aggregate_budget": preflight.source_manifest.get("budget"),
                 "glossary_coverage": preflight.source_manifest.get("glossary"),

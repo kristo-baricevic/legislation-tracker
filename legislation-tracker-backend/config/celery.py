@@ -48,6 +48,11 @@ app.conf.beat_schedule = {
         "task": "apps.ingestion.tasks.dispatch_ingestion_work",
         "schedule": 30.0,
     },
+    "dispatch-similarity-work": {
+        "task": "apps.ingestion.tasks.dispatch_similarity_work",
+        "schedule": 10.0,
+        "options": {"queue": "similarity", "expires": 10},
+    },
     "dispatch-research-work": {
         "task": "apps.ingestion.tasks.dispatch_ingestion_work",
         "schedule": 30.0,

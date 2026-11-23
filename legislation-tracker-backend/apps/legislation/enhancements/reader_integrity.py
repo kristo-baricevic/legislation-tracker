@@ -22,11 +22,19 @@ def validate_numbers(item, *, path):
         raise output_error('reader_amount_conflict', path)
 
 
+def financial_signal_text(text):
+    """Exclude committee names, not funding elsewhere in the same passage."""
+    return re.sub(r'\b(?:committees?\s+on\s+appropriations|appropriations\s+committees?)\b',
+                  'committee', text, flags=re.I)
+
+
 def requires_financial_item(text):
     # Dollars cannot be waived by a model's self-reported checklist. Also catch
     # operative funding without a fixed total and percentage set-asides.
+    text = financial_signal_text(text)
     return bool(_amounts(text) or re.search(
         r'\b(?:appropriat(?:ed|ion|ions)|authorized to be appropriated|'
+        r'(?:shall|may|must) appropriate\s+(?:funds|money|sums)|'
         r'shall (?:reserve|transfer|allocate)|(?:may|shall) set aside)\b', text, re.I)
         or re.search(r'(?:percent\b|%)\s+of\s+(?:(?:the|total|remaining|annual|grant|appropriated)\s+)*'
                      r'(?:funds|amount|revenue|receipts|costs|income|grants)\b', text, re.I))

@@ -272,7 +272,37 @@ def test_reference_only_amendment_stays_unresolved():
     g = build_source_graph(
         "1", "IH", "SEC. 1. AMENDMENT\nSection 10 of the Other Act is amended."
     )
-    assert not plan_analysis(g).calls
+    with pytest.raises(BudgetExceeded, match="zero_coverage") as failure:
+        plan_analysis(g)
+    assert failure.value.reasons == {g.units[0].id: "unexplained_source"}
+
+
+def test_large_plan_refusal_accounts_for_every_unit_without_dispatch():
+    from time import perf_counter
+
+    g = build_source_graph("big", "IH", "\n".join(
+        f"SEC. {i}. PAYMENT\nThe Secretary shall pay $100." for i in range(1, 2229)))
+    start = perf_counter()
+    with pytest.raises(BudgetExceeded, match="budget_exceeded") as failure:
+        plan_analysis(g)
+    # Generous compared with the measured sub-second planner; catches the
+    # former repeated request construction, not minor machine speed changes.
+    assert perf_counter() - start < 10
+    assert len(g.units) == 2228
+    assert failure.value.reasons == {unit.id: "generation_budget" for unit in g.units}
+
+
+def test_partial_preflight_exposes_unresolved_coverage_to_caller():
+    from types import SimpleNamespace
+    from apps.legislation.enhancements.source_first_preflight import build_source_first_preflight
+
+    p = build_source_first_preflight(SimpleNamespace(pk=1, version_label="IH"),
+        "SEC. 1. PAYMENT\nThe Secretary shall pay $100.\n"
+        "SEC. 2. AMENDMENT\nSection 10 of the Other Act is amended.")
+    coverage = p.source_manifest["coverage"]
+    assert (coverage["total_units"], coverage["planned_units"], coverage["reused_units"],
+            coverage["unresolved_units"]) == (2, 1, 0, 1)
+    assert coverage["reasons"] == {"unexplained_source": 1}
 
 
 def test_reasoning_and_output_limits_are_bound_to_confirmation():

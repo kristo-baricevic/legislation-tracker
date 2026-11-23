@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeCopy, explanationParagraphs } from "@/lib/reader-copy";
+import { changeCopy, explanationParagraphs, readerChecklist } from "@/lib/reader-copy";
 import type { LegalNlpLineItem } from "@/lib/contracts";
 
 const item = (overrides: Partial<LegalNlpLineItem>): LegalNlpLineItem => ({
@@ -10,6 +10,18 @@ const item = (overrides: Partial<LegalNlpLineItem>): LegalNlpLineItem => ({
 });
 
 describe("shared change copy", () => {
+  it("factors repeated application duties into a checklist without losing exceptions", () => {
+    const result = readerChecklist("An application submitted under this section must include A plan to improve outcomes, unless exempt. An application submitted under this section must include Annual benchmarks. An application submitted under this section must include A plan for evaluation.");
+    expect(result).toEqual({ intro: "Applications must include:", items: ["A plan to improve outcomes, unless exempt.", "Annual benchmarks.", "A plan for evaluation."] });
+  });
+  it("keeps numbered eligibility conditions and their connectors intact", () => {
+    const result = readerChecklist("Applicants qualify only if— (A) they arrived before 2021; (B) they have no disqualifying conviction; and (C) they are enrolled in school or (i) have graduated; or (ii) have an equivalent credential.");
+    expect(result?.intro).toBe("Applicants qualify only if—");
+    expect(result?.items).toEqual(["(A) they arrived before 2021;", "(B) they have no disqualifying conviction; and", "(C) they are enrolled in school or (i) have graduated; or (ii) have an equivalent credential."]);
+  });
+  it("does not treat a cross reference as a checklist", () => {
+    expect(readerChecklist("Applicants qualify under section 3 (A) or section 4 (B).")).toBeNull();
+  });
   it("preserves amendment instructions and quoted wording through the final presentation", () => {
     for (const kind of ["amendment", "requirement"] as const) {
       const text = 'Replace “award, on a competitive basis, grants” with “award grants”.';

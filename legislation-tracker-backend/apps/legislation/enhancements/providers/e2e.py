@@ -5,11 +5,22 @@ from __future__ import annotations
 import time
 
 from ..schema import OUTPUT_SCHEMA_VERSION
-from .base import CredentialCheck, ProviderResult, ProviderUsage
+from .base import CredentialCheck, ProviderCapabilities, ProviderResult, ProviderUsage
 
 
 class E2EEnhancementProvider:
     provider_name = "e2e"
+    capabilities = ProviderCapabilities(
+        wire_api="none",
+        schema_profile="e2e_deterministic",
+        reasoning_mapping={},
+        privacy_flags={},
+        validation_profile="none",
+        usage_shape="fixed",
+        refusal_completion_profile="none",
+        error_profile="none",
+        unsupported_schema_keywords=frozenset(),
+    )
 
     def generate_provisions(self, *, api_key, request, timeout_seconds):
         time.sleep(0.5)

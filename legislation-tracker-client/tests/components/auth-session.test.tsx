@@ -11,6 +11,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("cookie-backed web authentication", () => {
+  it("does not offer guest actions while the session is unresolved", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(<AuthNav />);
+    expect(screen.queryByRole("link", { name: "Log in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign up" })).not.toBeInTheDocument();
+  });
   const router = {
     push: vi.fn(),
     replace: vi.fn(),

@@ -316,7 +316,7 @@ function RepresentativeDetailContent() {
           })}
         </>}
         {name === "Votes" && <><VoteSummary scope={scope} fullPage /><FullVotes scope={scope} /></>}
-        {name === "Campaign funding" && <RepresentativeResearch representativeId={representative.id} financeView />}
+        {name === "Campaign funding" && <RepresentativeResearch key={searchParams.get("period") ?? "current"} representativeId={representative.id} initialPeriod={searchParams.get("period")} financeView />}
         {name === "Committees" && <section><h2>Committees</h2>{committees.length ? <ul className={styles.committees}>{committees.map(membership => <li key={`${membership.committee.id}-${membership.congress}`}><strong>{membership.committee.name}</strong><span>{membership.role.replaceAll("_", " ")}{!membership.is_current ? " · Former" : ""}</span></li>)}</ul> : <p className={styles.note}>No committee assignments available.</p>}{historyHasMore.committees && <div className={styles.pagination}><button disabled={historyLoading.committees} onClick={() => void loadMoreHistory("committees")}>Load more committees</button></div>}</section>}
       </div>)}
     </>}

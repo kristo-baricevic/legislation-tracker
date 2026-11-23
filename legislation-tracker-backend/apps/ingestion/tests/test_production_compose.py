@@ -47,7 +47,10 @@ def test_production_compose_blocks_runtime_services_until_migration_succeeds(tmp
 
     assert migrate["restart"] == "no"
     assert migrate["command"] == ["python", "manage.py", "migrate", "--noinput"]
-    for service_name in ("api", "worker", "beat"):
+    similarity = services["similarity-worker"]["command"]
+    assert similarity[similarity.index("-Q") + 1] == "similarity"
+    assert "--concurrency=1" in similarity
+    for service_name in ("api", "worker", "beat", "similarity-worker"):
         assert (
             services[service_name]["depends_on"]["migrate"]["condition"]
             == "service_completed_successfully"

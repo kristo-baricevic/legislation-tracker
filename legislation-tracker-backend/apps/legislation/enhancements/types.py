@@ -35,6 +35,7 @@ class SourceGraph:
     source_text: str
     document_id: str
     version: str
+    xml_sections: tuple = ()
 
 
 @dataclass(frozen=True)

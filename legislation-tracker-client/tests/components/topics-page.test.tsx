@@ -20,6 +20,14 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("TopicsPage", () => {
+  it("keeps refreshing status out of the topic list flow", async () => {
+    render(<TopicsPage />);
+    const topic = await screen.findByRole("link", { name: "Health" });
+    vi.mocked(getTopics).mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh topics" }));
+    expect(screen.getByRole("link", { name: "Health" })).toBe(topic);
+    expect(screen.getByText("Refreshing topics…")).toHaveClass("sr-only");
+  });
   beforeEach(() => {
     vi.mocked(getSession).mockResolvedValue({
       authenticated: true,

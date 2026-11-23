@@ -31,7 +31,7 @@ export function SourcePopover({ children, number = 1, onOpen, label }: { childre
     function key(event: KeyboardEvent) {
       // Only the innermost focused disclosure handles Escape and Tab.
       if (!panel.current?.contains(event.target as Node) && event.target !== trigger.current) return;
-      if (event.key === "Escape") { event.preventDefault(); setPosition(null); trigger.current?.focus(); }
+      if (event.key === "Escape") { event.preventDefault(); setPosition(null); trigger.current?.focus({ preventScroll: true }); }
       if (event.key === "Tab" && panel.current) {
         const controls = Array.from(panel.current.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex='0']"));
         const atStart = event.target === panel.current || event.target === controls[0];
@@ -86,7 +86,7 @@ export function SourcePopover({ children, number = 1, onOpen, label }: { childre
     {position && visible && createPortal(<div ref={panel} id={id} data-source-ancestors={ancestors.join(" ")} role="dialog" aria-label={label ?? `Source ${number}`} tabIndex={-1}
       style={{ top: position.top, left: position.left, width: "min(400px, calc(100vw - 16px))", maxHeight: `min(400px, calc(100dvh - ${position.top + 8}px))` }}
       className="fixed z-[100] overflow-y-auto rounded-lg border border-slate-300 bg-white p-4 text-sm text-slate-900 shadow-xl dark:border-green-700 dark:bg-slate-950 dark:text-green-100">
-      <div className="mb-3 flex items-center justify-between"><strong>Source {number}</strong><button type="button" aria-label="Close source" onClick={() => { setPosition(null); trigger.current?.focus(); }} className="rounded px-2 py-1">✕</button></div>
+      <div className="mb-3 flex items-center justify-between"><strong>Source {number}</strong><button type="button" aria-label="Close source" onClick={() => { setPosition(null); trigger.current?.focus({ preventScroll: true }); }} className="rounded px-2 py-1">✕</button></div>
       <SourceAncestors.Provider value={[...ancestors, id]}>{children}</SourceAncestors.Provider>
     </div>, trigger.current?.closest("dialog") ?? document.body)}
   </>;

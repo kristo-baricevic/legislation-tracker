@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { StableResults } from "@/app/components/StableResults";
 import { compareBillDocuments, compareBillDocumentSection, type BillDocumentItem, type DocumentComparison, type DocumentSectionComparison } from "@/lib/api";
 
 const button = "cursor-pointer rounded border border-slate-400 px-3 py-2 text-sm font-semibold hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:border-green-800 dark:hover:bg-green-950";
@@ -26,35 +27,40 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
   const [sections, setSections] = useState<DocumentSectionComparison[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [shownPage, setShownPage] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    if (comparison) return;
     setError(null);
-    setComparison(null);
     compareBillDocuments(billId, before.id, after.id).then(result => {
       if (!cancelled) setComparison(result);
     }).catch(() => { if (!cancelled) setError("Could not compare these versions. Please try again."); });
     return () => { cancelled = true; };
-  }, [billId, before.id, after.id, retry]);
+  }, [billId, before.id, after.id, retry, comparison]);
 
   useEffect(() => {
     let cancelled = false;
-    setSections(null);
+    setLoading(true);
+    setError(null);
     if (comparison) {
       Promise.all(comparison.sections.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
         .map(section => compareBillDocumentSection(billId, before.id, after.id, section.section_key)))
-        .then(results => { if (!cancelled) setSections(results); })
-        .catch(() => { if (!cancelled) setError("Could not load the changed passages. Please try again."); });
+        .then(results => { if (!cancelled) { setSections(results); setShownPage(page); } })
+        .catch(() => { if (!cancelled) setError("Could not load the changed passages. Please try again."); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }
     return () => { cancelled = true; };
-  }, [comparison, page, billId, before.id, after.id]);
+  }, [comparison, page, billId, before.id, after.id, retry]);
 
-  if (error) return <div role="alert" className="space-y-2"><p>{error}</p>
-    <button className={button} onClick={() => setRetry(value => value + 1)}>Retry comparison</button></div>;
-  if (!comparison || !sections) return <p role="status">Loading changed passages…</p>;
-  const pages = Math.ceil(comparison.sections.length / PAGE_SIZE);
+  const pages = Math.ceil((comparison?.sections.length ?? 0) / PAGE_SIZE);
   return <div className="space-y-4">
+    <StableResults page={shownPage} busy={loading} label="Changed passages">
+    {error && <div role="alert"><p>{error}</p><button className={button} onClick={() => setRetry(value => value + 1)}>Retry comparison</button></div>}
+    {(!comparison || !sections) && !error && <p role="status">Loading changed passages…</p>}
+    {comparison && sections && <>
     <p className="text-sm text-slate-600 dark:text-green-600">
       Exact changed passages from the selected bill texts—not a summary of their legal effects.
     </p>
@@ -72,10 +78,12 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
       {!section.operations.length && <p>No changed passages are available for this section. Open the full versions above to inspect it.</p>}
       {section.truncated && <p className="text-sm text-amber-800 dark:text-amber-300">Only part of this section’s changes is shown. Check the full versions for the remaining text.</p>}
     </section>)}
-    {pages > 1 && <nav aria-label="Comparison pages" className="flex items-center justify-center gap-4">
-      <button className={button} disabled={page === 0} onClick={() => { setSections(null); setPage(page - 1); }}>Prev</button>
-      <span className="text-sm">Sections {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, comparison.sections.length)} of {comparison.sections.length}</span>
-      <button className={button} disabled={page + 1 >= pages} onClick={() => { setSections(null); setPage(page + 1); }}>Next</button>
+    </>}
+    </StableResults>
+    {comparison && pages > 1 && <nav aria-label="Comparison pages" className="flex items-center justify-center gap-4">
+      <button className={button} disabled={loading || shownPage === 0} onClick={() => { if (page === shownPage - 1) setRetry(value => value + 1); else setPage(shownPage - 1); }}>Prev</button>
+      <span className="text-sm">Sections {shownPage * PAGE_SIZE + 1}–{Math.min((shownPage + 1) * PAGE_SIZE, comparison.sections.length)} of {comparison.sections.length}</span>
+      <button className={button} disabled={loading || shownPage + 1 >= pages} onClick={() => { if (page === shownPage + 1) setRetry(value => value + 1); else setPage(shownPage + 1); }}>Next</button>
     </nav>}
   </div>;
 }

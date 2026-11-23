@@ -132,6 +132,8 @@ class TrackedLegislatorSerializer(serializers.ModelSerializer):
     card = serializers.SerializerMethodField()
 
     def get_card(self, obj):
+        if "cards" in self.context:
+            return self.context["cards"].get(obj.representative_id)
         from .legislator_cards import card_facts
         return card_facts(obj.representative)
 

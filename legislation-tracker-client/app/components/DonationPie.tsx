@@ -28,7 +28,7 @@ export default function DonationPie({ representativeId, period, snapshot, refres
     return { ...row, share, color: colors[i % colors.length], gradient: `${colors[i % colors.length]} ${start}% ${offset}%` };
   }) ?? [];
   return <section className={styles.donationPie} aria-label="Donations by size">
-    <div className={styles.pieHeading}><h3>Donations by size</h3><CardTooltip text="Slices show dollars, not donor counts, grouped by each donation’s amount. Includes collected itemized contributions only; excludes refunds and outside spending. Collection may be incomplete."><span tabIndex={0} aria-label="About donation sizes">ⓘ</span></CardTooltip><Link href={`/representatives/${representativeId}`}>View records</Link></div>
+    <div className={styles.pieHeading}><h3>Donations by size</h3><CardTooltip text="Slices show dollars, not donor counts, grouped by each donation’s amount. Includes collected itemized contributions only; excludes refunds and outside spending. Collection may be incomplete."><span tabIndex={0} aria-label="About donation sizes">ⓘ</span></CardTooltip><Link href={`/representatives/${representativeId}?tab=funding&period=${period || "all"}`}>View records</Link></div>
     {error && <p role="alert">Could not load donations. <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!data && !error && <p role="status">Loading donations…</p>}
     {data && total > 0 && <div className={styles.pieLayout}>

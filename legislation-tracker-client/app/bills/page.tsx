@@ -1,5 +1,6 @@
 "use client";
 import BillCard from "../components/BillCard";
+import RetainedHeight from "../components/RetainedHeight";
 import styles from "../components/bill-deck.module.css";
 import { STAGES } from "@/lib/bill-stage";
 
@@ -57,6 +58,7 @@ function BillsCatalog() {
   const router = useRouter();
   const [page, setPage] = useState<BillsPage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [shownPage, setShownPage] = useState(() => parsePositiveIntegerFilter(searchParams.get("page") ?? "") ?? 1);
   const [error, setError] = useState<string | null>(null);
 
   const [jurisdictions, setJurisdictions] = useState<string[]>([]);
@@ -92,7 +94,7 @@ function BillsCatalog() {
     () => searchParams.get("topic") ?? "",
   );
   const initialTopicIdRef = useRef(topicIdFromUrl);
-  const [hasAccount, setHasAccount] = useState(false);
+  const [hasAccount, setHasAccount] = useState<boolean | null>(null);
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
   const [trackedBillIds, setTrackedBillIds] = useState<number[]>([]);
   const [pendingBill, setPendingBill] = useState<number | null>(null);
@@ -303,7 +305,7 @@ function BillsCatalog() {
       sort,
     })
       .then((data) => {
-        if (!cancelled) setPage(data);
+        if (!cancelled) { setPage(data); setShownPage(pageNum); }
       })
       .catch((e) => {
         if (!cancelled)
@@ -347,7 +349,9 @@ function BillsCatalog() {
     if (queryFilter && sort === "recent_activity") next.set("sort", sort);
     const target = `/bills${next.size ? `?${next}` : ""}`;
     if (next.toString() !== searchParamsKey) {
-      router.replace(target, { scroll: false });
+      // These filters are client-owned. A route navigation can suspend the
+      // provider tree and reset scroll even with scroll:false on mobile.
+      window.history.replaceState(window.history.state, "", target);
     }
   }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, sort, sponsorFilter, statusFilter, topicFuzzyFilter, topicIdFilter]);
 
@@ -366,10 +370,7 @@ function BillsCatalog() {
     if (e.target.value.trim()) setTopicIdFilter("");
   };
 
-  const hasNext =
-    page &&
-    page.results.length === PAGE_SIZE &&
-    page.count > pageNum * PAGE_SIZE;
+  const hasNext = Boolean(page?.next);
   const selectedTopicId = topicIdFilter ? parseInt(topicIdFilter, 10) : NaN;
   const selectedTopic = topics.find((topic) => topic.id === selectedTopicId);
   const selectedTopicIsTracked =
@@ -605,7 +606,7 @@ function BillsCatalog() {
               />
             </label>
           </div>
-          {(selectedTopic || !hasAccount || trackingError) && <div className="mt-4 border-t border-line pt-3 text-sm">
+          {hasAccount !== null && (selectedTopic || !hasAccount || trackingError) && <div className="mt-4 border-t border-line pt-3 text-sm">
             {hasAccount ? (
               selectedTopic ? (
                 <div className="flex flex-wrap items-center gap-3">
@@ -733,12 +734,12 @@ function BillsCatalog() {
           </div>
         )}
 
-        {loading && <p className="text-muted">Loading…</p>}
+        {loading && <p className={page ? "sr-only" : "text-muted"} role="status">Loading…</p>}
 
-        {!loading && page && (
+        {page && (
           <>
             <p className="mb-4 text-muted">
-              {page.count} bill{page.count !== 1 ? "s" : ""} (page {pageNum})
+              {page.count} bill{page.count !== 1 ? "s" : ""} (page {shownPage})
             </p>
             <div className={styles.deck}>
               {trackingError && <p role="alert">{trackingError}</p>}
@@ -747,26 +748,28 @@ function BillsCatalog() {
                   {(["grid", "list"] as const).map(value => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{value === "grid" ? "Grid" : "List"}</button>)}
                 </div>
               </div>
-              {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
-                <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" tabIndex={0}>
+              <RetainedHeight key={layout}>{!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
+                <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" aria-busy={loading} tabIndex={0}>
                   {page.results.map(bill => <BillCard key={bill.id} bill={bill}
-                    footer={<div className="flex flex-wrap items-center gap-3">{hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button onClick={() => setTrackingRefresh(value => value + 1)}>Load follow status</button> : <Link href="/login">Log in to follow</Link>}</div>} />)}
-                </div>}
+                    footer={<div className="flex flex-wrap items-center gap-3">{hasAccount === null ? <span aria-busy="true" className="inline-block h-8 w-20" /> : hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button onClick={() => setTrackingRefresh(value => value + 1)}>Load follow status</button> : <Link href="/login">Log in to follow</Link>}</div>} />)}
+                </div>}</RetainedHeight>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
-              {pageNum > 1 && (
+              {(
                 <button
                   type="button"
-                  onClick={() => setPageNum((p) => p - 1)}
+                  disabled={loading || shownPage <= 1}
+                  onClick={() => setPageNum(shownPage - 1)}
                   className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
                 >
                   Previous
                 </button>
               )}
-              {hasNext && (
+              {(
                 <button
                   type="button"
-                  onClick={() => setPageNum((p) => p + 1)}
+                  disabled={loading || !hasNext}
+                  onClick={() => setPageNum(shownPage + 1)}
                   className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
                 >
                   Next

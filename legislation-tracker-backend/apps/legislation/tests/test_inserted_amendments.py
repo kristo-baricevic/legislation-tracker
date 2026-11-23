@@ -12,6 +12,8 @@ from .test_reader_synopsis import extract
 @pytest.mark.parametrize("instruction", [
     "The Public Health Service Act is amended by inserting after section 229 (42 U.S.C. 237a) the following:",
     "Section 4 is amended to read as follows:",
+    "Section 4 is amended as follows:",
+    "Sections 4 and 5 are amended as follows—",
     "Section 4 is amended to read—",
     "Section 4 is transferred to title 14, redesignated as section 102, and amended to read as follows:",
     "Section 4 is amended by inserting at the end",
@@ -43,12 +45,46 @@ def test_explicit_insertions_are_operative(instruction):
     "The committee discussed the following:",
     "Section 4 is amended by striking the following:",
     "The report recommends inserting the following:",
+    "The report recommends that section 4 is amended as follows:",
+    "Section 4 is amended by striking the following text, described as follows:",
     'Section 4 is amended by striking the words "by adding the following":',
     "Section 4 is amended by striking the words 'by adding the following':",
 ])
 def test_nonoperative_quotes_stay_excluded(instruction):
     text = f"{instruction}\n[[QUOTED_BLOCK_START]]\nThe Secretary shall award grants.\n[[QUOTED_BLOCK_END]]"
     assert _quoted_block_ranges(text)
+
+
+MARINE_INSPECTOR_AMENDMENT = '''SEC. 1. Marine inspectors
+(b) Career incentive pay for marine inspectors.—Subsection (a) of section 11237 of the James M. Inhofe National Defense Authorization Act for Fiscal Year 2023 (Public Law 117–263) is amended as follows:
+[[QUOTED_BLOCK_START]]
+(a) Authority to provide assignment pay or special duty pay.—For the purposes of addressing an identified shortage of marine inspectors, the Secretary may provide assignment pay or special duty pay under section 352 of title 37, United States Code, to a member of the Coast Guard serving in a prevention position that—
+(1) is assigned in support of or is serving as a marine inspector pursuant to section 312 of title 14, United States Code; and
+(2) is assigned to a billet that is difficult to fill due to geographic location, requisite experience or certifications, or lack of sufficient candidates, as determined by the Commandant, in an effort to address inspector workforce gaps.
+.
+[[QUOTED_BLOCK_END]]'''
+
+
+@pytest.mark.parametrize('suffix', ['', '\nSEC. 1. Other amended law\n(a) Other rules.—The Director shall report annually.\n(1) Report each year.'])
+def test_s2296_marine_inspector_pay_amendment_is_extracted_with_conditions(suffix):
+    source = MARINE_INSPECTOR_AMENDMENT + suffix
+    result = extract(source)
+    contract = result.contract_json
+    assert 'incomplete_amendment_extraction' not in contract['extraction']['warnings']
+    displayed = ' '.join(item['display_text'] for item in contract['line_items'])
+    assert any(item['kind'] == 'permission' for item in contract['line_items'])
+    assert 'assignment pay or special duty pay' in displayed
+    assert 'Coast Guard' in displayed
+    assert 'marine inspector' in displayed
+    assert 'difficult to fill' in displayed
+    assert 'as determined by the Commandant' in displayed
+    pay_items = [item for item in contract['line_items'] if 'assignment pay or special duty pay' in item['display_text']]
+    assert len(pay_items) == 1
+    assert 'marine inspector' in pay_items[0]['display_text']
+    assert 'and' in pay_items[0]['display_text']
+    assert 'difficult to fill' in pay_items[0]['display_text']
+    assert '[[QUOTED_BLOCK' not in displayed
+    assert all(source[e.start_char:e.end_char] == e.quoted_text for e in result.evidence)
 
 
 def test_nested_insertion_inherits_its_structural_amendment_only():

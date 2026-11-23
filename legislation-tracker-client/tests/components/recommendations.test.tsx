@@ -16,23 +16,69 @@ const activity = { schema_version: "representative-topic-activity-v1", policy_ve
 beforeEach(async () => { document.cookie = "csrftoken=test"; localStorage.clear(); (await import("@/lib/personalized-scope")).announceTrackingChange(); });
 afterEach(() => vi.unstubAllGlobals());
 function mockRequests(response: () => Response | Promise<Response>) {
+  let tracked = false;
+  let signedIn = true;
   vi.stubGlobal("fetch", vi.fn((url, init) => {
-    if (String(url).includes("session/current")) return Promise.resolve(Response.json({ authenticated: true, user: { email: "reader@example.com" } }));
-    if (String(url).includes("logout")) return Promise.resolve(new Response(null, { status: 204 }));
+    if (String(url).includes("session/current")) return Promise.resolve(Response.json(signedIn ? { authenticated: true, user: { email: "reader@example.com" } } : {authenticated:false}));
+    if (String(url).includes("logout")) { signedIn = false; return Promise.resolve(new Response(null, { status: 204 })); }
     if (String(url).endsWith("/card/")) return Promise.resolve(Response.json({ biography: { text: "Saved representative biography." }, portrait: null, latest_bill: { id: 22, bill_number: "HR 22", title: "Education Act", session: 119, introduced_at: "2026-01-01" } }));
     if (String(url).endsWith("/api/representatives/410/")) return Promise.resolve(Response.json({ id: 410, name: "Katie Boyd Britt", bioguide_id: "B001319", image_url: "https://www.congress.gov/img/member/b001319_200.jpg" }));
-    if (String(url).includes("/tracking/bills/") && init?.method === "POST") return Promise.resolve(Response.json({ id: 1, bill }));
+    if (String(url).endsWith("/api/tracking/")) return Promise.resolve(Response.json({bills:tracked ? [{id:1,bill}] : [],topics:[],legislators:[]}));
+    if (String(url).includes("/tracking/bills/") && init?.method === "POST") { tracked = true; return Promise.resolve(Response.json({ id: 1, bill })); }
     return Promise.resolve(response());
   }));
 }
 describe("recommendation rows", () => {
+  it("keeps a recommended representative and focus after following", async () => {
+    mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Member One", bioguide_id: "A000001", score: .4, reasons: [], topic_activity_evidence: activity }], activity_as_of: activity.captured_at }));
+    render(<RepresentativeRecommendations />);
+    const follow = await screen.findByRole("button", { name: "Follow representative Member One" });
+    const card = screen.getByRole("article");
+    follow.focus(); fireEvent.click(follow);
+    expect(await screen.findByRole("button", { name: "Unfollow representative Member One" })).toBe(follow);
+    expect(screen.getByRole("article")).toBe(card);
+    expect(follow).toHaveFocus();
+  });
+  it("does not expose complete or truncated HTML in card summaries or actions", async () => {
+    mockRequests(() => Response.json({ ...page, results: [{ ...page.results[0], bill: { ...bill, card_summary: 'Provides <b>public reports</b> &amp; oversight.', status: 'Petition filed. (<a href="https://clerk.' } }] }));
+    render(<BillRecommendations onOpenBill={() => true} />);
+    expect(await screen.findByText("Provides public reports & oversight.")).toBeVisible();
+    expect(screen.getByText("Petition filed.")).toBeVisible();
+    expect(screen.getByRole("article")).not.toHaveTextContent('<a href');
+  });
+  it("refresh keeps cards and focus mounted while the request is pending", async () => {
+    let refreshing = false;
+    mockRequests(() => refreshing ? new Promise<Response>(() => {}) : Response.json(page));
+    const dismiss = vi.fn();
+    render(<BillRecommendations onOpenBill={() => true} onDismissBill={dismiss} />);
+    const card = await screen.findByRole("link", { name: bill.title });
+    const refresh = screen.getByRole("button", { name: "Refresh bill recommendations" });
+    refresh.focus(); refreshing = true;
+    fireEvent.click(refresh);
+    expect(screen.getByRole("link", { name: bill.title })).toBe(card);
+    expect(refresh).toHaveFocus();
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+  it("does not reveal cached private recommendations before confirming the returning session", async () => {
+    mockRequests(() => Response.json(page));
+    const view = render(<BillRecommendations onOpenBill={() => true} />);
+    await screen.findByRole("link", { name: bill.title });
+    view.unmount();
+    let release!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(done => { release = done; })));
+    render(<BillRecommendations onOpenBill={() => true} />);
+    expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument();
+    await act(async () => release(Response.json({ authenticated: true, user: { email: "reader@example.com" } })));
+    expect(await screen.findByRole("link", { name: bill.title })).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it.each([["D", "democrat"], ["R", "republican"]])("uses structured party %s for plain-name recommendation cards", async (party, theme) => {
     mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Jane Doe", bioguide_id: "A000001", score: .4, reasons: [], topic_activity_evidence: { ...activity, representative: { ...activity.representative, name: "Jane Doe", party } } }], activity_as_of: activity.captured_at }));
     render(<RepresentativeRecommendations renderName={member => <button>{member.name} profile</button>} />);
     await screen.findByRole("button", { name: "Jane Doe profile" });
     expect(screen.getByRole("article")).toHaveAttribute("data-party", theme);
   });
-  it("expires cached recommendations after five minutes", async () => {
+  it("does not discard unchanged recommendations just because time passed", async () => {
     mockRequests(() => Response.json(page));
     const view = render(<BillRecommendations onOpenBill={() => true} />);
     await screen.findByRole("link", { name: bill.title });
@@ -41,7 +87,7 @@ describe("recommendation rows", () => {
     try {
       render(<BillRecommendations onOpenBill={() => true} />);
       await screen.findByRole("link", { name: bill.title });
-      expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(2);
+      expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(1);
     } finally { clock.mockRestore(); }
   });
   it("reuses recommendations across navigation until explicitly refreshed", async () => {
@@ -120,17 +166,18 @@ describe("recommendation rows", () => {
     fireEvent.click(screen.getByRole("button", { name: "More recommendations" }));
     expect(await screen.findByText(/Follow a topic or representative to start/)).toBeVisible();
   });
-  it("clears cards on successful follows and session loss before a late reload", async () => {
-    let resolve!: (response: Response) => void, calls = 0;
-    mockRequests(() => ++calls === 1 ? Response.json(page) : new Promise<Response>(done => { resolve = done; }));
+  it("keeps followed recommendations mounted and focused but clears them on session loss", async () => {
+    let calls = 0;
+    mockRequests(() => { calls++; return Response.json(page); });
     render(<BillRecommendations onOpenBill={() => true} />);
     const follow = await screen.findByRole("button", { name: "Follow bill HR 1 / 119" });
     follow.focus();
     fireEvent.click(follow);
-    await waitFor(() => expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument());
-    expect(screen.getByRole("heading", { name: "Bills to discover" })).toHaveFocus();
-    await waitFor(() => expect(calls).toBe(2));
-    await act(async () => { await logout(); resolve(Response.json(page)); });
+    expect(await screen.findByRole("button", {name:"Unfollow bill HR 1 / 119"})).toBe(follow);
+    expect(follow).toHaveFocus();
+    expect(screen.getByRole("link", {name:bill.title})).toBeVisible();
+    expect(calls).toBe(1);
+    await act(async () => { await logout(); });
     expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument();
   });
   it("clears cards immediately on cross-tab epoch change", async () => {

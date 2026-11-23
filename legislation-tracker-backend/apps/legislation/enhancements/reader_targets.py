@@ -130,6 +130,8 @@ def validate_reader_explanations(output, targets, sources):
     if seen != set(by_id):
         raise output_error("reader_coverage_incomplete", ["explanations"])
     for index, item in enumerate(output["summary"]):
+        if not any(ch.isalpha() for ch in item["text"]) or re.search(r'\b(?:src_\d{4,}|p\d{4,})\b|\[\[', item['text']):
+            raise output_error("reader_target_invalid", ["summary", index, "text"])
         _validate_quotes(item, source_map, ["summary", index])
     if any(s.get('discovery_source') for s in sources) and output.get('source_review') is None:
         raise output_error('reader_coverage_incomplete', ['source_review'])

@@ -4,13 +4,31 @@ function renderExpanded() {
     return view;
 }
 import React from "react";
-import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import IngestionTelemetryLive from "@/app/components/IngestionTelemetryLive";
 import { authGet, authPost } from "@/lib/api";
 vi.mock("@/lib/api", () => ({ authGet: vi.fn(), authPost: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.useRealTimers(); });
+it("keeps source waits and scheduled retries out of queued tasks", async () => {
+    vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false } : {
+        observed_at: "2026-11-23T12:00:00Z", counts_by_kind_and_status: [
+            {kind: "bill_versions", status: "waiting_source", count: 154},
+            {kind: "bill", status: "scheduled", count: 3},
+            {kind: "bill", status: "pending", count: 2},
+        ], recent_work_states: [], discovery_run: null,
+    });
+    renderExpanded();
+    await userEvent.setup().click(screen.getByRole("button", {name: "Refresh telemetry"}));
+    const queued = screen.getByRole("list", {name: "Queued background tasks"});
+    expect(queued).toHaveTextContent("Bill metadata2");
+    expect(queued).not.toHaveTextContent("Bill text versions");
+    const table = screen.getByRole("table", {name: "Pipeline work items"});
+    expect(within(table).getByRole("columnheader", {name: "Waiting for source text"})).toBeVisible();
+    expect(within(table).getByRole("columnheader", {name: "Scheduled"})).toBeVisible();
+    expect(within(table).getByRole("row", {name: /Bill text versions/})).toHaveTextContent("154");
+});
 it("starts collapsed with no automatic requests", () => {
     render(<IngestionTelemetryLive />);
     expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
@@ -62,6 +80,7 @@ it("shows a compact pipeline table with diagnostics collapsed", async () => {
     renderExpanded();
     await userEvent.setup().click(screen.getByRole("button", { name: "Refresh telemetry" }));
     expect(screen.getByRole("table", { name: "Pipeline work items" })).toHaveTextContent("Bill text versions");
+    expect(screen.getByRole("list", {name: "Queued background tasks"})).toHaveTextContent("Bill text versions8");
     expect(screen.getByText("Source & technical details").closest("details")).not.toHaveAttribute("open");
     expect(screen.getByText("Recent activity").closest("details")).not.toHaveAttribute("open");
 });

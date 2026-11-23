@@ -824,11 +824,15 @@ def _payment_claims(source, sections, clauses=None):
     clauses = (
         clauses if clauses is not None else parse_operative_clauses(source, sections)
     )
+    children_by_context = {}
+    for child in clauses:
+        for context in set(child.context):
+            children_by_context.setdefault(context, []).append(child)
     for clause in clauses:
         if not clause.asserted:
             continue
         span, section = clause.span, clause.section
-        children = [child for child in clauses if span in child.context]
+        children = children_by_context.get(span, ())
         actions = _payment_actions(span.text)
         inherited = False
         if not actions and clause.context and clause.modality:

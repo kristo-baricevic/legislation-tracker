@@ -150,6 +150,8 @@ def test_omitted_same_bill_reference_is_not_silently_treated_as_resolved():
         LLM_ENHANCEMENT_MAX_REQUEST_BYTES=overhead + 5000,
         LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=overhead + 5000,
     ):
-        packet = source_packet.build_enhancement_preflight(bill)
-    selected = packet.request_envelope["source_packet"]["coverage"]["selected_sections"]
+        _, envelope, _ = source_packet.select_document_sources(
+            bill, document.extracted_text, document.version_label
+        )
+    selected = envelope["source_packet"]["coverage"]["selected_sections"]
     assert selected[0]["unresolved_section_references"] == ["2"]

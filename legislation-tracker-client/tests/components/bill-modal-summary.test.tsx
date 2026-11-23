@@ -27,6 +27,14 @@ function selectedSection() {
   return within(screen.getByRole("heading", { name: "Summary" }).closest("section")!);
 }
 
+it("waits for saved enhanced explanations instead of first rendering original items", async () => {
+  vi.stubGlobal("fetch", vi.fn((url: string) => url.includes("enhancements/") ? new Promise(() => {}) : Promise.resolve(Response.json(url.includes("/votes/") || url.includes("reader-items") ? { count: 0, next: null, previous: null, results: [], section_supplements: [] } : detail))));
+  render(<ProfileProvider><BillDeckModal bill={{ ...bill, enhancement_id: 99, enhancement_status: "succeeded", card_summary: "Enhanced summary" }} onClose={() => {}} /></ProfileProvider>);
+  await screen.findByText("Enhanced summary");
+  expect(screen.getByText("Loading explanations…")).toBeVisible();
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("reader-items"))).toBe(false);
+});
+
 it("shows the generated synopsis and source document when the official summary is absent", async () => {
   show(detail);
   await screen.findByRole("heading", { name: "Summary" });
@@ -39,6 +47,15 @@ it("shows the generated synopsis and source document when the official summary i
   expect(screen.getByRole("heading", { name: "What this bill does" })).toBeVisible();
   expect(screen.queryByRole("navigation", { name: "Bill version history" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Open full bill page" })).not.toBeInTheDocument();
+});
+
+it("uses the same saved reader summary as the dashboard card", async () => {
+  const card_summary = "Colleges could compete for grants to help students stay in college and graduate.";
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("/votes/") || url.includes("reader-items") ? { count: 0, next: null, previous: null, results: [], section_supplements: [] } : detail)));
+  render(<ProfileProvider><BillDeckModal bill={{ ...bill, card_summary }} onClose={() => {}} /></ProfileProvider>);
+  await screen.findByRole("heading", { name: "Summary" });
+  expect(selectedSection().getByText(card_summary)).toBeVisible();
+  expect(selectedSection().queryByText(synopsis)).not.toBeInTheDocument();
 });
 
 it("does not assign the current document synopsis to a different selected version", async () => {

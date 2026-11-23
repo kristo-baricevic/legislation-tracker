@@ -13,13 +13,16 @@ import {
   getVotes,
   trackBill,
   type BillDetailSummary,
+  type TrackingSummary,
   type VoteDetailItem,
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
 import type { BillContractSummary } from "@/lib/contracts";
+import { dashboardSession, peekDashboardValue } from "@/lib/dashboard-cache";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
+import { DocumentReader } from "./document-reader";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import { stageFor } from "@/lib/bill-stage";
 import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
@@ -37,6 +40,8 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   const [hasAccount, setHasAccount] = useState(false);
   const [isTracked, setIsTracked] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingReady, setTrackingReady] = useState(false);
+  const [trackingRetry, setTrackingRetry] = useState(0);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [comparisonContracts, setComparisonContracts] = useState<BillContractSummary[] | null>(null);
   const [votes, setVotes] = useState<VoteListItem[] | null>(null);
@@ -148,16 +153,21 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   useEffect(() => {
     let cancelled = false;
     setTrackingError(null);
-    void getSession()
+    setTrackingReady(false);
+    // Check the server's tracking revision before trusting a warm dashboard
+    // snapshot. Follows may have changed on another device.
+    void (peekDashboardValue<TrackingSummary>("tracking") ? dashboardSession() : getSession())
       .then((session) => {
         if (cancelled) return;
         const signedIn = Boolean(session);
         setHasAccount(signedIn);
         if (!signedIn || Number.isNaN(id)) return;
-        void getMyTracking()
+        const saved = peekDashboardValue<TrackingSummary>("tracking");
+        void (saved ? Promise.resolve(saved) : getMyTracking())
           .then((summary) => {
             if (!cancelled) {
               setIsTracked(summary.bills.some((item) => item.bill.id === id));
+              setTrackingReady(true);
             }
           })
           .catch((e) => {
@@ -174,10 +184,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, trackingRetry]);
 
   async function toggleBillTracking() {
-    if (!bill) return;
+    if (!bill || !trackingReady || trackingLoading) return;
     setTrackingLoading(true);
     setTrackingError(null);
     try {
@@ -283,11 +293,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             {hasAccount ? (
               <button
                 type="button"
-                onClick={toggleBillTracking}
-                disabled={trackingLoading}
+                onClick={() => trackingReady ? void toggleBillTracking() : setTrackingRetry(value => value + 1)}
+                disabled={(!trackingReady && !trackingError) || trackingLoading}
                 className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
               >
-                {trackingLoading
+                {!trackingReady ? trackingError ? "Retry follow status" : "Loading follow status" : trackingLoading
                   ? "Saving..."
                   : isTracked
                     ? "Tracked bill"
@@ -312,6 +322,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
 
         <div id="bill-ai-controls" className="mb-5" />
+        <DocumentReader documentId={summaryDocument?.id ?? null} enabled={!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)}>
         {bill.latest_contract ? (
           isLegalNlpV21ContractSummary(bill.latest_contract)
             ? <ContractSection contract={bill.latest_contract} bill={bill} />
@@ -330,9 +341,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </BillAnalysisBoundary>
         )}
 
-        {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
-
         {(!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)) && <><ReaderTabBar /><ReaderTabPanel tab="changes"><p className="mb-6">Detailed changes are not available for this analysis.</p></ReaderTabPanel><ReaderTabPanel tab="money"><p className="mb-6">A separate financial breakdown is not available for this version. Check the analysis and full bill text.</p></ReaderTabPanel><ReaderTabPanel tab="terms"><p className="mb-6">A separate glossary is not available for this version.</p></ReaderTabPanel></>}
+        </DocumentReader>
+        {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
         <ReaderTabPanel tab="votes">
         <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -384,6 +395,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         )}
         {votes && votes.length > 0 && (
           <VotingRecord
+            loading={voteHistoryLoading}
             votes={votes}
             selectedVote={selectedVote}
             loadingVoteId={loadingVoteId}
@@ -460,7 +472,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
         )}
         </ReaderTabPanel>
-        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
+        <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
       </div>
     </div>
   );

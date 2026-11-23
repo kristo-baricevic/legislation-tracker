@@ -37,6 +37,35 @@ def _assert_private(response):
 
 
 @pytest.mark.django_db
+def test_selected_model_survives_estimate_confirmation_and_worker_rebuild(
+    enhancement_client, enhancement_settings, source_bill, monkeypatch
+):
+    from apps.legislation.enhancements.providers.base import CredentialCheck
+    from apps.legislation.tasks import _worker_preflight
+    from apps.legislation.enhancements.providers.openai_compatible import OpenAICompatibleEnhancementProvider
+
+    def validate(self, *, requested_model, api_key, timeout_seconds):
+        assert (self.base_url, requested_model, api_key) == (
+            "https://openrouter.ai/api/v1", "openrouter/free", "router-test-key")
+        return CredentialCheck(valid=True)
+
+    monkeypatch.setattr(OpenAICompatibleEnhancementProvider, "validate_credential", validate)
+    with enhancement_settings:
+        url = "/api/settings/llm/"
+        assert enhancement_client.put(url, {"provider": "openrouter", "requested_model": "openrouter/free",
+            "api_key": "router-test-key"}, format="json").status_code == 200
+        assert enhancement_client.post(url + "validate/").json()["validation_status"] == "valid"
+        url = f"/api/bills/{source_bill.pk}/enhancements/"
+        estimate = enhancement_client.get(url + "estimate/").json()
+        assert estimate["requested_model"] == "openrouter/free" and estimate["can_enhance"]
+        confirmed = {key: estimate[key] for key in ("source_fingerprint", "request_fingerprint", "credential_revision")}
+        assert enhancement_client.post(url, confirmed, format="json").status_code == 202
+        plan, key, error = _worker_preflight(BillEnhancementAttempt.objects.get())
+        assert (error, plan.provider, plan.requested_model, key) == (None, "openrouter", "openrouter/free", "router-test-key")
+        assert plan.request_fingerprint == confirmed["request_fingerprint"]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "method,path_suffix",
     [

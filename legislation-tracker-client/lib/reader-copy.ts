@@ -42,3 +42,28 @@ export function explanationParagraphs(text: string): string[] {
   const display = text.replace(/\[\[QUOTED_BLOCK_(?:START|END)\]\]/g, " ");
   return Array.from(new Intl.Segmenter("en", { granularity: "sentence" }).segment(display.trim()), s => s.segment.replace(/ {2,}/g, " ").trim()).filter(Boolean);
 }
+
+/** Factor identical duties, not conditions. All legal content stays visible. */
+export function readerChecklist(text: string): { intro: string; items: string[] } | null {
+  const prefix = "An application submitted under this section must include ";
+  if (text.startsWith(prefix)) {
+    const items = text.slice(prefix.length).split(prefix).map(value => value.trim()).filter(Boolean);
+    if (items.length > 1) return { intro: "Applications must include:", items };
+  }
+  // Only a real enumeration after a chapeau. Cross references such as
+  // 'section 3 (A)' must never be interpreted as new list children.
+  const first = text.search(/(?:—|:)\s*\(A\)\s/);
+  if (first >= 0) {
+    const intro = text.slice(0, first + 1).trim();
+    const body = text.slice(first + 1).trim();
+    const starts = [0];
+    let next = 66;
+    for (const match of body.matchAll(/\s+\(([A-Z])\)\s/g)) {
+      // Nested Roman (I) must remain under its parent, not become item 9.
+      if (match[1].charCodeAt(0) === next) { starts.push(match.index! + match[0].indexOf("(")); next++; }
+    }
+    const items = starts.map((start, index) => body.slice(start, starts[index + 1]).trim());
+    if (items.length > 1) return { intro, items };
+  }
+  return null;
+}

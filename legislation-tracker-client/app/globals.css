@@ -1,5 +1,34 @@
 @import "tailwindcss";
 
+html { scrollbar-gutter: stable; }
+
+.bill-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .5rem;
+  margin-left: auto;
+}
+.bill-card-actions.bill-card-actions > button {
+  white-space: nowrap;
+  width: 4.75rem;
+  min-width: 4.75rem;
+  height: 2.25rem;
+  padding: .35rem .4rem;
+  font-size: .75rem;
+  line-height: 1.25;
+}
+
+.stable-results {
+  height: min(32rem, 55dvh);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+  padding-inline-end: .5rem;
+}
+
 /* Flat descendant selector — more reliable than &:where(.dark, .dark *) with nested CSS */
 @custom-variant dark (.dark &);
 

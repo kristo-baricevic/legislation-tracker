@@ -9,6 +9,10 @@ def test_production_dependencies_are_hash_locked_and_used_by_docker():
     dockerfile = (ROOT / "Dockerfile").read_text()
 
     assert "cryptography>=50,<51" in base
+    # The worker installs the lockfile, not base.txt.
+    assert "anthropic>=" in base
+    assert "google-genai>=" in base
+    assert "anthropic==" in lock and "google-genai==" in lock
     assert "--hash=sha256:" in lock
     assert "cryptography==" in lock
     assert "requirements/production.lock" in dockerfile

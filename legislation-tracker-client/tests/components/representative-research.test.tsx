@@ -6,6 +6,19 @@ import RepresentativeResearch from "@/app/components/RepresentativeResearch";
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
 
+it("preserves outside-spending years when switching funding tabs", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("outside-spending") ? {
+    status: "available", scope: url.includes("last_ten_years") ? "last_ten_years" : "all_years", support: "20", oppose: "0", count: 0, next_cursor: null, results: [],
+  } : empty)));
+  render(<RepresentativeResearch representativeId={1} financeView />);
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  await userEvent.selectOptions(screen.getByLabelText("Outside spending years"), "last_ten_years");
+  await screen.findByText("$20.00");
+  await userEvent.click(screen.getByRole("button", { name: "Donations" }));
+  await userEvent.click(screen.getByRole("button", { name: "Outside spending" }));
+  expect(screen.getByLabelText("Outside spending years")).toHaveValue("last_ten_years");
+});
+
 it("does not label all-years totals as last-ten-years results after a failed range change", async () => {
   let fail = true;
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {

@@ -346,8 +346,9 @@ def _direct_xml_child_text(element: ElementTree.Element, tag: str) -> str:
 
 
 def _render_congress_xml_element(
-    element: ElementTree.Element, lines: _BoundedTextLines
+    element: ElementTree.Element, lines: _BoundedTextLines, observe=None
 ) -> None:
+    start = lines.length + int(bool(lines.parts))
     tag = _xml_tag(element)
     enum = _direct_xml_child_text(element, "enum")
     heading = _direct_xml_child_text(element, "header")
@@ -388,12 +389,14 @@ def _render_congress_xml_element(
     for child in element:
         child_tag = _xml_tag(child)
         if child_tag in _XML_STRUCTURAL_TAGS:
-            _render_congress_xml_element(child, lines)
+            _render_congress_xml_element(child, lines, observe)
         elif child_tag == "quoted-block":
             lines.append(_QUOTED_BLOCK_START)
             for quoted_child in child:
-                if _xml_tag(quoted_child) in _XML_STRUCTURAL_TAGS:
-                    _render_congress_xml_element(quoted_child, lines)
+                if _xml_tag(quoted_child) in _XML_STRUCTURAL_TAGS or _xml_tag(quoted_child) in {
+                    "amendment-body", "engrossed-amendment-body", "legis-body"
+                }:
+                    _render_congress_xml_element(quoted_child, lines, observe)
                 elif _xml_tag(quoted_child) in _XML_TEXT_TAGS:
                     value = _normalized_inline_text(quoted_child)
                     if value:
@@ -403,6 +406,8 @@ def _render_congress_xml_element(
             value = _normalized_inline_text(child)
             if value:
                 lines.append(value)
+    if observe is not None:
+        observe(element, start, lines.length)
 
 
 def _extract_congress_xml(text: str, max_text_chars: int) -> str | None:

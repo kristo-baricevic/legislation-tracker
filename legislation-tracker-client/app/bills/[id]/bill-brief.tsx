@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { StableResults } from "@/app/components/StableResults";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -295,7 +296,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
   const readerRequest = useRef(0);
   const readerHeading = useRef<HTMLHeadingElement>(null);
   const document = contractDocument(bill, contract.document);
-  async function loadReader(targetPage: number, navigate = false) {
+  async function loadReader(targetPage: number, _navigate = false) {
     const activeRequest = ++readerRequest.current;
     setReaderLoading(true);
     setReaderError(null);
@@ -308,10 +309,6 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
       setReaderCount(response.count);
       setPage(targetPage);
       setHasMore(Boolean(response.next));
-      if (navigate) {
-        readerHeading.current?.focus({ preventScroll: true });
-        readerHeading.current?.scrollIntoView?.({ block: "start" });
-      }
     } catch {
       if (readerRequest.current === activeRequest) setReaderError("Could not load the bill breakdown. Try again.");
     } finally {
@@ -361,7 +358,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
         <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">Summary</h2>
         <BillAnalysisBoundary><ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-4 space-y-3">
           <p className="text-base leading-7">{contract.reader_brief.summary}{contract.reader_brief.source_id && <SourceEvidence contractId={contract.id} lineItemId={contract.reader_brief.source_id} textUrl={document?.text_url} downloadUrl={document?.download_url} number={1} />}</p>
-          {contract.reader_brief.money && <p className="text-base leading-7"><span className="font-semibold">Money: </span>{contract.reader_brief.money}</p>}
+          {contract.reader_brief.money && <p className="text-base leading-7">{contract.reader_brief.money}</p>}
         </div> : sourceLabel ? (
           <div className="mt-4">
             <p className="text-sm font-semibold text-slate-700 dark:text-green-500">{sourceLabel}{bill.summary_action_date ? ` · ${bill.summary_action_date}` : ""}</p>
@@ -394,10 +391,12 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
         <h3 ref={readerHeading} tabIndex={-1} className="mb-3 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">What this bill does<SourcePopover number={coverageNumber} label="Analysis coverage"><p>{contract.coverage_note}</p></SourcePopover></h3>
         <LegacyReaderChanges>
           <div className="mt-4" aria-busy={readerLoading}>
+            <StableResults page={page} busy={readerLoading} label="Bill provisions">
             {readerLoading && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading bill provisions…</p>}
             {readerError && <div role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300"><p>{readerError}</p><button type="button" onClick={() => void loadReader(requestedPage, true)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill provisions</button></div>}
             <ul className="mt-2 list-none">{changes.map((item, index) => <ReaderItem key={item.id} hideHeading={index > 0 && changeCopy(changes[index - 1]).title === changeCopy(item).title} sourceNumber={(page - 1) * 6 + items.indexOf(item) + coverageNumber + 1} contractId={contract.id} item={item} document={document} onShowAllFinancial={onShowAllFinancial} />)}</ul>
             {!readerLoading && !readerError && !items.length && <p className="mt-4">No readable provisions on this page. Use Next to continue if more pages are available.</p>}
+            </StableResults>
             {readerCount > 0 && <nav aria-label="Bill provision pages" className="mt-5 flex flex-wrap items-center justify-center gap-4">
               <button type="button" disabled={readerLoading || page === 1} onClick={() => void loadReader(page - 1, true)} className="rounded border border-slate-500 px-3 py-2 text-sm font-semibold disabled:opacity-40">Prev</button>
               <span className="text-sm" role="status">Page {page} of {Math.ceil(readerCount / 6)}</span>

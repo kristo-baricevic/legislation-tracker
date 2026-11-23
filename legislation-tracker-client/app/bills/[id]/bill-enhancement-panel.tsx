@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import SourceFirstAnalysis from "./source-first-analysis";
+import { EnhancementEstimateDialog, confirmationFromEstimate } from "@/app/components/EnhancementEstimateDialog";
 
 import {
   ApiError,
@@ -19,7 +20,6 @@ import {
   type BillEnhancementEstimate,
   type BillEnhancementsPage,
   type EnhancementCitedSource,
-  type EnhancementConfirmation,
 } from "@/lib/api";
 
 function CitedSources({ sources }: { sources: EnhancementCitedSource[] }) {
@@ -130,14 +130,6 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
   );
 }
 
-function confirmationFromEstimate(estimate: BillEnhancementEstimate): EnhancementConfirmation | null {
-  if (!estimate.source_fingerprint || !estimate.request_fingerprint || estimate.credential_revision == null) return null;
-  return {
-    source_fingerprint: estimate.source_fingerprint,
-    request_fingerprint: estimate.request_fingerprint,
-    credential_revision: estimate.credential_revision,
-  };
-}
 
 function EnhancementUnavailable({ reason }: { reason: string | null }) {
   if (reason === "unsupported_jurisdiction") {
@@ -190,10 +182,12 @@ function ControlsSlot({ targetId, children }: { targetId?: string; children: Rea
 export default function BillEnhancementPanel({
   billId,
   jurisdiction,
+  title,
   controlsTargetId,
 }: {
   billId: number;
   jurisdiction: string;
+  title?: string;
   controlsTargetId?: string;
 }) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -211,7 +205,9 @@ export default function BillEnhancementPanel({
   const [liveFailure, setLiveFailure] = useState(false);
   const generation = useRef(0);
   useEffect(() => subscribePersonalizedChanges(change => {
-    if (change.kind === "revalidate") return;
+    // Following interests does not change the bill's reader or account.
+    // Only an actual session change should clear the mounted analysis.
+    if (change.kind !== "session") return;
     generation.current += 1;
     setSignedIn(null);
     setIsSuperuser(false);
@@ -282,7 +278,7 @@ export default function BillEnhancementPanel({
       } catch (reason) {
         if (!active) return;
         if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
-        else setError(reason instanceof Error ? reason.message : "Could not load AI enhancement.");
+        else setError("Could not load AI enhancement.");
       } finally {
         if (active) setLoading(false);
       }
@@ -296,6 +292,7 @@ export default function BillEnhancementPanel({
   }, [billId, isFederal, sessionRevision]);
 
   async function prepareEnhancement() {
+    if (preparing || confirming || submitting) return;
     const owner = generation.current;
     setPreparing(true);
     setError(null);
@@ -316,7 +313,7 @@ export default function BillEnhancementPanel({
     } catch (reason) {
       if (owner !== generation.current) return;
       if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
-      else setError(reason instanceof Error ? reason.message : "Could not prepare AI enhancement.");
+      else setError("Could not prepare AI enhancement.");
     } finally {
       if (owner === generation.current) setPreparing(false);
     }
@@ -333,7 +330,7 @@ export default function BillEnhancementPanel({
       .catch((reason) => {
         if (!active) return;
         if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
-        else setError(reason instanceof Error ? reason.message : "Could not load enhancement history.");
+        else setError("Could not load enhancement history.");
       })
       .finally(() => {
         if (active) setHistoryLoading(false);
@@ -376,7 +373,7 @@ export default function BillEnhancementPanel({
           setSignedIn(false);
           return;
         }
-        setError(reason instanceof Error ? reason.message : "Could not refresh AI enhancement.");
+        setError("Could not refresh AI enhancement.");
         schedule(pollDelaySeconds);
       }
     };
@@ -398,7 +395,7 @@ export default function BillEnhancementPanel({
     } catch (reason) {
       if (owner !== generation.current) return;
       if (reason instanceof ApiError && reason.status === 401) setSignedIn(false);
-      else setError(reason instanceof Error ? reason.message : "Could not load the selected enhancement.");
+      else setError("Could not load the selected enhancement.");
     }
   }
 
@@ -442,10 +439,10 @@ export default function BillEnhancementPanel({
         } catch (refreshReason) {
           if (owner !== generation.current) return;
           if (refreshReason instanceof ApiError && refreshReason.status === 401) setSignedIn(false);
-          else setError(refreshReason instanceof Error ? refreshReason.message : "Could not refresh AI enhancement.");
+          else setError("Could not refresh AI enhancement.");
         }
       } else {
-        setError(reason instanceof Error ? reason.message : "Could not start AI enhancement.");
+        setError("Could not start AI enhancement.");
       }
     } finally {
       if (owner === generation.current) setSubmitting(false);
@@ -486,55 +483,25 @@ export default function BillEnhancementPanel({
     <>
       <ControlsSlot targetId={controlsTargetId}>
         {hasSavedReader ? <ReaderModeSwitch /> : <button type="button"
-          disabled={preparing || Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
+          aria-busy={preparing} disabled={Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
           onClick={() => void prepareEnhancement()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
+          {preparing ? "Preparing AI estimate…" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
         </button>}
-        {failed && liveFailure && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
-          <p>AI enhancement did not complete. Your original analysis is unchanged.</p>
-          {enhancement?.latest_attempt?.failure_detail?.message && <p>{enhancement.latest_attempt.failure_detail.message}</p>}
-          <p>{retryable ? "You can retry after reviewing and confirming the API usage again." : "Check your AI settings before trying again."}</p>
-        </div>}
+        {failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
       {estimate && !estimate.can_enhance && (
         <EnhancementUnavailable reason={estimate.unavailable_reason} />
       )}
       {hasSavedReader && enhancement && !isActive && (retryable || canStartNewIdentity) && (
-        <button type="button" disabled={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
-          {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : "Retry AI enhancement"}
+        <button type="button" aria-busy={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
+          {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : enhancement?.status === "paused" ? "Continue" : "Retry AI enhancement"}
         </button>
       )}
         {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
       </ControlsSlot>
-      {confirming && estimate && (
-        <ControlsSlot targetId={controlsTargetId}>
-        <div role="dialog" aria-modal="true" aria-label="Confirm AI enhancement" className="mt-5 border border-amber-500 bg-amber-50 p-4 text-sm text-slate-900 dark:bg-amber-950/20 dark:text-green-300">
-          <h3 className="font-semibold">Confirm AI enhancement</h3>
-          {confirming === "retry" && enhancement?.status === "outcome_unknown" && <p className="mt-2 font-semibold text-amber-900 dark:text-amber-300">The previous request may have completed and another request may duplicate provider usage.</p>}
-          <ul className="mt-3 space-y-1">
-            <li>{(estimate.estimated_input_tokens ?? 0).toLocaleString()} estimated input tokens</li>
-            <li>{(estimate.aggregate_budget?.maximum_output ?? estimate.max_output_tokens ?? 0).toLocaleString()} maximum output tokens, including reasoning</li>
-            {estimate.aggregate_budget && <li>Up to {estimate.aggregate_budget.maximum_calls} calls{estimate.reader_coverage ? ", including the summary and item explanations" : ", including glossary batches and any repair or overview"}</li>}
-            {estimate.reader_coverage && <li>{estimate.reader_coverage.selected_count} of {estimate.reader_coverage.total_count} items eligible for in-place enhancement in {estimate.reader_coverage.batch_count} batches. {estimate.reader_coverage.unavailable_count} items keep their original explanations because complete source context is unavailable or exceeds the request limit.</li>}
-            {estimate.glossary_coverage && <li>All {estimate.glossary_coverage.eligible_definitions} eligible definitions in {estimate.glossary_coverage.batch_count} glossary batches</li>}
-            <li>{estimate.provider} · {estimate.requested_model} · reasoning {estimate.reasoning_effort}</li>
-            <li>Credential revision {estimate.credential_revision}</li>
-          </ul>
-          {!!estimate.reader_coverage?.unavailable.length && <details className="mt-3">
-            <summary>Items that will keep their original explanation</summary>
-            <ul className="mt-2 space-y-1">{estimate.reader_coverage.unavailable.map((item) => <li key={item.target_id}>{item.target_id}: {item.reason.replaceAll("_", " ")}</li>)}</ul>
-          </details>}
-          {estimate.coverage_notice && <p className="mt-3">{estimate.coverage_notice}</p>}
-          <p className="mt-3 font-semibold text-amber-900 dark:text-amber-300">{estimate.aggregate_budget ? "Your provider may charge your account. These are total limits across all planned calls; unused calls are not sent." : "Your provider may charge your account for this request and up to one additional citation-repair request. The token limits above apply to each call; usage includes both calls."}</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" onClick={submitEnhancement} disabled={submitting} className="bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50 dark:bg-green-500 dark:text-black">
-              {submitting ? "Starting…" : "Confirm and enhance"}
-            </button>
-            <button type="button" onClick={() => setConfirming(null)} disabled={submitting} className="border border-slate-600 px-4 py-2 font-semibold disabled:opacity-50">Cancel</button>
-          </div>
-        </div>
-        </ControlsSlot>
-      )}
+      {confirming && estimate && <EnhancementEstimateDialog estimate={estimate} title={title}
+        unknownOutcome={confirming === "retry" && enhancement?.status === "outcome_unknown"}
+        submitting={submitting} submitEnhancement={submitEnhancement} onCancel={() => setConfirming(null)} />}
     {isSuperuser && <section aria-label="AI metadata" className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
       <h2 className="text-lg font-semibold">AI metadata</h2>
 
@@ -556,25 +523,7 @@ export default function BillEnhancementPanel({
           </details>
         </>
       )}
-      {enhancement && failed && liveFailure && (
-        <div>
-        <p className="mt-4 text-sm text-slate-700 dark:text-green-500">
-          {enhancement.status === "outcome_unknown" ? "The provider outcome is unknown. The earlier request may already have incurred usage." : `The request ended as ${enhancement.status}.`}
-        </p>
-        {enhancement.latest_attempt?.failure_detail ? (
-          <div className="mt-2 text-sm text-slate-700 dark:text-green-500">
-            {enhancement.latest_attempt.failure_detail.stage && <p className="mt-1 text-xs">Stage: {enhancement.latest_attempt.failure_detail.stage === "main_analysis"
-              ? "Bill analysis"
-              : enhancement.latest_attempt.failure_detail.batch_index != null
-                ? `${enhancement.latest_attempt.failure_detail.stage === "reader_batch" ? "Reader" : "Glossary"} batch ${enhancement.latest_attempt.failure_detail.batch_index + 1}`
-                : "Explanation processing"}</p>}
-            <p className="mt-1 text-xs">Field: <code className="break-all">{enhancement.latest_attempt.failure_detail.path}</code></p>
-          </div>
-        ) : enhancement.latest_attempt?.failure_category === "invalid_output" ? (
-          <p className="mt-2 text-sm text-slate-700 dark:text-green-500">No detailed validation reason was recorded for this older attempt.</p>
-        ) : null}
-        </div>
-      )}
+
 
       {enhancement?.attempts && enhancement.attempts.length > 0 && (
         <details className="mt-5 border-t border-slate-300 pt-4 text-xs dark:border-green-900/70">

@@ -47,10 +47,14 @@ def citation_spans(source: str, quote: str, *, limit=2) -> list[tuple[int, int]]
 
     No case folding, punctuation removal, fuzzy matching, or cross-source search.
     """
+    return spans_in_canonical_source(_canonical(source), quote, limit=limit)
+
+
+def spans_in_canonical_source(canonical_source, quote, *, limit=2):
     needle, _ = _canonical(quote)
     if not needle.strip():
         return []
-    haystack, offsets = _canonical(source)
+    haystack, offsets = canonical_source
     matches = []
     cursor = 0
     while limit is None or len(matches) < limit:

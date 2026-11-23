@@ -7,6 +7,51 @@ from .test_enhancement_service import enhancement_owner, enhancement_settings, s
 
 
 @pytest.mark.django_db
+def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
+        enhancement_owner, enhancement_settings, source_bill):
+    from django.test import override_settings
+    from apps.legislation.enhancements.source_packet import build_enhancement_preflight
+    from .test_reader_financial_integrity import review
+    from apps.legislation.enhancements.reader_discovery import resolve_discovery
+
+    document = source_bill.documents.get()
+    document.content_type = "text/html"
+    document.object_storage_key = "public-law.html"
+    document.extracted_text = "".join(
+        f"SEC. {i}. Reports\n" + "".join(
+            f"The agency shall publish report {i}-{j} for the public.\n" for j in range(100))
+        for i in range(12))
+    document.save()
+    other = get_user_model().objects.create_user(username="html-reader")
+    client = APIClient()
+    client.force_authenticate(other)
+
+    with enhancement_settings, override_settings(LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=50000, LLM_READER_MAX_CALLS=0):
+        credential = _valid_credential(enhancement_owner)
+        confirmation = _confirmation(source_bill, credential)
+        saved = create_enhancement_attempt(user=enhancement_owner, bill=source_bill, confirmed=confirmation).enhancement
+        plan = build_enhancement_preflight(source_bill)
+        assert plan.output_schema_version == "1.4"
+        assert plan.source_manifest["contract_id"] is None
+        sources, output = review()
+        saved.source_snapshot_json = sources
+        saved.result_json = {"schema_version": "1.4", "summary": [], "explanations": [],
+            "source_review": {"reviewed_sources": [s["source_ref"] for s in sources],
+                              **resolve_discovery(output, sources)}}
+        saved.status = "succeeded"
+        saved.save()
+        response = client.get(f"/api/bills/{source_bill.pk}/enhancements/latest/")
+        assert response.status_code == 200
+        assert response.data["source_compatible"] is True
+        assert response.data["active_reader"]["id"] == saved.pk
+        assert response.data["active_reader"]["result"]["source_review"]["financial_items"]
+        reused = create_enhancement_attempt(user=other, bill=source_bill, confirmed=confirmation)
+        assert not reused.created
+        assert reused.enhancement.pk == saved.pk
+        assert BillEnhancementAttempt.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_old_success_with_wrong_money_cannot_bypass_new_validation(enhancement_owner, enhancement_settings, source_bill):
     from .test_reader_enhancement_pipeline import install_reader
     from .test_reader_financial_integrity import review

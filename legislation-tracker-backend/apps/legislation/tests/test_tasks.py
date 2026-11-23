@@ -1338,9 +1338,9 @@ def test_update_topics_handles_a_bill_without_a_contract_and_then_updates_simila
     assert "health" in result["topics"]
     assert list(
         IngestionWorkItem.objects.filter(kind="similarity").values_list(
-            "payload_json", flat=True
+            "payload_json__bill_id", flat=True
         )
-    ) == [{"bill_id": bill.id}]
+    ) == [bill.id]
 
 
 @pytest.mark.django_db
@@ -1606,8 +1606,8 @@ def test_recompute_similarity_batch_enqueues_all_bills(monkeypatch):
     assert list(
         IngestionWorkItem.objects.filter(kind="similarity")
         .order_by("payload_json__bill_id")
-        .values_list("payload_json", flat=True)
-    ) == [{"bill_id": first.id}, {"bill_id": second.id}]
+        .values_list("payload_json__bill_id", flat=True)
+    ) == [first.id, second.id]
 
 
 @pytest.mark.django_db
@@ -1631,6 +1631,4 @@ def test_recompute_similarity_batch_resolves_current_congress_at_execution(monke
     result = tasks.recompute_similarity_batch(session=None)
 
     assert result == {"enqueued": 1, "session": 121}
-    assert IngestionWorkItem.objects.get(kind="similarity").payload_json == {
-        "bill_id": current.id
-    }
+    assert IngestionWorkItem.objects.get(kind="similarity").payload_json["bill_id"] == current.id

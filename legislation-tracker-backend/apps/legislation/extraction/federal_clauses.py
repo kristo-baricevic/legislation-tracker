@@ -90,6 +90,13 @@ def _quoted_block_ranges(source_text: str) -> tuple[tuple[int, int], ...]:
             inserted = bool(amended and operations and has_payload_boundary and (
                 operations[-1].group('replace') or operations[-1].group('verb').lower() in {'adding','inserting'}
             ))
+            # "Is amended as follows:" directly introduces replacement law,
+            # just as "is amended to read as follows:" does. Require the
+            # exact immediate suffix: a deletion's description is not new law.
+            if (amended and re.fullmatch(r'\s+as follows\s*[:—–-]', grammar[amended.end():], re.I)
+                    and not re.search(r'\b(?:recommends?|proposes?|discusses|whether)\b',
+                                      grammar[:amended.start()], re.I)):
+                inserted = True
             if not inserted and re.fullmatch(
                 rf"\([A-Za-z0-9]+\)\s+by\s+(?:inserting|adding)\b[^\n]*\b{inserted_tail}\s*[:—–-]",
                 instruction, re.I,

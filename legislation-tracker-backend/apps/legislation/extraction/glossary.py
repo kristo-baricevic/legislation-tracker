@@ -8,6 +8,8 @@ import re
 
 
 def normalized(text):
+    # GPO line wraps can split a hyphenated number, e.g. "4- year".
+    text = re.sub(r"(?<=\d)-\s+(?=year\b)", "-", text)
     return re.sub(r"\s+", " ", text).strip().rstrip(".").casefold()
 
 
@@ -62,6 +64,6 @@ def explain_definition(term, definition, definition_type):
     if re.search(r"\bmeaning (?:given|assigned|provided)\b", definition, re.I):
         return f"Unresolved legal reference. This bill defines “{term}” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation."
     return PARAPHRASES.get(
-        (normalized(term), normalized(definition)),
+        (normalized(term.removeprefix("``").removesuffix("''")), normalized(definition)),
         f"Legal definition: {definition.rstrip('.')}.",
     )

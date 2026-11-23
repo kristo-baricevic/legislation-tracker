@@ -38,6 +38,16 @@ function item(id: string, financial_action: LegalNlpFinancialItem["financial_act
 describe("FinancialLedger", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it.each([
+    ["Up to 2% may fund administration; at least 20% must fund grants.", "At least 20%"],
+    ["At least 20% must fund grants; exactly 20% must fund training.", "20%"],
+  ])("keeps percentage bounds attached to the right amount: %s", async (display_text, label) => {
+    const record = { ...item("grant", "set_aside", "limit"), amount: "20", amount_type: "percentage" as const, currency: null, display_text };
+    vi.mocked(getFinancialItems).mockResolvedValue({ count: 1, next: null, previous: null, results: [record] });
+    render(<FinancialLedger contractId={12} totalCount={1} />);
+    expect(await screen.findByText(label, { exact: true })).toBeVisible();
+  });
+
   it("keeps raw funding accounts and section references in the source popover", async () => {
     const record = { ...item("technical-help", "limitation", "limit"), amount: "2", amount_type: "percentage" as const, currency: null,
       display_text: "Up to 2% of remaining funding may pay for technical help.",
@@ -67,7 +77,7 @@ describe("FinancialLedger", () => {
     await screen.findByText("appropriation provision first");
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("authorization provision last")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Money in this bill" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Next" })).toHaveFocus();
     expect(screen.queryByText("appropriation provision first")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Prev" }));
     await user.click(await screen.findByRole("button", { name: "Retry money provisions" }));
@@ -198,7 +208,7 @@ describe("FinancialLedger", () => {
     });
     render(<FinancialLedger contractId={12} totalCount={2} />);
     expect(await screen.findByText("2 of 2 provisions shown")).toBeVisible();
-    expect(screen.getByText("5%")).toBeVisible();
+    expect(screen.getByText("Up to 5%")).toBeVisible();
     expect(screen.queryByText("$5")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Financial action"), "set_aside");
     await user.click(screen.getByRole("button", { name: "Apply money filters" }));

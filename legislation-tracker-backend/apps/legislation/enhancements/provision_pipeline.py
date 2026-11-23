@@ -31,7 +31,10 @@ from .source_graph import audit_graph, has_explainable_text
 
 
 class BudgetExceeded(ValueError):
-    pass
+    def __init__(self, reason, reasons=None, reused=()):
+        super().__init__(reason)
+        self.reasons = dict(reasons or {})
+        self.reused = tuple(reused)
 
 
 def encoded(value):
@@ -71,6 +74,7 @@ class AnalysisPlan:
     reused_json: str = "[]"
     reasoning_effort: str = "none"
     output_tokens: int = 8000
+    unresolved_reasons: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -111,27 +115,34 @@ def _payload(graph, ids):
     passage_ids = {p for u in units for p in u.own_passage_ids + u.context_passage_ids}
     return {
         "document_fingerprint": graph.document_fingerprint,
-        "units": [
-            {
-                **asdict(u),
-                "required_conditions": required_conditions(u, graph),
-                "source_checklist": [
-                    {**item, "text": graph.source_text[item["start"] : item["end"]]}
-                    for item in source_checklist(u, graph)
-                ],
-            }
-            for u in units
-        ],
+        "units": [_unit_payload(graph, u) for u in units],
         "passages": {
             pid: asdict(p) for pid, p in graph.passages.items() if pid in passage_ids
         },
     }
 
 
+def _unit_payload(graph, unit):
+    return {
+        **asdict(unit),
+        "required_conditions": required_conditions(unit, graph),
+        "source_checklist": [
+            {**item, "text": graph.source_text[item["start"]:item["end"]]}
+            for item in source_checklist(unit, graph)
+        ],
+    }
+
+
 def plan_analysis(graph, limits=None, reuse_result=None):
-    limits = limits or {}
     if audit_graph(graph, graph.source_text):
         raise ValueError("source_identity")
+    return _plan_built_graph(graph, limits, reuse_result)
+
+
+def _plan_built_graph(graph, limits=None, reuse_result=None):
+    """Internal fast path for a graph just built from authoritative text."""
+    limits = limits or {}
+    units = {u.id: u for u in graph.units}
     model = limits.get("model", "gpt-6-luna")
     reasoning_effort = limits.get("reasoning_effort", "none")
     output_tokens = min(8000, limits.get("output_tokens", 8000))
@@ -139,7 +150,7 @@ def plan_analysis(graph, limits=None, reuse_result=None):
     max_generation = min(4, limits.get("generation_calls", 4))
     batch_size = min(8, limits.get("batch_size", 8))
     if per_call <= 0 or output_tokens <= 0 or max_generation < 1 or batch_size < 1:
-        raise BudgetExceeded("budget_exceeded")
+        raise BudgetExceeded("budget_exceeded", {uid: "generation_budget" for uid in units})
     reused = []
     if reuse_result:
         if (
@@ -155,7 +166,7 @@ def plan_analysis(graph, limits=None, reuse_result=None):
                 for k, v in row.items()
                 if k not in {"id", "evidence", "source_limitations"}
             }
-            unit = next((u for u in graph.units if u.id == row["unit_id"]), None)
+            unit = units.get(row["unit_id"])
             if unit is None or validate_provision(
                 clean, unit, graph, require_coverage=True
             ):
@@ -164,59 +175,86 @@ def plan_analysis(graph, limits=None, reuse_result=None):
                 raise ValueError("reused_evidence_invalid")
             reused.append(clean)
     reused_ids = {r["unit_id"] for r in reused}
-    calls, batches, unresolved = [], [], []
+    batches, unresolved = [], {}
     # Planning estimate reserves room for mappings plus explanatory prose.
     # The provider's hard output cap still applies; this is not a guarantee.
-    item_counts = {u.id: len(source_checklist(u, graph)) for u in graph.units}
+    records, item_counts, singles = {}, {}, {}
+    passage_sizes = {pid: len(p.text.encode()) for pid, p in graph.passages.items()}
+    passage_order = {pid: i for i, pid in enumerate(graph.passages)}
+    unit_order = {uid: i for i, uid in enumerate(units)}
+    passage_rows = {}
+
+    def refuse(reason):
+        reasons = {uid: unresolved.get(uid, "generation_budget") for uid in units if uid not in reused_ids}
+        raise BudgetExceeded(reason, reasons, reused_ids)
 
     def output_fits(ids):
         return sum(item_counts[uid] for uid in ids) * 80 <= output_tokens
 
     def make(ids):
+        # Preserve historical wire aliases and fingerprints for unchanged plans.
+        pids = {pid for uid in ids for pid in
+                units[uid].own_passage_ids + units[uid].context_passage_ids}
         return _call(
             "generation",
             ids,
-            _payload(graph, ids),
+            {"document_fingerprint": graph.document_fingerprint,
+             "units": [records[uid] for uid in sorted(ids, key=unit_order.__getitem__)],
+             "passages": {pid: passage_rows[pid] for pid in sorted(pids, key=passage_order.__getitem__)}},
             model,
             reasoning_effort,
             output_tokens,
         )
 
     # Place the largest complete units first, then fill remaining capacity.
-    singles = {
-        unit.id: make([unit.id]) for unit in graph.units if unit.id not in reused_ids
-    }
-    for unit in sorted(
-        graph.units,
-        key=lambda unit: singles[unit.id].estimated_input if unit.id in singles else 0,
-        reverse=True,
-    ):
+    for unit in graph.units:
         if unit.id in reused_ids:
             continue
-        if (
-            not has_explainable_text(unit, graph)
-            or make([unit.id]).estimated_input > per_call
-            or not output_fits([unit.id])
-        ):
-            unresolved.append(unit.id)
+        if not has_explainable_text(unit, graph):
+            unresolved[unit.id] = "unexplained_source"
             continue
+        pids = set(unit.own_passage_ids + unit.context_passage_ids)
+        if sum(passage_sizes[p] for p in pids) > per_call:
+            unresolved[unit.id] = "input_limit"
+            continue
+        if len(singles) > max_generation * batch_size:
+            # Already proved even ideal packing cannot fit. Do not serialize
+            # more requests; still classify inexpensive source limits above.
+            continue
+        records[unit.id] = _unit_payload(graph, unit)
+        item_counts[unit.id] = len(records[unit.id]["source_checklist"])
+        if not output_fits([unit.id]):
+            unresolved[unit.id] = "output_limit"
+            continue
+        for pid in pids - passage_rows.keys():
+            passage_rows[pid] = asdict(graph.passages[pid])
+        single = make([unit.id])
+        if single.estimated_input > per_call:
+            unresolved[unit.id] = "input_limit"
+        else:
+            singles[unit.id] = single
+    if not singles and not reused_ids:
+        refuse("zero_coverage")
+    if len(singles) > max_generation * batch_size:
+        refuse("budget_exceeded")
+    for uid in sorted(singles, key=lambda uid: singles[uid].estimated_input, reverse=True):
         # Reuse spare capacity in earlier batches. Each unit carries its own
         # complete context, and final presentation remains in source order.
         # Consecutive-only packing can needlessly exceed the paid-call ceiling.
         for batch in batches:
-            candidate = batch + [unit.id]
+            candidate = batch + [uid]
             if (
                 len(candidate) <= batch_size
                 and output_fits(candidate)
                 and make(candidate).estimated_input <= per_call
             ):
-                batch.append(unit.id)
+                batch.append(uid)
                 break
         else:
-            batches.append([unit.id])
-    calls = [make(batch) for batch in batches]
-    if len(calls) > max_generation:
-        raise BudgetExceeded("budget_exceeded")
+            batches.append([uid])
+            if len(batches) > max_generation:
+                refuse("budget_exceeded")
+    calls = [singles[batch[0]] if len(batch) == 1 else make(batch) for batch in batches]
     maximum_calls = len(calls) + (2 if calls else 0)
     maximum_input = sum(c.estimated_input for c in calls) + (
         2 * per_call if calls else 0
@@ -225,11 +263,11 @@ def plan_analysis(graph, limits=None, reuse_result=None):
     if maximum_input > limits.get("max_input", 600000) or maximum_output > limits.get(
         "max_output", 48000
     ):
-        raise BudgetExceeded("budget_exceeded")
+        refuse("budget_exceeded")
     identity = {
         "graph": graph.document_fingerprint,
         "calls": [asdict(c) for c in calls],
-        "unresolved": unresolved,
+        "unresolved": list(unresolved),
         "model": model,
         "reasoning_effort": reasoning_effort,
         "output_tokens": output_tokens,
@@ -251,6 +289,7 @@ def plan_analysis(graph, limits=None, reuse_result=None):
         encoded(reused).decode(),
         reasoning_effort,
         output_tokens,
+        tuple(unresolved.items()),
     )
 
 
@@ -475,9 +514,8 @@ def run_analysis(plan, invoke, checkpoint):
                 failed.pop(uid, None)
             failed.update(bad)
             reject_conflicts()
-    failed.update(
-        {uid: "source_context_unresolved" for uid in plan.unresolved_unit_ids}
-    )
+    failed.update(dict.fromkeys(plan.unresolved_unit_ids, "source_context_unresolved"))
+    failed.update(plan.unresolved_reasons)
     # Revalidate the final merged set, not only the latest repair.
     for uid, row in list(accepted.items()):
         if validate_provision(row, units[uid], graph, require_coverage=True):

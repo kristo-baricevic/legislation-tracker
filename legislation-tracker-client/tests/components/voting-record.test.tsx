@@ -187,7 +187,7 @@ describe("VotingRecord", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load member positions. Try again.");
-    expect(screen.getByRole("button", { name: "Loading voting record..." })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "View voting record" }).some(button => button.hasAttribute("disabled"))).toBe(true);
     await userEvent.setup().click(screen.getByRole("button", { name: "Previous vote history page" }));
     expect(onPrevious).toHaveBeenCalledOnce();
     await userEvent.setup().click(screen.getByRole("button", { name: "Next vote history page" }));

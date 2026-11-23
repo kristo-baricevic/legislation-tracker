@@ -220,28 +220,32 @@ def enqueue_topic_update(
     )
 
 
+@transaction.atomic
 def enqueue_similarity(bill, *, source_updated_at=None):
-    contract = bill.latest_contract
-    fingerprint = (
-        contract.contract_hash if contract else bill.metadata_hash or "metadata"
-    )
-    source_updated_at = (
-        source_updated_at
-        or (
-            contract.computed_at
-            if contract and contract.computed_at
-            else bill.updated_at
-        )
-        or timezone.now()
-    )
-    return enqueue_ingestion_work(
-        kind=WORK_KIND_SIMILARITY,
-        dedupe_key=f"{bill.id}:{fingerprint}",
-        source_updated_at=source_updated_at,
-        payload_json={"bill_id": bill.id},
-        jurisdiction=bill.jurisdiction,
-        congress=bill.session,
-    )
+    from apps.ingestion.models import IngestionWorkItem
+    from apps.ingestion.work_queue import MANUAL_BILL_SOURCE_UPDATED_AT
+    from .similarity import fingerprint
+
+    # A permanent identity under the durable queue's unique constraint, even
+    # for two simultaneous first enqueues. Revisions live in the payload.
+    bill = Bill.objects.prefetch_related("bill_topics__topic").get(pk=bill.pk)
+    revision = fingerprint(bill)
+    payload = {"bill_id": bill.pk, "revision": revision}
+    row, created = IngestionWorkItem.objects.select_for_update().get_or_create(
+        kind=WORK_KIND_SIMILARITY, dedupe_key=f"bill:{bill.pk}",
+        source_updated_at=MANUAL_BILL_SOURCE_UPDATED_AT,
+        defaults={"payload_json": payload, "jurisdiction": bill.jurisdiction, "congress": bill.session})
+    if not created and (row.payload_json.get("revision") != revision or
+            (source_updated_at and row.status == "succeeded")):
+        row.payload_json = payload
+        if row.status not in ("dispatched", "processing"):
+            row.status = "pending"
+            row.available_at = timezone.now()
+            row.attempt_count = 0
+            row.completed_at = None
+            row.last_error = ""
+        row.save()
+    return row
 
 
 def enqueue_search_index(bill, *, source_updated_at=None):
@@ -1355,8 +1359,17 @@ def _require_quota_revalidation(attempt):
 
 
 def _worker_preflight(attempt, cached_preflight=None):
+    from .enhancements.model_selection import credential_target, planning_for, selectable
     if not llm_feature_available():
         return None, None, "feature_disabled"
+    pair = credential_target(attempt.credential)
+    if attempt.credential and (not selectable(pair) or pair != (attempt.enhancement.provider, attempt.enhancement.requested_model)):
+        return None, None, "credential_changed"
+    with planning_for(pair):
+        return _selected_worker_preflight(attempt, cached_preflight)
+
+
+def _selected_worker_preflight(attempt, cached_preflight=None):
     credential = attempt.credential
     enhancement = attempt.enhancement
     if (
@@ -1433,7 +1446,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
         provider = get_provider(attempt.enhancement.provider)
         if preflight.output_schema_version == "1.4":
             from .enhancements.reader_batches import execute_reader_batches
-            from .enhancements.reader_steps import DurableReaderProvider, ReaderDeliveryComplete
+            from .enhancements.reader_steps import DurableReaderProvider, ReaderDeliveryComplete, ReaderBudgetPaused
             from .enhancements.source_first_worker import step_usage
             provider = DurableReaderProvider(provider, attempt, run_token, preflight.source_manifest['budget']['maximum_calls'])
 
@@ -1464,6 +1477,12 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
 
             try:
                 result = execute_reader_batches(preflight, provider, api_key, reader_checkpoint)
+            except ReaderBudgetPaused:
+                persisted = _finish_enhancement_attempt(attempt_id=attempt_id, run_token=run_token,
+                    attempt_status=BillEnhancementAttempt.Status.PAUSED, failure_category='budget_exhausted',
+                    failure_detail={'code': 'budget_exhausted', 'message': 'Progress saved. Confirm more usage to continue.'},
+                    usage=step_usage(attempt.pk))
+                return _terminal_task_result(persisted=persisted, status='paused', category='budget_exhausted')
             except ReaderDeliveryComplete:
                 # Round-robin continuation, not a failed attempt or a paid retry.
                 # Old broker messages cannot reclaim the new dispatch token.
