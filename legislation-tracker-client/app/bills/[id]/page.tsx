@@ -22,6 +22,7 @@ import type { BillContractSummary } from "@/lib/contracts";
 import { dashboardSession, peekDashboardValue } from "@/lib/dashboard-cache";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
+import { DocumentReader } from "./document-reader";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import { stageFor } from "@/lib/bill-stage";
 import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
@@ -321,6 +322,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
 
 
         <div id="bill-ai-controls" className="mb-5" />
+        <DocumentReader documentId={summaryDocument?.id ?? null} enabled={!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)}>
         {bill.latest_contract ? (
           isLegalNlpV21ContractSummary(bill.latest_contract)
             ? <ContractSection contract={bill.latest_contract} bill={bill} />
@@ -339,9 +341,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </BillAnalysisBoundary>
         )}
 
-        {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
-
         {(!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)) && <><ReaderTabBar /><ReaderTabPanel tab="changes"><p className="mb-6">Detailed changes are not available for this analysis.</p></ReaderTabPanel><ReaderTabPanel tab="money"><p className="mb-6">A separate financial breakdown is not available for this version. Check the analysis and full bill text.</p></ReaderTabPanel><ReaderTabPanel tab="terms"><p className="mb-6">A separate glossary is not available for this version.</p></ReaderTabPanel></>}
+        </DocumentReader>
+        {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
         <ReaderTabPanel tab="votes">
         <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>

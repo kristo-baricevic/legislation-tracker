@@ -3,7 +3,8 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { BillEnhancement } from "@/lib/api";
-import { resolveReaderExplanation } from "@/lib/reader-enhancements";
+import { compatibleReader, resolveReaderExplanation } from "@/lib/reader-enhancements";
+import { DocumentReader } from "@/app/bills/[id]/document-reader";
 import { AiGlossaryProvider, useAiGlossary, ReaderModeSwitch } from "@/app/bills/[id]/ai-glossary-context";
 import { ReaderIdentityProvider, ReaderExplanation, ReaderSummary, LegacyReaderChanges } from "@/app/bills/[id]/reader-explanation";
 import { beginSessionTransition, endSessionTransition } from "@/lib/personalized-scope";
@@ -35,6 +36,37 @@ const saved = {
 } as unknown as BillEnhancement;
 
 describe("unified reader", () => {
+  const documentReview = { ...saved, result: { ...saved.result,
+    identity: { contract_id: null, contract_hash: null, document_id: 4, document_content_hash: "text-a" },
+    explanations: [], source_review: { reviewed_sources: ["src_0001"], additional_changes: [],
+      policy_changes: [{ title: "Worker protections", text: "Employers must protect workers.", cited_sources: [] }],
+      financial_items: [{ label: "Penalty", amount_display: "$1,000", text: "A fine applies.", fiscal_years: [], cited_sources: [] }],
+    },
+  } } as BillEnhancement;
+  it("renders a document-only summary, changes and money and preserves Original switching", async () => {
+    function Document() {
+      const { setEnhancement } = useAiGlossary();
+      useEffect(() => setEnhancement(documentReview), [setEnhancement]);
+      return <><ReaderModeSwitch /><DocumentReader documentId={4} enabled><p>Original analysis.</p></DocumentReader></>;
+    }
+    render(<AiGlossaryProvider><Document /></AiGlossaryProvider>);
+    expect(screen.getByText("Protects workers from harassment.")).toBeVisible();
+    expect(screen.getByText("Employers must protect workers.")).toBeVisible();
+    expect(screen.getByText("A fine applies.")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Original" }));
+    expect(screen.getByText("Original analysis.")).toBeVisible();
+    expect(screen.queryByText("A fine applies.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Enhanced" }));
+    expect(screen.getByText("A fine applies.")).toBeVisible();
+  });
+  it("requires affirmative source compatibility and the exact document for contractless reviews", () => {
+    const documentIdentity = { contractId: null, contractHash: null, documentId: 4 };
+    expect(compatibleReader(documentReview, documentIdentity)).not.toBeNull();
+    expect(compatibleReader(documentReview, { ...documentIdentity, documentId: 5 })).toBeNull();
+    expect(compatibleReader(documentReview, identity)).toBeNull();
+    expect(compatibleReader({ ...documentReview, source_compatible: false }, documentIdentity)).toBeNull();
+    expect(compatibleReader({ ...documentReview, source_compatible: undefined, stale: false }, documentIdentity)).toBeNull();
+  });
   it("keeps original provisions when a saved policy review has no explanations", () => {
     const emptyReview = { ...saved, result: { ...saved.result, source_review: {
       reviewed_sources: [], financial_items: [], additional_changes: [], policy_changes: [],

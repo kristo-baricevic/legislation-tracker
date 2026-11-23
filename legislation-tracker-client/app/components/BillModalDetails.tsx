@@ -31,7 +31,7 @@ export default function BillModalDetails({ billId, contractId, contractHash, enh
   const [selected, setSelected] = React.useState<VoteDetailItem | null>(null);
   const [loadingVote, setLoadingVote] = React.useState<number | null>(null);
   const selection = React.useRef(0);
-  const identity = contractId && contractHash && document ? { contractId, contractHash, documentId: document.id } : null;
+  const identity = document ? { contractId: contractId ?? null, contractHash: contractHash ?? null, documentId: document.id } : null;
   const enhanced = compatibleReader(enhancement, identity);
   const policy = enhanced?.source_review?.policy_changes;
   const hasPolicy = Boolean(policy?.length);
@@ -63,11 +63,11 @@ export default function BillModalDetails({ billId, contractId, contractHash, enh
   const pagination = <nav className={styles.modalPagination} aria-label="Bill explanation pages"><button disabled={pending || currentPage === 1} onClick={() => { setPage(currentPage - 1); setReaderRetry(n => n + 1); }}>Prev</button><span>Page {currentPage}</span><button disabled={pending || !next} onClick={() => { setPage(currentPage + 1); setReaderRetry(n => n + 1); }}>Next</button></nav>;
   return <>
     <section className={styles.modalChanges}><h3><Link href={`/bills/${billId}?tab=changes`}>What this bill does <span aria-hidden="true">↗</span></Link></h3>
-      {!contractId ? <p>A detailed breakdown is not available yet.</p> : <>
+      {!contractId && !hasPolicy ? <p>A detailed breakdown is not available yet.</p> : <>
         <StableResults page={currentPage} busy={pending} label="Bill explanations">
         {!hasPolicy && readerError && <p role="alert">Could not load the breakdown. <button disabled={readerLoading} onClick={() => setReaderRetry(n => n + 1)}>Retry breakdown</button></p>}
         {!hasPolicy && !reader && !readerError && <p role="status">Loading breakdown…</p>}
-        {policy?.length && document ? <ul className={styles.modalChangeList}>{policy.slice((policyPage - 1) * 6, policyPage * 6).map((item, index) => <li key={index}><strong>{item.title}</strong><ReaderText text={item.text} citation={<Evidence number={(policyPage - 1) * 6 + index + 1} sources={item.cited_sources} documentId={document.id} />} /></li>)}</ul> : reader && <><ul className={styles.modalChangeList}>{reader.results.map((item, index) => { const copy = changeCopy(item); const saved = resolveReaderExplanation(enhancement, identity, "line_item", item.id, item.display_text); return <li key={item.id}><strong>{copy.title}</strong><ReaderText text={saved?.text || copy.text} citation={saved ? <Evidence number={(shownPage - 1) * 6 + index + 1} sources={saved.cited_sources} documentId={saved.document_id} /> : <SourceEvidence number={(shownPage - 1) * 6 + index + 1} contractId={contractId} lineItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} />} /></li>; })}</ul>
+        {policy?.length && document ? <ul className={styles.modalChangeList}>{policy.slice((policyPage - 1) * 6, policyPage * 6).map((item, index) => <li key={index}><strong>{item.title}</strong><ReaderText text={item.text} citation={<Evidence number={(policyPage - 1) * 6 + index + 1} sources={item.cited_sources} documentId={document.id} />} /></li>)}</ul> : reader && contractId && <><ul className={styles.modalChangeList}>{reader.results.map((item, index) => { const copy = changeCopy(item); const saved = resolveReaderExplanation(enhancement, identity, "line_item", item.id, item.display_text); return <li key={item.id}><strong>{copy.title}</strong><ReaderText text={saved?.text || copy.text} citation={saved ? <Evidence number={(shownPage - 1) * 6 + index + 1} sources={saved.cited_sources} documentId={saved.document_id} /> : <SourceEvidence number={(shownPage - 1) * 6 + index + 1} contractId={contractId} lineItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} />} /></li>; })}</ul>
         {!reader.results.length && <p>No detailed changes have been extracted yet.</p>}
         </>}
         </StableResults>

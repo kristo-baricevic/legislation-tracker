@@ -203,6 +203,30 @@ def test_missing_fee_rule_is_recovered_from_its_own_source_not_generated_text():
     assert review['financial_items'][0]['source_quotes'] == [{'source_ref': 'src_0001', 'quote': raw}]
 
 
+@pytest.mark.parametrize('conditions', [40, 400])
+def test_long_retained_financial_source_passes_without_allowing_long_generated_prose(conditions):
+    import copy
+    from jsonschema import ValidationError
+    from apps.legislation.enhancements.reader_discovery import (
+        money_candidates, retain_missing_financial_rules, validate_source_review,
+    )
+    raw = ' '.join(f'Applicants in category {i} must pay the first fee instead of the second fee.' for i in range(conditions))
+    source = {'source_ref': 'src_0001', 'start_char': 0, 'end_char': len(raw),
+              'quoted_text': raw, 'discovery_source': True}
+    target = {'kind': 'financial_item', 'target_id': 'fee', 'original_text': raw,
+              'evidence_ranges': [(0, len(raw))], 'facts': {'item': {'financial_action': 'fee'}}}
+    sources = [source, {'reader_targets': [target]}]
+    review = {'reviewed_sources': ['src_0001'], 'financial_items': [], 'additional_changes': [],
+              'money_checks': {key: 'financial' for key in money_candidates([source])}}
+    retain_missing_financial_rules(review, sources)
+    assert len(review['financial_items'][0]['text']) > 1600
+    validate_source_review(review, sources)
+    changed = copy.deepcopy(review)
+    changed['financial_items'][0]['text'] += ' A new unsupported requirement applies.'
+    with pytest.raises(ValidationError):
+        validate_source_review(changed, sources)
+
+
 @pytest.mark.django_db
 def test_large_bill_uses_source_sized_confirmed_budget_not_fixed_call_count(source_bill, enhancement_settings):
     install_reader(source_bill, count=0)

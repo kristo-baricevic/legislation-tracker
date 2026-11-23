@@ -1,8 +1,8 @@
 import type { BillEnhancement, ReaderExplanationItem } from "./api";
 
 export interface ReaderIdentity {
-  contractId: number;
-  contractHash: string;
+  contractId: number | null;
+  contractHash: string | null;
   documentId: number | null;
 }
 
@@ -12,6 +12,10 @@ export function compatibleReader(enhancement: BillEnhancement | null, identity: 
       enhancement.result?.schema_version !== "1.4") return null;
   const result = enhancement.result;
   const saved = result.identity;
+  // Document-only reviews have no NLP contract to bind to. Only the server
+  // can verify their content hash; require its affirmative compatibility check.
+  if (identity.contractId === null && (identity.contractHash !== null ||
+      identity.documentId === null || enhancement.source_compatible !== true || !result.source_review)) return null;
   if (saved.contract_id !== identity.contractId || saved.contract_hash !== identity.contractHash ||
       saved.document_id !== identity.documentId) return null;
   return result;

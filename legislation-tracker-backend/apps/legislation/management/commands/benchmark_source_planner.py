@@ -15,6 +15,15 @@ from apps.legislation.enhancements.xml_sections import stored_xml_sections
 from apps.legislation.enhancements.provision_pipeline import BudgetExceeded, _plan_built_graph
 
 
+def verify_review_ownership(scans, reviews, reused=None):
+    from apps.legislation.enhancements.reader_discovery import policy_passages
+    expected = Counter(policy_passages(scans))
+    actual = Counter(key for request in reviews for key in policy_passages(request.source_snapshot))
+    actual.update((reused or {}).get('policy_checks', {}).keys())
+    if actual != expected:
+        raise CommandError('A review passage was omitted or duplicated by the execution plan')
+
+
 class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("documents", type=int, nargs="+")
@@ -48,9 +57,9 @@ class Command(BaseCommand):
                 reviews = [r for r in p.reader_batches if r.request_envelope.get("source_review")]
                 scans = [s for s in p.source_snapshot if s.get("discovery_source")]
                 coverage = xml_batch_coverage(text, bounds, scans)
-                reused = bool((p.reader_reuse or {}).get("source_review"))
-                if not reused and [s for r in reviews for s in r.source_snapshot] != scans:
-                    raise CommandError("A review chunk was omitted or duplicated by the execution plan")
+                saved_review = (p.reader_reuse or {}).get("source_review")
+                reused = bool(saved_review)
+                verify_review_ownership(scans, reviews, saved_review)
                 from apps.legislation.evaluation.xml_batch_estimate import summary_scenario
                 elapsed = round(perf_counter()-start, 3)
                 self.stdout.write(json.dumps(dict(document=pk, model=p.requested_model, **coverage,

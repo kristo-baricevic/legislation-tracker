@@ -12,6 +12,18 @@ beforeEach(() => {
   vi.mocked(getVotes).mockResolvedValue({ count: 0, next: null, previous: null, results: [] });
   vi.mocked(getReaderItems).mockResolvedValue({ count: 1, next: null, previous: null, results: [line], section_supplements: [] });
 });
+it("shows a document-only XML review without an NLP contract, but not for another version", () => {
+  const enhancement = { status: "succeeded", source_compatible: true, result: {
+    schema_version: "1.4", identity: { contract_id: null, contract_hash: null, document_id: 4, document_content_hash: "text" },
+    summary: [], explanations: [], source_review: { reviewed_sources: ["src_0001"], financial_items: [], additional_changes: [],
+      policy_changes: [{ title: "Protect workers", text: "Employers must protect workers.", cited_sources: [] }] },
+  } } as unknown as BillEnhancement;
+  const view = render(<BillModalDetails billId={1876} document={{ id: 4 } as BillDetail["documents"][number]} enhancement={enhancement} />);
+  expect(screen.getByText("Employers must protect workers.")).toBeVisible();
+  expect(getReaderItems).not.toHaveBeenCalled();
+  view.rerender(<BillModalDetails billId={1876} document={{ id: 5 } as BillDetail["documents"][number]} enhancement={enhancement} />);
+  expect(screen.queryByText("Employers must protect workers.")).not.toBeInTheDocument();
+});
 it("uses the saved explanation only for the exact matching contract and source wording", async () => {
   const document = { id: 4 } as BillDetail["documents"][number];
   const enhancement: BillEnhancement = { id: 9, bill_id: 1876, provider: "openai", requested_model: "test",

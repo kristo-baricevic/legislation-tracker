@@ -218,7 +218,7 @@ def discovery_schema(sources):
     return schema
 
 
-def resolve_discovery(output, sources, *, aggregate=False):
+def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()):
     # Split requests include adjacent passages for context. A finding belongs
     # to this request only when it cites at least one passage it owns.
     if any(s.get('review_quote_ids') is not None for s in sources):
@@ -244,6 +244,12 @@ def resolve_discovery(output, sources, *, aggregate=False):
     schema = discovery_schema(sources)
     if aggregate:
         schema['properties']['financial_items'].pop('maxItems', None)
+        if retained_financial:
+            # Only exact, server-reconstructed source rules can exceed the
+            # generated-copy limits. Never relax those limits for model prose.
+            items = schema['properties']['financial_items']['items']
+            schema['properties']['financial_items']['items'] = {
+                'anyOf': [items, {'enum': list(retained_financial)}]}
         if 'policy_changes' in schema['properties']:
             schema['properties']['policy_changes']['items']['properties']['source_quotes'].pop('maxItems', None)
     Draft202012Validator(schema).validate(output)
@@ -364,6 +370,15 @@ def validate_source_review(review, sources):
             if review['policy_changes'] != group_policy_drafts(SimpleNamespace(source_snapshot=sources), review['policy_drafts']):
                 raise output_error('reader_coverage_incomplete', ['source_review', 'policy_changes'])
     # Revalidate every stored inventory, including pre-policy results.
+    oversized = [item for item in review['financial_items']
+                 if len(item['text']) > 1600 or len(item['source_quotes']) > 24]
+    retained_indices = []
+    if oversized:
+        reconstruction = {'financial_items': [item for item in review['financial_items'] if item not in oversized]}
+        start = len(reconstruction['financial_items'])
+        retain_missing_financial_rules(reconstruction, sources)
+        recovered = reconstruction['financial_items'][start:]
+        retained_indices = [i for i, item in enumerate(review['financial_items']) if item in recovered]
     wire = copy.deepcopy({k: v for k, v in review.items() if k not in {'reviewed_sources', 'policy_drafts'}})
     for category in ('financial_items', 'additional_changes', 'policy_changes'):
         for item in wire.get(category, []):
@@ -373,7 +388,8 @@ def validate_source_review(review, sources):
                     raise output_error('citation_quote_not_found', ['source_review', category])
                 q['quote_id'] = matches[0]
                 del q['quote']
-    resolve_discovery(wire, scan_sources, aggregate=True)
+    resolve_discovery(wire, scan_sources, aggregate=True,
+                      retained_financial=[wire['financial_items'][i] for i in retained_indices])
     if set(review['money_checks']) != set(money_candidates(scan_sources)):
         raise output_error('reader_coverage_incomplete', ['source_review', 'money_checks'])
     # A new full inventory must not silently drop a financial provision already

@@ -1401,12 +1401,14 @@ export interface EnhancementResult {
 }
 
 export interface ReaderEnhancementIdentity {
-  contract_id: number;
-  contract_hash: string;
+  contract_id: number | null;
+  contract_hash: string | null;
   document_id: number;
   document_content_hash: string;
 }
 export interface ReaderExplanationItem extends ReaderEnhancementIdentity {
+  contract_id: number;
+  contract_hash: string;
   kind: "line_item" | "financial_item" | "definition";
   item_id: string;
   target_id: string;
