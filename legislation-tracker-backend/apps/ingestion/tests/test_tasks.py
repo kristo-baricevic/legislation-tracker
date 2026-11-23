@@ -3080,3 +3080,40 @@ def test_sync_representatives_rejects_mismatched_member_detail_identity(monkeypa
     current_member.refresh_from_db()
     assert current_member.is_current is True
     assert not Representative.objects.filter(bioguide_id="W000001").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stage_status", ["superseded", "succeeded"])
+def test_expired_claim_cannot_complete_even_before_recovery_runs(monkeypatch, stage_status):
+    work = IngestionWorkItem.objects.create(kind="representative_research",
+        source_updated_at=timezone.now(), dedupe_key="expired-research", payload_json={"stage": "finance", "step": 3},
+        status=IngestionWorkStatus.DISPATCHED, dispatch_token="original")
+    def expire_claim(item):
+        IngestionWorkItem.objects.filter(pk=item.pk).update(
+            lease_expires_at=timezone.now() - timedelta(seconds=1))
+        return {"status": stage_status}
+    monkeypatch.setattr(tasks, "_process_durable_work", expire_claim)
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "apply_async", lambda **kwargs: None)
+    result = tasks.process_ingestion_work_item(work.pk, "original")
+    work.refresh_from_db()
+    assert result["status"] == "superseded"
+    assert work.status == IngestionWorkStatus.PROCESSING
+    assert work.completed_at is None
+    tasks.recover_stale_ingestion_work()
+    work.refresh_from_db()
+    assert work.status == IngestionWorkStatus.PENDING
+    assert work.payload_json == {"stage": "finance", "step": 3}
+
+
+@pytest.mark.django_db
+def test_superseded_stage_cannot_be_recorded_as_success(monkeypatch):
+    work = IngestionWorkItem.objects.create(kind="representative_research",
+        source_updated_at=timezone.now(), dedupe_key="superseded-research", status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original")
+    monkeypatch.setattr(tasks, "_process_durable_work", lambda _: {"status": "superseded"})
+    monkeypatch.setattr(tasks.dispatch_ingestion_work, "apply_async", lambda **kwargs: None)
+    result = tasks.process_ingestion_work_item(work.pk, "original")
+    work.refresh_from_db()
+    assert result["status"] == "superseded"
+    assert work.status != IngestionWorkStatus.SUCCEEDED
+    assert work.completed_at is None

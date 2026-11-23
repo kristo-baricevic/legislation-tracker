@@ -1380,6 +1380,16 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             or work_item.dispatch_token != claimed_dispatch_token
         ):
             return {"work_item_id": work_item.id, "status": "superseded"}
+        # A stage can decline publication when its lease expires before the
+        # recovery sweep replaces its token. That is not successful completion.
+        # Leave the claim for bounded stale-lease recovery; never overwrite a
+        # replacement claim or discard the saved research checkpoints.
+        if (
+            not work_item.lease_expires_at
+            or work_item.lease_expires_at <= timezone.now()
+            or (isinstance(stage_result, dict) and stage_result.get("status") == "superseded")
+        ):
+            return {"work_item_id": work_item.id, "status": "superseded"}
         if work_item.payload_json != claimed_payload_json:
             work_item.status = IngestionWorkStatus.PENDING
             work_item.attempt_count = 0
