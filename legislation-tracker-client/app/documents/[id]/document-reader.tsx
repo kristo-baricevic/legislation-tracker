@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -74,34 +75,38 @@ export function DocumentReader({ documentId }: { documentId: string }) {
     return pieces;
   }
 
-  if (error) return <div className="mx-auto max-w-3xl p-6"><div role="alert">Could not load this bill text. It may not be available yet.</div><button className={control + " mt-4"} onClick={() => setRetry(retry + 1)}>Retry</button><Link className="ml-4 underline" href="/bills">Browse bills</Link></div>;
-  if (!data) return <p role="status" className="mx-auto max-w-3xl p-6">Loading bill text…</p>;
-  const { info, text } = data;
-  return <main className="mx-auto max-w-4xl px-4 py-6 text-slate-900 dark:text-green-200 sm:px-8">
-    <Link href={`/bills/${info.bill}`} className="text-sm font-semibold text-blue-900 underline dark:text-green-400">Back to bill summary</Link>
-    <header className="my-6">
-      <p className="text-sm text-slate-600 dark:text-green-400">{info.bill_number}</p>
-      <h1 className="mt-2 text-3xl font-semibold leading-tight">{info.bill_title}</h1>
-      <p className="mt-3">{info.version_label}</p>
-      {info.source_purpose && <section className="mt-4" aria-label="Purpose stated in the original bill">
-        <h2 className="text-sm font-semibold">Purpose stated in the original bill</h2>
-        <p className="mt-1 leading-relaxed">{info.source_purpose}</p>
-      </section>}
-      <p className="mt-2 text-sm text-slate-600 dark:text-green-400">Full bill text, not a summary. Wording is preserved from the stored source.</p>
-      {info.download_url && <a className="mt-3 inline-block text-sm font-semibold underline" href={/^https?:\/\//.test(info.download_url) ? info.download_url : getApiBase() + info.download_url}>Download original</a>}
-    </header>
-    {text.trim() ? <>
-      <div className="sticky top-0 z-10 mb-6 flex flex-wrap items-end gap-3 border-y border-slate-300 bg-white p-3 dark:border-green-800 dark:bg-black">
-        <label className="min-w-0 flex-1 text-sm">Find in bill text<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} className={control + " mt-1 block w-full bg-white dark:bg-black"} /></label>
-        <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + matches.length - 1) % matches.length)}>Previous match</button>
-        <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + 1) % matches.length)}>Next match</button>
-        <p role="status" className="w-full text-sm">{query.trim() ? matches.length ? `${selected + 1} of ${matches.length} matches${matches.length === 500 ? " (first 500 shown; refine your search)" : ""}` : "No matches" : "Search for a word or phrase."}</p>
-      </div>
-      <article ref={article} aria-label="Full bill text" className="mx-auto max-w-[75ch] break-words text-base leading-8 [overflow-wrap:anywhere]">
-        {blocks.map((block) => /^(?:SEC\.|SECTION\s|TITLE\s|DIVISION\s)/i.test(block.text.trim())
-          ? <h2 key={block.start} className="mb-3 mt-8 whitespace-pre-wrap text-xl font-semibold">{highlighted(block.text, block.start)}</h2>
-          : <p key={block.start} className="mb-3 whitespace-pre-wrap">{highlighted(block.text, block.start)}</p>)}
-      </article>
-    </> : <p>Text is not available for this version yet.</p>}
-  </main>;
+  function renderContent() {
+    if (error) return <div className="mx-auto max-w-3xl p-6"><div role="alert">Could not load this bill text. It may not be available yet.</div><button className={control + " mt-4"} onClick={() => setRetry(retry + 1)}>Retry</button><Link className="ml-4 underline" href="/bills">Browse bills</Link></div>;
+    if (!data) return null;
+    const { info, text } = data;
+    return <main className="mx-auto max-w-4xl px-4 py-6 text-slate-900 dark:text-green-200 sm:px-8">
+      <Link href={`/bills/${info.bill}`} className="text-sm font-semibold text-blue-900 underline dark:text-green-400">Back to bill summary</Link>
+      <header className="my-6">
+        <p className="text-sm text-slate-600 dark:text-green-400">{info.bill_number}</p>
+        <h1 className="mt-2 text-3xl font-semibold leading-tight">{info.bill_title}</h1>
+        <p className="mt-3">{info.version_label}</p>
+        {info.source_purpose && <section className="mt-4" aria-label="Purpose stated in the original bill">
+          <h2 className="text-sm font-semibold">Purpose stated in the original bill</h2>
+          <p className="mt-1 leading-relaxed">{info.source_purpose}</p>
+        </section>}
+        <p className="mt-2 text-sm text-slate-600 dark:text-green-400">Full bill text, not a summary. Wording is preserved from the stored source.</p>
+        {info.download_url && <a className="mt-3 inline-block text-sm font-semibold underline" href={/^https?:\/\//.test(info.download_url) ? info.download_url : getApiBase() + info.download_url}>Download original</a>}
+      </header>
+      {text.trim() ? <>
+        <div className="sticky top-0 z-10 mb-6 flex flex-wrap items-end gap-3 border-y border-slate-300 bg-white p-3 dark:border-green-800 dark:bg-black">
+          <label className="min-w-0 flex-1 text-sm">Find in bill text<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} className={control + " mt-1 block w-full bg-white dark:bg-black"} /></label>
+          <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + matches.length - 1) % matches.length)}>Previous match</button>
+          <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + 1) % matches.length)}>Next match</button>
+          <p role="status" className="w-full text-sm">{query.trim() ? matches.length ? `${selected + 1} of ${matches.length} matches${matches.length === 500 ? " (first 500 shown; refine your search)" : ""}` : "No matches" : "Search for a word or phrase."}</p>
+        </div>
+        <article ref={article} aria-label="Full bill text" className="mx-auto max-w-[75ch] break-words text-base leading-8 [overflow-wrap:anywhere]">
+          {blocks.map((block) => /^(?:SEC\.|SECTION\s|TITLE\s|DIVISION\s)/i.test(block.text.trim())
+            ? <h2 key={block.start} className="mb-3 mt-8 whitespace-pre-wrap text-xl font-semibold">{highlighted(block.text, block.start)}</h2>
+            : <p key={block.start} className="mb-3 whitespace-pre-wrap">{highlighted(block.text, block.start)}</p>)}
+        </article>
+      </> : <p>Text is not available for this version yet.</p>}
+    </main>;
+  }
+  return <><LoadingSpinner centered active={!data && !error} label="Loading bill text…" />{renderContent()}</>;
+
 }

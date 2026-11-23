@@ -3,6 +3,21 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import RepresentativeResearch from "@/app/components/RepresentativeResearch";
+import RepresentativeCardResearch from "@/app/components/RepresentativeCardResearch";
+
+it.each(["panel", "card"])("submits research again while saved status is running: %s", async view => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.includes("csrf")) return Response.json({ csrf_token: "test" });
+    if (options?.method === "POST") return Response.json({ detail: "Retry reached server" }, { status: 503 });
+    return Response.json({ ...empty, status: "running" });
+  }));
+  if (view === "panel") render(<RepresentativeResearch representativeId={484} cardName="Example" />);
+  else render(<RepresentativeCardResearch id={484} name="Example" card={{ biography: null, portrait: null, latest_bill: null, research: { period: 2026, status: "running", overview_ready: false } }} onCard={() => {}} />);
+  await screen.findByText("Researching…");
+  await userEvent.click(screen.getByRole("button", { name: "Research Example" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Research Example" })).toHaveTextContent("Retry research"));
+  expect(screen.getByRole("button", { name: "Research Example" })).toBeEnabled();
+});
 
 const empty = { status: "not_started", period: 2026, run: null, biography: null, portrait: null, snapshot: null };
 
@@ -181,7 +196,7 @@ it("keeps the funding layout mounted while changing reporting periods", async ()
   const donor = await screen.findByRole("link", { name: "Saved donor" });
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Reporting period" }), "2024");
   expect(donor).toBeInTheDocument();
-  expect(screen.queryByText("Loading funding…")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: "Loading funding" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("Funding results")).toHaveAttribute("aria-busy", "true");
   finish(Response.json({ ...empty, period: 2024, status: "partial", snapshot: "historic", available_periods: [2026, 2024] }));
   await waitFor(() => expect(screen.getByLabelText("Funding results")).toHaveAttribute("aria-busy", "false"));
@@ -281,29 +296,35 @@ it("preserves the list, pagination, and focus while switching funding records", 
   expect(vi.mocked(fetch).mock.calls).toHaveLength(calls);
 });
 
-it.each([undefined, "Bruce Westerman"])("keeps queued research actionable without starting duplicate jobs (card: %s)", async (cardName) => {
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...empty, status: "queued", run: { id: "run", status: "queued", sections: {} } })));
+it.each([undefined, "Bruce Westerman"])("submits queued research to the idempotent server endpoint (card: %s)", async (cardName) => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("csrf")) return Response.json({ csrf_token: "test" });
+    const run = { id: "run", status: "queued", sections: {} };
+    return Response.json(init?.method === "POST" ? run : { ...empty, status: "queued", run });
+  }));
   render(<RepresentativeResearch representativeId={12} cardName={cardName} />);
   const label = await screen.findByText("Queued…");
   expect(label).toBeEnabled();
   await userEvent.click(label);
-  expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(true);
   expect(screen.queryByText("Researching…")).not.toBeInTheDocument();
   expect(screen.queryByText("Finding campaign records…")).not.toBeInTheDocument();
 });
 
 it("lets general research recover from a failed status check during collection", async () => {
   let checks = 0;
-  vi.stubGlobal("fetch", vi.fn(async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("csrf")) return Response.json({ csrf_token: "test" });
     checks++;
     if (checks === 2) throw new Error("Network interrupted");
-    return Response.json({ ...empty, status: checks < 3 ? "running" : "partial", run: { id: "run", status: checks < 3 ? "running" : "partial", sections: {} } });
+    const run = { id: "run", status: checks < 3 ? "running" : "partial", sections: {} };
+    return Response.json(init?.method === "POST" ? run : { ...empty, status: run.status, run });
   }));
   render(<RepresentativeResearch representativeId={1} />);
   await userEvent.click(await screen.findByRole("button", { name: "Researching…" }));
   await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "Researching…" })).toBeEnabled();
-  await userEvent.click(screen.getByRole("button", { name: "Researching…" }));
+  expect(screen.getByRole("button", { name: "Research" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: "Research" }));
   expect(await screen.findByRole("button", { name: "Research" })).toBeEnabled();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
@@ -331,7 +352,7 @@ it("shows official totals and partial contributors while the scan continues", as
   expect(await screen.findByText("$1,200.25")).toBeVisible();
   expect(screen.getByText("$300.50")).toBeVisible();
   expect(await screen.findByText("Example PAC")).toBeVisible();
-  expect(screen.getByText("Loading campaign overview…")).toBeVisible();
+  expect(screen.getByText("Collecting campaign overview…")).toBeVisible();
   expect(screen.getByText(/Partial results.*still being collected/)).toBeVisible();
 });
 beforeEach(() => {

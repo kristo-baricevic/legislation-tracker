@@ -15,6 +15,7 @@ CHAMBER_CHOICES = ("house", "senate")
 
 
 class RepresentativeListQuerySerializer(PaginatedQuerySerializer):
+    tracking = serializers.ChoiceField(choices=("tracked", "untracked"), required=False)
     party = serializers.ChoiceField(choices=("D", "R", "I"), required=False, allow_blank=True)
     search = serializers.CharField(required=False, allow_blank=True, max_length=200)
     state = serializers.RegexField(
@@ -141,6 +142,31 @@ class CommitteeSerializer(serializers.ModelSerializer):
             "is_current",
             "source_updated_at",
         ]
+
+
+class CommitteeDirectoryQuerySerializer(PaginatedQuerySerializer):
+    topic_id = serializers.IntegerField(min_value=1, required=False)
+    congress = serializers.IntegerField(min_value=1, required=False)
+    chamber = serializers.ChoiceField(choices=("house", "senate", "joint"), required=False)
+    search = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    member = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    level = serializers.ChoiceField(choices=("committee", "subcommittee"), required=False)
+
+
+class CommitteeMemberSerializer(serializers.ModelSerializer):
+    representative = RepresentativeSerializer(read_only=True)
+
+    class Meta:
+        model = CommitteeMembership
+        fields = ["representative", "role", "rank"]
+
+
+class CommitteeDirectorySerializer(CommitteeSerializer):
+    members = CommitteeMemberSerializer(source="directory_members", many=True, read_only=True)
+    parent_name = serializers.CharField(source="parent.name", read_only=True, default=None)
+
+    class Meta(CommitteeSerializer.Meta):
+        fields = CommitteeSerializer.Meta.fields + ["members", "parent_name"]
 
 
 class CommitteeMembershipSerializer(serializers.ModelSerializer):

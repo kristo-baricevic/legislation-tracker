@@ -1,5 +1,7 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import BillCard from "../components/BillCard";
+import DashboardBillReader from "../components/DashboardBillReader";
 import RetainedHeight from "../components/RetainedHeight";
 import styles from "../components/bill-deck.module.css";
 import { STAGES } from "@/lib/bill-stage";
@@ -195,6 +197,7 @@ function BillsCatalog() {
   useEffect(() => {
     let cancelled = false;
     const scope = capturePersonalizedScope();
+    setTrackingError(null);
     void getSession()
       .then((session) => {
         if (cancelled || !isPersonalizedScopeCurrent(scope)) return;
@@ -734,7 +737,7 @@ function BillsCatalog() {
           </div>
         )}
 
-        {loading && <p className={page ? "sr-only" : "text-muted"} role="status">Loading…</p>}
+        <LoadingSpinner centered active={loading && !page} label="Loading bills…" />
 
         {page && (
           <>
@@ -750,8 +753,8 @@ function BillsCatalog() {
               </div>
               <RetainedHeight key={layout}>{!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
                 <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" aria-busy={loading} tabIndex={0}>
-                  {page.results.map(bill => <BillCard key={bill.id} bill={bill}
-                    footer={<div className="flex flex-wrap items-center gap-3">{hasAccount === null ? <span aria-busy="true" className="inline-block h-8 w-20" /> : hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button onClick={() => setTrackingRefresh(value => value + 1)}>Load follow status</button> : <Link href="/login">Log in to follow</Link>}</div>} />)}
+                  {page.results.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback, currentBill) => <BillCard bill={currentBill} summary={summary} feedback={feedback}
+                    footer={<div className="bill-card-actions">{hasAccount === null ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button disabled={!trackingError} aria-busy={!trackingError} aria-label={trackingError ? "Retry follow status" : "Loading follow status"} onClick={() => setTrackingRefresh(value => value + 1)}>{trackingError ? "Retry" : "Follow"}</button> : <Link href="/login">Log in to follow</Link>}{enhance}</div>} />}</DashboardBillReader>)}
                 </div>}</RetainedHeight>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
@@ -788,7 +791,7 @@ export default function BillsPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[60vh] items-center justify-center font-sans text-muted">
-          Loading bills…
+          <LoadingSpinner centered label="Loading bills…" />
         </div>
       }
     >

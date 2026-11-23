@@ -131,6 +131,7 @@ describe("FinancialLedger", () => {
     render(<FinancialLedger contractId={12} totalCount={7} />);
 
     expect(await screen.findByRole("heading", { name: "Money in this bill" })).toBeVisible();
+    expect(await screen.findAllByText("The program")).toHaveLength(7);
     for (const label of ["Appropriation", "Authorization", "Transfer", "Rescission", "Reduction", "Set-aside", "Limitation"]) {
       expect(screen.getAllByText(label).some((element) => element.tagName === "P")).toBe(true);
     }

@@ -31,7 +31,7 @@ it("waits for saved enhanced explanations instead of first rendering original it
   vi.stubGlobal("fetch", vi.fn((url: string) => url.includes("enhancements/") ? new Promise(() => {}) : Promise.resolve(Response.json(url.includes("/votes/") || url.includes("reader-items") ? { count: 0, next: null, previous: null, results: [], section_supplements: [] } : detail))));
   render(<ProfileProvider><BillDeckModal bill={{ ...bill, enhancement_id: 99, enhancement_status: "succeeded", card_summary: "Enhanced summary" }} onClose={() => {}} /></ProfileProvider>);
   await screen.findByText("Enhanced summary");
-  expect(screen.getByText("Loading explanations…")).toBeVisible();
+  expect(await screen.findByRole("status", { name: "Loading explanations" })).toBeVisible();
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("reader-items"))).toBe(false);
 });
 

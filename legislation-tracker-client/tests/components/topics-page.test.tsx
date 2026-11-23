@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +26,10 @@ describe("TopicsPage", () => {
     vi.mocked(getTopics).mockReturnValueOnce(new Promise(() => {}));
     await userEvent.click(screen.getByRole("button", { name: "Refresh topics" }));
     expect(screen.getByRole("link", { name: "Health" })).toBe(topic);
-    expect(screen.getByText("Refreshing topics…")).toHaveClass("sr-only");
+    expect(screen.queryByRole("status", { name: "Loading topics" })).not.toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    expect(screen.queryByRole("status", { name: "Loading topics" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Health" })).toBe(topic);
   });
   beforeEach(() => {
     vi.mocked(getSession).mockResolvedValue({

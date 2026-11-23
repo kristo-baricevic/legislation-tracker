@@ -43,7 +43,7 @@ it.each(["loading", "error"])("bill Close remains usable while details are %s an
     await user.click(opener);
     await screen.findByRole("dialog", { name: bill.title });
     if (state === "error") await screen.findByRole("alert");
-    else expect(screen.getByText("Loading bill details…")).toBeInTheDocument();
+    else expect(await screen.findByRole("status", { name: "Loading bill details" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close bill details" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(opener).toHaveFocus());

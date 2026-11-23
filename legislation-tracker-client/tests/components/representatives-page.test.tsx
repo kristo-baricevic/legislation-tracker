@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RepresentativesPage from "@/app/representatives/page";
 import userEvent from "@testing-library/user-event";
+import { beginSessionTransition, endSessionTransition } from "@/lib/personalized-scope";
 import { getBillFilterOptions, getRepresentatives, getSession, getMyTracking, trackLegislator } from "@/lib/api";
 
 vi.mock("next/link", () => ({
@@ -19,6 +20,71 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativesPage", () => {
+  it("clears private tracking results on logout and ignores a late old-account response", async () => {
+    const initial = await getRepresentatives();
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    render(<RepresentativesPage />);
+    await screen.findByRole("button", { name: "Track Representative Example" });
+    let finish!: (value: typeof initial) => void;
+    vi.mocked(getRepresentatives).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    await userEvent.click(screen.getByRole("button", { name: "Tracking All" }));
+    await userEvent.click(screen.getByRole("option", { name: "Tracked" }));
+    vi.mocked(getSession).mockResolvedValue(null);
+    await act(async () => { beginSessionTransition(); endSessionTransition(null); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tracking All" })).toBeDisabled());
+    await act(async () => finish({ ...initial, results: [{ ...initial.results[0], name: "Private old follow" }] }));
+    expect(screen.queryByRole("link", { name: "Private old follow" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Track Representative Example" })).not.toBeInTheDocument();
+  });
+  it("isolates pending tracking to each clicked representative without refetching the directory", async () => {
+    const initial = await getRepresentatives();
+    const rep = initial.results[0];
+    vi.mocked(getRepresentatives).mockResolvedValueOnce({ ...initial, count: 2, results: [rep, { ...rep, id: 9, name: "Second Example" }] });
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    let first!: () => void;
+    let second!: () => void;
+    vi.mocked(trackLegislator).mockReturnValueOnce(new Promise(resolve => { first = () => resolve({} as Awaited<ReturnType<typeof trackLegislator>>); }))
+      .mockReturnValueOnce(new Promise(resolve => { second = () => resolve({} as Awaited<ReturnType<typeof trackLegislator>>); }));
+    render(<RepresentativesPage />);
+    const a = await screen.findByRole("button", { name: `Track ${rep.name}` });
+    const b = screen.getByRole("button", { name: "Track Second Example" });
+    const directoryCalls = vi.mocked(getRepresentatives).mock.calls.length;
+    const trackingCalls = vi.mocked(getMyTracking).mock.calls.length;
+    await userEvent.click(a);
+    expect(a).toBeDisabled();
+    expect(b).toBeEnabled();
+    expect(b).toHaveTextContent("+ Track");
+    expect(b).toHaveAttribute("aria-busy", "false");
+    await userEvent.click(b);
+    await act(async () => first());
+    expect(a).toBeEnabled();
+    expect(a).toHaveTextContent("✓ Tracked");
+    expect(b).toBeDisabled();
+    await act(async () => second());
+    expect(b).toBeEnabled();
+    expect(b).toHaveTextContent("✓ Tracked");
+    expect(screen.getByRole("button", { name: `Untrack ${rep.name}` })).toBe(a);
+    expect(getRepresentatives).toHaveBeenCalledTimes(directoryCalls);
+    expect(getMyTracking).toHaveBeenCalledTimes(trackingCalls);
+  });
+  it.each([true, false])("keeps the same filter controls while the account check resolves: signed in %s", async signedIn => {
+    let resolveSession!: (value: Awaited<ReturnType<typeof getSession>>) => void;
+    vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    render(<RepresentativesPage />);
+    const tracking = screen.getByRole("button", { name: "Tracking All" });
+    const state = screen.getByRole("button", { name: "State All" });
+    expect(tracking).toBeDisabled();
+    await userEvent.click(tracking);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await act(async () => resolveSession(signedIn ? { authenticated: true, user: { email: "reader@example.com" } } : null));
+    expect(screen.getByRole("button", { name: "Tracking All" })).toBe(tracking);
+    expect(screen.getByRole("button", { name: "State All" })).toBe(state);
+    if (signedIn) expect(tracking).toBeEnabled();
+    else expect(tracking).toBeDisabled();
+  });
   it("keeps the current directory visible until replacement filter results arrive", async () => {
     render(<RepresentativesPage />);
     const member = await screen.findByRole("link", { name: "Representative Example" });
@@ -27,6 +93,8 @@ describe("RepresentativesPage", () => {
     await userEvent.click(screen.getByRole("option", { name: "Democrat" }));
     expect(screen.getByRole("link", { name: "Representative Example" })).toBe(member);
     expect(screen.getByRole("list", { name: "Representatives" })).toHaveAttribute("aria-busy", "true");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    expect(screen.queryByRole("status", { name: "Loading representatives" })).not.toBeInTheDocument();
   });
   let intersect: () => void;
   let observerReady = false;
@@ -79,28 +147,44 @@ describe("RepresentativesPage", () => {
     expect(screen.queryByRole("link", { name: "Representative Example" })).not.toBeInTheDocument();
     expect(screen.getByText("No representatives found.")).toBeVisible();
   });
-  it("shows a successful tracking change in both views", async () => {
+  it("shows a successful tracking change in the grid", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
     render(<RepresentativesPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Track Representative Example" }));
     expect(trackLegislator).toHaveBeenCalledWith(8);
     expect(await screen.findByRole("button", { name: "Untrack Representative Example" })).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(screen.getByRole("button", { name: "Table view" }));
-    expect(screen.getByRole("button", { name: "Tracked legislator" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Table view" })).not.toBeInTheDocument();
   });
-  it("starts with avatars and switches to the same results in a table", async () => {
+  it("uses only the avatar grid", async () => {
     render(<RepresentativesPage />);
-    const grid = await screen.findByRole("list", { name: "Representatives" });
-    expect(grid).toHaveTextContent("Independent");
-    expect(grid).toHaveTextContent("House");
-    expect(grid).toHaveTextContent("NY");
+    expect(await screen.findByRole("list", { name: "Representatives" })).toBeVisible();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Table view" }));
-    expect(screen.getByRole("table")).toHaveTextContent("Representative Example");
-    expect(screen.queryByRole("list", { name: "Representatives" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Avatar view" }));
-    expect(screen.getByRole("list", { name: "Representatives" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Table view" })).not.toBeInTheDocument();
+  });
+  it("announces initial loading with a decorative spinner", async () => {
+    vi.mocked(getRepresentatives).mockReturnValueOnce(new Promise(() => {}));
+    render(<RepresentativesPage />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("");
+    expect(status).toHaveAccessibleName("Loading representatives");
+    expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+  });
+  it("filters the directory by tracking and refreshes after a tracking change", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    render(<RepresentativesPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Tracking All" }));
+    await userEvent.click(screen.getByRole("option", { name: "Untracked" }));
+    await waitFor(() => expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({tracking: "untracked", page: 1})));
+    vi.mocked(getRepresentatives).mockResolvedValueOnce({ count: 0, next: null, previous: null, results: [] });
+    await userEvent.click(await screen.findByRole("button", { name: "Track Representative Example" }));
+    expect(await screen.findByText("No representatives found.")).toBeVisible();
+    expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({tracking: "untracked", page: 1}));
+    await userEvent.click(screen.getByRole("button", { name: "Tracking Untracked" }));
+    await userEvent.click(screen.getByRole("option", { name: "Tracked" }));
+    await waitFor(() => expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({tracking: "tracked", page: 1})));
   });
   it("searches the directory by name and resets pagination", async () => {
     vi.mocked(getRepresentatives).mockImplementation(async (params) => ({

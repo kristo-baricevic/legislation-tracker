@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -33,6 +34,7 @@ function RepresentativeCompareContent() {
   const [people, setPeople] = useState<RepresentativeItem[]>([]);
   const [comparison, setComparison] = useState<RepresentativeComparison | null>(null);
   const [loading, setLoading] = useState(true);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftLeft, setDraftLeft] = useState("");
   const [draftRight, setDraftRight] = useState("");
@@ -72,13 +74,16 @@ function RepresentativeCompareContent() {
   useEffect(() => {
     if (leftId === null || rightId === null || congress === null || !Number.isSafeInteger(congress) || congress < 1) {
       setComparison(null);
+      setComparisonLoading(false);
       return;
     }
     let cancelled = false;
     setError(null);
+    setComparisonLoading(true);
     compareRepresentatives([leftId, rightId], congress)
       .then((result) => { if (!cancelled) setComparison(result); })
-      .catch((cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not compare these representatives."); });
+      .catch((cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not compare these representatives."); })
+      .finally(() => { if (!cancelled) setComparisonLoading(false); });
     return () => { cancelled = true; };
   }, [congress, leftId, rightId]);
 
@@ -92,7 +97,8 @@ function RepresentativeCompareContent() {
       <div className="mx-auto max-w-5xl space-y-6">
         <Link href="/representatives" className="text-blue-900 underline dark:text-green-400">← Representatives</Link>
         <header><h1 className="text-2xl font-semibold">Compare representatives</h1><p className="mt-1 text-slate-600 dark:text-green-600">Compare shared roll calls with stated counts and coverage—not a score.</p></header>
-        {loading ? <p>Loading available representatives…</p> : (
+        <LoadingSpinner centered active={loading || (comparisonLoading && !comparison)} label="Loading available representatives…" />
+        {!loading && (
           <div className="grid gap-3 rounded border border-slate-300 p-4 sm:grid-cols-2 dark:border-green-900/70">
             <label>First representative<select className="ml-2 max-w-full border bg-white p-2 text-slate-900 dark:bg-black dark:text-green-300" value={draftLeft} onChange={(event) => { const next = event.target.value; setDraftLeft(next); setSelection(next, draftRight); }}><option value="">Choose one</option>{people.map((person) => <option key={person.id} value={person.id} disabled={String(person.id) === draftRight}>{person.name} ({person.state})</option>)}</select></label>
             <label>Second representative<select className="ml-2 max-w-full border bg-white p-2 text-slate-900 dark:bg-black dark:text-green-300" value={draftRight} onChange={(event) => { const next = event.target.value; setDraftRight(next); setSelection(draftLeft, next); }}><option value="">Choose one</option>{people.map((person) => <option key={person.id} value={person.id} disabled={String(person.id) === draftLeft}>{person.name} ({person.state})</option>)}</select></label>
@@ -118,7 +124,7 @@ export default function RepresentativeComparePage() {
     <Suspense
       fallback={
         <div className="flex min-h-[60vh] items-center justify-center font-sans text-slate-600 dark:text-green-500">
-          Loading representative comparison…
+          <LoadingSpinner centered label="Loading representative comparison…" />
         </div>
       }
     >

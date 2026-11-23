@@ -84,6 +84,7 @@ for (const row of ["Followed bills", "Recommended bills"]) {
     await userEvent.click(cards.getByRole("button", { name: "Enhance" }));
     if (completion !== "shared") await userEvent.click(await screen.findByRole("button", { name: "Confirm and enhance" }));
     expect(await cards.findByRole("button", { name: "Enhanced" }, { timeout: 5000 })).toBeDisabled();
+    expect(cards.getByRole("button", { name: "Enhanced" })).toHaveStyle({ backgroundColor: "#735099", color: "#ffffff", opacity: "1" });
     expect(cards.getByText("New enhanced summary.")).toBeVisible();
     await userEvent.click(cards.getByRole(row === "Followed bills" ? "button" : "link", { name: bill.title }));
     const modal = within(await screen.findByRole("dialog"));

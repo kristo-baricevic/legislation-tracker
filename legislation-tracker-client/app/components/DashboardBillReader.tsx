@@ -72,7 +72,7 @@ export default function DashboardBillReader({ bill, children }: { bill: BillList
     enhancement_id: reader.id, enhancement_status: "succeeded" } : bill;
   const enhanced = !!reader || (!saved && status === "succeeded");
   return <>{children(summary ? <p className="my-2 line-clamp-4 text-sm leading-relaxed">{plainBillText(summary)}</p> : null, bill.jurisdiction === "federal" && <>
-    <button type="button" className="min-w-[6.5rem] rounded-md border border-slate-400 px-3 py-1.5 text-sm disabled:opacity-65" aria-busy={busy} disabled={enhanced || status === "pending" || status === "running"} onClick={() => void act(false)}>
+    <button type="button" className="min-w-[6.5rem] rounded-md border border-slate-400 px-3 py-1.5 text-sm disabled:opacity-65" style={enhanced ? { backgroundColor: "#735099", borderColor: "#735099", color: "#ffffff", opacity: 1 } : undefined} aria-busy={busy} disabled={enhanced || status === "pending" || status === "running"} onClick={() => void act(false)}>
       {enhanced ? "Enhanced" : status === "pending" ? "Queued" : status === "running" ? "Enhancing" : busy ? "Preparing…" : status === "paused" ? "Continue" : "Enhance"}
     </button>
   </>, bill.jurisdiction === "federal" && <div className="min-h-[2lh] text-right text-sm leading-snug text-red-700" aria-live="polite">{error && <span role="alert">{error.includes("Settings") ? <Link className="underline" href="/settings">Check model settings.</Link> : error}</span>}</div>, currentBill)}

@@ -31,6 +31,11 @@ except Exception as e:
 
 # Beat schedule: poll Congress every 10 minutes
 app.conf.beat_schedule = {
+    "warm-representative-activity": {
+        "task": "apps.congress.tasks.warm_representative_activity",
+        "schedule": 60.0,
+        "options": {"expires": 60},
+    },
     "poll-congress": {
         "task": "apps.ingestion.tasks.poll_congress",
         "schedule": 600.0,  # every 10 minutes (in seconds)

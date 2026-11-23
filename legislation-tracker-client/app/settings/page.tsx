@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { FormEvent, useEffect, useState } from "react";
 
@@ -154,7 +155,7 @@ function LLMSettingsSection() {
             )}
           </div>
 
-          {!settings && !error && <p className="mt-5 text-sm">Loading settings…</p>}
+          <LoadingSpinner centered active={!settings && !error} label="Loading settings…" />
           {settings && (
             <>
               <label htmlFor="enhancement-model" className="mt-5 block text-sm font-semibold">Model</label>

@@ -2,15 +2,15 @@ from dataclasses import dataclass
 import re
 import unicodedata
 from .models import RepresentativeCandidate
+from apps.congress.names import normalize_person_name
 
 
 def candidate_search_name(rep):
-    name = re.sub(r"\s*\[[^\]]*\]\s*$", "", rep.name).strip()
-    return re.sub(r"^(?:Rep\.?|Sen\.?|Representative|Senator|Del\.?|Delegate|Resident Commissioner)\s+", "", name, flags=re.I).strip()
+    return normalize_person_name(rep.name)
 
 
 def name_parts(name):
-    normalized = unicodedata.normalize("NFKD", name).casefold()
+    normalized = unicodedata.normalize("NFKD", normalize_person_name(name)).casefold()
     normalized = "".join(c for c in normalized if not unicodedata.combining(c))
     return sorted(re.findall(r"[a-z]+", normalized))
 

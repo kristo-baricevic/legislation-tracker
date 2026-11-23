@@ -1,4 +1,6 @@
 "use client";
+import { useDashboardLoading } from "./DashboardLoading";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
 import React from "react";
@@ -23,6 +25,7 @@ export default function BillDeck() {
   const [signedIn, setSignedIn] = React.useState(Boolean(tracking));
   const [isSuperuser, setIsSuperuser] = React.useState(false);
   const [ready, setReady] = React.useState(Boolean(tracking));
+  const dashboardLoading = useDashboardLoading("followed", !ready);
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
   const [currentCongress, setCurrentCongress] = React.useState<number | null>(null);
@@ -113,7 +116,7 @@ export default function BillDeck() {
     </div>
     <div className="min-h-6 text-sm text-red-700" aria-live="polite">{error && <span role="alert">{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></span>}</div>
     {followError && <p role="alert">{followError}</p>}
-    {!ready && <p role="status" className={styles.empty}>Loading your followed bills…</p>}
+    {!dashboardLoading && <LoadingSpinner reserveSpace active={!ready} label="Loading your followed bills…" />}
     {ready && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or browse the <Link href="/bills">Bills page</Link>.</p></div>}
     {ready && !error && signedIn && !visible.length && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : <>Browse the <Link href="/bills">Bills page</Link> and follow a bill to keep it here.</>}</p>{!tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
     {visible.length > 0 && <section className={styles.topicSection}>
@@ -122,7 +125,7 @@ export default function BillDeck() {
         accentTopicId={bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id))?.topic_id}
         sponsorState={stateBySponsor.get(bill.sponsor_id ?? -1)}
         onOpen={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(currentBill); }}
-        footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}
+        footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : <Link href="/login">Log in to follow</Link>}
       />}</DashboardBillReader>)}</div>
     </section>}
     {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}

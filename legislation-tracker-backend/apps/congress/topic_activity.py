@@ -724,7 +724,7 @@ def _passage_evidence(positions, bills, topics, tags, uncertain, cross_chamber):
     }
 
 
-def representative_activity_catalog(*, captured_at=None, policy=None):
+def representative_activity_catalog(*, captured_at=None, policy=None, refresh_before=0):
     policy = policy or DEFAULT_POLICY
     now = timezone.now()
     capture = captured_at or now
@@ -735,7 +735,7 @@ def representative_activity_catalog(*, captured_at=None, policy=None):
     cached = cache_call("get", key)
     if (
         cached
-        and now.timestamp() < cached["expires_at"]
+        and now.timestamp() + refresh_before < cached["expires_at"]
         and cached["captured_at"] <= now.isoformat()
     ):
         # Publish a manifest only after all member records have been stored.

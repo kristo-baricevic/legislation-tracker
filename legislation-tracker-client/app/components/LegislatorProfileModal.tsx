@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import React from "react";
 import type { BillListItem } from "@/lib/api";
@@ -69,7 +70,7 @@ function IntroducedBills({ scope, onOpenBill }: { scope: ProfileScope; onOpenBil
       {bills.map(bill => <BillCard key={bill.id} bill={bill} onOpen={() => { if (!onOpenBill(bill)) window.location.assign(`/bills/${bill.id}`); }} footer={null} />)}
       <div ref={end} className={styles.billSentinel} aria-hidden="true" />
     </div>
-    {loading && <p role="status">{bills.length ? "Loading more bills…" : "Loading introduced bills…"}</p>}
+    <LoadingSpinner active={loading} label="Loading introduced bills…" />
     {error && <p role="alert">Could not load {bills.length ? "more bills" : "bills"}. <button onClick={() => {
       if (busy.current) return;
       busy.current = true; setRequest(previous => ({ ...previous, attempt: previous.attempt + 1 }));
@@ -82,7 +83,7 @@ export function VotingRecord({ scope, fullPage = false }: { scope: ProfileScope;
   return <section className={styles.section}>
     <div className={styles.voteHeading}><h3>Votes by topic</h3>{!fullPage && <a href={`${profileHref(scope)}&tab=votes`}>Full voting record ↗</a>}</div>
     <p className={styles.note}><CardTooltip text="Stored roll calls, including procedural votes. A vote counts under each topic assigned to its bill, so topic counts can overlap. These totals do not imply support for every policy in a topic."><span tabIndex={0}>Congress {scope.congress} · Recorded votes ⓘ</span></CardTooltip></p>
-    {records.loading && <p role="status">Loading votes…</p>}
+    <LoadingSpinner active={records.loading} label="Loading votes…" />
     {records.error && <p role="alert">Could not load votes. <button onClick={records.retry}>Retry votes</button></p>}
     {records.data && <>
       <div className={styles.voteGroups}>{(["yes", "no"] as const).map(position => <section key={position} aria-label={position === "yes" ? "Yes votes" : "No votes"}>
@@ -118,7 +119,7 @@ export default function LegislatorProfileModal({ scope, onClose, onOpenBill }: {
       {data && <small>{data.identity.latest_affiliation.chamber === "house" ? "House" : data.identity.latest_affiliation.chamber === "senate" ? "Senate" : data.identity.latest_affiliation.chamber} · {data.identity.latest_affiliation.state} · {({ D: "Democrat", R: "Republican", I: "Independent" } as Record<string, string>)[data.identity.latest_affiliation.party] || data.identity.latest_affiliation.party}{data.identity.latest_affiliation.district ? ` · District ${data.identity.latest_affiliation.district}` : ""}</small>}</div>
       <button autoFocus onClick={onClose} aria-label="Close legislator profile">✕</button>
     </header>
-    {profile.loading && <p role="status">Loading profile…</p>}
+    <LoadingSpinner active={profile.loading} label="Loading profile…" />
     {profile.error && <p role="alert">Could not load this profile. <button onClick={profile.retry}>Retry profile</button></p>}
     {research?.biography && <p className={styles.biography}>{research.biography.text}</p>}
     <div className={styles.profileTools}>

@@ -1,4 +1,6 @@
 "use client";
+import { useDashboardLoading } from "./DashboardLoading";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React from "react";
 import Link from "next/link";
 import { ApiError, capturePersonalizedScope, isPersonalizedScopeCurrent, trackBill, untrackBill, getMyTracking, type BillListItem } from "@/lib/api";
@@ -59,6 +61,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
   const [pending, setPending] = React.useState<{ id: number; generation: string } | null>(null);
   const [error, setError] = React.useState<{ text: string; generation: string } | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
+  const dashboardLoading = useDashboardLoading("bills", state.loading || paging !== null);
   const generation = state.scope ? `${state.scope.sessionGeneration}:${state.scope.interestGeneration}` : "";
   async function follow(id: number) {
     if (pending?.generation === generation) return;
@@ -93,9 +96,10 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
   }
   return <section ref={section} className={styles.section} aria-labelledby="bill-recommendations-title">
     <div className={styles.heading}><h2 ref={heading} tabIndex={-1} id="bill-recommendations-title">Bills to discover</h2><button className={styles.action} aria-disabled={state.loading} aria-busy={state.loading} onClick={state.retry}>Refresh bill recommendations</button></div>
+    {!dashboardLoading && <LoadingSpinner reserveSpace active={state.loading} label="Loading recommendations…" />}
     {state.data && <div className="min-h-5 text-sm text-red-700" aria-live="polite">{state.error && <span role="alert">{state.error}</span>}</div>}
     {state.data?.results.length ? <>
-      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
+      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} data-enhanced={currentBill.enhancement_status === "succeeded"} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
         <div className={styles.bar} aria-hidden="true" /><div className={styles.body}>
           <p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p>
           <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
@@ -109,8 +113,9 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
         </div>
       </article>}</DashboardBillReader>)}</div>
       {Boolean(state.data.unsupported_follow_types.length) && <p className={styles.note}>The General legislation fallback topic is excluded because it does not describe a specific subject.</p>}
-      {state.data.next_cursor && <button className={styles.action} disabled={paging === generation} onClick={() => void more()}>{paging === generation ? "Loading…" : "More recommendations"}</button>}
+      {state.data.next_cursor && <button className={styles.action} disabled={paging === generation} onClick={() => void more()}>More recommendations</button>}
     </> : <RecommendationState {...state} empty={state.data?.empty_reason} />}
+    {!dashboardLoading && <LoadingSpinner active={paging === generation} label="Loading more recommendations…" />}
     {error && error.generation === generation && error.text && <p role="alert">{error.text}</p>}
   </section>;
 }

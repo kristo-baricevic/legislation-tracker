@@ -420,6 +420,8 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
         or name.startswith(("Sen.", "Sen ", "Rep.", "Rep "))
         or raw_district is not None
     )
+    from apps.congress.names import normalize_person_name
+    name = normalize_person_name(name)
     rep, created = Representative.objects.get_or_create(
         bioguide_id=bioguide_id,
         defaults={
@@ -502,6 +504,7 @@ def _member_state_code(member):
 
 
 def _member_profile(summary, detail):
+    from apps.congress.names import normalize_person_name
     member = dict(summary)
     member.update(detail or {})
     bioguide_id = member.get("bioguideId") or member.get("bioguide_id")
@@ -522,7 +525,7 @@ def _member_profile(summary, detail):
     chamber = _member_chamber(member)
     return {
         "bioguide_id": str(bioguide_id)[:20],
-        "name": name,
+        "name": normalize_person_name(name),
         "first_name": first_name,
         "last_name": last_name,
         "chamber": chamber if chamber in ("house", "senate") else "house",
@@ -1378,6 +1381,16 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         if (
             work_item.status != IngestionWorkStatus.PROCESSING
             or work_item.dispatch_token != claimed_dispatch_token
+        ):
+            return {"work_item_id": work_item.id, "status": "superseded"}
+        # A stage can decline publication when its lease expires before the
+        # recovery sweep replaces its token. That is not successful completion.
+        # Leave the claim for bounded stale-lease recovery; never overwrite a
+        # replacement claim or discard the saved research checkpoints.
+        if (
+            not work_item.lease_expires_at
+            or work_item.lease_expires_at <= timezone.now()
+            or (isinstance(stage_result, dict) and stage_result.get("status") == "superseded")
         ):
             return {"work_item_id": work_item.id, "status": "superseded"}
         if work_item.payload_json != claimed_payload_json:

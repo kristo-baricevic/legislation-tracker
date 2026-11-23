@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useState } from "react";
 
@@ -209,11 +210,7 @@ export default function BillChangeExperience({
           {error}
         </p>
       )}
-      {!changes && !error && (
-        <p className="text-sm text-slate-600 dark:text-green-600">
-          Loading change history…
-        </p>
-      )}
+      <LoadingSpinner active={!changes && !error} label="Loading change history…" />
       {changes?.initial_window_truncated && (
         <p className="text-sm text-slate-600 dark:text-green-600">
           Showing the newest changes first; older history is available.

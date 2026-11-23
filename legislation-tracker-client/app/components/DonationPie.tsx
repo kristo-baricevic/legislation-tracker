@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { getDonationSizes, type DonationSizes } from "@/lib/representative-research";
@@ -30,7 +31,7 @@ export default function DonationPie({ representativeId, period, snapshot, refres
   return <section className={styles.donationPie} aria-label="Donations by size">
     <div className={styles.pieHeading}><h3>Donations by size</h3><CardTooltip text="Slices show dollars, not donor counts, grouped by each donation’s amount. Includes collected itemized contributions only; excludes refunds and outside spending. Collection may be incomplete."><span tabIndex={0} aria-label="About donation sizes">ⓘ</span></CardTooltip><Link href={`/representatives/${representativeId}?tab=funding&period=${period || "all"}`}>View records</Link></div>
     {error && <p role="alert">Could not load donations. <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
-    {!data && !error && <p role="status">Loading donations…</p>}
+    <LoadingSpinner active={!data && !error} label="Loading donations…" />
     {data && total > 0 && <div className={styles.pieLayout}>
       <div role="img" aria-label="Donation dollars by donation size" className={styles.pieDisc} style={{ background: `conic-gradient(${slices.map(slice => slice.gradient).join(",")})` }} />
       <ul className={styles.pieLegend}>{slices.map(slice => <li key={slice.label}><span className={styles.pieSwatch} style={{ background: slice.color }} aria-hidden="true" /><span>{slice.label}</span><strong>{dollars(slice.amount)}</strong><span>{slice.share > 0 && slice.share < 1 ? "<1" : Math.round(slice.share)}%</span></li>)}</ul>

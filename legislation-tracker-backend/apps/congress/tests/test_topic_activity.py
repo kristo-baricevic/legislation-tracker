@@ -10,6 +10,48 @@ from apps.legislation.models import BillTopic
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def test_background_refresh_keeps_current_catalog_readable_until_replacement():
+    from datetime import timedelta
+    from unittest.mock import patch
+    from zoneinfo import ZoneInfo
+    from django.utils import timezone
+    from apps.accounts.recommendation_support import activity_revision, RecommendationError
+    from apps.congress.topic_activity import DEFAULT_POLICY, representative_activity_catalog
+    from apps.congress.tasks import warm_representative_activity
+
+    cache.clear()
+    now = timezone.now().replace(hour=12, minute=0, second=0)
+    later = now + timedelta(seconds=190)
+    old = {"captured_at": now.isoformat(), "expires_at": now.timestamp() + 300,
+           "representatives": {"1": {"value": "original"}}}
+    new = {"captured_at": later.isoformat(), "expires_at": later.timestamp() + 300,
+           "representatives": {"1": {"value": "refreshed"}}}
+    key = f"representative-topic-activity:v4:{DEFAULT_POLICY.version}:{now.astimezone(ZoneInfo('America/New_York')).date()}:{activity_revision()}"
+    with patch("apps.congress.topic_activity.timezone.now", return_value=now), patch(
+        "apps.congress.topic_activity._build_catalog", return_value=old
+    ) as build:
+        assert representative_activity_catalog() == old
+        warm_representative_activity()
+        assert build.call_count == 1
+
+    cache.delete(key + ":gate")
+    with patch("apps.congress.topic_activity.timezone.now", return_value=later):
+        with patch("apps.congress.topic_activity._build_catalog", side_effect=RecommendationError()):
+            warm_representative_activity()
+        assert representative_activity_catalog() == old
+        cache.delete(key + ":gate")
+
+        def rebuild(*args):
+            # Interactive callers still get the valid snapshot during refresh.
+            assert representative_activity_catalog() == old
+            return new
+
+        with patch("apps.congress.topic_activity._build_catalog", side_effect=rebuild) as build:
+            warm_representative_activity()
+            assert build.call_count == 1
+        assert representative_activity_catalog() == new
+
+
 def test_plain_name_member_evidence_includes_authoritative_party():
     from apps.congress.topic_activity import representative_topic_activity
     cache.clear()

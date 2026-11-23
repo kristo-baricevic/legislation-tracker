@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -468,7 +469,7 @@ export default function BillEnhancementPanel({
     );
   }
   if (loading) {
-    return <ControlsSlot targetId={controlsTargetId}><button type="button" disabled className="rounded-md border px-4 py-2 text-sm opacity-50">Loading AI status…</button></ControlsSlot>;
+    return <ControlsSlot targetId={controlsTargetId}><button type="button" disabled aria-busy="true" aria-label="Loading AI status…" className="rounded-md border px-4 py-2 text-sm opacity-50">Enhance</button></ControlsSlot>;
   }
   if (estimate && !estimate.feature_available) return null;
 
@@ -543,7 +544,7 @@ export default function BillEnhancementPanel({
       {(historyLoading || history) && (
         <details className="mt-5 border-t border-slate-300 pt-4 text-sm dark:border-green-900/70">
           <summary className="cursor-pointer font-semibold">Enhancement history</summary>
-          {historyLoading && !history && <p className="mt-2">Loading enhancement history…</p>}
+          <LoadingSpinner active={historyLoading && !history} label="Loading enhancement history…" />
           {history && history.results.length === 0 && <p className="mt-2 text-slate-600 dark:text-green-600">No prior enhancements.</p>}
           {history && history.results.length > 0 && (
             <ol className="mt-3 space-y-2">

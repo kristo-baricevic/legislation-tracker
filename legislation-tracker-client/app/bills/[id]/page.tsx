@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -236,246 +237,240 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     setVotePage(update(voteLoadedPage));
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl">
-          <p className="text-slate-600 dark:text-green-500">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  function renderContent() {
+    if (loading) return null;
 
-  if (error || !bill) {
+    if (error || !bill) {
+      return (
+        <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
+          <div className="w-full">
+            <p className="text-red-700 dark:text-red-400">{error ?? "Bill not found"}</p>
+            <Link
+              href="/bills"
+              className="mt-4 inline-block cursor-pointer text-blue-900 underline dark:text-green-400"
+            >
+              ← Back to bills
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    const summaryDocument = bill.documents.find(document => document.is_active_version);
+    const sourceDocument = bill.latest_contract?.document != null
+      ? bill.documents.find(document => document.id === bill.latest_contract?.document)
+      : summaryDocument ?? bill.documents[0];
+    const sourceLinkClass = "inline-flex items-center rounded-full border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-green-800 dark:text-green-300 dark:hover:bg-green-950/40";
     return (
       <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
         <div className="w-full">
-          <p className="text-red-700 dark:text-red-400">{error ?? "Bill not found"}</p>
           <Link
             href="/bills"
-            className="mt-4 inline-block cursor-pointer text-blue-900 underline dark:text-green-400"
+            className="mb-6 inline-block cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
           >
             ← Back to bills
           </Link>
+
+          <header className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
+                {bill.bill_number} · {bill.jurisdiction === "federal" ? "Congress" : "Session"} {bill.session}
+              </h1>
+              {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-2xl font-semibold text-slate-800 dark:text-green-200">{bill.title}</p>}
+              <p className="mt-2 text-sm text-slate-600 dark:text-green-500">{stageFor(bill.status)?.label ?? bill.status}</p>
+            </div>
+            <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+              {(bill.congress_gov_url || sourceDocument?.text_url) && <nav aria-label="Bill source links" className="flex flex-wrap gap-2 sm:justify-end">
+                {bill.congress_gov_url && <a href={bill.congress_gov_url} target="_blank" rel="noopener noreferrer" className={sourceLinkClass}>Congress.gov <span aria-hidden="true" className="ml-1">↗</span></a>}
+                {sourceDocument?.text_url && <Link href={`/documents/${sourceDocument.id}`} className={sourceLinkClass}>Full bill text</Link>}
+              </nav>}
+              {hasAccount ? (
+                <button
+                  type="button"
+                  onClick={() => trackingReady ? void toggleBillTracking() : setTrackingRetry(value => value + 1)}
+                  aria-label={!trackingReady && !trackingError ? "Loading follow status" : undefined}
+                  aria-busy={!trackingReady || trackingLoading}
+                  disabled={(!trackingReady && !trackingError) || trackingLoading}
+                  className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
+                >
+                  {!trackingReady ? trackingError ? "Retry follow status" : "Track bill" : trackingLoading
+                    ? "Saving..."
+                    : isTracked
+                      ? "Tracked bill"
+                      : "Track bill"}
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="text-sm text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
+                >
+                  Log in to track this bill
+                </Link>
+              )}
+              {trackingError && (
+                <p className="mt-2 max-w-48 text-sm text-red-700 dark:text-red-300">
+                  {trackingError}
+                </p>
+              )}
+            </div>
+          </header>
+
+
+
+          <div id="bill-ai-controls" className="mb-5" />
+          <DocumentReader documentId={summaryDocument?.id ?? null} enabled={!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)}>
+          {bill.latest_contract ? (
+            isLegalNlpV21ContractSummary(bill.latest_contract)
+              ? <ContractSection contract={bill.latest_contract} bill={bill} />
+              : <BillAnalysisBoundary><ContractSection contract={bill.latest_contract} bill={bill} /></BillAnalysisBoundary>
+          ) : (
+            <BillAnalysisBoundary>
+            <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
+              <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
+                Summary
+              </h2>
+              <p>
+                {bill.summary_preview || summaryDocument?.reader_summary || (processing ? "The summary will appear here when processing finishes." : "We have not retrieved enough source text to summarize this bill yet.")}
+              </p>
+              {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
+            </section>
+            </BillAnalysisBoundary>
+          )}
+
+          {(!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)) && <><ReaderTabBar /><ReaderTabPanel tab="changes"><p className="mb-6">Detailed changes are not available for this analysis.</p></ReaderTabPanel><ReaderTabPanel tab="money"><p className="mb-6">A separate financial breakdown is not available for this version. Check the analysis and full bill text.</p></ReaderTabPanel><ReaderTabPanel tab="terms"><p className="mb-6">A separate glossary is not available for this version.</p></ReaderTabPanel></>}
+          </DocumentReader>
+          {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
+          <ReaderTabPanel tab="votes">
+          <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-sm text-slate-600 dark:text-green-500">Jurisdiction</dt>
+              <dd>{bill.jurisdiction}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-slate-600 dark:text-green-500">Session</dt>
+              <dd>{bill.session}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-slate-600 dark:text-green-500">Status</dt>
+              <dd>{stageFor(bill.status)?.label ?? bill.status}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
+              <dd><LegislatorName id={bill.sponsor ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} /></dd>
+            </div>
+            {bill.introduced_at && (
+              <div>
+                <dt className="text-sm text-slate-600 dark:text-green-500">Introduced</dt>
+                <dd>{bill.introduced_at}</dd>
+              </div>
+            )}
+            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="sm:col-span-2 lg:col-span-4">
+              <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
+              <dd className="mt-1 leading-6">{bill.status}</dd>
+            </div>}
+          </dl>
+          <LoadingSpinner active={voteHistoryLoading && votes === null} label="Loading vote history…" />
+          {voteHistoryError && (
+            <div
+              role="alert"
+              className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+            >
+              <span>{voteHistoryError}</span>
+              <button
+                type="button"
+                onClick={() => setVoteHistoryRetry((attempt) => attempt + 1)}
+                className="cursor-pointer border border-current px-2 py-1 font-semibold"
+              >
+                Retry vote history
+              </button>
+            </div>
+          )}
+          {votes && votes.length > 0 && (
+            <VotingRecord
+              loading={voteHistoryLoading}
+              votes={votes}
+              selectedVote={selectedVote}
+              loadingVoteId={loadingVoteId}
+              error={voteError}
+              onSelect={viewVotePositions}
+              page={voteLoadedPage}
+              hasNext={voteHasNext}
+              onPrevious={() => changeVoteHistoryPage((current) => Math.max(1, current - 1))}
+              onNext={() => changeVoteHistoryPage((current) => current + 1)}
+            />
+          )}
+          {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
+            <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
+              <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
+                Voting record
+              </h2>
+              <p>No roll-call votes are available.</p>
+            </section>
+          )}
+
+          </ReaderTabPanel>
+          <ReaderTabPanel tab="versions">
+          <BillChangeExperience
+            billId={bill.id}
+            contracts={comparisonContracts ?? []}
+            documents={bill.documents}
+          />
+
+          {bill.documents && bill.documents.length > 0 && (
+            <div className="mb-6">
+              <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Bill versions</h2>
+              <ul className="divide-y divide-slate-400 rounded-lg border border-slate-400 dark:divide-green-800 dark:border-green-800">
+                {bill.documents.map((doc) => (
+                  <li key={doc.id} className="flex items-center justify-between gap-4 p-3">
+                    <span>
+                      {doc.version_label}
+                      {doc.is_active_version && (
+                        <span className="ml-2 text-sm text-slate-600 dark:text-green-500">(active)</span>
+                      )}
+                    </span>
+                    <span className="flex shrink-0 flex-wrap gap-3 text-sm">
+                      {doc.download_url && (
+                        <a
+                          href={`${getApiBase()}${doc.download_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                        >
+                          Download
+                        </a>
+                      )}
+                      {doc.text_url && (
+                        <Link
+                          href={`/documents/${doc.id}`}
+                          className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                        >
+                          Read text
+                        </Link>
+                      )}
+                      {doc.source_url && (
+                        <a
+                          href={doc.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
+                        >
+                          Source →
+                        </a>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          </ReaderTabPanel>
+          <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
         </div>
       </div>
     );
   }
+  return <><LoadingSpinner centered active={loading} label="Loading bill…" />{renderContent()}</>;
 
-  const summaryDocument = bill.documents.find(document => document.is_active_version);
-  const sourceDocument = bill.latest_contract?.document != null
-    ? bill.documents.find(document => document.id === bill.latest_contract?.document)
-    : summaryDocument ?? bill.documents[0];
-  const sourceLinkClass = "inline-flex items-center rounded-full border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-green-800 dark:text-green-300 dark:hover:bg-green-950/40";
-  return (
-    <div className="min-h-[calc(100vh-4rem)] w-full bg-background px-4 py-6 font-sans text-slate-900 dark:text-green-300 sm:px-6 lg:px-8">
-      <div className="w-full">
-        <Link
-          href="/bills"
-          className="mb-6 inline-block cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
-        >
-          ← Back to bills
-        </Link>
-
-        <header className="mb-6 flex flex-col gap-3 border-b border-slate-300 pb-4 dark:border-green-900/70 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="mb-2 text-2xl font-semibold text-slate-900 dark:text-green-400">
-              {bill.bill_number} · {bill.jurisdiction === "federal" ? "Congress" : "Session"} {bill.session}
-            </h1>
-            {!isUnhelpfulOfficialTitle(bill.title) && <p className="text-2xl font-semibold text-slate-800 dark:text-green-200">{bill.title}</p>}
-            <p className="mt-2 text-sm text-slate-600 dark:text-green-500">{stageFor(bill.status)?.label ?? bill.status}</p>
-          </div>
-          <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
-            {(bill.congress_gov_url || sourceDocument?.text_url) && <nav aria-label="Bill source links" className="flex flex-wrap gap-2 sm:justify-end">
-              {bill.congress_gov_url && <a href={bill.congress_gov_url} target="_blank" rel="noopener noreferrer" className={sourceLinkClass}>Congress.gov <span aria-hidden="true" className="ml-1">↗</span></a>}
-              {sourceDocument?.text_url && <Link href={`/documents/${sourceDocument.id}`} className={sourceLinkClass}>Full bill text</Link>}
-            </nav>}
-            {hasAccount ? (
-              <button
-                type="button"
-                onClick={() => trackingReady ? void toggleBillTracking() : setTrackingRetry(value => value + 1)}
-                disabled={(!trackingReady && !trackingError) || trackingLoading}
-                className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-              >
-                {!trackingReady ? trackingError ? "Retry follow status" : "Loading follow status" : trackingLoading
-                  ? "Saving..."
-                  : isTracked
-                    ? "Tracked bill"
-                    : "Track bill"}
-              </button>
-            ) : (
-              <Link
-                href="/login"
-                className="text-sm text-blue-900 underline hover:text-blue-950 dark:text-green-500 dark:hover:text-green-400"
-              >
-                Log in to track this bill
-              </Link>
-            )}
-            {trackingError && (
-              <p className="mt-2 max-w-48 text-sm text-red-700 dark:text-red-300">
-                {trackingError}
-              </p>
-            )}
-          </div>
-        </header>
-
-
-
-        <div id="bill-ai-controls" className="mb-5" />
-        <DocumentReader documentId={summaryDocument?.id ?? null} enabled={!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)}>
-        {bill.latest_contract ? (
-          isLegalNlpV21ContractSummary(bill.latest_contract)
-            ? <ContractSection contract={bill.latest_contract} bill={bill} />
-            : <BillAnalysisBoundary><ContractSection contract={bill.latest_contract} bill={bill} /></BillAnalysisBoundary>
-        ) : (
-          <BillAnalysisBoundary>
-          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
-            <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
-              Summary
-            </h2>
-            <p>
-              {bill.summary_preview || summaryDocument?.reader_summary || (processing ? "The summary will appear here when processing finishes." : "We have not retrieved enough source text to summarize this bill yet.")}
-            </p>
-            {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
-          </section>
-          </BillAnalysisBoundary>
-        )}
-
-        {(!bill.latest_contract || !isLegalNlpV21ContractSummary(bill.latest_contract)) && <><ReaderTabBar /><ReaderTabPanel tab="changes"><p className="mb-6">Detailed changes are not available for this analysis.</p></ReaderTabPanel><ReaderTabPanel tab="money"><p className="mb-6">A separate financial breakdown is not available for this version. Check the analysis and full bill text.</p></ReaderTabPanel><ReaderTabPanel tab="terms"><p className="mb-6">A separate glossary is not available for this version.</p></ReaderTabPanel></>}
-        </DocumentReader>
-        {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
-        <ReaderTabPanel tab="votes">
-        <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="text-sm text-slate-600 dark:text-green-500">Jurisdiction</dt>
-            <dd>{bill.jurisdiction}</dd>
-          </div>
-          <div>
-            <dt className="text-sm text-slate-600 dark:text-green-500">Session</dt>
-            <dd>{bill.session}</dd>
-          </div>
-          <div>
-            <dt className="text-sm text-slate-600 dark:text-green-500">Status</dt>
-            <dd>{stageFor(bill.status)?.label ?? bill.status}</dd>
-          </div>
-          <div>
-            <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
-            <dd><LegislatorName id={bill.sponsor ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} /></dd>
-          </div>
-          {bill.introduced_at && (
-            <div>
-              <dt className="text-sm text-slate-600 dark:text-green-500">Introduced</dt>
-              <dd>{bill.introduced_at}</dd>
-            </div>
-          )}
-          {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="sm:col-span-2 lg:col-span-4">
-            <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
-            <dd className="mt-1 leading-6">{bill.status}</dd>
-          </div>}
-        </dl>
-        {voteHistoryLoading && (
-          <p aria-live="polite" className="mb-3 text-sm text-slate-600 dark:text-green-500">
-            {votes ? "Refreshing vote history…" : "Loading vote history…"}
-          </p>
-        )}
-        {voteHistoryError && (
-          <div
-            role="alert"
-            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
-          >
-            <span>{voteHistoryError}</span>
-            <button
-              type="button"
-              onClick={() => setVoteHistoryRetry((attempt) => attempt + 1)}
-              className="cursor-pointer border border-current px-2 py-1 font-semibold"
-            >
-              Retry vote history
-            </button>
-          </div>
-        )}
-        {votes && votes.length > 0 && (
-          <VotingRecord
-            loading={voteHistoryLoading}
-            votes={votes}
-            selectedVote={selectedVote}
-            loadingVoteId={loadingVoteId}
-            error={voteError}
-            onSelect={viewVotePositions}
-            page={voteLoadedPage}
-            hasNext={voteHasNext}
-            onPrevious={() => changeVoteHistoryPage((current) => Math.max(1, current - 1))}
-            onNext={() => changeVoteHistoryPage((current) => current + 1)}
-          />
-        )}
-        {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
-          <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
-              Voting record
-            </h2>
-            <p>No roll-call votes are available.</p>
-          </section>
-        )}
-
-        </ReaderTabPanel>
-        <ReaderTabPanel tab="versions">
-        <BillChangeExperience
-          billId={bill.id}
-          contracts={comparisonContracts ?? []}
-          documents={bill.documents}
-        />
-
-        {bill.documents && bill.documents.length > 0 && (
-          <div className="mb-6">
-            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">Bill versions</h2>
-            <ul className="divide-y divide-slate-400 rounded-lg border border-slate-400 dark:divide-green-800 dark:border-green-800">
-              {bill.documents.map((doc) => (
-                <li key={doc.id} className="flex items-center justify-between gap-4 p-3">
-                  <span>
-                    {doc.version_label}
-                    {doc.is_active_version && (
-                      <span className="ml-2 text-sm text-slate-600 dark:text-green-500">(active)</span>
-                    )}
-                  </span>
-                  <span className="flex shrink-0 flex-wrap gap-3 text-sm">
-                    {doc.download_url && (
-                      <a
-                        href={`${getApiBase()}${doc.download_url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                      >
-                        Download
-                      </a>
-                    )}
-                    {doc.text_url && (
-                      <Link
-                        href={`/documents/${doc.id}`}
-                        className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                      >
-                        Read text
-                      </Link>
-                    )}
-                    {doc.source_url && (
-                      <a
-                        href={doc.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="cursor-pointer text-blue-900 underline hover:text-blue-950 dark:text-green-400 dark:hover:text-green-300"
-                      >
-                        Source →
-                      </a>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        </ReaderTabPanel>
-        <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
-      </div>
-    </div>
-  );
 }
 
 export default function BillDetailPage() {

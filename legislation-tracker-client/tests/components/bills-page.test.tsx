@@ -6,6 +6,8 @@ import BillsPage from "@/app/bills/page";
 import {
   createSavedBillSearch,
   getBills,
+  getSession,
+  getMyTracking,
   getSavedBillSearchResults,
   getSavedBillSearches,
   openSavedBillSearch,
@@ -47,6 +49,23 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillsPage", () => {
+  it("keeps follow loading and retry labels compact and restores the follow action", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    let rejectTracking!: (reason: Error) => void;
+    vi.mocked(getMyTracking).mockReturnValueOnce(new Promise((_, reject) => { rejectTracking = reject; }));
+    vi.mocked(getBills).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "School grants", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }] });
+    render(<BillsPage />);
+    const loading = await screen.findByRole("button", { name: "Loading follow status" });
+    expect(loading).toBeDisabled();
+    expect(loading).toHaveTextContent(/^Follow$/);
+    rejectTracking(new Error("Unavailable"));
+    const retry = await screen.findByRole("button", { name: "Retry follow status" });
+    expect(retry).toHaveTextContent(/^Retry$/);
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    await userEvent.click(retry);
+    expect(await screen.findByRole("button", { name: /^Follow$/ })).toBeEnabled();
+    expect(screen.queryByText("Load follow status")).not.toBeInTheDocument();
+  });
   it("retains results and the committed page while the next page loads", async () => {
     const result = { count: 2, next: "next", previous: null, results: [{ id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "School grants", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }] };
     vi.mocked(getBills).mockResolvedValue(result);
@@ -128,6 +147,13 @@ describe("BillsPage", () => {
       { id: 7, name: "Health", slug: "health" },
     ]);
     vi.mocked(api.getSavedBillSearches).mockResolvedValue({ count: 0, results: [] });
+  });
+
+  it("does not flash a loader while the catalog request starts", async () => {
+    vi.mocked(getBills).mockReturnValueOnce(new Promise(() => {}));
+    render(<BillsPage />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Loading bills" })).toBeVisible();
   });
 
   it("shows topic-linked bills across every Congress", async () => {

@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 import Link from "next/link";
 import React from "react";
 import { getBill, getBillEnhancement, type BillEnhancement, type BillListItem, type BillDetail } from "@/lib/api";
@@ -62,7 +63,8 @@ function BillModal({ bill, onClose, fallbackFocus }: { bill: BillListItem; onClo
     <div className={styles.modalBody}>
     <h2 id={titleId} className={styles.modalTitle}><CardTooltip text="Click the title to open the full bill page."><Link href={`/bills/${bill.id}`}>{bill.title || "Untitled bill"} <span aria-hidden="true">↗</span></Link></CardTooltip></h2>
     {stage && <StageTrack stage={stage} color={topicColor(bill.topics[0]?.topic_id ?? 0)} />}
-    {error ? <p role="alert">{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></p> : !detail ? <p role="status">Loading bill details…</p> : <>
+    <LoadingSpinner active={!error && !detail} label="Loading bill details…" />
+    {error ? <p role="alert">{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></p> : !detail ? null : <>
       <dl className={styles.metadata}>
         <div><dt>Sponsor</dt><dd>{detail.sponsor ? <RepresentativeAvatarBadge id={detail.sponsor} name={detail.sponsor_name || "Sponsor"} congress={detail.session} representative={detail.sponsor_bioguide_id ? { bioguide_id: detail.sponsor_bioguide_id } : undefined} notes={["Introduced this bill"]} /> : "Not recorded"}</dd></div>
         <div><dt>Introduced</dt><dd>{dateLabel(detail.introduced_at)}</dd></div>
@@ -71,7 +73,8 @@ function BillModal({ bill, onClose, fallbackFocus }: { bill: BillListItem; onClo
       <section className={styles.summary}><h3>Summary</h3><p>{bill.card_summary || summary || synopsis || "No bill summary is available yet."}</p>
         {!bill.card_summary && (summary ? <p className={styles.note}>Source: {detail.summary_source || "Stored bill summary"}.{detail.summary_version_code ? ` Summary version: ${detail.summary_version_code}.` : ""}</p> : synopsis && source && <p className={styles.note}>Source: <Link href={`/documents/${source.id}`}>{source.version_label || "Bill text"}</Link>.</p>)}
       </section>
-      {enhancementLoading ? <p role="status">Loading explanations…</p> : enhancementError ? <p role="alert" className="text-sm text-red-700">Couldn’t load explanations. <button onClick={() => setEnhancementRetry(value => value + 1)}>Retry explanations</button></p> : <BillModalDetails key={`${bill.id}:${contract?.id}`} billId={bill.id} contractId={sameDocument ? contract?.id : undefined} contractHash={contract?.contract_hash} enhancement={enhancement} document={source} paginationTarget={pagerId} />}
+      <LoadingSpinner active={enhancementLoading} label="Loading explanations…" />
+      {enhancementLoading ? null : enhancementError ? <p role="alert" className="text-sm text-red-700">Couldn’t load explanations. <button onClick={() => setEnhancementRetry(value => value + 1)}>Retry explanations</button></p> : <BillModalDetails key={`${bill.id}:${contract?.id}`} billId={bill.id} contractId={sameDocument ? contract?.id : undefined} contractHash={contract?.contract_hash} enhancement={enhancement} document={source} paginationTarget={pagerId} />}
     </>}
     </div><div id={pagerId} className={styles.modalPagerSlot} />
   </StackDialog>;

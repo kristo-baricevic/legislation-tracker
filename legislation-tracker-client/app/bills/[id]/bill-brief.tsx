@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
 import { StableResults } from "@/app/components/StableResults";
@@ -97,10 +98,10 @@ function LinkedTimelineDetails({ contractId, item, document }: { contractId: num
       <button type="button" aria-expanded={open} onClick={() => { const next = !open; setOpen(next); if (next && items.length === 0 && !loading) void load(1, false); }} className="cursor-pointer text-sm font-semibold text-blue-900 underline dark:text-green-400">Show all {item.timeline_count} deadlines</button>
       {open && (
         <div className="mt-3">
-          {loading && items.length === 0 && <p className="text-sm text-slate-600 dark:text-green-600">Loading linked deadlines…</p>}
+          <LoadingSpinner active={loading && items.length === 0} label="Loading linked deadlines…" />
           {error && <div role="alert" className="text-sm text-red-700 dark:text-red-300"><p>{error}</p><button type="button" onClick={() => void load(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry linked deadlines</button></div>}
           <ul className="space-y-2 text-sm text-slate-700 dark:text-green-200">{items.map((timeline) => <li key={timeline.id}>{timeline.display_text}</li>)}</ul>
-          {hasMore && !error && <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-3 border border-slate-700 px-3 py-1.5 text-sm font-semibold dark:border-green-700">{loading ? "Loading linked deadlines…" : "Show 25 more deadlines"}</button>}
+          {hasMore && !error && <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-3 border border-slate-700 px-3 py-1.5 text-sm font-semibold dark:border-green-700">Show 25 more deadlines</button>}
           {items.length > 0 && <SourceEvidence contractId={contractId} lineItemId={item.id} textUrl={document?.text_url} downloadUrl={document?.download_url} label="Read deadline source text" />}
         </div>
       )}
@@ -143,10 +144,10 @@ function LinkedDefinitionDetails({ contractId, item, document }: { contractId: n
       <button type="button" aria-expanded={open} onClick={() => { const next = !open; setOpen(next); if (next && items.length === 0 && !loading) void load(1, false); }} className="cursor-pointer text-sm font-semibold text-blue-900 underline dark:text-green-400">{label}</button>
       {open && (
         <div className="mt-3">
-          {loading && items.length === 0 && <p className="text-sm text-slate-600 dark:text-green-600">Loading linked terms…</p>}
+          <LoadingSpinner active={loading && items.length === 0} label="Loading linked terms…" />
           {error && <div role="alert" className="text-sm text-red-700 dark:text-red-300"><p>{error}</p><button type="button" onClick={() => void load(items.length ? page + 1 : 1, items.length > 0)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry linked terms</button></div>}
           <dl className="space-y-3">{items.map((definition) => <GlossaryTerm key={definition.id} item={definition} contractId={contractId} document={document} />)}</dl>
-          {hasMore && !error && <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-3 border border-slate-700 px-3 py-1.5 text-sm font-semibold dark:border-green-700">{loading ? "Loading linked terms…" : "Show 25 more linked terms"}</button>}
+          {hasMore && !error && <button type="button" disabled={loading} onClick={() => void load(page + 1, true)} className="mt-3 border border-slate-700 px-3 py-1.5 text-sm font-semibold dark:border-green-700">Show 25 more linked terms</button>}
         </div>
       )}
     </div>
@@ -270,7 +271,7 @@ function KeyTerms({ document, contractId, totalCount }: { document: BillDocument
       </button>}
       {open && (
         <div className="mt-3">
-          {loading && items.length === 0 && <p className="text-sm text-slate-600 dark:text-green-600">Loading key terms…</p>}
+          <LoadingSpinner active={loading && entries.length === 0} label="Loading key terms…" />
           {error && <div role="alert" className="text-sm text-red-700 dark:text-red-300"><p>{error}</p><button type="button" disabled={loading} onClick={() => void load()} className="mt-2 border border-current px-2 py-1 font-semibold">Retry key terms</button></div>}
           {loaded && !entries.length && <p className="text-sm text-slate-600 dark:text-green-600">No key terms to show.</p>}
           <dl className="space-y-4">{entries.map((entry, index) => <GlossaryEntryView key={entry.sources[0].id} entry={entry} contractId={contractId} document={document} number={index + 1} />)}</dl>
@@ -364,7 +365,8 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
             <p className="text-sm font-semibold text-slate-700 dark:text-green-500">{sourceLabel}{bill.summary_action_date ? ` · ${bill.summary_action_date}` : ""}</p>
             {preview && !summary && <p className="mt-2 w-full whitespace-pre-line text-base leading-7 text-slate-900 dark:text-green-100">{preview}</p>}
             {summary && <p className="mt-2 w-full whitespace-pre-line text-base leading-7 text-slate-900 dark:text-green-100">{summary}</p>}
-            {bill.summary_has_more && !summary && <button type="button" disabled={summaryLoading} onClick={() => void loadSummary()} className="mt-3 cursor-pointer text-sm font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 dark:text-green-400">{summaryLoading ? "Loading complete summary…" : bill.summary_source === "crs" ? "Read full official summary" : "Read full source description"}</button>}
+            <LoadingSpinner reserveSpace active={summaryLoading} label="Loading complete summary…" />
+            {bill.summary_has_more && !summary && <button type="button" disabled={summaryLoading} onClick={() => void loadSummary()} className="mt-3 cursor-pointer text-sm font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 dark:text-green-400">{bill.summary_source === "crs" ? "Read full official summary" : "Read full source description"}</button>}
             {summaryError && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300"><p>{summaryError}</p><button type="button" onClick={() => void loadSummary()} className="mt-1 border border-current px-2 py-1 font-semibold">Retry complete summary</button></div>}
           </div>
         ) : <div className="mt-4">
@@ -392,7 +394,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
         <LegacyReaderChanges>
           <div className="mt-4" aria-busy={readerLoading}>
             <StableResults page={page} busy={readerLoading} label="Bill provisions">
-            {readerLoading && items.length === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">Loading bill provisions…</p>}
+            <LoadingSpinner active={readerLoading && items.length === 0} label="Loading bill provisions…" />
             {readerError && <div role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300"><p>{readerError}</p><button type="button" onClick={() => void loadReader(requestedPage, true)} className="mt-2 border border-current px-2 py-1 font-semibold">Retry bill provisions</button></div>}
             <ul className="mt-2 list-none">{changes.map((item, index) => <ReaderItem key={item.id} hideHeading={index > 0 && changeCopy(changes[index - 1]).title === changeCopy(item).title} sourceNumber={(page - 1) * 6 + items.indexOf(item) + coverageNumber + 1} contractId={contract.id} item={item} document={document} onShowAllFinancial={onShowAllFinancial} />)}</ul>
             {!readerLoading && !readerError && !items.length && <p className="mt-4">No readable provisions on this page. Use Next to continue if more pages are available.</p>}

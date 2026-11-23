@@ -8,6 +8,7 @@ from apps.congress.models import Representative
 from apps.research.models import ResearchRun
 from apps.research.tasks import fenced_work, continue_work, is_latest_run
 from .identity import resolve_candidate, candidate_search_name, verified_match
+from apps.congress.names import normalize_person_name
 from .models import CandidateIdentity, RepresentativeCandidate, CampaignCommittee, CandidateCommittee, Contributor, ContributorIdentity, FinanceSnapshot, FinanceResearchCheckpoint, FinanceTransaction
 from .normalization import normalize_receipt, normalize_refund
 from .fec_client import get_page, receipt_parameters
@@ -99,8 +100,8 @@ def process_finance(work):
     outside_scan = snapshot.outside_scans.filter(complete=False).order_by("candidate_id", "category").first() if snapshot else None
     outside_page_number = outside_scan.page if outside_scan else None
     if identity.status != "verified":
-        # Name search supplies review candidates, never automatic links.
-        page = get_page("candidates/search/", {"q": candidate_search_name(run.representative), "state": run.representative.state, "office": "S" if run.representative.chamber == "senate" else "H", "cycle": run.period, "per_page": 100}) if identity.status == "not_found" else None
+        # Recheck blocked discoveries using fresh provider evidence, not saved names.
+        page = get_page("candidates/search/", {"q": candidate_search_name(run.representative), "state": run.representative.state, "office": "S" if run.representative.chamber == "senate" else "H", "cycle": run.period, "per_page": 100})
     elif phase == "committees" and index < len(candidates):
         page = get_page(f"candidate/{candidates[index]}/committees/", {"cycle": run.period, "per_page": 100, "page": work.payload_json.get("committee_page", 1)})
     elif phase == "outside" and outside_scan:
@@ -135,8 +136,14 @@ def process_finance(work):
                     continue
                 if matched and fec_id != matched:
                     continue
-                candidate, _ = CandidateIdentity.objects.get_or_create(fec_id=fec_id, defaults={"name": str(item.get("name", ""))[:255], "office": item.get("office", ""), "state": item.get("state", "")})
+                candidate, _ = CandidateIdentity.objects.update_or_create(fec_id=fec_id, defaults={"name": normalize_person_name(item.get("name", ""))[:255], "office": item.get("office", ""), "state": item.get("state", "")})
                 mapping, created = RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "verified": fec_id == matched, "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"})
+                if not created and fec_id == matched and (not mapping.verified or not mapping.evidence_url):
+                    # Fresh current-period proof does not verify historical periods.
+                    mapping.periods = [run.period]
+                    mapping.verified = True
+                    mapping.evidence_url = f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"
+                    mapping.save(update_fields=["periods", "verified", "evidence_url"])
                 # Only fresh current-period proof extends a verified mapping.
                 # Never promote unverified historical periods as a side effect.
                 if not created and fec_id == matched and mapping.verified and mapping.evidence_url and run.period not in mapping.periods:

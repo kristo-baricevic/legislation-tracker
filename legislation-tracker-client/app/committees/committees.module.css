@@ -1,0 +1,28 @@
+.page { --radius:10px; --ink:#273b36; padding: 2rem clamp(1rem,3vw,3rem); max-width: 1600px; margin: auto; color: var(--ink); }
+.toolbar,.heading { display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+.toolbar { margin-bottom:2rem; flex-wrap:wrap; }
+.toolbar h1 { font-size:2rem; }
+.filters { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) auto; gap:1rem; align-items:end; margin-bottom:1.5rem; }
+.filters label { display:grid; gap:.4rem; font-size:.85rem; min-width:0; }
+.filters input,.filters select,.filters button { height:42px; min-width:0; width:100%; border:1px solid var(--line); border-radius:.5rem; padding:.5rem .75rem; background:var(--paper); color:var(--ink); }
+.filters button { font-size:.85rem; background:var(--wash); }
+.filters button:disabled { opacity:.45; }
+@media(max-width:800px){.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters button{width:auto;justify-self:start}}
+.toolbar label { display:flex; align-items:center; gap:.75rem; }
+.toolbar select { border:1px solid #cdd4cc; border-radius:.6rem; padding:.65rem 2rem .65rem .85rem; background:white; }
+.directory { min-height:65vh; }
+.committee { padding:1.5rem 0 2.5rem; min-width:0; }
+.heading h2 { font-size:1.45rem; font-weight:600; }
+.heading small { color:#586b64; }
+.chamber { text-transform:capitalize; border-radius:2rem; padding:.3rem .8rem; background:#eceee8; font-size:.8rem; }
+.members { display:flex; gap:1.25rem; overflow-x:auto; padding:1.4rem .25rem 1rem; min-height:130px; scrollbar-width:thin; }
+.member { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:.5rem; min-width:64px; }
+.members .member a { width:64px; height:64px; }
+.role { font-size:.7rem; font-weight:600; border-radius:1rem; padding:.2rem .55rem; background:#e8e3d4; white-space:nowrap; }
+.rowTitle { font-size:.9rem; font-weight:600; margin:.5rem 0 .75rem; }
+.bills { display:flex; gap:1rem; overflow-x:auto; padding:.25rem .25rem 1rem; height:640px; scrollbar-width:thin; align-items:stretch; overflow-anchor:none; }
+.bill { flex:0 0 340px; display:flex; }
+.bill>article { width:100%; }
+.more { flex:0 0 130px; min-height:3rem; display:flex; align-items:center; justify-content:center; font-size:.85rem; }
+.more button { border:1px solid #bcc8bf; border-radius:.5rem; padding:.6rem .8rem; background:#f0f2eb; }
+@media(max-width:600px){.page{padding:1.25rem 1rem}.bill{flex-basis:calc(100vw - 3.5rem)}.heading h2{font-size:1.2rem}.heading{align-items:flex-start}.members{gap:1rem}}

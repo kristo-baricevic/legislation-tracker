@@ -382,10 +382,10 @@ describe("BillDetailPage", () => {
     expect(await screen.findByRole("heading", { name: "HR 11 · Congress 119" })).toBeVisible();
     expect(screen.queryByText("Contract history summary")).not.toBeInTheDocument();
     expect(screen.queryByText(/roll call 17: Passed/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Loading contract history…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading contract history" })).not.toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "What this bill does" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("tab", { name: "Votes & sponsor" }));
-    expect(screen.getByText("Loading vote history…")).toBeVisible();
+    expect(await screen.findByRole("status", { name: "Loading vote history" })).toBeVisible();
     expect(getContracts).toHaveBeenLastCalledWith(11, { page: 1, view: "summary" });
     expect(getVotes).toHaveBeenLastCalledWith(11, { page: 1 });
   });
@@ -521,6 +521,18 @@ describe("BillDetailPage", () => {
     });
     expect(screen.queryByRole("link", { name: "First Vote Representative" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Second Vote Representative" })).toBeVisible();
+  });
+
+  it("retains vote history without inserting a spinner while the next page loads", async () => {
+    vi.mocked(getVotes).mockResolvedValueOnce({ count: 21, next: "?page=2", previous: null, results: [{ id: 33, bill: 10, chamber: "house", session_number: 1, roll_number: 17, vote_date: "2026-08-19T00:00:00Z", result: "Passed", yeas: 220, nays: 210 }] });
+    render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
+    expect(await screen.findByText(/roll call 17: Passed/)).toBeVisible();
+    vi.mocked(getVotes).mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(screen.getByRole("button", { name: "Next vote history page" }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+    expect(screen.getByText(/roll call 17: Passed/)).toBeVisible();
+    expect(screen.queryByRole("status", { name: "Loading vote history" })).not.toBeInTheDocument();
   });
 
   it("clears selected member positions when the vote history page changes", async () => {

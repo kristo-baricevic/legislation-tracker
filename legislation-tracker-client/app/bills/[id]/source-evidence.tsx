@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -93,11 +94,7 @@ export function SourceEvidence(props: SourceEvidenceProps) {
     <SourcePopover key={identity} number={props.number} label={props.label ?? "Read bill text"} onOpen={() => { if (!chunks.length && !loading) void load(1); }}>
         {props.annotations}
         <div>
-          {loading && chunks.length === 0 && (
-            <p aria-live="polite" className="text-sm text-slate-600 dark:text-green-600">
-              Loading source text…
-            </p>
-          )}
+          <LoadingSpinner active={loading} label="Loading source text…" />
           {error && (
             <div role="alert" className="text-sm text-red-700 dark:text-red-300">
               <p>{error}</p>
@@ -126,7 +123,7 @@ export function SourceEvidence(props: SourceEvidenceProps) {
               onClick={() => void load(page + 1)}
               className="mt-3 cursor-pointer border border-slate-600 px-3 py-1.5 text-sm font-semibold text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300"
             >
-              {loading ? "Loading source text…" : "Load more source text"}
+              Load more source text
             </button>
           )}
           {(props.textUrl || props.downloadUrl) && (

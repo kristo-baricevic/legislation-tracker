@@ -131,13 +131,13 @@ describe("BillEnhancementPanel", () => {
       vi.mocked(getSession).mockReturnValue(new Promise(() => {}));
       await act(async () => announceTrackingChange());
       expect(reader.isConnected).toBe(true);
-      expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument());
       expect(screen.getByRole("button", { name: mode })).toHaveAttribute("aria-pressed", "true");
       expect(getLatestBillEnhancement).toHaveBeenCalledTimes(requests);
     }
     act(() => { beginSessionTransition(); });
     expect(reader.isConnected).toBe(false);
-    expect(screen.getByRole("status", { name: "Loading bill analysis" })).toBeVisible();
+    expect(await screen.findByRole("status", { name: "Loading bill analysis" })).toBeVisible();
     act(() => { endSessionTransition(null); });
   });
   it("does not expose original analysis while the initial saved-reader lookup is unresolved", async () => {
@@ -146,18 +146,18 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getLatestBillEnhancement).mockReturnValue(new Promise(done => { resolve = done; }));
     render(<AiGlossaryProvider><ReaderReadiness /><BillAnalysisBoundary><ActiveReader /></BillAnalysisBoundary><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
     expect(screen.getByText("Analysis pending")).toBeVisible();
-    expect(screen.getByRole("status", { name: "Loading bill analysis" })).toBeVisible();
+    expect(await screen.findByRole("status", { name: "Loading bill analysis" })).toBeVisible();
     expect(screen.queryByText("Active reader: none")).not.toBeInTheDocument();
     await screen.findByRole("button", { name: "Loading AI status…" });
     expect(screen.queryByText("Original analysis ready")).not.toBeInTheDocument();
     await act(async () => resolve(enhancementPayload()));
     expect(await screen.findByText("Enhanced analysis ready")).toBeVisible();
     expect(screen.getByText("Active reader: 9")).toBeVisible();
-    expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument());
     expect(screen.queryByText("Original analysis ready")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Original" }));
     expect(screen.getByText("Active reader: none")).toBeVisible();
-    expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading bill analysis" })).not.toBeInTheDocument());
   });
 
   it.each(["empty", "failure", "anonymous", "disabled"])("reveals the original after %s instead of leaving a loading placeholder", async reason => {

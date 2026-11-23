@@ -320,6 +320,10 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         )
         page_number = query.validated_data.get("page", 1)
         page_size = query.validated_data.get("page_size", 20)
+        from apps.accounts.dashboard_bill_cards import add_card_summaries
+
+        cards = serializer.data
+        add_card_summaries([{"bill": card} for card in cards])
 
         def page_url(next_page):
             if next_page < 1 or (next_page - 1) * page_size >= search_page.count:
@@ -333,7 +337,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
                 "count": search_page.count,
                 "next": page_url(page_number + 1),
                 "previous": page_url(page_number - 1),
-                "results": serializer.data,
+                "results": cards,
             }
         )
 
