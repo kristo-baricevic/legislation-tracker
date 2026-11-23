@@ -287,6 +287,7 @@ class BillEnhancement(models.Model):
         FAILED = "failed", "Failed"
         REFUSED = "refused", "Refused"
         OUTCOME_UNKNOWN = "outcome_unknown", "Outcome unknown"
+        PAUSED = "paused", "Paused"
 
     user = models.ForeignKey(
         "accounts.User",
@@ -366,6 +367,7 @@ class BillEnhancementAttempt(models.Model):
         FAILED = "failed", "Failed"
         REFUSED = "refused", "Refused"
         OUTCOME_UNKNOWN = "outcome_unknown", "Outcome unknown"
+        PAUSED = "paused", "Paused"
 
     enhancement = models.ForeignKey(
         BillEnhancement,
@@ -399,6 +401,7 @@ class BillEnhancementAttempt(models.Model):
     total_tokens = models.PositiveIntegerField(null=True, blank=True)
     provider_response_id = models.CharField(max_length=255, blank=True, default="")
     resolved_model = models.CharField(max_length=128, blank=True, default="")
+    pinned_model = models.CharField(max_length=255, blank=True, default="")
     result_json = models.JSONField(null=True, blank=True)
     failure_category = models.CharField(max_length=64, blank=True, default="")
     failure_detail = models.JSONField(default=dict, blank=True)
@@ -427,6 +430,21 @@ class BillEnhancementAttempt(models.Model):
             models.Index(fields=["status", "lease_expires_at"]),
             models.Index(fields=["enhancement", "created_at"]),
         ]
+
+
+class BillEnhancementWorkUnit(models.Model):
+    """Durable reader plan; a split replaces its parent, not completed siblings."""
+    attempt = models.ForeignKey(BillEnhancementAttempt, on_delete=models.CASCADE, related_name='work_units')
+    node_key = models.CharField(max_length=255)
+    parent_key = models.CharField(max_length=255, blank=True, default='')
+    batch_index = models.PositiveIntegerField()
+    request_json = models.JSONField()
+    status = models.CharField(max_length=16, default='pending')
+    result_json = models.JSONField(null=True)
+    reason = models.CharField(max_length=100, blank=True, default='')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['attempt', 'node_key'], name='enhancement_work_node_uniq')]
 
 
 class BillProcessingCache(models.Model):

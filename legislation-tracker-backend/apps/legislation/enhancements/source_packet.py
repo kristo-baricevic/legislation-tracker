@@ -212,9 +212,8 @@ def build_document_preflight(document, *, reuse_result=None):
     if not reuse_result and needs_large_document_review(text):
         from .xml_sections import stored_xml_sections
         sections = stored_xml_sections(document, text)
-        if sections:
-            from .reader_batches import build_reader_preflight
-            return build_reader_preflight(document, xml_sections=sections)
+        from .reader_batches import build_reader_preflight
+        return build_reader_preflight(document, xml_sections=sections)
     if getattr(settings, "LLM_SOURCE_FIRST_ENABLED", False):
         from .source_first_preflight import build_source_first_preflight
         return build_source_first_preflight(document, text, reuse_result=reuse_result)

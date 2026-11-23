@@ -95,10 +95,9 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["get"])
     def card(self, request, pk=None):
-        from apps.accounts.legislator_cards import card_facts, with_card_facts
+        from apps.accounts.legislator_cards import cards_for_representatives
         representative = self.get_object()
-        representative = with_card_facts(Representative.objects.filter(pk=representative.pk), prefix="").get()
-        return Response(card_facts(representative))
+        return Response(cards_for_representatives([representative.pk])[representative.pk])
 
     @action(detail=True, methods=["get"])
     def profile(self, request, pk=None):

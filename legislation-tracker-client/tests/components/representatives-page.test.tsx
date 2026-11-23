@@ -19,6 +19,15 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativesPage", () => {
+  it("keeps the current directory visible until replacement filter results arrive", async () => {
+    render(<RepresentativesPage />);
+    const member = await screen.findByRole("link", { name: "Representative Example" });
+    vi.mocked(getRepresentatives).mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(screen.getByRole("button", { name: "Party All" }));
+    await userEvent.click(screen.getByRole("option", { name: "Democrat" }));
+    expect(screen.getByRole("link", { name: "Representative Example" })).toBe(member);
+    expect(screen.getByRole("list", { name: "Representatives" })).toHaveAttribute("aria-busy", "true");
+  });
   let intersect: () => void;
   let observerReady = false;
   beforeEach(() => {
@@ -105,7 +114,7 @@ describe("RepresentativesPage", () => {
     await act(async () => { intersect(); });
     await user.type(screen.getByRole("searchbox", { name: "Search by name" }), "stansbury");
     expect(await screen.findByText("No representatives found.")).toBeVisible();
-    expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({ search: "stansbury", page: 1 }));
+    await waitFor(() => expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({ search: "stansbury", page: 1 })));
   });
   beforeEach(() => {
     vi.mocked(getSession).mockResolvedValue(null);

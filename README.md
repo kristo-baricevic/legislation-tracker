@@ -14,10 +14,22 @@ rtk proxy bash scripts/docker-up.sh
 ```
 
 Open http://localhost:13000. This starts PostgreSQL, Redis, document storage,
-the API, frontend, ingestion worker, research worker, enhancement worker, and
+the API, frontend, ingestion worker, similarity worker, research worker, enhancement worker, and
 Celery Beat scheduler. Configuration checks and migrations must succeed before
 the app and workers start. Configuration is shared by every backend service.
 The backend-directory Compose file is **dependencies only**, not an app launcher.
+
+Each ingestion stage has its own queue and single-process worker: bill metadata,
+text versions, relationships, bill votes, roll calls, downloads, document
+analysis, metadata analysis, topics, search indexing, representative details,
+and committee rosters. Bill discovery and vote discovery also have separate
+workers. The default `celery` worker coordinates dispatch and recovery.
+Similarity runs six processes; research and enhancement run two each.
+Their pool sizes can be overridden with `SIMILARITY_WORK_CONCURRENCY`,
+`RESEARCH_WORK_CONCURRENCY`, and `ENHANCEMENT_WORK_CONCURRENCY`.
+Each ingestion stage admits at most two dispatched/running durable jobs by
+default (`INGESTION_STAGE_IN_FLIGHT`); a backlog in one stage cannot fill
+another stage's slots. Already-queued legacy messages drain without purging.
 
 For an existing installation, set `EXISTING_VOLUMES=true` and the volume names in `.env.docker` to the
 existing volumes **before starting**. Stop the old app workers, scheduler, and
@@ -139,6 +151,7 @@ celery -A config worker -Q celery -l info
 # Separate terminals: user-requested work must not wait behind ingestion.
 celery -A config worker -Q enhancements --concurrency=1 --prefetch-multiplier=1 -n enhancements@%h -l info
 celery -A config worker -Q research --concurrency=1 --prefetch-multiplier=1 -n research@%h -l info
+celery -A config worker -Q similarity --concurrency=1 --prefetch-multiplier=1 -n similarity@%h -l info
 ```
 
 **Separate terminal — beat (scheduler)**

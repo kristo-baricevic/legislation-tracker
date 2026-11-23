@@ -29,7 +29,15 @@ class DockerStartupTests(unittest.TestCase):
         result = self.config()
         self.assertEqual(result.returncode, 0, result.stderr)
         services = json.loads(result.stdout)["services"]
-        for name, queue in [("worker", "celery"), ("research-worker", "research"),
+        stages = ("bill", "bill_versions", "bill_votes", "bill_relationships",
+                  "document_download", "document_contract", "metadata_contract",
+                  "topic_update", "search_index", "representative_detail",
+                  "roll_call_vote", "committee_roster", "discovery", "vote_discovery")
+        for stage in stages:
+            command = services[stage.replace("_", "-") + "-worker"]["command"]
+            self.assertEqual(command[command.index("-Q") + 1], stage)
+            self.assertIn("--concurrency=1", command)
+        for name, queue in [("worker", "celery"), ("similarity-worker", "similarity"), ("research-worker", "research"),
                             ("enhancement-worker", "enhancements")]:
             service = services[name]
             command = service["command"]

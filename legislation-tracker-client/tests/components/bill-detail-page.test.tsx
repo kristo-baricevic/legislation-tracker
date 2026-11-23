@@ -11,6 +11,7 @@ import {
   getVote,
   getVotes,
   getSession,
+  getMyTracking,
   type VoteDetailItem,
 } from "@/lib/api";
 
@@ -50,6 +51,24 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillDetailPage", () => {
+  it("can retry an unavailable initial follow status without changing the follow", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getMyTracking).mockRejectedValueOnce(new Error("offline")).mockResolvedValue({ bills: [], topics: [], legislators: [], is_staff: false });
+    render(<BillDetailPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Retry follow status" }));
+    expect(await screen.findByRole("button", { name: "Track bill" })).toBeEnabled();
+  });
+  it("does not offer Track bill before resolving the saved tracking state", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    let resolve!: (value: Awaited<ReturnType<typeof getMyTracking>>) => void;
+    vi.mocked(getMyTracking).mockReturnValue(new Promise(done => { resolve = done; }));
+    render(<BillDetailPage />);
+    await waitFor(() => expect(resolve).toBeDefined());
+    expect(screen.queryByRole("button", { name: "Track bill" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Loading follow status" })).toBeDisabled();
+    await act(async () => resolve({ bills: [{ id: 1, bill: await getBill(10), created_at: "2026-01-01" }], topics: [], legislators: [], is_staff: false }));
+    expect(await screen.findByRole("button", { name: "Tracked bill" })).toBeEnabled();
+  });
   it("keeps independent bill tabs available while the session lookup is pending", async () => {
     vi.mocked(getSession).mockReturnValue(new Promise(() => {}));
     render(<BillDetailPage />);

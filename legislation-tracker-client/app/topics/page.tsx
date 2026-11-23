@@ -14,7 +14,7 @@ import {
 export default function TopicsPage() {
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [followedIds, setFollowedIds] = useState<Set<number>>(new Set());
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [topicsLoading, setTopicsLoading] = useState(true);
   const [topicsError, setTopicsError] = useState<string | null>(null);
   const [followedLoading, setFollowedLoading] = useState(false);
@@ -99,7 +99,7 @@ export default function TopicsPage() {
         Browse all policy topics.
         {loggedIn
           ? " Click to follow or unfollow topics you care about — followed topics appear first."
-          : " Log in to follow topics and get personalized updates."}
+          : loggedIn === false ? " Log in to follow topics and get personalized updates." : ""}
       </p>
 
       <div className="mb-4 flex flex-wrap gap-3">
@@ -124,13 +124,13 @@ export default function TopicsPage() {
       </div>
 
       {topicsLoading && (
-        <p aria-live="polite" className="mb-4 font-sans text-sm text-muted">
+        <p aria-live="polite" className={topics.length ? "sr-only" : "mb-4 font-sans text-sm text-muted"}>
           {topics.length > 0 ? "Refreshing topics…" : "Loading topics…"}
         </p>
       )}
 
       {loggedIn && followedLoading && (
-        <p aria-live="polite" className="mb-4 font-sans text-sm text-muted">
+        <p aria-live="polite" className="sr-only">
           Refreshing followed topics…
         </p>
       )}

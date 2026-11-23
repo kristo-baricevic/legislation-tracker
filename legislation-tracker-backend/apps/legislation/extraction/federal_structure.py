@@ -20,6 +20,7 @@ CONTAINER_RE = re.compile(
     r"(?:(?:[.—-][ \t]*|[ \t]+)(?P<heading>[^\n]*))?[ \t]*$"
 )
 SUBDIVISION_RE = re.compile(r"(?m)^[ \t]*(?P<label>\([a-z0-9A-Zivxlcdm]+\))\s*")
+_SUBDIVISION_PREFIX_RE = re.compile(r"[ \t]*(?P<label>\([a-z0-9A-Zivxlcdm]+\))\s*")
 
 CONTAINER_RANKS = {
     "division": 0,
@@ -221,16 +222,18 @@ def _section_markers(source_text: str) -> list[_Marker]:
 
 def _subdivision_markers(source_text: str, prior: list[_Marker]) -> list[_Marker]:
     markers = []
+    ordered = sorted(prior, key=lambda m: m.start)
+    preceding = []
+    cursor = 0
     for match in SUBDIVISION_RE.finditer(source_text):
         line_end = _line_end(source_text, match.start())
         remainder_start = match.end()
         remainder = source_text[remainder_start:line_end].rstrip("\r\n")
         separator = _HEADING_SEPARATOR_RE.match(remainder)
         heading = separator.group("heading").strip() if separator else None
-        preceding = sorted(
-            [m for m in prior if m.start < match.start()] + markers,
-            key=lambda m: m.start,
-        )
+        while cursor < len(ordered) and ordered[cursor].start < match.start():
+            preceding.append(ordered[cursor])
+            cursor += 1
         rank = _subdivision_rank(match.group("label"), preceding)
         markers.append(
             _Marker(
@@ -241,6 +244,7 @@ def _subdivision_markers(source_text: str, prior: list[_Marker]) -> list[_Marker
                 heading=heading,
             )
         )
+        preceding.append(markers[-1])
     return markers
 
 
@@ -299,23 +303,22 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
 
 
 def _content_start(section: StructuralSection, source_text: str) -> int:
-    local_text = source_text[section.span.start_char : section.span.end_char]
+    start, end = section.span.start_char, section.span.end_char
+    first_line_end = min(_line_end(source_text, start), end)
     if section.level in {"subsection", "paragraph", "subparagraph", "clause", "subclause", "item", "subitem"}:
-        match = SUBDIVISION_RE.match(local_text)
+        match = _SUBDIVISION_PREFIX_RE.match(source_text, start, end)
         if match is None:
-            return section.span.start_char
-        remainder = local_text[match.end() : _line_end(local_text, 0)]
+            return start
+        remainder = source_text[match.end() : first_line_end]
         separator = _HEADING_SEPARATOR_RE.match(remainder)
-        local_start = match.end() + (separator.end() if separator else 0)
-        return section.span.start_char + local_start
+        return match.end() + (separator.end() if separator else 0)
 
-    first_line_end = _line_end(local_text, 0)
-    local_start = first_line_end
-    if section.heading and local_start < len(local_text):
-        next_line_end = _line_end(local_text, local_start)
-        if local_text[local_start:next_line_end].strip() == section.heading:
-            local_start = next_line_end
-    return section.span.start_char + local_start
+    content_start = first_line_end
+    if section.heading and content_start < end:
+        next_line_end = min(_line_end(source_text, content_start), end)
+        if source_text[content_start:next_line_end].strip() == section.heading:
+            content_start = next_line_end
+    return content_start
 
 
 def sentence_spans(

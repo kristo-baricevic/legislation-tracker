@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import ContributorExplorer from "@/app/components/ContributorExplorer";
 
-it("hides the previous page after a failed next-page request and retries the requested page", async () => {
+it("retains the previous page with its correct range after a failed next-page request", async () => {
   let fail = true;
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     const offset = Number(new URL(url).searchParams.get("donor_cursor"));
@@ -17,7 +17,7 @@ it("hides the previous page after a failed next-page request and retries the req
   await screen.findByRole("button", { name: "PAC 1" });
   await userEvent.click(screen.getByRole("button", { name: "Next" }));
   await screen.findByRole("alert");
-  expect(screen.queryByRole("button", { name: "PAC 1" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "PAC 1" })).toBeVisible();
   expect(screen.queryByText(/21–21 of/)).not.toBeInTheDocument();
   fail = false;
   await userEvent.click(screen.getByRole("button", { name: "Retry connections" }));

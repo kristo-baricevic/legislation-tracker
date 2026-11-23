@@ -14,7 +14,17 @@ export function topicColor(id: number) {
 }
 
 export function readable(value: string) {
-  return value.replaceAll("_", " ");
+  return plainBillText(value).replaceAll("_", " ");
+}
+
+/** Display source prose, never provider markup (including truncated anchors). */
+export function plainBillText(value: string) {
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s*\(?\s*<\/?[a-z][\s\S]*$/i, "")
+    .replace(/&(?:amp|lt|gt|quot|apos|nbsp);/g, entity => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'", "&nbsp;": " " })[entity]!)
+    .replace(/\s+/g, " ").trim();
 }
 
 export function dateLabel(value: string | null) {

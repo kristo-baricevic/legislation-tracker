@@ -19,6 +19,26 @@ def bills(count):
         for i in range(count)]
 
 
+def test_similarity_has_independent_admission_and_one_job_per_bill():
+    bill = bills(1)[0]
+    first = tasks.enqueue_similarity(bill)
+    bill.metadata_hash = "changed"
+    bill.title = "New title"
+    bill.save()
+    assert tasks.enqueue_similarity(bill).pk == first.pk
+    work = IngestionWorkItem.objects.create(kind="bill", dedupe_key="metadata",
+        source_updated_at=timezone.now(), payload_json={})
+    with patch.object(ingestion_tasks.process_ingestion_work_item, "apply_async", return_value=None) as send:
+        ingestion_tasks.dispatch_ingestion_work()
+        assert [c.kwargs["args"][0] for c in send.call_args_list] == [work.pk]
+        send.reset_mock()
+        ingestion_tasks.dispatch_similarity_work()
+        assert send.call_args.kwargs["queue"] == "similarity"
+        assert send.call_args.kwargs["args"][0] == first.pk
+        ingestion_tasks.dispatch_similarity_work()
+        assert send.call_count == 1
+
+
 def test_features_reused_and_pair_writes_batched():
     rows = bills(12)
     with patch.object(tasks, "_bill_similarity_features", wraps=tasks._bill_similarity_features) as features:
@@ -29,6 +49,36 @@ def test_features_reused_and_pair_writes_batched():
     writes = [q for q in queries if q["sql"].startswith(("INSERT", "UPDATE", "DELETE"))]
     assert len(writes) <= 6
     assert sum(q["sql"].startswith("SELECT") for q in queries) <= 12
+
+
+def test_revision_during_processing_runs_one_followup(monkeypatch):
+    bill = bills(1)[0]
+    work = tasks.enqueue_similarity(bill)
+    def revise(_):
+        for title in ("Second revision", "Third revision"):
+            bill.title = title
+            bill.save()
+            assert tasks.enqueue_similarity(bill).pk == work.pk
+        return {}
+    with patch.object(ingestion_tasks, "_process_durable_work", side_effect=revise), patch.object(
+            ingestion_tasks.dispatch_similarity_work, "apply_async"):
+        assert ingestion_tasks.process_ingestion_work_item(work.pk)["status"] == "requeued"
+    with patch.object(ingestion_tasks.dispatch_similarity_work, "apply_async"):
+        assert ingestion_tasks.process_ingestion_work_item(work.pk)["status"] == "succeeded"
+    assert IngestionWorkItem.objects.filter(kind="similarity").count() == 1
+
+
+def test_legacy_pending_revisions_collapse_without_losing_other_work():
+    from django.apps import apps
+    from importlib import import_module
+    bill = bills(1)[0]
+    for key, status in [("old", "pending"), ("new", "pending"), ("past", "succeeded")]:
+        IngestionWorkItem.objects.create(kind="similarity", dedupe_key=key, payload_json={"bill_id": bill.pk},
+                                         status=status, source_updated_at=timezone.now())
+    import_module("apps.ingestion.migrations.0009_coalesce_similarity").coalesce(apps, None)
+    pending = IngestionWorkItem.objects.get(kind="similarity", status="pending")
+    assert tasks.enqueue_similarity(bill).pk == pending.pk
+    assert IngestionWorkItem.objects.get(status="succeeded").dedupe_key == "past"
 
 
 def test_completed_unchanged_bill_does_no_pair_work():

@@ -11,7 +11,7 @@ VALIDATOR_VERSION = 2
 def remap(value, references):
     if isinstance(value, dict):
         return {remap(k, references): remap(v, references) for k, v in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [remap(v, references) for v in value]
     if isinstance(value, str):
         # Keys such as src_0042:p0001 and schema enum values need the same map.
@@ -32,7 +32,7 @@ def call_identity(request):
             source.pop('start_char', None)
             source.pop('end_char', None)
         envelope, sources = remap(envelope, references), remap(sources, references)
-    key = {'validator_version': VALIDATOR_VERSION, 'envelope': envelope,
+    key = {'validator_version': VALIDATOR_VERSION, 'execution_version': 2, 'envelope': envelope,
            'sources': sources, 'model': request.requested_model,
            'provider': request.provider, 'reasoning': request.reasoning_effort}
     return hashlib.sha256(canonical_json_bytes(key)).hexdigest(), references

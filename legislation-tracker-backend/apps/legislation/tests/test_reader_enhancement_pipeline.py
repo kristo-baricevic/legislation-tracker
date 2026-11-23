@@ -120,7 +120,7 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "missing", "revoked", "changed", "yield", "policy_repair_yield", "split_yield"])
+@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "missing", "revoked", "changed", "yield", "policy_repair_yield", "policy_repair_period", "policy_repair_period_yield", "split_yield", "split_deep_yield", "summary_repair", "summary_repair_yield", "summary_bad"])
 def test_reader_pipeline_publishes_only_complete_current_targets(
     source_bill, enhancement_owner, enhancement_settings, monkeypatch, mode
 ):
@@ -135,17 +135,19 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
             if request.request_envelope.get('source_review'):
                 ref = request.source_snapshot[0]['source_ref']
                 return ProviderResult({'financial_items': [], 'additional_changes': [], 'money_checks': {},
-                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': 'Cite p0001 for the report.' if mode.startswith('policy_repair') and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
+                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': ('.' if 'period' in mode else 'Cite p0001 for the report.') if mode.startswith('policy_repair') and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
                         'source_quotes': [{'source_ref': ref, 'quote_id': 'p0001'}]} for i in range(1)], 'policy_checks': {ref + ':p0001': 'explained'}},
                     ProviderUsage(10, 5, 15), 'review-response', 'test')
             targets = snapshot_targets(request.source_snapshot)
-            if mode.startswith('split') and len(targets) == 10:
+            if mode.startswith('split') and (len(targets) == 10 or mode == 'split_deep_yield' and len(targets) > 3):
                 from apps.legislation.enhancements.providers.base import ProviderError
                 raise ProviderError('invalid_output', validation_code='provider_output_limit', usage=ProviderUsage(10, 5, 15))
             output = {"schema_version": "1.4", "summary": [], "explanations": []}
             if not targets:
                 s = request.source_snapshot[0]
-                output["summary"] = [{"text": "Requires a report within 90 days.",
+                invalid_summary = mode.startswith("summary_") and (
+                    mode == "summary_bad" or not request.request_envelope.get("summary_repair"))
+                output["summary"] = [{"text": "Provides $999 in grants." if invalid_summary else "Requires a report within 90 days.",
                     "source_quotes": [{"source_ref": s["source_ref"], "quote_id": "p0001"}]}]
             for s in request.source_snapshot:
                 for t in s.get("reader_targets", []):
@@ -170,32 +172,47 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
         outcome = run_bill_enhancement_attempt(a.pk, a.dispatch_token)
         if mode.endswith('yield'):
             assert outcome['status'] == 'pending'
-            for _ in range(6):
+            for _ in range(12):
                 a.refresh_from_db()
                 outcome = run_bill_enhancement_attempt(a.pk, a.dispatch_token)
                 if outcome['status'] != 'pending':
                     break
     a.refresh_from_db()
     a.enhancement.refresh_from_db()
-    if mode in {"success", "split", "policy_repair", "yield", "policy_repair_yield", "split_yield"}:
+    if mode in {"success", "split", "policy_repair", "yield", "policy_repair_yield", "policy_repair_period", "policy_repair_period_yield", "split_yield", "split_deep_yield", "summary_repair", "summary_repair_yield"}:
         assert outcome["status"] == "succeeded"
-        expected_calls = 5 if mode.startswith('split') else 4 if mode.startswith('policy_repair') else 3
+        expected_calls = 9 if mode == 'split_deep_yield' else 5 if mode.startswith('split') else 4 if mode.startswith(('policy_repair', 'summary_repair')) else 3
         assert len(requests) == expected_calls
         # The final summary must be based on the completed source review, not
         # a prefix selected before the rest of the bill was processed.
         assert not requests[-1].request_envelope.get('source_review')
         assert requests[-1].request_envelope['source_packet'].get('validated_changes')
         assert a.total_tokens == expected_calls * 15
-        assert a.steps.filter(status='validated').count() == (4 if mode.startswith('split') else 3)
+        assert a.steps.filter(status='validated').count() == (6 if mode == 'split_deep_yield' else 4 if mode.startswith('split') else 3)
+        if mode.startswith('split'):
+            # Neither rejected parents nor completed children may be sent twice
+            # when a later worker delivery resumes the adaptive split tree.
+            sent = [tuple(t['target_id'] for t in snapshot_targets(r.source_snapshot)) for r in requests if snapshot_targets(r.source_snapshot)]
+            assert len(sent) == len(set(sent))
         assert a.enhancement.result_json['source_review']['reviewed_sources']
         payload = enhancement_payload(a.enhancement, detail=True)
         assert len(payload["result"]["explanations"]) == 10
         assert payload["result"]["explanations"][0]["contract_id"] == c.pk
         assert payload["result"]["explanations"][0]["cited_sources"]
+        assert payload["result"]["summary"][0]["text"] == "Requires a report within 90 days."
+        assert payload["result"]["source_review"]["policy_changes"][0]["text"] == "The government must publish a report within 90 days."
+        if mode.startswith('summary_repair'):
+            assert requests[-1].request_envelope['summary_repair'] == 'reader_amount_conflict'
+            assert a.steps.filter(status='failed').get().diagnostics['code'] == 'reader_amount_conflict'
+            assert len([r for r in requests if snapshot_targets(r.source_snapshot)]) == 1
+            assert len([r for r in requests if r.request_envelope.get('source_review')]) == 1
     else:
         assert outcome["status"] != "succeeded"
         assert a.enhancement.result_json is None
-        assert len(requests) == 1  # Failed work no longer pays for an unused summary.
+        assert len(requests) == (4 if mode == 'summary_bad' else 1)
+        if mode == 'summary_bad':
+            assert a.steps.filter(status='validated').count() == 2
+            assert a.steps.filter(status='failed').count() == 2
 
 
 @pytest.mark.django_db

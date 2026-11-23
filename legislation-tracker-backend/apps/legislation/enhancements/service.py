@@ -67,7 +67,7 @@ def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
         return False
     if attempt.status == BillEnhancementAttempt.Status.SUCCEEDED and attempt.enhancement.output_schema_version == "2.0-source-first":
         return attempt.enhancement.result_completeness == "partial"
-    if attempt.status == BillEnhancementAttempt.Status.OUTCOME_UNKNOWN:
+    if attempt.status in (BillEnhancementAttempt.Status.OUTCOME_UNKNOWN, BillEnhancementAttempt.Status.PAUSED):
         return True
     if attempt.status != BillEnhancementAttempt.Status.FAILED:
         return False
@@ -276,6 +276,18 @@ def retry_enhancement_attempt(
             approved_request_fingerprint=preflight.request_fingerprint,
             reused_result=reused_result,
         )
+        if latest.status == BillEnhancementAttempt.Status.PAUSED:
+            from apps.legislation.models import BillEnhancementWorkUnit
+            BillEnhancementWorkUnit.objects.bulk_create([
+                BillEnhancementWorkUnit(attempt=attempt, node_key=node.node_key, parent_key=node.parent_key,
+                    batch_index=node.batch_index, request_json=node.request_json, status=node.status,
+                    result_json=node.result_json, reason=node.reason)
+                for node in latest.work_units.all()
+            ])
+            # The confirmed request fingerprint above fixes provider/model.
+            # Rotating its API key must not switch models halfway through a plan.
+            attempt.pinned_model = latest.pinned_model
+            attempt.save(update_fields=['pinned_model'])
         enhancement.status = BillEnhancement.Status.PENDING
         enhancement.completed_at = None
         enhancement.save(update_fields=["status", "completed_at", "updated_at"])

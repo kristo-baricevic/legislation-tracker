@@ -14,7 +14,8 @@ def test_liveness_endpoint_does_not_depend_on_external_services():
     assert response.json() == {"status": "ok"}
 
 
-def test_readiness_endpoint_reports_each_required_dependency(monkeypatch):
+def test_readiness_endpoint_reports_each_required_dependency(monkeypatch, settings):
+    settings.LLM_ENHANCEMENTS_ENABLED = False
     monkeypatch.setattr(health, "check_database", lambda: None)
     monkeypatch.setattr(health, "check_cache", lambda: None)
     monkeypatch.setattr(health, "check_storage", lambda: None)
@@ -33,7 +34,8 @@ def test_readiness_endpoint_reports_each_required_dependency(monkeypatch):
     }
 
 
-def test_readiness_endpoint_is_unavailable_when_a_dependency_fails(monkeypatch):
+def test_readiness_endpoint_is_unavailable_when_a_dependency_fails(monkeypatch, settings):
+    settings.LLM_ENHANCEMENTS_ENABLED = False
     monkeypatch.setattr(health, "check_database", lambda: None)
     monkeypatch.setattr(
         health, "check_cache", lambda: (_ for _ in ()).throw(RuntimeError("redis down"))

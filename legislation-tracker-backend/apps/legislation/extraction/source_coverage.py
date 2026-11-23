@@ -3,6 +3,7 @@
 Never turn amendment amounts or formula operands into new appropriations.
 """
 import re
+from bisect import bisect_left
 from .federal_clauses import _quoted_block_ranges, _parent_section
 from .federal_structure import sentence_spans
 from .types import ExtractedClaim, SourceSpan
@@ -15,10 +16,30 @@ AMEND = re.compile(r'\b(?:striking|inserting|is amended|are amended)\b', re.I)
 TIMING = re.compile(r'\b(?:shall take effect|takes effect|not later than|beginning on January 1 of the year)\b', re.I)
 
 
+class _ClauseIndex:
+    def __init__(self, clauses):
+        self.rows = sorted(enumerate(clauses), key=lambda pair: pair[1].span.start_char)
+        self.starts = [c.span.start_char for _, c in self.rows]
+        self.ends = []
+        for _, clause in self.rows:
+            self.ends.append(max(clause.span.end_char, self.ends[-1] if self.ends else 0))
+
+    def overlapping(self, start, end):
+        index = bisect_left(self.starts, end) - 1
+        found = []
+        while index >= 0 and self.ends[index] > start:
+            ordinal, clause = self.rows[index]
+            if clause.span.end_char > start:
+                found.append((ordinal, clause))
+            index -= 1
+        return [c for _, c in sorted(found, key=lambda pair: pair[0])]
+
+
 def supplement_source_claims(source, sections, claims, clauses=None):
     additions = []
     excluded = _quoted_block_ranges(source)
     clauses = parse_operative_clauses(source, sections) if clauses is None else clauses
+    clause_index = _ClauseIndex(clauses)
     claimed = {key: [s for c in claims if c.category == key for s in c.evidence]
                for key in ('financial_items', 'timeline_items')}
     owned = []
@@ -27,7 +48,7 @@ def supplement_source_claims(source, sections, claims, clauses=None):
         parent_spans = sentence_spans(parent, source) if parent else ()
         context = (parent_spans[-1],) if parent_spans and parent_spans[-1].text.rstrip().endswith((':','—','–','-')) else ()
         for span in sentence_spans(section, source):
-            owners = [c for c in clauses if c.span.start_char < span.end_char and span.start_char < c.span.end_char]
+            owners = clause_index.overlapping(span.start_char, span.end_char)
             if any(c.disposition in {'prohibition', 'discussion', 'uncertain'} or c.preserve_group for c in owners):
                 continue
             if any(a < span.end_char and span.start_char < b for a,b in excluded):

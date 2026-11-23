@@ -13,19 +13,24 @@ const Context = React.createContext<ProfileContext | null>(null);
 export const useProfileDialogs = () => React.useContext(Context);
 type Entry = { key: number; kind: "profile"; scope: ProfileScope } | { key: number; kind: "bill"; bill: BillListItem };
 
+function RouteReset({ reset }: { reset: () => void }) {
+  const pathname = usePathname();
+  const query = useSearchParams()?.toString() ?? "";
+  const route = `${pathname}?${query}`;
+  const previous = React.useRef(route);
+  React.useEffect(() => {
+    if (previous.current !== route) { reset(); previous.current = route; }
+  }, [route, reset]);
+  return null;
+}
+
 function ProfileDialogs({ children, renderActivity }: { children: React.ReactNode; renderActivity?: (scope: ProfileScope) => React.ReactNode }) {
   const enabled = true;
   const [entries, setEntries] = React.useState<Entry[]>([]);
   const current = React.useRef<Entry[]>([]);
   const sequence = React.useRef(0);
   const stack = useModalStack()!;
-  const pathname = usePathname();
-  const query = useSearchParams()?.toString() ?? "";
-  const route = `${pathname}?${query}`;
-  const previousPath = React.useRef(route);
-  React.useEffect(() => {
-    if (previousPath.current !== route) { stack.closeAll(); current.current = []; setEntries([]); previousPath.current = route; }
-  }, [route, stack]);
+  const reset = React.useCallback(() => { stack.closeAll(); current.current = []; setEntries([]); }, [stack]);
   const close = (key: number) => { const index = current.current.findIndex(entry => entry.key === key); if (index >= 0) { current.current = current.current.slice(0, index); setEntries(current.current); } };
   const open = (scope: ProfileScope) => {
     if (!enabled) return false;
@@ -42,7 +47,7 @@ function ProfileDialogs({ children, renderActivity }: { children: React.ReactNod
     if (!enabled || !stack.canOpen() || stack.contains(`bill:${bill.id}`) || current.current.some(entry => entry.kind === "bill" && entry.bill.id === bill.id)) return false;
     current.current = [...current.current, { key: ++sequence.current, kind: "bill", bill }]; setEntries(current.current); return true;
   };
-  return <Context.Provider value={{ enabled, open }}>{children}{entries.map(entry => entry.kind === "profile" ? <LegislatorProfileModal key={entry.key} scope={entry.scope} onClose={() => close(entry.key)} onOpenBill={openBill} renderActivity={renderActivity} /> : <BillDeckModal key={entry.key} bill={entry.bill} onClose={() => close(entry.key)} />)}</Context.Provider>;
+  return <Context.Provider value={{ enabled, open }}><React.Suspense fallback={null}><RouteReset reset={reset} /></React.Suspense>{children}{entries.map(entry => entry.kind === "profile" ? <LegislatorProfileModal key={entry.key} scope={entry.scope} onClose={() => close(entry.key)} onOpenBill={openBill} renderActivity={renderActivity} /> : <BillDeckModal key={entry.key} bill={entry.bill} onClose={() => close(entry.key)} />)}</Context.Provider>;
 }
 
-export default function ProfileProvider(props: React.ComponentProps<typeof ProfileDialogs>) { return <ModalStackProvider><React.Suspense fallback={props.children}><ProfileDialogs {...props} /></React.Suspense></ModalStackProvider>; }
+export default function ProfileProvider(props: React.ComponentProps<typeof ProfileDialogs>) { return <ModalStackProvider><ProfileDialogs {...props} /></ModalStackProvider>; }

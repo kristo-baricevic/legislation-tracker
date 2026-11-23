@@ -5,6 +5,33 @@ from apps.ingestion.document_download import extract_document_text
 from apps.legislation.enhancements.source_graph import build_source_graph, audit_graph
 
 
+@pytest.mark.parametrize('body', ['legis-body', 'engrossed-amendment-body'])
+def test_s2296_contents_only_section_wrapper_is_not_an_operative_section(body):
+    from apps.legislation.enhancements.xml_sections import xml_boundaries
+    raw = f'''<bill><{body}>
+    <section id="before"><enum>725.</enum><text>Publish a report.</text></section>
+    <section id="contents" section-type="undesignated-section"><toc>
+      <toc-entry level="section">Sec. 801. Acquisition policy.</toc-entry>
+    </toc></section>
+    <section id="after"><enum>801.</enum><text>Provide grants.</text></section>
+    </{body}></bill>'''.encode()
+    text = extract_document_text(raw, 'application/xml', 'bill.xml')
+    rows = xml_boundaries(raw, text)
+    assert [r[0] for r in rows] == ['before', 'after']
+    assert 'Publish a report.' in text[rows[0][1]:rows[0][2]]
+    assert 'Provide grants.' in text[rows[1][1]:rows[1][2]]
+    assert rows[0][2] <= rows[1][1]
+
+
+def test_section_with_contents_and_operative_text_is_not_discarded():
+    from apps.legislation.enhancements.xml_sections import xml_boundaries
+    raw = b'<bill><legis-body><section id="mixed"><enum>1.</enum><toc><toc-entry>Contents</toc-entry></toc><text>Provide $100 for schools.</text></section></legis-body></bill>'
+    text = extract_document_text(raw, 'application/xml', 'bill.xml')
+    rows = xml_boundaries(raw, text)
+    assert [r[0] for r in rows] == ['mixed']
+    assert '$100' in text[rows[0][1]:rows[0][2]]
+
+
 @pytest.mark.parametrize("body", ["legis-body", "engrossed-amendment-body"])
 def test_xml_sections_own_quoted_amendments_not_contents_or_adjacent_headers(body):
     from apps.legislation.enhancements.xml_sections import xml_boundaries

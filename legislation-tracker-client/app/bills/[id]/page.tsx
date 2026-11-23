@@ -39,6 +39,8 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   const [hasAccount, setHasAccount] = useState(false);
   const [isTracked, setIsTracked] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingReady, setTrackingReady] = useState(false);
+  const [trackingRetry, setTrackingRetry] = useState(0);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [comparisonContracts, setComparisonContracts] = useState<BillContractSummary[] | null>(null);
   const [votes, setVotes] = useState<VoteListItem[] | null>(null);
@@ -150,6 +152,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   useEffect(() => {
     let cancelled = false;
     setTrackingError(null);
+    setTrackingReady(false);
     // Check the server's tracking revision before trusting a warm dashboard
     // snapshot. Follows may have changed on another device.
     void (peekDashboardValue<TrackingSummary>("tracking") ? dashboardSession() : getSession())
@@ -163,6 +166,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           .then((summary) => {
             if (!cancelled) {
               setIsTracked(summary.bills.some((item) => item.bill.id === id));
+              setTrackingReady(true);
             }
           })
           .catch((e) => {
@@ -179,10 +183,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, trackingRetry]);
 
   async function toggleBillTracking() {
-    if (!bill) return;
+    if (!bill || !trackingReady || trackingLoading) return;
     setTrackingLoading(true);
     setTrackingError(null);
     try {
@@ -288,11 +292,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             {hasAccount ? (
               <button
                 type="button"
-                onClick={toggleBillTracking}
-                disabled={trackingLoading}
+                onClick={() => trackingReady ? void toggleBillTracking() : setTrackingRetry(value => value + 1)}
+                disabled={(!trackingReady && !trackingError) || trackingLoading}
                 className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
               >
-                {trackingLoading
+                {!trackingReady ? trackingError ? "Retry follow status" : "Loading follow status" : trackingLoading
                   ? "Saving..."
                   : isTracked
                     ? "Tracked bill"
@@ -389,6 +393,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         )}
         {votes && votes.length > 0 && (
           <VotingRecord
+            loading={voteHistoryLoading}
             votes={votes}
             selectedVote={selectedVote}
             loadingVoteId={loadingVoteId}
@@ -465,7 +470,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </div>
         )}
         </ReaderTabPanel>
-        <BillEnhancementPanel billId={bill.id} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
+        <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
       </div>
     </div>
   );

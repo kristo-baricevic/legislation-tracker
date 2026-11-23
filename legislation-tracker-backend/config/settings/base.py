@@ -28,6 +28,8 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default=INSECURE_DEFAULT_SECRET_KEY)
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 FEC_API_KEY = env("FEC_API_KEY", default="")
+SIMILARITY_WORK_CONCURRENCY = max(1, env.int("SIMILARITY_WORK_CONCURRENCY", default=1))
+RESEARCH_WORK_CONCURRENCY = max(1, env.int("RESEARCH_WORK_CONCURRENCY", default=1))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -102,7 +104,13 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+from apps.ingestion.queues import DIRECT_TASK_QUEUES
+
+INGESTION_STAGE_IN_FLIGHT = max(1, env.int("INGESTION_STAGE_IN_FLIGHT", default=2))
 CELERY_TASK_ROUTES = {
+    **{task: {"queue": queue} for task, queue in DIRECT_TASK_QUEUES.items()},
+    "apps.legislation.tasks.schedule_similarity_for_bill": {"queue": "similarity"},
+    "apps.legislation.tasks.recompute_similarity_batch": {"queue": "similarity"},
     "apps.legislation.tasks.dispatch_bill_enhancement_attempts": {"queue": "enhancements"},
     "apps.legislation.tasks.run_bill_enhancement_attempt": {"queue": "enhancements"},
     "apps.legislation.tasks.recover_stale_bill_enhancement_attempts": {"queue": "enhancements"},
@@ -153,6 +161,7 @@ LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
 )
 # Entire reader plan is confirmed before any calls; never silently truncate it.
 LLM_READER_MAX_OUTPUT_TOKENS = env.int("LLM_READER_MAX_OUTPUT_TOKENS", default=24000)
+LLM_READER_MODEL_CAPACITIES = env.json("LLM_READER_MODEL_CAPACITIES", default={})
 # Zero derives a finite, confirmable budget from the complete source inventory.
 # A positive value remains an explicit operator spending ceiling.
 LLM_READER_MAX_CALLS = env.int("LLM_READER_MAX_CALLS", default=0)

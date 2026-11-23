@@ -1,0 +1,17 @@
+.frame {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  margin: auto;
+  width: min(var(--modal-width, 60rem), calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  height: calc(100svh - 2rem);
+  max-height: calc(100svh - 2rem);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.frame[data-dialog-size="confirmation"] {
+  width: min(32rem, calc(100vw - 2rem));
+  height: min(36rem, calc(100svh - 2rem));
+}

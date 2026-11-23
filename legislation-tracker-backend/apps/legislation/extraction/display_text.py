@@ -15,6 +15,7 @@ def normalize_reader_fragment(value: str) -> str:
 
     cleaned = _NOTE_RE.sub(" ", value)
     cleaned = _PAGE_RE.sub(" ", cleaned)
+    cleaned = re.sub(r"\[\[QUOTED_BLOCK_(?:START|END)\]\]", " ", cleaned)
     cleaned = _CONGRESSIONAL_TICKS_RE.sub("", cleaned)
     cleaned = re.sub(r"-\s*\n\s*", "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()

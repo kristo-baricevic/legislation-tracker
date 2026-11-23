@@ -5,19 +5,31 @@ import { dashboardSession, dashboardValue, forgetDashboardValue } from "@/lib/da
 
 // Private, tab-local cache: never persisted to browser storage or shared across identities.
 
-export function useRecommendations<T>(key: string, load: (options: PersonalizedRequestOptions) => Promise<T>, onInvalidate?: () => void) {
+export function useRecommendations<T>(key: string, load: (options: PersonalizedRequestOptions) => Promise<T>, onInvalidate?: () => void, keepOnTracking = false) {
   const [state, setState] = React.useState<{ data: T | null; scope: PersonalizedScope | null; loading: boolean; signedIn: boolean; error: string }>(() => {
     return { data: null, scope: null, loading: true, signedIn: false, error: "" };
   });
   const [revision, reload] = React.useReducer(value => value + 1, 0);
   const controller = React.useRef<AbortController | null>(null);
-  React.useEffect(() => subscribePersonalizedChanges(({ kind }) => {
+  const current = React.useRef(state);
+  current.current = state;
+  React.useEffect(() => subscribePersonalizedChanges(({ kind, scope }) => {
     if (kind === "revalidate") { reload(); return; }
     controller.current?.abort();
+    if (kind === "tracking") {
+      // Following must not clear mounted content or move the reader's focus.
+      if (keepOnTracking && current.current.data && current.current.scope?.sessionGeneration === scope.sessionGeneration) {
+        controller.current = new AbortController();
+        setState(previous => ({ ...previous, scope, loading: false }));
+        return;
+      }
+      reload();
+      return;
+    }
     onInvalidate?.();
     setState({ data: null, scope: null, loading: true, signedIn: false, error: "" });
     reload();
-  }), [onInvalidate]);
+  }), [onInvalidate, keepOnTracking]);
   React.useEffect(() => {
     const abort = new AbortController();
     controller.current = abort;
@@ -32,16 +44,17 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
           setState({ data, scope: initial, loading: false, signedIn: true, error: "" });
         }
       } catch (error) {
-        if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) setState({ data: null, scope: initial, loading: false, signedIn: true, error: error instanceof Error && error.name === "AbortError" ? "" : "Recommendations could not be loaded. Try again." });
+        if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) setState(previous => ({ ...previous, scope: initial, loading: false, signedIn: true, error: error instanceof Error && error.name === "AbortError" ? "" : "Recommendations could not be loaded. Try again." }));
       }
     })();
     return () => abort.abort();
   }, [key, load, revision]);
   const retry = () => {
+    if (current.current.loading) return;
+    current.current = { ...current.current, loading: true };
     forgetDashboardValue(key);
     controller.current?.abort();
-    onInvalidate?.();
-    setState({ data: null, scope: null, loading: true, signedIn: false, error: "" });
+    setState(previous => ({ ...previous, loading: true, error: "" }));
     reload();
   };
   const update = (scope: PersonalizedScope, transform: (data: T) => T) => {

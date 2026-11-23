@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import inspect
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -95,6 +97,24 @@ def _chat_completions(client: Any):
     return client
 
 
+def _complete(client, timeout_seconds, **kwargs):
+    async def run():
+        try:
+            result = _chat_completions(client).create(**kwargs)
+            # Production uses AsyncOpenAI: cancellation closes the outstanding
+            # HTTP operation even when keepalive bytes reset its read timeout.
+            if inspect.isawaitable(result):
+                return await asyncio.wait_for(result, timeout=timeout_seconds)
+            return result  # synchronous test/client adapters
+        finally:
+            close = getattr(client, 'close', None)
+            if close:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+    return asyncio.run(run())
+
+
 class OpenAICompatibleEnhancementProvider:
     provider_name = "openai_compatible"
     capabilities = ProviderCapabilities(
@@ -143,9 +163,9 @@ class OpenAICompatibleEnhancementProvider:
             or factory
         )
         if factory is None:
-            from openai import OpenAI
+            from openai import AsyncOpenAI
 
-            factory = OpenAI
+            factory = AsyncOpenAI
         self._client_factory = factory
         self.api_key = api_key
         self.base_url = base_url
@@ -316,7 +336,7 @@ class OpenAICompatibleEnhancementProvider:
         client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
         model = self._model(requested_model=requested_model)
         try:
-            response = _chat_completions(client).create(
+            response = _complete(client, timeout_seconds,
                 model=model,
                 messages=[{"role": "user", "content": "Reply with OK."}],
                 max_tokens=16,
@@ -458,8 +478,14 @@ class OpenAICompatibleEnhancementProvider:
         elif mode == "json_object":
             kwargs["response_format"] = {"type": "json_object"}
 
+        if getattr(request, 'provider', '') == 'openrouter':
+            effort = getattr(request, 'reasoning_effort', 'none')
+            # An unspecified effort preserves the model's own reasoning default.
+            if effort != 'none':
+                kwargs['extra_body'] = {'reasoning': {'effort': effort}}
+
         try:
-            response = _chat_completions(client).create(**kwargs)
+            response = _complete(client, timeout_seconds, **kwargs)
         except ProviderError:
             raise
         except Exception as error:  # noqa: BLE001
@@ -483,10 +509,15 @@ class OpenAICompatibleEnhancementProvider:
         finish_reason = _value(choice, "finish_reason", None)
 
         usage_obj = _value(response, "usage")
+        reasoning_tokens = _value(_value(usage_obj, 'completion_tokens_details'), 'reasoning_tokens')
+        completion_tokens = _value(usage_obj, 'completion_tokens')
         usage = ProviderUsage(
             input_tokens=_value(usage_obj, "prompt_tokens"),
             output_tokens=_value(usage_obj, "completion_tokens"),
             total_tokens=_value(usage_obj, "total_tokens"),
+            reasoning_tokens=reasoning_tokens,
+            visible_output_tokens=(max(0, completion_tokens - reasoning_tokens)
+                if isinstance(completion_tokens, int) and isinstance(reasoning_tokens, int) else None),
         )
         response_id = str(_value(response, "id", "") or "")
         resolved_model = str(_value(response, "model", "") or "")

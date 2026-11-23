@@ -3,7 +3,7 @@
 import copy
 import re
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 from .citations import _canonical, spans_in_canonical_source
 from .diagnostics import output_error
@@ -68,7 +68,7 @@ def bounded_reader_schema(sources, targets, catalogs):
     """Make required target outcomes and valid citation pairs decoder constraints."""
     schema = copy.deepcopy(READER_ID_SCHEMA)
     schema["properties"]["summary"]["maxItems"] = 2
-    schema["properties"]["summary"]["items"]["properties"]["text"].update(maxLength=300, pattern=r"[.!?]$")
+    schema["properties"]["summary"]["items"]["properties"]["text"].update(maxLength=300)
     if not targets:
         return schema
     properties = {}
@@ -77,7 +77,13 @@ def bounded_reader_schema(sources, targets, catalogs):
         for source in sources:
             if not any(t["target_id"] == target["target_id"] for t in source.get("reader_targets", [])):
                 continue
-            ids = [p["quote_id"] for p in catalogs[source["source_ref"]] if p["quote_id"]]
+            ids = []
+            start = source["start_char"]
+            for passage in catalogs[source["source_ref"]]:
+                end = start + len(passage["text"])
+                if passage["quote_id"] and any(start < right and end > left for left, right in target["evidence_ranges"]):
+                    ids.append(passage["quote_id"])
+                start = end
             if ids:
                 quotes.append({"type": "object", "additionalProperties": False,
                     "required": ["source_ref", "quote_id"], "properties": {
@@ -94,6 +100,44 @@ def bounded_reader_schema(sources, targets, catalogs):
     schema["properties"]["explanations"] = {"type": "object", "additionalProperties": False,
         "required": list(properties), "properties": properties}
     return schema
+
+
+def recover_reader_items(output, targets, sources):
+    """Drop only unsupported replacements before caching or publishing them."""
+    if not targets or not isinstance(output, dict) or not isinstance(output.get("summary"), list):
+        return output
+    # Only the separate final-summary call owns published summary prose. Never
+    # cache unsolicited summary text (even when its citations look plausible).
+    output = {**output, "summary": []}
+    original = output.get("explanations")
+    if not isinstance(original, (dict, list)):
+        return output
+    if isinstance(original, list):
+        if any(not isinstance(v, dict) or not isinstance(v.get("target_id"), str) for v in original):
+            return output
+        mapping = {v["target_id"]: v for v in original}
+        if len(mapping) != len(original):
+            return output
+    else:
+        mapping = original
+    if set(mapping) != {t["target_id"] for t in targets}:
+        return output  # Never pretend missing or unexpected targets were reviewed.
+    from .schema import _validate_snapshot
+    _validate_snapshot(sources)
+    safe = {}
+    for target in targets:
+        tid = target["target_id"]
+        item = mapping[tid]
+        if not isinstance(item, dict) or item.get("target_id") != tid:
+            return output
+        local = [s for s in sources if target in s.get("reader_targets", [])]
+        try:
+            resolve_reader_citations({**output, "explanations": {tid: item}}, [target], local)
+            safe[tid] = item
+        except ValidationError:
+            safe[tid] = {"target_id": tid, "status": "unresolved", "text": None, "source_quotes": [],
+                         "unresolved_reason": "Original explanation retained."}
+    return {**output, "explanations": safe if isinstance(original, dict) else list(safe.values())}
 
 
 def resolve_reader_citations(output, targets, sources):

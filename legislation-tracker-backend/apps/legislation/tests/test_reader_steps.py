@@ -19,6 +19,47 @@ def test_cache_reference_remapping_does_not_edit_prose():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('mismatch', [False, True])
+def test_free_router_model_is_pinned_across_deliveries_and_completed_calls_reused(
+        source_bill, enhancement_owner, enhancement_settings, mismatch):
+    import copy
+    install_reader(source_bill, count=0)
+    with enhancement_settings:
+        p = build_enhancement_preflight(source_bill)
+        refs = {s['source_ref'] for s in p.request_envelope['source_packet']['sources']}
+        p = replace(p, provider='openrouter', requested_model='openrouter/free',
+                    source_snapshot=[s for s in p.source_snapshot if s['source_ref'] in refs])
+        a = _pending_attempt(enhancement_owner, source_bill)
+        a.status, a.run_token, a.lease_expires_at = 'running', 'run', timezone.now() + timedelta(minutes=10)
+        a.save()
+        seen = []
+        class Provider:
+            def enhance_bill(self, *, request, **kwargs):
+                seen.append(request.requested_model)
+                return ProviderResult({'schema_version':'1.4','explanations':[], 'summary':[{
+                    'text':'Requires a report.', 'source_quotes':[{'source_ref':p.source_snapshot[0]['source_ref'],'quote_id':'p0001'}]}]},
+                    ProviderUsage(10,5,15), 'response', 'other/model:free' if mismatch and len(seen) == 2 else 'fixture/model:free')
+        DurableReaderProvider(Provider(), a, 'run', 4).enhance_bill(api_key='offline',request=p,timeout_seconds=1)
+        a.refresh_from_db()
+        # A new worker delivery must not forget the selected model.
+        second = copy.deepcopy(p.request_envelope)
+        second['instructions'] += '\nKeep the explanation short.'
+        next_request = replace(p, request_envelope=second)
+        wrapper = DurableReaderProvider(Provider(), a, 'run', 4)
+        if mismatch:
+            with pytest.raises(ProviderError) as error:
+                wrapper.enhance_bill(api_key='offline',request=next_request,timeout_seconds=1)
+            assert error.value.validation_code == 'pinned_model_changed'
+            assert a.steps.order_by('step_index').last().status == 'failed'
+        else:
+            wrapper.enhance_bill(api_key='offline',request=next_request,timeout_seconds=1)
+        cached = wrapper.enhance_bill(api_key='offline',request=p,timeout_seconds=1)
+        assert seen == ['openrouter/free', 'fixture/model:free']
+        assert cached.usage.total_tokens == 0
+        assert a.steps.count() == 2
+
+
+@pytest.mark.django_db
 def test_empty_summary_is_not_saved_as_reusable_success(source_bill, enhancement_owner, enhancement_settings):
     from apps.legislation.models import BillEnhancementCallCache
     install_reader(source_bill, count=0)

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { StableResults } from "@/app/components/StableResults";
 
 import type { VoteDetailItem, VoteListItem, VoteRecordItem } from "@/lib/api";
 import RepresentativeAvatarBadge from "../../components/RepresentativeAvatarBadge";
@@ -15,6 +16,7 @@ interface VotingRecordProps {
   onSelect: (voteId: number) => void;
   page: number;
   hasNext: boolean;
+  loading?: boolean;
   onPrevious: () => void;
   onNext: () => void;
 }
@@ -64,14 +66,15 @@ function VotePagination({
   hasNext,
   onPrevious,
   onNext,
-}: Pick<VotingRecordProps, "page" | "hasNext" | "onPrevious" | "onNext">) {
+  loading,
+}: Pick<VotingRecordProps, "page" | "hasNext" | "onPrevious" | "onNext" | "loading">) {
   if (page === 1 && !hasNext) return null;
   return (
     <nav className="mt-4 flex items-center justify-between gap-3" aria-label="vote history pagination">
       <button
         type="button"
         onClick={onPrevious}
-        disabled={page === 1}
+        disabled={loading || page === 1}
         aria-label="Previous vote history page"
         className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
       >
@@ -81,7 +84,7 @@ function VotePagination({
       <button
         type="button"
         onClick={onNext}
-        disabled={!hasNext}
+        disabled={loading || !hasNext}
         aria-label="Next vote history page"
         className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
       >
@@ -92,6 +95,7 @@ function VotePagination({
 }
 
 export function VotingRecord({
+  loading = false,
   headingHref,
   votes,
   selectedVote,
@@ -106,6 +110,11 @@ export function VotingRecord({
   const [query, setQuery] = useState("");
   const [party, setParty] = useState("");
   const [state, setState] = useState("");
+  const detailSlot = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const slot = detailSlot.current;
+    if (slot) slot.style.minHeight = `${Math.max(parseFloat(slot.style.minHeight) || 0, slot.getBoundingClientRect().height)}px`;
+  });
   const orderedVotes = useMemo(
     () => [...votes].sort((left, right) => {
       const date = new Date(right.vote_date).getTime() - new Date(left.vote_date).getTime();
@@ -153,6 +162,7 @@ export function VotingRecord({
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">Select a roll call to see every returned member record. Positions are reported as received; filters only change what is displayed.</p>
       </header>
       <div className="p-4">
+        <StableResults page={page} busy={loading} label="Vote history">
         <ul className="divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
           {orderedVotes.map((vote) => (
             <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
@@ -168,12 +178,14 @@ export function VotingRecord({
                 disabled={loadingVoteId === vote.id}
                 className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
               >
-                {loadingVoteId === vote.id ? "Loading voting record..." : "View voting record"}
+                <span aria-busy={loadingVoteId === vote.id}>View voting record</span>
               </button>
             </li>
           ))}
         </ul>
-        <VotePagination page={page} hasNext={hasNext} onPrevious={onPrevious} onNext={onNext} />
+        </StableResults>
+        <VotePagination page={page} hasNext={hasNext} onPrevious={onPrevious} onNext={onNext} loading={loading} />
+        <div ref={detailSlot}>
         {error && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">{error}</p>}
         {selectedVote && (
           <div className="mt-6 border-t border-slate-300 pt-5 dark:border-green-900/70">
@@ -197,6 +209,7 @@ export function VotingRecord({
             </div>
             {(fullCounts.get("yes") !== undefined && selectedVote.yeas !== fullCounts.get("yes")) && <p role="status" className="mt-3 text-sm text-amber-800 dark:text-amber-300">Reported yes total {selectedVote.yeas} differs from {fullCounts.get("yes")} returned member records. The official total may include records not returned here.</p>}
             {(fullCounts.get("no") !== undefined && selectedVote.nays !== fullCounts.get("no")) && <p role="status" className="mt-2 text-sm text-amber-800 dark:text-amber-300">Reported no total {selectedVote.nays} differs from {fullCounts.get("no")} returned member records. The official total may include records not returned here.</p>}
+            <StableResults page={`${selectedVote.id}:${party}:${state}:${query}`} label="Member positions">
             {groupOrder.map((group) => {
               const records = groupedRecords.get(group) ?? [];
               if (records.length === 0) return null;
@@ -214,8 +227,10 @@ export function VotingRecord({
               );
             })}
             {selectedVote.records.length > 0 && groupedRecords.size === 0 && <p className="mt-4 text-sm text-slate-600 dark:text-green-600">No returned member records match these filters.</p>}
+            </StableResults>
           </div>
         )}
+        </div>
       </div>
     </section>
   );

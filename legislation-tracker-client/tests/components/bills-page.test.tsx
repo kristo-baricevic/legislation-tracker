@@ -47,6 +47,18 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillsPage", () => {
+  it("retains results and the committed page while the next page loads", async () => {
+    const result = { count: 2, next: "next", previous: null, results: [{ id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "School grants", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }] };
+    vi.mocked(getBills).mockResolvedValue(result);
+    render(<BillsPage />);
+    const card = await screen.findByRole("article");
+    vi.mocked(getBills).mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("article")).toBe(card);
+    expect(screen.getByText("2 bills (page 1)")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("region", { name: "Bill results" })).toHaveAttribute("aria-busy", "true");
+  });
   it("does not duplicate the navbar with a Dashboard back link", async () => {
     render(<BillsPage />);
     await screen.findByRole("heading", { name: "Ingested Bills" });

@@ -154,8 +154,9 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": max(
-                    p.request_envelope.get("max_output_tokens", settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
-                    for p in (preflight, *preflight.reader_batches)
+                    preflight.source_manifest.get('budget', {}).get('maximum_request_output', 0),
+                    max(p.request_envelope.get("max_output_tokens", settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+                        for p in (preflight, *preflight.reader_batches))
                 ),
                 "aggregate_budget": preflight.source_manifest.get("budget"),
                 "glossary_coverage": preflight.source_manifest.get("glossary"),

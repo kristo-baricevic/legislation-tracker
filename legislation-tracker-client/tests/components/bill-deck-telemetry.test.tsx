@@ -1,10 +1,21 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import BillDeck from "@/app/components/BillDeck";
 import Home from "@/app/page";
 import { authGet, authPost, getBill, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
 vi.mock("@/app/components/RecommendationsPreview", () => ({ default: () => <h2>Recommendation section</h2> }));
+
+it("retains followed cards after a same-session refresh failure", async () => {
+  const bill = { id: 463, title: "Saved bill", bill_number: "HR 9300", session: 119, jurisdiction: "federal", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] };
+  vi.mocked(getMyTracking).mockResolvedValue({ bills: [{ id: 1, bill, created_at: "2026-01-01" }], topics: [], legislators: [], is_staff: false });
+  render(<BillDeck />);
+  const card = await screen.findByRole("button", { name: "Saved bill" });
+  vi.mocked(getMyTracking).mockRejectedValue(new Error("offline"));
+  await act(async () => (await import("@/lib/personalized-scope")).announceTrackingChange());
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "Saved bill" })).toBe(card);
+});
 
 vi.mock("@/lib/api", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/api")>(),
@@ -107,7 +118,12 @@ it("shows real telemetry only to superusers", async () => {
   render(<BillDeck />);
   await user.click(await screen.findByRole("button", { name: "Expand legislation ingestion" }));
   await user.click(await screen.findByRole("button", { name: "Refresh telemetry" }));
-  expect(screen.getByRole("heading", { name: "Queued" }).parentElement).toHaveTextContent("17");
+  const queue = screen.getByRole("list", { name: "Queued background tasks" });
+  expect(queue).toHaveTextContent("Bill metadata17");
+  vi.mocked(authGet).mockImplementation(() => new Promise(() => {}));
+  await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
+  expect(screen.getByRole("list", { name: "Queued background tasks" })).toBe(queue);
+  expect(queue).toHaveTextContent("Bill metadata17");
   expect(screen.queryByLabelText("Show ingestion telemetry preview")).not.toBeInTheDocument();
   expect(screen.queryByText("24 sample")).not.toBeInTheDocument();
   expect(authPost).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 "use client";
+import { StableResults } from "@/app/components/StableResults";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { EnhancementCitedSource, ReaderExplanationItem } from "@/lib/api";
@@ -6,6 +7,7 @@ import { compatibleReader, resolveReaderExplanation, type ReaderIdentity } from 
 import { useAiGlossary } from "./ai-glossary-context";
 import { SourcePopover } from "./source-popover";
 import { explanationParagraphs } from "@/lib/reader-copy";
+import ReaderText from "@/app/components/ReaderText";
 
 const Identity = createContext<ReaderIdentity | null>(null);
 export const ReaderIdentityProvider = Identity.Provider;
@@ -42,7 +44,7 @@ export function ReaderExplanation({ kind, itemId, original, fallback = original,
     const source = item ? <Evidence sources={item.cited_sources} documentId={item.document_id} notes={details} number={citationNumber} /> : renderCitation?.(details) ?? citation;
     return <>
       {!hideHeading && <h4 className="mb-2 text-lg font-semibold text-slate-950 dark:text-green-200">{heading}</h4>}
-      <p className="leading-7 text-slate-800 dark:text-green-100">{paragraphs.join(" ")}{source}</p>
+      <ReaderText text={paragraphs.join(" ")} citation={source} />
     </>;
   }
   if (!item) return <p className="leading-7 text-slate-900 dark:text-green-100">{fallback}{citation}</p>;
@@ -105,12 +107,12 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
   const current = Math.min(page, totalPages);
   return <div>
     {enhancement?.coverage_notice && <p className="mb-3 text-sm text-amber-800 dark:text-amber-300">{enhancement.coverage_notice}</p>}
-    <ul>{rows.slice((current - 1) * 6, current * 6).map((item, index) => {
+    <StableResults page={current} label="Enhanced explanations"><ul>{rows.slice((current - 1) * 6, current * 6).map((item, index) => {
       const paragraphs = explanationParagraphs(item.text);
       return <li key={`${current}-${index}`} className="border-b border-slate-200 py-5 last:border-b-0 dark:border-green-900/70">
         {paragraphs.map((text, index) => <p key={index} className="mt-2 w-full leading-7">{text}{index === paragraphs.length - 1 && <Evidence sources={item.cited_sources} documentId={identity.documentId!} />}</p>)}
       </li>;
-    })}</ul>
+    })}</ul></StableResults>
     {totalPages > 1 && <nav aria-label="AI explanation pages" className="mt-4 flex items-center justify-center gap-4">
       <button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
       <span>Page {current} of {totalPages}</span>
@@ -153,8 +155,8 @@ function ReviewedChanges({ reader }: { reader: NonNullable<ReturnType<typeof use
     .sort((a, b) => (a.cited_sources[0]?.start_char ?? 0) - (b.cited_sources[0]?.start_char ?? 0));
   const pages = Math.max(1, Math.ceil(rows.length / 6));
   if (!rows.length) return null;
-  return <div className="mt-6"><h4 className="mb-4 text-lg font-semibold">Other changes</h4><ul className="space-y-5">{rows.slice((page - 1) * 6, page * 6).map((item, index) =>
-    <li key={`${page}-${index}`} className="leading-7">{item.text}<Evidence number={(page - 1) * 6 + index + 1} sources={item.cited_sources} documentId={reader.identity.document_id} /></li>)}</ul>
+  return <div className="mt-6"><h4 className="mb-4 text-lg font-semibold">Other changes</h4><StableResults page={page} label="Additional changes"><ul className="space-y-5">{rows.slice((page - 1) * 6, page * 6).map((item, index) =>
+    <li key={`${page}-${index}`} className="leading-7">{item.text}<Evidence number={(page - 1) * 6 + index + 1} sources={item.cited_sources} documentId={reader.identity.document_id} /></li>)}</ul></StableResults>
     {pages > 1 && <nav aria-label="Additional provision pages" className="mt-5 flex items-center justify-center gap-4">
       <button disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
       <span>Page {page} of {pages}</span><button disabled={page === pages} onClick={() => setPage(page + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>

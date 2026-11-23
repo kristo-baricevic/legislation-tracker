@@ -59,12 +59,11 @@ function RepresentativesTable() {
   const inFlight = useRef(true);
   function resetResults() {
     inFlight.current = true;
-    setPage(null);
     setPageNum(1);
     setError(null);
     setLoading(true);
   }
-  const [hasAccount, setHasAccount] = useState(false);
+  const [hasAccount, setHasAccount] = useState<boolean | null>(null);
   const [trackedLegislatorIds, setTrackedLegislatorIds] = useState<number[]>([]);
   const [trackingLegislatorId, setTrackingLegislatorId] = useState<number | null>(
     null,
@@ -225,7 +224,7 @@ function RepresentativesTable() {
           </div>
         </div>
 
-        {!hasAccount && (
+        {hasAccount === false && (
           <p className="mb-4 text-sm text-muted">
             <Link
               href="/login"
@@ -257,7 +256,7 @@ function RepresentativesTable() {
             <p className="mb-4 text-muted">
               {page.count ? <>{page.count} representative{page.count !== 1 ? "s" : ""}</> : "No representatives found."}
             </p>
-            {view === "avatars" ? <ul aria-label="Representatives" className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {view === "avatars" ? <ul aria-label="Representatives" aria-busy={loading} className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {page.results.map(rep => <RepresentativeAvatar key={rep.id} rep={rep} congress={currentCongress}>
                 {hasAccount && <button type="button" aria-pressed={trackedLegislatorIds.includes(rep.id)} aria-label={`${trackedLegislatorIds.includes(rep.id) ? "Untrack" : "Track"} ${rep.name}`}
                   onClick={() => toggleLegislatorTracking(rep.id)} disabled={trackingLegislatorId !== null}
@@ -265,7 +264,7 @@ function RepresentativesTable() {
                   {trackingLegislatorId === rep.id ? "Saving…" : trackedLegislatorIds.includes(rep.id) ? "✓ Tracked" : "+ Track"}
                 </button>}
               </RepresentativeAvatar>)}
-            </ul> : <div className="tracker-table" role="region" aria-label="Representative results" tabIndex={0}>
+            </ul> : <div className="tracker-table" role="region" aria-label="Representative results" aria-busy={loading} tabIndex={0}>
               <table className="w-full table-fixed text-left">
                 <thead>
                   <tr className="border-b border-line bg-wash">
@@ -316,7 +315,7 @@ function RepresentativesTable() {
               </table>
             </div>}
             <div ref={sentinel} className="mt-6 min-h-10 text-center text-sm text-muted">
-              {loading && <p role="status">Loading more representatives…</p>}
+              {loading && <p role="status">{pageNum === 1 ? "Updating results…" : "Loading more representatives…"}</p>}
               {error && <div role="alert"><p>{error}</p><button type="button" className="mt-2 cursor-pointer underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button></div>}
               {!loading && !error && !page.next && page.results.length > 0 && <p>All {page.count} representatives shown</p>}
             </div>

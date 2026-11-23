@@ -9,7 +9,7 @@ import { dashboardSession } from "@/lib/dashboard-cache";
 export default function AuthNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const [hasSession, setHasSession] = useState(false);
+  const [hasSession, setHasSession] = useState<boolean | null>(null);
   const linkState = (href: string) => {
     const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
     return { "aria-current": active ? "page" as const : undefined, className: `cursor-pointer border-b-2 py-1 hover:text-ink ${active ? "border-current font-semibold" : "border-transparent"}` };
@@ -57,7 +57,7 @@ export default function AuthNav() {
       >
         Representatives
       </Link>
-      {hasSession ? (
+      {hasSession === null ? <span className="inline-block w-32" aria-label="Loading account" aria-busy="true" /> : hasSession ? (
         <>
           <Link
             href="/settings"

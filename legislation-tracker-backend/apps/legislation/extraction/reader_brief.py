@@ -142,6 +142,19 @@ def _definition_occurs(term: object, line: _LineDraft) -> bool:
     return re.search(rf"(?<!\w){re.escape(normalized_term)}(?!\w)", source) is not None
 
 
+def _attach_definition_refs(definitions, lines):
+    patterns = []
+    for definition in definitions:
+        term = definition.claim.fields.get("term")
+        if isinstance(term, str) and (term := _normalized(term)):
+            patterns.append((definition.id, term, re.compile(rf"(?<!\w){re.escape(term)}(?!\w)")))
+    for line in lines:
+        source = _normalized(" ".join(span.text for span in line.evidence))
+        for identity, term, pattern in patterns:
+            if term in source and pattern.search(source) is not None:
+                line.definition_refs.append(identity)
+
+
 def _standalone_line(item: IdentifiedClaim) -> _LineDraft | ExtractionWarning:
     rendered = render_reader_claim(item.claim)
     if isinstance(rendered, ExtractionWarning):
@@ -460,10 +473,7 @@ def build_reader_brief(
         lines.append(purpose_line)
 
     lines.sort(key=lambda line: line.evidence[0].start_char)
-    for definition in definition_items:
-        for line in lines:
-            if _definition_occurs(definition.claim.fields.get("term"), line):
-                line.definition_refs.append(definition.id)
+    _attach_definition_refs(definition_items, lines)
 
     line_items = tuple(_reader_line(line) for line in lines)
     section_by_id = {section.source_id: section for section in sections}

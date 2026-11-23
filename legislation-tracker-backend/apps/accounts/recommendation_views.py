@@ -7,6 +7,7 @@ from django.core import signing
 from django.utils import timezone
 from rest_framework.response import Response
 
+from .dashboard_bill_cards import add_card_summaries
 from .recommendation_support import (
     PrivateRecommendationView,
     activity_revision,
@@ -174,6 +175,6 @@ class BillRecommendationView(PrivateRecommendationView):
                 },
                 "count": len(snapshot["results"]),
                 "next_cursor": token,
-                "results": snapshot["results"][offset:next_offset],
+                "results": add_card_summaries(snapshot["results"][offset:next_offset]),
             }
         )

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { StableResults } from "@/app/components/StableResults";
 
 import {
   getFinancialItems,
@@ -106,7 +107,7 @@ function OriginalFinancialLedger({
   const requestedPage = useRef(1);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  async function load(targetPage: number, navigate = false) {
+  async function load(targetPage: number, _navigate = false) {
     requestedPage.current = targetPage;
     const activeRequest = ++requestId.current;
     setLoading(true);
@@ -126,10 +127,6 @@ function OriginalFinancialLedger({
       setFilteredCount(response.count);
       setPage(targetPage);
       setHasMore(Boolean(response.next));
-      if (navigate && !heading.current?.closest("[hidden]")) {
-        heading.current?.focus({ preventScroll: true });
-        heading.current?.scrollIntoView?.({ block: "start" });
-      }
     } catch {
       if (activeRequest === requestId.current) {
         setError("Could not load money provisions. Try again.");
@@ -188,8 +185,10 @@ function OriginalFinancialLedger({
           </label>
           <button type="button" onClick={applyFilters} className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:border-green-700 dark:text-green-300">Apply money filters</button>
         </fieldset>
+        <div className="min-h-12">
         {filterError && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{filterError}</p>}
         {filtersApplied && !loading && !error && !filterError && <p role="status" className="mt-3 text-sm text-slate-700 dark:text-green-300">Filters applied: {filteredCount} matching provisions.</p>}
+        </div>
 
         {lineItemId && onClearLineItem && (
           <button type="button" onClick={onClearLineItem} className="mt-4 cursor-pointer text-sm font-semibold text-blue-900 underline dark:text-green-400">Show all money in this bill</button>
@@ -197,6 +196,7 @@ function OriginalFinancialLedger({
         <p className="mt-4 text-sm text-slate-600 dark:text-green-600">
           {items.length} of {lineItemId || sectionId || filters.action || filters.year != null ? `${filteredCount} matching` : totalCount} provisions shown
         </p>
+        <StableResults page={page} busy={loading} label="Financial provisions">
         {error && (
           <div role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
             <p>{error}</p>
@@ -223,9 +223,10 @@ function OriginalFinancialLedger({
             ))}
           </ol>
         )}
+        </StableResults>
         {filteredCount > 0 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
           <button type="button" disabled={loading || page <= 1} onClick={() => void load(page - 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
-          <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}{loading ? " · Loading…" : ""}</span>
+          <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}</span>
           <button type="button" disabled={loading || !hasMore} onClick={() => void load(page + 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
         </nav>}
       </div>

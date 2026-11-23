@@ -14,7 +14,7 @@ it('renders discovered amounts independently of NLP and filters and paginates th
   expect(screen.getByText('$100–200 million')).toBeVisible();
   await userEvent.selectOptions(screen.getByLabelText('Financial action'), 'Housing grants');
   expect(screen.getByText('Provision 10')).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Source 1' }));
   expect(screen.getByRole('link', { name: 'Read bill text' })).toHaveAttribute('href', '/documents/19587?start=20&end=58');
 });

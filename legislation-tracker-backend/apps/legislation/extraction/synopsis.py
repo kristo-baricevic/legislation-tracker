@@ -90,6 +90,7 @@ def _source_provision_synopsis(sections, source_text):
 
 
 def structured_synopsis(sections, claims, source_text, clauses=None):
+    from bisect import bisect_left
     sentences = []
     evidence = []
     owner = None
@@ -100,6 +101,9 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
         if clauses is not None
         else parse_operative_clauses(source_text, sections)
     )
+    asserted = sorted(((i, c) for i, c in enumerate(clauses) if c.asserted),
+                      key=lambda pair: pair[1].span.start_char)
+    starts = [c.span.start_char for _, c in asserted]
 
     def add(key, text, section, spans):
         nonlocal owner
@@ -115,14 +119,9 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
             continue
         raw = section.span.text
         heading = section.heading or ""
-        facts = [
-            clause
-            for clause in clauses
-            if clause.asserted
-            and section.span.start_char
-            <= clause.span.start_char
-            < section.span.end_char
-        ]
+        selected = asserted[bisect_left(starts, section.span.start_char):
+                            bisect_left(starts, section.span.end_char)]
+        facts = [c for _, c in sorted(selected, key=lambda pair: pair[0])]
         heading_end = raw.find("\n")
         heading_span = (
             SourceSpan(

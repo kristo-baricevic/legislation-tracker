@@ -36,6 +36,13 @@ def xml_boundaries(raw, text):
         if tag in {"toc", "table-of-contents", "quoted-block", "quoted-text"}:
             return
         if tag == "section":
+            # Congress sometimes wraps a table of contents in an undesignated
+            # section. It is navigation, not an empty operative provision.
+            children = list(e)
+            if (children and not (e.text or "").strip()
+                    and all(_xml_tag(child) in {"toc", "table-of-contents"}
+                            and not (child.tail or "").strip() for child in children)):
+                return
             elements.append(e)
             return  # Nested quoted and amended law belongs to its parent.
         for child in e:

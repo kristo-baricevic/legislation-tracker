@@ -47,9 +47,131 @@ disabled by default. It is a private, user-funded overlay on the deterministic
 legal-NLP contract; it does not replace or modify `BillContract`,
 `EvidenceSpan`, ingestion output, or `ChangeLog`.
 
-OpenAI is the only production provider adapter in the initial release. The
-adapter boundary is provider-neutral so another provider can be added without
-changing credential ownership, enhancement persistence, or the public API.
+The provider-neutral harness supports OpenAI, Anthropic, Gemini and
+OpenAI-compatible endpoints including OpenRouter.
+
+### Free-model reader execution
+
+For `openrouter/free`, the first returned (or already validated cached) free
+model is persisted in `BillEnhancementAttempt.pinned_model`. New calls in that
+attempt, including later worker deliveries and split retries, use that exact
+model ID. No model is hardcoded globally and a mismatched response is rejected.
+Previously validated cached results remain reusable even when the old run used
+different free models. An unresolved router response never authorizes a paid model.
+
+The existing size-based planner budgets prose and citations. A known truncated
+response is subdivided by target/output size (or passage bytes for full-source
+review), preserving complete source context. Only its children are requested;
+validated siblings and rejected parents are durably reused across deliveries.
+Subdivision stays within the confirmed call reserve and stops at indivisible units.
+
+OpenRouter receives an explicit reasoning effort only when one is requested.
+The legacy `none` setting leaves the model's reasoning default unchanged; it does
+not disable reasoning. OpenAI-compatible production calls use an async HTTP
+client with a total elapsed-time deadline, in addition to transport timeouts.
+Deadline expiry cancels the HTTP operation and records an unknown outcome; it
+does not automatically resend a possibly processed request. Cancellation cannot
+guarantee that a remote provider has stopped computing.
+
+## Durable reader batching (2026-11-22)
+
+Apply migrations **0027–0028** before deploying this API/worker revision.
+They add per-attempt work nodes and the `paused` status. An already completed
+public analysis is not rewritten by these migrations.
+
+- Work nodes persist pending requests, split ancestry and validated outputs.
+  Worker deliveries rebuild the result from those nodes; cached reads and local
+  reconstruction do not consume the confirmed provider-call allowance.
+- Full-source reviews now estimate output from owned passage bytes, citations,
+  coverage decisions and financial findings. Default reasoning remains enabled
+  where the provider enables it. The planner reserves half the output allowance
+  for reasoning; this is an estimate, not a prediction of model behavior.
+- Output-limit recovery divides ownership by text size and retains the source
+  context and citation IDs. It deliberately does **not** drop neighboring legal
+  conditions to shrink input. An indivisible unit can use one larger output
+  allowance within the model cap and the already-confirmed aggregate budget.
+  At that cap it stops; retries cannot loop indefinitely.
+- Valid independent components of a rejected review are saved. Findings sharing
+  owned citations form one component; an invalid component is retried together.
+  No unvalidated response prose is retained as successful work.
+- Actual dispatches, input/output token ceilings and per-delivery limits are
+  checked separately. Missing usage retains its conservative reservation. Budget
+  exhaustion saves progress as `paused`; **Continue** opens the existing estimate
+  modal and requires confirmation before any further request. Key rotation does
+  not change the pinned model in a continued plan.
+- Cache identity includes effective model and execution semantics. Validated
+  cache entries are revalidated. Unknown provider outcomes remain reserved and
+  are never blindly resent. Reuse is guaranteed for the same work identity, not
+  across arbitrary prompt, model or source changes.
+- Diagnostics retain reasoning/visible usage when the provider reports it,
+  requested/resolved model, reservations, ownership, and failure codes. Final
+  counters distinguish dispatched calls from validated work units.
+
+`LLM_READER_MODEL_CAPACITIES` is an optional JSON object keyed by
+`provider/model`, with `context_tokens`, `output_tokens`, and `visible_fraction`.
+Use published limits for the selected model. Without an override the planner
+uses application caps and conservative UTF-8-byte input estimates; it does not
+claim to know an unspecified free-router model's capabilities. Input plus output
+plus transport headroom must fit. The effective pinned model is checked again
+before dispatch. No model-catalog or LLM calls occur during planning.
+
+Read-only audit:
+
+```bash
+rtk proxy python manage.py benchmark_reader_planner 18343 --provider openrouter --model openrouter/free
+rtk proxy python manage.py benchmark_reader_planner 460 --bills --provider openrouter --model openrouter/free
+```
+
+Local verification: bill 460/document 537 planned 25 calls in 1.487 seconds,
+with 81/81 owned passages. Document 18343 planned 495 calls in 53.109 seconds,
+with 4,852/4,852 owned passages and 1,134/1,134 XML sections. Neither plan had
+missing, duplicate or oversized assignments. This establishes scheduling
+coverage, **not** semantic accuracy or successful live generation. The latter
+document still has 53 chunks whose complete surrounding context is unavailable;
+that limitation is retained, not silently treated as resolved.
+
+The follow-up corrected both comparison gaps. Large HTML documents now use
+the complete reader planner even without an existing NLP contract. XML
+contents-only section wrappers are excluded from the operative inventory;
+mixed contents/operative sections remain included, and source text is unchanged.
+Document 11639's text matched exactly: its former error was an empty TOC wrapper,
+not a mismatched source version.
+
+Read-only rerun (2026-11-23): document 11639 planned 462 calls in 50.371 seconds,
+with 4,427/4,427 passages and 1,093 XML sections; document 18340 planned 613 calls
+in 25.958 seconds, with 4,836/4,836 passages. Neither had missing, duplicate or
+oversized assignments. They retain 34 and 87 incomplete-context chunks,
+respectively. These counts establish scheduling coverage, not interpretation
+accuracy or guaranteed API success. No AI calls were made.
+
+The same audit found both non-AI document jobs had exhausted five attempts
+under the shared 60-second timeout. Extraction now merges structural markers
+incrementally, reuses the parent index and operative parse, indexes payment
+children and clause overlaps, and normalizes glossary evidence once per line.
+Read-only full extraction completed without legacy fallback for 18340 (34.61s)
+and 11639 (65.62s). Document-contract deliveries now have a 180-second soft /
+210-second hard CPU budget, below the ten-minute lease; network stages retain
+their 60/75-second limits. These are runtime checks, not a claim that every
+legal provision has been correctly interpreted.
+
+Live local durable replay completed on the first replay attempt for both:
+18340 in 65.78s (contract 32139), and 11639 in 79.31s (contract 32140), including
+persistence. Document 18340 is not the marked active version (18344 is), so its
+saved version analysis did not replace the current bill analysis. Document
+11639 initially retained an incomplete-amendment coverage warning. The follow-up
+fix recognizes direct “is amended as follows:” replacement text and associates
+child conditions by source position rather than repeated section labels. It
+keeps qualifying lists together, preserving permission versus obligation and
+the source conjunction. Regression tests cover deletion/background text and
+repeated labels, with exact evidence-offset checks.
+
+The local 2.1.25 replay saved contract 32142 in 82.24 seconds. Verification of
+the saved result found one marine-inspector pay permission containing both
+eligibility conditions, including the Commandant determination. The
+incomplete-amendment warning cleared and the bill is marked processed. Separate
+reader-quality warnings remain (`reader_required_slot_missing` and
+`reader_uncertain_clause`); this check establishes recovery of this amendment,
+not perfect interpretation of every provision. No AI calls were made.
 
 ## User flow
 

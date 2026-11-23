@@ -105,6 +105,27 @@ def test_new_activity_changes_a_warm_recommendation_card_without_waiting_for_exp
     assert api.get(PATH).json()["results"][0]["bill"]["title"] == "Updated title"
 
 
+def test_dashboard_rows_prefer_current_shared_summary_then_original():
+    from apps.legislation.models import BillDocument, BillEnhancement
+    api, user = client()
+    tag = topic()
+    TrackedTopic.objects.create(user=user, topic=tag)
+    candidate = bill(199, topics=[tag])
+    candidate.summary = "Original brief."
+    candidate.save()
+    doc = BillDocument.objects.create(bill=candidate, version_label="Introduced", is_active_version=True, raw_text="Sample text")
+    doc.refresh_from_db()
+    row = BillEnhancement.objects.create(bill=candidate, status="succeeded", output_schema_version="1.3",
+        source_manifest_json={"document_id": doc.pk, "document_content_hash": doc.reader_text_hash},
+        result_json={"overview": [{"text": "Enhanced brief."}]}, result_completeness="complete")
+    assert api.get(PATH).json()["results"][0]["bill"]["card_summary"] == "Enhanced brief."
+    TrackedBill.objects.create(user=user, bill=candidate)
+    assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Enhanced brief."
+    row.source_manifest_json = {"document_id": doc.pk, "document_content_hash": "outdated"}
+    row.save()
+    assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Original brief."
+
+
 def test_expired_foreign_cursor_is_uniform_invalid():
     from django.core import signing
 

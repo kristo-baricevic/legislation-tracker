@@ -1,6 +1,6 @@
-.dialog { color: var(--foreground); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; width: min(860px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); margin: auto; padding: 2rem; overflow-y: auto; line-height: 1.55; }
+.dialog { --modal-width: 860px; color: var(--foreground); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 2rem; line-height: 1.55; }
 .dialog::backdrop { background: rgb(28 40 33 / 65%); }
-.dialog[open] { display: flex; flex-direction: column; height: calc(100dvh - 2rem); overflow: hidden; }
+.dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 .dialog > :not([role="tabpanel"]) { flex-shrink: 0; }
 .dialog > [role="tabpanel"] { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; flex: 1; overscroll-behavior: contain; }
 .dialog > .fundingPanel { overflow: hidden; scrollbar-gutter: auto; }

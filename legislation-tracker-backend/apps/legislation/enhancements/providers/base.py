@@ -11,6 +11,8 @@ class ProviderUsage:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    visible_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)

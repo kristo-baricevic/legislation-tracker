@@ -13,7 +13,7 @@ from html.parser import HTMLParser
 
 import requests
 from celery import shared_task
-from .dispatch_task import CoalescedDispatcherTask
+from .dispatch_task import CoalescedDispatcherTask, RefillIngestionTask
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, When
@@ -80,6 +80,11 @@ MAX_INGESTION_WORK_ATTEMPTS = 5
 
 DURABLE_WORK_SOFT_TIME_LIMIT_SECONDS = 60
 DURABLE_WORK_TIME_LIMIT_SECONDS = 75
+# Full-document extraction is CPU work on its own queue. Large verified
+# sources take longer than a network request, including schema validation
+# and evidence persistence; retain a bound below the ten-minute lease.
+DOCUMENT_CONTRACT_SOFT_TIME_LIMIT_SECONDS = 180
+DOCUMENT_CONTRACT_TIME_LIMIT_SECONDS = 210
 MAX_DISPATCHED_INGESTION_WORK = 100
 
 WORK_KIND_BILL = "bill"
@@ -1064,6 +1069,16 @@ def _tracked_refresh_bucket(now):
 @shared_task(base=CoalescedDispatcherTask)
 def dispatch_ingestion_work(batch_size=100):
     """Lease bounded, priority-ordered durable work and submit it to Celery."""
+    return _dispatch_ready_work(batch_size)
+
+
+@shared_task(queue="similarity")
+def dispatch_similarity_work():
+    return _dispatch_ready_work(1, similarity=True)
+
+
+def _dispatch_ready_work(batch_size, *, similarity=False):
+    from .queues import STAGE_QUEUES
     now = timezone.now()
     leased_items = []
     with transaction.atomic():
@@ -1071,33 +1086,48 @@ def dispatch_ingestion_work(batch_size=100):
         # dispatcher wakeups cannot each lease a full batch. Rows beyond the
         # cap remain visibly pending and are selected by priority next time.
         IngestionWorkItem.objects.select_for_update().order_by("id").first()
-        in_flight = IngestionWorkItem.objects.filter(
-            status=IngestionWorkStatus.DISPATCHED
-        ).exclude(kind="representative_research").count()
-        capacity = max(MAX_DISPATCHED_INGESTION_WORK - in_flight, 0)
-        candidates = []
-        if capacity:
-            candidates = list(
-                IngestionWorkItem.objects.select_for_update(skip_locked=True)
-                .filter(
-                    status=IngestionWorkStatus.PENDING,
-                    available_at__lte=now,
+        if similarity:
+            lane = IngestionWorkItem.objects.filter(kind="similarity")
+            capacity = max(settings.SIMILARITY_WORK_CONCURRENCY - lane.filter(
+                status__in=["dispatched", "processing"]).count(), 0)
+            candidates = [] if not capacity else list(
+                lane.select_for_update(skip_locked=True).filter(status="pending", available_at__lte=now)
+                .order_by(Case(When(payload_json__has_key="step", then=0), default=1), "available_at", "id")[:capacity])
+        else:
+            candidates = []
+            # Each lane owns its admission budget. A full metadata queue must
+            # never prevent documents, votes or contracts from being dispatched.
+            for kind in sorted(STAGE_QUEUES, key=lambda k: WORK_KIND_DISPATCH_PRIORITY.get(k, 100)):
+                if kind in {"representative_research", "similarity"}:
+                    continue
+                lane = IngestionWorkItem.objects.filter(kind=kind)
+                in_flight = lane.filter(status__in=["dispatched", "processing"]).count()
+                capacity = max(settings.INGESTION_STAGE_IN_FLIGHT - in_flight, 0)
+                capacity = min(capacity, max(batch_size - len(candidates), 0))
+                if not capacity:
+                    continue
+                candidates.extend(
+                    IngestionWorkItem.objects.select_for_update(skip_locked=True)
+                    .filter(
+                        kind=kind,
+                        status=IngestionWorkStatus.PENDING,
+                        available_at__lte=now,
+                    )
+                    .order_by(_work_dispatch_priority(), "available_at", "id")[
+                        : capacity
+                    ]
                 )
-                .exclude(kind="representative_research")
-                .order_by(_work_dispatch_priority(), "available_at", "id")[
-                    : min(batch_size, capacity)
-                ]
-            )
-        research_in_flight = IngestionWorkItem.objects.filter(
-            kind="representative_research", status__in=["dispatched", "processing"]
-        ).count()
-        # Separate admission budget: research cannot occupy bill-processing slots.
-        if research_in_flight < 1:
-            candidates.extend(IngestionWorkItem.objects.select_for_update(skip_locked=True).filter(
-                kind="representative_research", status=IngestionWorkStatus.PENDING,
-                available_at__lte=now,
-            ).order_by(Case(When(payload_json__finance_phase="receipts", then=1),
-                            default=0, output_field=IntegerField()), "available_at", "id")[:1])
+            research_in_flight = IngestionWorkItem.objects.filter(
+                kind="representative_research", status__in=["dispatched", "processing"]
+            ).count()
+            # Separate admission budget: research cannot occupy bill-processing slots.
+            research_capacity = max(settings.RESEARCH_WORK_CONCURRENCY - research_in_flight, 0)
+            if research_capacity:
+                candidates.extend(IngestionWorkItem.objects.select_for_update(skip_locked=True).filter(
+                    kind="representative_research", status=IngestionWorkStatus.PENDING,
+                    available_at__lte=now,
+                ).order_by(Case(When(payload_json__finance_phase="receipts", then=1),
+                                default=0, output_field=IntegerField()), "available_at", "id")[:research_capacity])
         for work_item in candidates:
             work_item.status = IngestionWorkStatus.DISPATCHED
             work_item.lease_expires_at = now + WORK_LEASE_DURATION
@@ -1117,9 +1147,14 @@ def dispatch_ingestion_work(batch_size=100):
     dispatched = 0
     for work_item_id, dispatch_token, kind in leased_items:
         try:
+            limits = ({
+                "soft_time_limit": DOCUMENT_CONTRACT_SOFT_TIME_LIMIT_SECONDS,
+                "time_limit": DOCUMENT_CONTRACT_TIME_LIMIT_SECONDS,
+            } if kind == "document_contract" else {})
             result = process_ingestion_work_item.apply_async(
                 args=[work_item_id, dispatch_token],
-                **({"queue": "research"} if kind == "representative_research" else {}),
+                queue=STAGE_QUEUES[kind],
+                **limits,
             )
         except Exception as exc:
             # Leave it ready for the next dispatcher pass instead of dropping it.
@@ -1156,6 +1191,7 @@ def dispatch_ingestion_work(batch_size=100):
     # a stuck library call retryable instead of pinning a prefork worker.
     soft_time_limit=DURABLE_WORK_SOFT_TIME_LIMIT_SECONDS,
     time_limit=DURABLE_WORK_TIME_LIMIT_SECONDS,
+    base=RefillIngestionTask,
 )
 def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
     """Execute one durable work item and persist its terminal or retry state."""
@@ -1410,6 +1446,11 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             dispatch_ingestion_work.apply_async(kwargs={"batch_size": 0}, queue="research")
         except Exception:
             logger.exception("Could not wake research dispatcher; periodic dispatch will recover")
+    elif work_item.kind == "similarity":
+        try:
+            dispatch_similarity_work.apply_async(queue="similarity")
+        except Exception:
+            logger.exception("Could not wake similarity dispatcher; periodic dispatch will recover")
     elif requeued:
         try:
             dispatch_ingestion_work.delay()
@@ -1567,27 +1608,18 @@ def recover_stale_ingestion_work():
 @shared_task
 def poll_tracked_bills():
     """
-    Refresh bills relevant to user tracking.
+    Refresh explicitly tracked bills without replacing outstanding work.
 
     This does not discover new bills by topic/legislator. The broad poll_congress
-    schedule handles discovery; this task gives already-tracked corpus rows a
-    more direct refresh path.
+    schedule discovers provider updates for the broader topic/sponsor corpus;
+    a followed topic must not trigger thousands of unchanged requests every
+    five minutes. Explicitly tracked bills retain the faster refresh path.
     """
     direct_bill_ids = TrackedBill.objects.values_list("bill_id", flat=True)
-    topic_ids = TrackedTopic.objects.values_list("topic_id", flat=True)
-    representative_ids = TrackedLegislator.objects.values_list(
-        "representative_id",
-        flat=True,
-    )
     bills = (
-        Bill.objects.filter(
-            Q(id__in=direct_bill_ids)
-            | Q(bill_topics__topic_id__in=topic_ids)
-            | Q(sponsor_id__in=representative_ids)
-        )
+        Bill.objects.filter(id__in=direct_bill_ids).select_for_update()
         .only("id", "jurisdiction", "session", "bill_number")
         .order_by("id")
-        .distinct()
     )
     now = timezone.now()
     source_updated_at = _tracked_refresh_bucket(now)
@@ -1596,6 +1628,12 @@ def poll_tracked_bills():
         for bill in bills:
             key = bill_to_bill_key(bill)
             if not key:
+                continue
+            if IngestionWorkItem.objects.filter(
+                kind=WORK_KIND_BILL, dedupe_key=key,
+                status__in=[IngestionWorkStatus.PENDING, IngestionWorkStatus.DISPATCHED,
+                            IngestionWorkStatus.PROCESSING, IngestionWorkStatus.BLOCKED],
+            ).exists():
                 continue
             _, created = persist_ingestion_work(
                 kind="bill",

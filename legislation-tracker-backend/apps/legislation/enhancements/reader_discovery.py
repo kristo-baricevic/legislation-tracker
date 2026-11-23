@@ -63,6 +63,15 @@ Never include drafting instructions, quote IDs, source-ref IDs, [[markers]], or
 For EVERY policy_checks passage: use explained if it contains a policy change
 or a condition belonging to one, and cite it in at least one policy_changes item.
 Use context only for headings, the short title, or wording with no distinct effect.
+Reporting duties, report deadlines, public or classified format requirements,
+and required recipients are substantive rules, not context. Explain them together
+in a short practical sentence; keep the full list of committee names in citations.
+An explained decision requires an actual policy_changes entry, never an empty list.
+For a reporting requirement, summarize the subject in everyday categories rather
+than reproducing every country, agency, threat type, or committee name. Preserve
+who must report, the deadline, and any public/classified requirement. Use separate
+short entries if needed. Write English sentences; never squeeze text into a limit
+by deleting spaces, switching languages, or ending with an unfinished conjunction.
 A financial money_checks passage must be explained, not context. Cite supporting
 conditions even when they share the same entry. All entries must be source-backed.
 """
@@ -159,8 +168,9 @@ def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000
 
 
 def money_candidates(sources):
+    from .reader_integrity import financial_signal_text
     return [f"{s['source_ref']}:{p['quote_id']}" for s in sources for p in citation_passages(s)
-            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids']) and re.search(r'\$|%|\b(?:percent|appropriat\w*|tax credit|deduction|grant amounts|tariffs?|shall (?:reserve|transfer|allocate)|(?:may|shall) set aside)\b', p['text'], re.I)]
+            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids']) and re.search(r'\$|%|\b(?:percent|appropriat(?:ed|ing|ion|ions)|(?:shall|may|must) appropriate\s+(?:funds|money|sums)|tax credit|deduction|grant amounts|tariffs?|shall (?:reserve|transfer|allocate)|(?:may|shall) set aside)\b', financial_signal_text(p['text']), re.I)]
 
 
 def discovery_schema(sources):
@@ -198,7 +208,9 @@ def discovery_schema(sources):
             'type': 'object', 'additionalProperties': False,
             'required': ['title', 'text', 'source_quotes'], 'properties': {
                 'title': {'type': 'string', 'minLength': 1, 'maxLength': 90},
-                'text': {'type': 'string', 'minLength': 1, 'maxLength': 420, 'pattern': r'[.!?]$'},
+'text': {'type': 'string', 'minLength': 1, 'maxLength': 420,
+    'description': 'One or two complete plain-English sentences, at most 65 words, ending with punctuation.',
+    'pattern': r'^(?:\S+\s+){0,64}\S*[.!?]$'},
                 'source_quotes': quotes}}}
         keys = policy_passages(sources)
         schema['properties']['policy_checks'] = {'type': 'object', 'additionalProperties': False,
@@ -207,6 +219,28 @@ def discovery_schema(sources):
 
 
 def resolve_discovery(output, sources, *, aggregate=False):
+    # Split requests include adjacent passages for context. A finding belongs
+    # to this request only when it cites at least one passage it owns.
+    if any(s.get('review_quote_ids') is not None for s in sources):
+        output = copy.deepcopy(output)
+        owned = {(s['source_ref'], p['quote_id']) for s in sources
+                 for p in citation_passages(s) if p['quote_id']
+                 and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids'])}
+        for category in ('financial_items', 'policy_changes', 'additional_changes'):
+            rows = output.get(category)
+            if not isinstance(rows, list):
+                continue
+            kept = []
+            for item in rows:
+                quotes = item.get('source_quotes', []) if isinstance(item, dict) else []
+                if not isinstance(quotes, list) or any(not isinstance(q, dict) for q in quotes):
+                    kept.append(item)
+                    continue
+                local = [q for q in quotes if (q.get('source_ref'), q.get('quote_id')) in owned]
+                if local:
+                    item['source_quotes'] = local + [q for q in quotes if q not in local]
+                    kept.append(item)
+            output[category] = kept
     schema = discovery_schema(sources)
     if aggregate:
         schema['properties']['financial_items'].pop('maxItems', None)
@@ -245,10 +279,59 @@ def resolve_discovery(output, sources, *, aggregate=False):
 
 def validate_policy_copy(item):
     text = item['text']
-    if len(text.split()) > 65 or not re.search(r'[.!?]$', text) or re.search(
+    if not re.search(r'[A-Za-z]', text) or len(text.split()) > 65 or not re.search(r'[.!?]$', text) or re.search(r'\b(?:and|or)\s*[.!?]$', text, re.I) or re.search(
             r'\b(?:p\d{4}|src_\d{4})\b|\[\[|\b(?:amended by striking|inserting the following|subparagraph [A-Z] is amended)\b',
             text, re.I):
         raise output_error('reader_policy_wording', ['policy_changes'])
+
+
+def retain_missing_financial_rules(review, sources):
+    """Keep source wording for known financial rules missed by discovery."""
+    from .citations import citation_spans
+    scans = {s['source_ref']: s for s in sources if s.get('discovery_source')}
+    covered = []
+    for item in review['financial_items']:
+        for q in item['source_quotes']:
+            source = scans[q['source_ref']]
+            for a, b in citation_spans(source['quoted_text'], q['quote']):
+                covered.append((source['start_char'] + a, source['start_char'] + b))
+    seen = set()
+    for source in sources:
+        for target in source.get('reader_targets', []):
+            if target['kind'] != 'financial_item' or target['target_id'] in seen:
+                continue
+            seen.add(target['target_id'])
+            ranges = target['evidence_ranges']
+            if any(a < right and b > left for a, b in covered for left, right in ranges):
+                continue
+            fragments, quotes = [], []
+            for left, right in ranges:
+                cursor = left
+                for scan in scans.values():
+                    offset = scan['start_char']
+                    if scan['end_char'] <= left or offset >= right:
+                        continue
+                    for passage in citation_passages(scan):
+                        end = offset + len(passage['text'])
+                        a, b = max(offset, left), min(end, right)
+                        if a < b:
+                            if a != cursor or not passage['quote_id']:
+                                raise output_error('reader_coverage_incomplete', ['financial_items'])
+                            fragments.append(passage['text'][a-offset:b-offset])
+                            quote = {'source_ref': scan['source_ref'], 'quote': passage['text']}
+                            if quote not in quotes:
+                                quotes.append(quote)
+                            cursor = b
+                        offset = end
+                if cursor != right:
+                    raise output_error('reader_coverage_incomplete', ['financial_items'])
+                fragments.append(' ')
+            item = target['facts']['item']
+            review['financial_items'].append({
+                'text': ''.join(fragments).strip(), 'source_quotes': quotes,
+                'label': (item.get('financial_action') or 'Financial rule').replace('_', ' ').capitalize(),
+                'amount_display': 'See provision', 'fiscal_years': [],
+            })
 
 
 def validate_source_review(review, sources):

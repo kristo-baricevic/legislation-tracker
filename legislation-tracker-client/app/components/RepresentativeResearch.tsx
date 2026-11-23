@@ -21,19 +21,20 @@ function SourceLink({ url, children, "aria-describedby": description }: { url: s
   return /^https:\/\//.test(url) ? <a href={url} aria-describedby={description} target="_blank" rel="noreferrer">{children}</a> : <span aria-describedby={description}>{children}</span>;
 }
 
-type ResearchProps = { representativeId: number; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; dashboardCard?: boolean; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
+type ResearchProps = { representativeId: number; initialPeriod?: string | null; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; dashboardCard?: boolean; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
 export default function RepresentativeResearch({ representativeId, compact = false, ...props }: ResearchProps) {
   return <ResearchPanel key={representativeId} representativeId={representativeId} compact={compact} {...props} />;
 }
 
-function ResearchPanel({ representativeId, compact, profileView = false, financeView = false, modalView = false, cardName, dashboardCard = false, onResearch, onPortrait }: ResearchProps) {
+function ResearchPanel({ representativeId, initialPeriod, compact, profileView = false, financeView = false, modalView = false, cardName, dashboardCard = false, onResearch, onPortrait }: ResearchProps) {
   const year = new Date().getFullYear();
   const version = useDashboardRepVersion();
   const cardVersion = dashboardCard ? version : 0;
-  const [period, setPeriod] = useState(year + year % 2);
+  const [period, setPeriod] = useState(() => initialPeriod && /^\d{4}$/.test(initialPeriod) && Number(initialPeriod) >= 1980 && Number(initialPeriod) <= year + year % 2 && Number(initialPeriod) % 2 === 0 ? Number(initialPeriod) : year + year % 2);
   const [availablePeriods, setAvailablePeriods] = useState<number[]>([]);
-  const [allYears, setAllYears] = useState(false);
+  const [allYears, setAllYears] = useState(initialPeriod === "all");
   const [fundingView, setFundingView] = useState<"donations" | "outside">("donations");
+  const [outsideScope, setOutsideScope] = useState<import("@/lib/representative-research").OutsideSpendingScope>("all_years");
   const [data, setData] = useState<Research | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -147,7 +148,7 @@ function ResearchPanel({ representativeId, compact, profileView = false, finance
     {error && <p role="alert">{error} <button onClick={() => void selectPeriod(period)}>Retry</button></p>}
     <div className={styles.fundingLoadStatus} role="status">{!data && !error ? "Loading funding…" : overviewReady && active ? "Donations updating in background" : ""}</div>
     <div className={styles.fundingContent} aria-label="Funding results" aria-busy={busy} inert={busy}>
-    {fundingView === "outside" ? <OutsideSpendingTable representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? <AllYearsDonations representativeId={representativeId} modalView={modalView} refreshToken={`${reload}:${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : <>
+    {fundingView === "outside" ? <OutsideSpendingTable scope={outsideScope} setScope={setOutsideScope} representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? <AllYearsDonations representativeId={representativeId} modalView={modalView} refreshToken={`${reload}:${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : <>
       {data?.finance_progress && <CampaignTotals progress={data.finance_progress} concise />}
       {data?.snapshot ? modalView ? <DonationPie initialData={preparedFunding?.snapshot === data.snapshot ? preparedFunding.sizes : undefined} refreshToken={`${data.finance_progress?.pages_loaded ?? 0}:${active}`} key={`${displayedPeriod}:${data.snapshot}`} representativeId={representativeId} period={displayedPeriod} snapshot={data.snapshot} /> : <ContributorTable initialData={preparedFunding?.snapshot === data.snapshot ? preparedFunding.contributors : undefined} concise refreshToken={`${data.finance_progress?.pages_loaded ?? 0}:${active}`} key={`${displayedPeriod}:${data.snapshot}`} representativeId={representativeId} period={displayedPeriod} snapshot={data.snapshot} /> : data && <p role="status">{active ? data.status === "queued" ? "Campaign research queued." : "Collecting campaign records…" : "No campaign records available for this period."}</p>}
     </>}
@@ -202,9 +203,8 @@ function AllYearsDonations({ representativeId, modalView, refreshToken }: { repr
   </>;
 }
 
-function OutsideSpendingTable({ representativeId, refreshToken, collecting = false }: { representativeId: number; refreshToken: string; collecting?: boolean }) {
+function OutsideSpendingTable({ representativeId, refreshToken, collecting = false, scope, setScope }: { representativeId: number; refreshToken: string; collecting?: boolean; scope: import("@/lib/representative-research").OutsideSpendingScope; setScope: (value: import("@/lib/representative-research").OutsideSpendingScope) => void }) {
   const [data, setData] = useState<OutsideSpending | null>(null);
-  const [scope, setScope] = useState<import("@/lib/representative-research").OutsideSpendingScope>("all_years");
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [cursor, setCursor] = useState(0);

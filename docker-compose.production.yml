@@ -70,7 +70,8 @@ services:
   worker:
     build: ./legislation-tracker-backend
     restart: unless-stopped
-    command: celery -A config worker -Q celery -l info
+    command: celery -A config worker -Q celery --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
     env_file:
       - ${ENV_FILE:-.env.production}
     environment:
@@ -109,7 +110,7 @@ services:
     volumes:
       - document_media:/app/local_media
 
-  research-worker:
+  research-worker: &research-worker
     build: ./legislation-tracker-backend
     volumes:
       - document_media:/app/local_media
@@ -129,6 +130,66 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+
+  bill-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q bill --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-versions-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q bill_versions --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-votes-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q bill_votes --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  bill-relationships-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q bill_relationships --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  document-download-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q document_download --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  document-contract-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q document_contract --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  metadata-contract-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q metadata_contract --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  topic-update-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q topic_update --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  search-index-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q search_index --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  representative-detail-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q representative_detail --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  roll-call-vote-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q roll_call_vote --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  committee-roster-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q committee_roster --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  discovery-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q discovery --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  vote-discovery-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q vote_discovery --concurrency=1 --prefetch-multiplier=1 -l info
+    stop_grace_period: 300s
+  similarity-worker:
+    <<: *research-worker
+    command: celery -A config worker -Q similarity --concurrency=1 --prefetch-multiplier=1 -l info
 
   beat:
     build: ./legislation-tracker-backend

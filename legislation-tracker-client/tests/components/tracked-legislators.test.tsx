@@ -5,7 +5,8 @@ import { getRepresentativeTopicActivity, type RepresentativeTopicActivity } from
 import userEvent from "@testing-library/user-event";
 import { getResearch, startResearch } from "@/lib/representative-research";
 import TrackedLegislators from "@/app/components/TrackedLegislators";
-import type { TrackedLegislatorItem } from "@/lib/api";
+import { getRepresentativeCard, type TrackedLegislatorItem } from "@/lib/api";
+vi.mock("@/lib/api", async original => ({ ...await original<typeof import("@/lib/api")>(), getRepresentativeCard: vi.fn() }));
 vi.mock("@/lib/representative-research", () => ({ getResearch: vi.fn().mockResolvedValue({ status: "not_started", biography: null, portrait: null, snapshot: null, run: null }), startResearch: vi.fn() }));
 vi.mock("@/lib/recommendations", () => ({ getRepresentativeTopicActivity: vi.fn().mockResolvedValue({ channels: { sponsor: { topics: [{ topic: { id: 9, name: "Education" }, grouped: { topic_observation_count: 12 } }] }, active_cosponsor: { topics: [] } } }) }));
 beforeEach(() => {
@@ -45,13 +46,21 @@ it("offers a directory link with no tracked legislators", () => {
   render(<TrackedLegislators items={[]} congress={119} />);
   expect(screen.getByRole("link", {name: "Find representatives"})).toHaveAttribute("href", "/representatives");
 });
+it("renders a complete tracked card without any detail requests", async () => {
+  render(<TrackedLegislators items={[{...item, card: {...item.card!, top_topics: [{id: 9, name: "Education", count: 12}], research: {status: "succeeded", period: 2026, overview_ready: true}}}]} congress={119} />);
+  expect(await screen.findByRole("link", {name: "Education"})).toBeVisible();
+  expect(screen.getByText("Works on education.")).toBeVisible();
+  expect(getRepresentativeCard).not.toHaveBeenCalled();
+  expect(getRepresentativeTopicActivity).not.toHaveBeenCalled();
+  expect(getResearch).not.toHaveBeenCalled();
+});
 it("researches a representative and updates the card biography without a reload", async () => {
   vi.mocked(startResearch).mockResolvedValue({ id: "research-1", status: "queued", sections: {} });
   render(<TrackedLegislators items={[item]} congress={119} />);
   const button = await screen.findByRole("button", { name: "Research Melanie Stansbury" });
-  vi.mocked(getResearch).mockResolvedValue({ status: "running", period: 2026, run: { id: "research-1", status: "running", sections: { biography: {status: "succeeded"}, photo: {status: "succeeded"} } }, biography: { text: "New saved biography.", source: {url: "https://www.congress.gov", attribution: "Congress", license: "", fetched_at: "2026-11-09"} }, portrait: null, snapshot: null });
+  vi.mocked(getRepresentativeCard).mockResolvedValue({...item.card!, biography: {...item.card!.biography!, text: "New saved biography."}, research: {status: "succeeded", period: 2026, overview_ready: true}});
   await userEvent.click(button);
-  expect(startResearch).toHaveBeenCalledWith(242, expect.any(Number), expect.any(AbortSignal), false);
+  expect(startResearch).toHaveBeenCalledWith(242, expect.any(Number), expect.any(AbortSignal), true);
   expect(await screen.findByText("New saved biography.")).toBeVisible();
   expect(screen.queryByText("Works on education.")).not.toBeInTheDocument();
   expect(button).toBeEnabled();

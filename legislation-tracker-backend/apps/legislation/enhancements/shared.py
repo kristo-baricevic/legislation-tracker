@@ -10,7 +10,7 @@ def _reader_result_valid(saved):
     from apps.legislation.models import BillProcessingCache
     from .reader_cache import VALIDATOR_VERSION
     from .schema import validate_enhancement_output
-    fingerprint = hashlib.sha256(f"reader-validation:projection-1:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
+    fingerprint = hashlib.sha256(f"reader-validation:projection-5:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
         return cached.result_json['valid']

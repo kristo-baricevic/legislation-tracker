@@ -13,6 +13,7 @@ import LegislatorName from "./LegislatorName";
 import TrackedLegislators from "./TrackedLegislators";
 import styles from "./bill-deck.module.css";
 
+import DashboardBillReader from "./DashboardBillReader";
 import BillCard, { readable } from "./BillCard";
 import { STAGES, stageFor } from "@/lib/bill-stage";
 export { topicColor, readable, dateLabel } from "./BillCard";
@@ -41,7 +42,7 @@ export default function BillDeck() {
   const [followError, setFollowError] = React.useState("");
 
   React.useEffect(() => subscribePersonalizedChanges(({ kind }) => {
-    if (kind === "revalidate") { setAttempt(value => value + 1); return; }
+    if (kind === "revalidate" || kind === "tracking") { setPending(null); setAttempt(value => value + 1); return; }
     setTracking(null); setSignedIn(false); setIsSuperuser(false); setReady(false); setError("");
     setSelected(null);
     setPending(null); setFollowError("");
@@ -61,7 +62,7 @@ export default function BillDeck() {
         setCurrentCongress(session?.current_congress ?? null);
         if (session) { const result = await dashboardValue("tracking", () => getMyTracking({ scope })); if (live && isPersonalizedScopeCurrent(scope)) setTracking(result); }
         if (live) setError("");
-      } catch { if (live && isPersonalizedScopeCurrent(scope)) { setTracking(null); setIsSuperuser(false); setError("Your followed bills could not be loaded. Retry to reconnect."); } }
+      } catch { if (live && isPersonalizedScopeCurrent(scope)) { setError("Couldn’t refresh your bills."); } }
       finally { if (live && isPersonalizedScopeCurrent(scope)) setReady(true); }
     })();
     return () => { live = false; };
@@ -110,19 +111,19 @@ export default function BillDeck() {
       <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{stageOptions.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}{statuses.map(value => <option key={value} value={`raw:${value}`}>{readable(value)}</option>)}</select></label>
       <label>Sort bills<select value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></select></label>
     </div>
-    {error && <div role="alert" className={styles.empty}>{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></div>}
+    <div className="min-h-6 text-sm text-red-700" aria-live="polite">{error && <span role="alert">{error} <button onClick={() => setAttempt(value => value + 1)}>Retry</button></span>}</div>
     {followError && <p role="alert">{followError}</p>}
     {!ready && <p role="status" className={styles.empty}>Loading your followed bills…</p>}
     {ready && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or browse the <Link href="/bills">Bills page</Link>.</p></div>}
     {ready && !error && signedIn && !visible.length && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : <>Browse the <Link href="/bills">Bills page</Link> and follow a bill to keep it here.</>}</p>{!tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
     {visible.length > 0 && <section className={styles.topicSection}>
       <h2>Following<small>{visible.length}</small></h2>
-      <div role="region" aria-label="Followed bills" tabIndex={0} className={styles.followedRow}>{visible.map(bill => <BillCard key={bill.id} bill={bill}
+      <div role="region" aria-label="Followed bills" tabIndex={0} className={styles.followedRow}>{visible.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback) => <BillCard feedback={feedback} summary={summary} bill={bill}
         accentTopicId={bill.topics.find(item => tracking?.topics.some(follow => follow.topic.id === item.topic_id))?.topic_id}
         sponsorState={stateBySponsor.get(bill.sponsor_id ?? -1)}
         onOpen={() => { recommendationOwnsBill.current = false; setSelectedFromRecommendations(false); setSelected(bill); }}
-        footer={signedIn && tracking ? <button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}
-      />)}</div>
+        footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending !== null} aria-pressed={followed.has(bill.id)} onClick={() => void toggleFollow(bill)}>{pending === bill.id ? "Saving…" : followed.has(bill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <span>Loading preferences…</span> : <Link href="/login">Log in to follow</Link>}
+      />}</DashboardBillReader>)}</div>
     </section>}
     {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}
     <RecommendationsPreview renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />

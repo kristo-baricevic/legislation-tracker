@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import { StableResults } from '@/app/components/StableResults';
 import type { ReaderEnhancementResult } from '@/lib/api';
 import { Evidence } from './reader-explanation';
 
@@ -24,15 +25,17 @@ export function ReviewedMoney({ result }: { result: ReaderEnhancementResult }) {
           <option value="">All years</option>{years.map(value => <option key={value}>{value}</option>)}
         </select></label>}
       </div>
+      <StableResults page={`${action}:${year}:${current}`} label="Enhanced financial provisions">
       {!rows.length && <p>No financial provisions match these filters.</p>}
       <ol className="divide-y divide-slate-200">{rows.slice((current - 1) * 10, current * 10).map((item, index) => <li key={`${current}-${index}`} className="grid gap-3 py-5 md:grid-cols-[12rem_minmax(0,1fr)]">
         <div><span className="text-sm font-semibold text-slate-600">{item.label}</span><p className="mt-2 font-semibold">{item.amount_display}</p></div>
         <p className="leading-7">{item.text}<Evidence number={(current - 1) * 10 + index + 1} sources={item.cited_sources} documentId={result.identity.document_id} /></p>
       </li>)}</ol>
-      {pages > 1 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
+      </StableResults>
+      <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
         <button disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
         <span>Page {current} of {pages}</span><button disabled={current === pages} onClick={() => setPage(current + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
-      </nav>}
+      </nav>
     </div>
   </section>;
 }

@@ -333,6 +333,9 @@ export interface BillTopicItem {
 }
 
 export interface BillListItem {
+  card_summary?: string;
+  enhancement_status?: "pending" | "running" | "succeeded" | null;
+  enhancement_id?: number | null;
   id: number;
   jurisdiction: string;
   session: number;
@@ -1107,6 +1110,9 @@ export interface TrackedLegislatorItem {
   representative: RepresentativeItem;
   created_at: string;
   card?: {
+    top_topics?: { id: number; name: string; count: number }[];
+    topics_available?: boolean;
+    research?: {status: string; period: number; overview_ready: boolean};
     biography: { text: string; source: { url: string; attribution: string; license: string } } | null;
     portrait: { url: string; source: { url: string; attribution: string; license: string } } | null;
     latest_bill: { id: number; title: string; bill_number: string; introduced_at: string; session: number } | null;
@@ -1467,7 +1473,8 @@ export type EnhancementStatus =
   | "succeeded"
   | "failed"
   | "refused"
-  | "outcome_unknown";
+  | "outcome_unknown"
+  | "paused";
 
 export interface BillEnhancement {
   shared?: boolean;

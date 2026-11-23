@@ -11,7 +11,9 @@ import styles from "./bill-deck.module.css";
 
 export { dateLabel, readable, topicColor };
 
-export default function BillCard({ bill, onOpen, footer, accentTopicId, sponsorState }: {
+export default function BillCard({ bill, onOpen, footer, accentTopicId, sponsorState, summary, feedback }: {
+  summary?: ReactNode;
+  feedback?: ReactNode;
   bill: BillListItem;
   onOpen?: () => void;
   footer: ReactNode;
@@ -29,10 +31,12 @@ export default function BillCard({ bill, onOpen, footer, accentTopicId, sponsorS
         <span className={styles.number}>{bill.bill_number}<small>{bill.jurisdiction === "federal" ? `${ordinal(bill.session)} Congress` : `Session ${bill.session}`}</small></span>
       </div>
       <h3>{onOpen ? <button onClick={onOpen}><span className={styles.titleText}>{bill.title || "Untitled bill"}</span></button> : <Link href={`/bills/${bill.id}`}><span className={styles.titleText}>{bill.title || "Untitled bill"}</span></Link>}</h3>
+      {summary}
       {bill.highlights?.[0] && <p className={styles.cardTopics}>{bill.highlights[0].segments.map((segment, index) => segment.matched ? <mark key={index}>{segment.text}</mark> : <span key={index}>{segment.text}</span>)}</p>}
       <div className={styles.sponsor}>{bill.sponsor_id ? <RepresentativeAvatarBadge id={bill.sponsor_id} name={bill.sponsor_name || "Sponsor"} congress={bill.session} representative={bill.sponsor_bioguide_id ? { bioguide_id: bill.sponsor_bioguide_id } : undefined} notes={["Introduced this bill", ...(sponsorState ? [`State: ${sponsorState}`] : [])]} /> : <span>Sponsor not recorded</span>}</div>
       {stage ? <StageTrack stage={stage} color={color} /> : <p className={styles.actionText}>{readable(bill.status || "Status unavailable")}</p>}
       <div className={styles.cardFooter}><span>Last action<br /><time>{dateLabel(bill.last_action_at)}</time></span>{footer}</div>
+      {feedback}
     </div>
   </article>;
 }

@@ -17,7 +17,15 @@ function clear() { entries.clear(); flight = undefined; revision = trackingRevis
 function install() {
   if (installed || typeof window === "undefined") return;
   installed = true;
-  subscribePersonalizedChanges(({ kind }) => { if (kind !== "revalidate") clear(); });
+  subscribePersonalizedChanges(({ kind }) => {
+    if (kind === "session") clear();
+    else if (kind === "tracking") {
+      // Follow state changes personalized collections, not representative facts.
+      // Keep revision stamps so the next session check can detect real changes.
+      for (const key of entries.keys()) if (!key.startsWith("rep:")) entries.delete(key);
+      flight = undefined;
+    }
+  });
   window.addEventListener("representative-research-updated", event => {
     const id = (event as CustomEvent<number>).detail;
     for (const key of entries.keys()) if (key.startsWith(`rep:${id}:`) || key === "tracking") entries.delete(key);

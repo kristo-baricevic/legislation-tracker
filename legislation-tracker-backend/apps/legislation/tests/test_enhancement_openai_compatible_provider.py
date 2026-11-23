@@ -1,4 +1,6 @@
 import json
+import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +74,57 @@ def test_client_kwargs():
     assert result.usage.total_tokens == 165
     assert result.usage.input_tokens == 120
     assert result.usage.output_tokens == 45
+
+
+@pytest.mark.parametrize('finish_reason', ['stop', 'length'])
+def test_reasoning_usage_is_kept_even_for_truncated_responses(finish_reason):
+    response = _completed_response(finish_reason=finish_reason)
+    response.usage.completion_tokens_details = SimpleNamespace(reasoning_tokens=30)
+    provider = OpenAICompatibleEnhancementProvider(client_factory=FakeClientFactory(FakeCompletions(result=response)))
+    if finish_reason == 'length':
+        with pytest.raises(ProviderError) as exc:
+            provider.enhance_bill(api_key='offline', request=_request(), timeout_seconds=1)
+        usage = exc.value.usage
+    else:
+        usage = provider.enhance_bill(api_key='offline', request=_request(), timeout_seconds=1).usage
+    assert usage.output_tokens == 45
+    assert usage.reasoning_tokens == 30
+    assert usage.visible_output_tokens == 15
+
+
+def test_total_deadline_cancels_a_response_that_keeps_producing_data():
+    stopped = []
+    class SlowCompletions:
+        async def create(self, **kwargs):
+            try:
+                for _ in range(100):
+                    await asyncio.sleep(.01)  # activity must not renew the deadline
+                return _completed_response()
+            finally:
+                stopped.append(True)
+    provider = OpenAICompatibleEnhancementProvider(client_factory=FakeClientFactory(SlowCompletions()))
+    started = time.monotonic()
+    with pytest.raises(ProviderError) as error:
+        provider.enhance_bill(api_key='offline', request=_request(), timeout_seconds=.05)
+    assert error.value.validation_code == 'provider_timeout'
+    assert error.value.outcome_unknown
+    assert time.monotonic() - started < .5
+    assert stopped == [True]
+
+
+@pytest.mark.parametrize('effort', ['none', 'low', 'medium', 'high'])
+def test_openrouter_preserves_default_reasoning_unless_effort_requested(effort):
+    completions = FakeCompletions(result=_completed_response())
+    provider = OpenAICompatibleEnhancementProvider(client_factory=FakeClientFactory(completions))
+    request = _request()
+    request.provider = 'openrouter'
+    request.reasoning_effort = effort
+    provider.enhance_bill(api_key='offline', request=request, timeout_seconds=1)
+    call = completions.calls[0]
+    if effort == 'none':
+        assert 'reasoning' not in call.get('extra_body', {})
+    else:
+        assert call['extra_body']['reasoning'] == {'effort': effort}
 
 
 def test_json_schema_mode():
