@@ -65,10 +65,17 @@ describe("TopicsPage", () => {
     expect(screen.queryByRole("link", { name: "Health" })).toBeNull();
     await act(async () => resolveSession({ authenticated: true, user: { email: "person@example.com" } }));
     expect(screen.getByRole("status", { name: "Loading topics" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Policy Topics" })).toBeNull();
+    expect(screen.queryByText(/Browse all policy topics/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Refresh/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Follow" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Health" })).toBeNull();
     await act(async () => resolveTracked([{ id: 1, topic: { id: 7, name: "Health", slug: "health" },
       created_at: "2026-08-19T00:00:00Z" }]));
+    expect(screen.getByRole("heading", { name: "Policy Topics" })).toBeVisible();
+    expect(screen.getByText(/Browse all policy topics/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh topics" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh followed topics" })).toBeVisible();
     expect(screen.getAllByRole("link").map(link => link.textContent)).toEqual(["Health", "Education"]);
     expect(screen.getByRole("button", { name: "Following" })).toBeVisible();
     expect(screen.queryByRole("status")).toBeNull();

@@ -17,6 +17,7 @@ export default function TopicsPage() {
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [followedIds, setFollowedIds] = useState<Set<number> | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [topicsLoading, setTopicsLoading] = useState(true);
   const [topicsError, setTopicsError] = useState<string | null>(null);
   const [followedLoading, setFollowedLoading] = useState(false);
@@ -51,17 +52,19 @@ export default function TopicsPage() {
 
   useEffect(() => {
     let active = true;
-    void loadTopics();
-    void getSession()
+    const loadTracking = getSession()
       .then((session) => {
         if (!active) return;
         const authed = Boolean(session);
         setLoggedIn(authed);
-        if (authed) void loadFollowedTopics();
+        if (authed) return loadFollowedTopics();
       })
       .catch(() => {
         if (active) setLoggedIn(false);
       });
+    void Promise.all([loadTopics(), loadTracking]).then(() => {
+      if (active) setInitialLoading(false);
+    });
     return () => {
       active = false;
     };
@@ -94,7 +97,7 @@ export default function TopicsPage() {
   };
 
   const trackingReady = loggedIn === false || (loggedIn === true && followedIds !== null);
-  const initialLoading = (topicsLoading && topics.length === 0) || (!trackingReady && !followedError);
+  if (initialLoading) return <LoadingSpinner centered label="Loading topics…" />;
 
   return (
     <div className="tracker-page">
@@ -128,8 +131,6 @@ export default function TopicsPage() {
           </button>
         )}
       </div>
-
-      <LoadingSpinner centered active={initialLoading} label="Loading topics…" />
 
       {topicsError && (
         <p
