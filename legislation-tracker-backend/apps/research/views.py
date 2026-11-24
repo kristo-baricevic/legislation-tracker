@@ -147,7 +147,7 @@ class ConfirmCandidateView(APIView):
 
     @transaction.atomic
     def post(self, request, representative_id, run_id):
-        from apps.campaign_finance.models import CandidateIdentity, ConfirmedCandidate
+        from apps.campaign_finance.models import CandidateIdentity, ConfirmedCandidate, RepresentativeCandidate
         from apps.campaign_finance.identity import review_choices, resolve_candidate
         from .services import _request_period
 
@@ -162,8 +162,16 @@ class ConfirmCandidateView(APIView):
             return Response({"detail": "Choose one of the suggested FEC records."}, status=400)
         candidate, _ = CandidateIdentity.objects.update_or_create(fec_id=choice["candidate_id"],
             defaults={key: choice[key] for key in ("name", "state", "office")})
-        ConfirmedCandidate.objects.create(representative=rep, period=run.period, candidate=candidate,
-            review_run=run, confirmed_by=request.user)
+        mapping, created = RepresentativeCandidate.objects.get_or_create(representative=rep, candidate=candidate,
+            defaults={"verified": True, "periods": [run.period], "evidence_url": f"https://www.fec.gov/data/candidate/{candidate.pk}/"})
+        if not created:
+            if not mapping.verified or not mapping.evidence_url:
+                return Response({"detail": "This mapping requires staff review."}, status=409)
+            if run.period not in mapping.periods:
+                mapping.periods = sorted({*mapping.periods, run.period})
+                mapping.save(update_fields=["periods"])
+        ConfirmedCandidate.objects.update_or_create(representative=rep, period=run.period, defaults=dict(candidate=candidate,
+            review_run=run, confirmed_by=request.user))
         resumed = _request_period(rep.pk, run.period, request.user.pk, refresh=True, finance_only=True)
         resumed.sections = {**run.sections, "finance": {"status": "queued"}}
         resumed.save(update_fields=["sections"])

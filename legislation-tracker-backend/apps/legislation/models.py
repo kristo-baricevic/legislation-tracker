@@ -478,6 +478,7 @@ class BillEnhancementCallCache(models.Model):
     a crashed caller may have already incurred provider charges.
     """
     fingerprint = models.CharField(max_length=64, primary_key=True)
+    dispatch_identity = models.CharField(max_length=64, db_index=True, blank=True, default="")
     status = models.CharField(max_length=24, default='dispatching')
     result_json = models.JSONField(null=True)
     response_id = models.CharField(max_length=255, default='', blank=True)

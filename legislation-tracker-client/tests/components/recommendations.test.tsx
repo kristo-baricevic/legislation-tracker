@@ -29,7 +29,9 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
-  it.each(["bill", "representative"] as const)("isolates overlapping %s follows even when the second save finishes first", async kind => {
+  it.each([
+    ["bill", true], ["bill", false], ["representative", true], ["representative", false],
+  ] as const)("isolates overlapping %s follows when the first save succeeds=%s", async (kind, succeeds) => {
     const ids = [1, 2];
     const results = ids.map(id => kind === "bill"
       ? { ...page.results[0], bill: { ...bill, id, bill_number: `HR ${id}` } }
@@ -43,6 +45,7 @@ describe("recommendation rows", () => {
         const body = JSON.parse(String(init.body));
         const id = body.bill ?? body.representative;
         await new Promise<void>(resolve => finish.set(id, resolve));
+        if (id === 1 && !succeeds) return new Response(null, { status: 500 });
         saved.add(id);
         return Response.json({});
       }
@@ -64,8 +67,34 @@ describe("recommendation rows", () => {
     expect(second).toHaveTextContent("Unfollow");
     expect(first).toHaveTextContent(kind === "bill" ? /^Follow bill$/ : /^Follow$/);
     await act(async () => finish.get(1)!());
-    expect(first).toHaveTextContent("Unfollow");
+    if (succeeds) expect(first).toHaveTextContent("Unfollow");
+    else expect(await screen.findByText("Your follow was not saved. Try again.")).toBeVisible();
     expect(second).toHaveTextContent("Unfollow");
+  });
+
+  it.each(["bill", "representative"] as const)("applies a pending %s dismissal after another follow succeeds", async kind => {
+    const results = [1, 2].map(id => kind === "bill"
+      ? { ...page.results[0], bill: { ...bill, id, bill_number: `HR ${id}` } }
+      : { representative_id: id, name: `Member ${id}`, bioguide_id: `A00000${id}`, reasons: [], topic_activity_evidence: activity });
+    mockRequests(() => Response.json({ ...page, results }));
+    const original = fetch;
+    let finish!: () => void;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/1/dismiss/")) {
+        await new Promise<void>(resolve => { finish = resolve; });
+        return new Response(null, { status: 204 });
+      }
+      return original(url, init);
+    });
+    render(kind === "bill" ? <BillRecommendations onOpenBill={() => true} /> : <RepresentativeRecommendations />);
+    const [first] = await screen.findAllByRole("button", { name: /^Dismiss / });
+    fireEvent.click(first);
+    await waitFor(() => expect(finish).toBeDefined());
+    fireEvent.click(screen.getAllByRole("button", { name: new RegExp(`^Follow ${kind} `) })[1]);
+    await screen.findByRole("button", { name: new RegExp(`^Unfollow ${kind} `) });
+    await act(async () => finish());
+    expect(first).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Dismiss / })).toHaveLength(1);
   });
 
   it("removes only the dismissed bill without reloading recommendations", async () => {

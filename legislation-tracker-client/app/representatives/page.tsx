@@ -107,7 +107,9 @@ function RepresentativesDirectory() {
     }
     load()
       .then((data) => {
-        if (!cancelled) setPage(previous => {
+        if (cancelled) return;
+        refreshLoadedPages.current = false;
+        setPage(previous => {
           if (refresh || pageNum === 1 || !previous) return data;
           const ids = new Set(previous.results.map(rep => rep.id));
           return { ...data, results: [...previous.results, ...data.results.filter(rep => !ids.has(rep.id))] };
@@ -117,7 +119,7 @@ function RepresentativesDirectory() {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load representatives");
       })
       .finally(() => {
-        if (!cancelled) { refreshLoadedPages.current = false; inFlight.current = false; setLoading(false); }
+        if (!cancelled) { inFlight.current = false; setLoading(false); }
       });
     return () => {
       cancelled = true;

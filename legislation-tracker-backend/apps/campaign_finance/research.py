@@ -107,6 +107,11 @@ def process_finance(work):
         rows = page["results"]
         year = timezone.now().year
         matched = verified_match(rep, rows, run.period, year + year % 2) if page["pagination"].get("pages", 1) <= 1 else None
+        # A later staff correction takes precedence over fresh search results.
+        from .models import ConfirmedCandidate
+        reviewed = ConfirmedCandidate.objects.filter(representative=rep, period=run.period).values_list("candidate_id", flat=True).first()
+        if reviewed and matched == reviewed:
+            matched = None
         choices = []
         if not matched:
             surname = surname_query(rep)
@@ -115,7 +120,7 @@ def process_finance(work):
                     filters["district"] = str(rep.district).zfill(2)
                 fallback = get_page("candidates/search/", {**filters, "q": surname})
                 rows = [*rows, *fallback["results"]]
-            choices = review_choices(rep, rows)
+            choices = [choice for choice in review_choices(rep, rows) if choice["candidate_id"] != reviewed]
     elif phase == "committees" and index < len(candidates):
         page = get_page(f"candidate/{candidates[index]}/committees/", {"cycle": run.period, "per_page": 100, "page": work.payload_json.get("committee_page", 1)})
     elif phase == "outside" and outside_scan:

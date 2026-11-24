@@ -67,7 +67,7 @@ export function useDashboardBillTracking(onSessionChange?: () => void) {
           return { ...current, bills: saved ? [...bills, saved] : bills };
         });
       }
-    } catch { if (isPersonalizedScopeCurrent(scope)) setFollowError("Your follow preference was not saved. Please try again."); }
+    } catch { if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFollowError("Your follow preference was not saved. Please try again."); }
     finally { finish(); }
   }
   return { tracking, signedIn, isSuperuser, ready, error, followError, currentCongress, followed, pending, toggleFollow, retry: () => setAttempt(value => value + 1) };

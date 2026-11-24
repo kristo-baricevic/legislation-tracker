@@ -82,10 +82,12 @@ class IdentityResolution:
 
 def resolve_candidate(representative_id: int, period: int) -> IdentityResolution:
     confirmed = ConfirmedCandidate.objects.filter(representative_id=representative_id, period=period).values_list("candidate_id", flat=True).first()
-    if confirmed:
-        return IdentityResolution("verified", [confirmed])
+    # Confirmation identifies the reader's choice. Staff control its validity
+    # through the same period-scoped mapping as an exact match.
     rows = [row for row in RepresentativeCandidate.objects.filter(representative_id=representative_id).select_related("candidate") if period in row.periods or period in row.candidate.reporting_periods.get("periods", [])]
     verified = sorted(row.candidate_id for row in rows if row.verified and row.evidence_url)
+    if confirmed in verified:
+        return IdentityResolution("verified", [confirmed])
     if any(not row.verified or not row.evidence_url for row in rows):
         return IdentityResolution("needs_review", [])
     return IdentityResolution("verified" if verified else "not_found", verified)

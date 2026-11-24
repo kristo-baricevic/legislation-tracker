@@ -124,6 +124,30 @@ def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
         assert client.get(url + "latest/").data["id"] == rerun.data["id"]
         assert client.post(url, body, format="json").data["id"] == rerun.data["id"]
         assert BillEnhancementAttempt.objects.count() == 2
+        job = BillEnhancementAttempt.objects.get(enhancement_id=rerun.data["id"])
+        job.status = job.enhancement.status = "paused"
+        job.save()
+        job.enhancement.save()
+        latest = client.get(url + "latest/").data
+        assert (latest["id"], latest["active_reader"]["id"]) == (job.enhancement_id, saved.pk)
+        resume = client.get(url + "estimate/").data
+        assert resume["matching_enhancement"]["id"] == job.enhancement_id
+        resumed = client.post(url + f"{job.enhancement_id}/retry/", {key: resume[key] for key in body}, format="json")
+        assert resumed.status_code == 202 and resumed.data["id"] == job.enhancement_id
+        assert resumed.data["active_reader"]["id"] == saved.pk
+
+        from apps.legislation.models import BillEnhancementCallCache
+        reservation = BillEnhancementCallCache.objects.create(fingerprint="a" * 64)
+        continuation = job.enhancement.attempts.latest("sequence")
+        continuation.status = job.enhancement.status = "outcome_unknown"
+        continuation.citation_resolution_json = {"blocked_reservation": reservation.pk}
+        continuation.save()
+        job.enhancement.save()
+        client.force_authenticate(other)
+        _valid_credential(other)
+        assert client.get(url + "estimate/?rerun=1").data["unavailable_reason"] == "reconciliation_required"
+        blocked = client.post(url, {**body, "rerun_after": job.enhancement_id}, format="json")
+        assert blocked.status_code == 409 and blocked.data["error"] == "reconciliation_required"
 
 
 def test_reader_discovery_rejects_unsourced_arabic_word():

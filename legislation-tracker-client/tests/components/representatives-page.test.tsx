@@ -187,6 +187,25 @@ describe("RepresentativesPage", () => {
     expect(status).toHaveAccessibleName("Loading representatives");
     expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
   });
+  it("retries a failed tracking-filter refresh from the first loaded page", async () => {
+    const initial = await getRepresentatives();
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    render(<RepresentativesPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Tracking All" }));
+    vi.mocked(getRepresentatives).mockResolvedValueOnce({ ...initial, next: "?page=2" })
+      .mockResolvedValueOnce({ ...initial, results: [{ ...initial.results[0], id: 9, first_name: "Second", name: "Second Example" }] });
+    await userEvent.click(screen.getByRole("option", { name: "Untracked" }));
+    await waitFor(() => expect(observerReady).toBe(true));
+    await act(async () => intersect());
+    await screen.findByRole("link", { name: "Second Example" });
+    vi.mocked(getRepresentatives).mockRejectedValueOnce(new Error("Refresh failed")).mockResolvedValueOnce({ ...initial, count: 0, results: [] });
+    await userEvent.click(screen.getByRole("button", { name: "Track Representative Example" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Retry loading representatives" }));
+    expect(await screen.findByText("No representatives found.")).toBeVisible();
+    expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({ tracking: "untracked", page: 1 }));
+  });
+
   it("filters the directory by tracking and refreshes after a tracking change", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });

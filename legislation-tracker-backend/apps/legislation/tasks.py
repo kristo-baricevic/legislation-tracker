@@ -1391,6 +1391,7 @@ def _selected_worker_preflight(attempt, cached_preflight=None):
         else:
             preflight = build_enhancement_preflight(
                 enhancement.bill, reuse_result=attempt.reused_result_json, cached_preflight=cached_preflight,
+                **({"reuse_publication": False} if enhancement.rerun_after else {}),
             )
     except PreflightUnavailable as exc:
         return None, None, exc.reason

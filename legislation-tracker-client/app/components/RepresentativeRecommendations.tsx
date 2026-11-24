@@ -57,7 +57,11 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
         const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
       });
     }
-    catch (error) { if (isPersonalizedScopeCurrent(scope)) setError({ text: error instanceof Error && error.name === "AbortError" ? "" : "Your follow was not saved. Try again.", session: scope.sessionGeneration, interest: scope.interestGeneration }); }
+    catch (error) {
+      const current = capturePersonalizedScope();
+      if (current.sessionGeneration === scope.sessionGeneration && !(error instanceof Error && error.name === "AbortError"))
+        setError({ text: "Your follow was not saved. Try again.", session: current.sessionGeneration, interest: current.interestGeneration });
+    }
     finally { if (isPersonalizedScopeCurrent(scope)) restoreFocus.current = false; finish(); }
   }
   const [completedPage, setCompletedPage] = React.useState<string | null>(null);

@@ -184,11 +184,11 @@ def _require_current_validation(credential: LLMCredential) -> None:
         raise EnhancementServiceError("credential_unverified")
 
 
-def _build_locked_preflight(bill_id: int, credential, *, owned_target=None):
+def _build_locked_preflight(bill_id: int, credential, *, owned_target=None, reuse_publication=True):
     bill = Bill.objects.select_for_update().get(pk=bill_id)
     try:
         with planning_for(credential_target(credential), owned_target=owned_target):
-            return bill, build_enhancement_preflight(bill)
+            return bill, build_enhancement_preflight(bill, reuse_publication=reuse_publication)
     except PreflightUnavailable as exc:
         raise EnhancementServiceError(exc.reason) from exc
 
@@ -247,14 +247,16 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
                 raise EnhancementServiceError("preflight_changed")
             if BillEnhancement.objects.filter(bill=locked_bill, status__in=ACTIVE_STATUSES).exists():
                 raise EnhancementServiceError("preflight_changed")
-            if previous.user_id == user.pk and reader_reconciliation_required(previous.attempts.order_by("-sequence").first()):
-                raise EnhancementServiceError("reconciliation_required")
+
         elif shared is not None:
             latest = shared.attempts.order_by("-sequence").first()
             if latest is not None:
                 return AttemptCreation(shared, latest, False)
         credential = _locked_credential(user)
-        locked_bill, preflight = _build_locked_preflight(bill.pk, credential)
+        if (rerun_after is not None and credential_target(credential) == (previous.provider, previous.requested_model)
+                and reader_reconciliation_required(previous.attempts.order_by("-sequence").first())):
+            raise EnhancementServiceError("reconciliation_required")
+        locked_bill, preflight = _build_locked_preflight(bill.pk, credential, reuse_publication=rerun_after is None)
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
         enhancement = (
@@ -328,7 +330,10 @@ def retry_enhancement_attempt(
         if enhancement is None:
             raise EnhancementServiceError("not_found", http_status=404)
         shared = shared_enhancement(locked_bill)
-        if shared is not None and shared.pk != enhancement.pk:
+        if confirmed.get("rerun_after") != enhancement.rerun_after:
+            raise EnhancementServiceError("preflight_changed")
+        continuing_rerun = enhancement.rerun_after and not BillEnhancement.objects.filter(bill=locked_bill, pk__gt=enhancement.pk).exists()
+        if shared is not None and shared.pk != enhancement.pk and not (continuing_rerun and shared.status == "succeeded"):
             latest = shared.attempts.order_by("-sequence").first()
             if latest is not None:
                 return AttemptCreation(shared, latest, False)
@@ -337,7 +342,7 @@ def retry_enhancement_attempt(
         if reader_reconciliation_required(latest):
             raise EnhancementServiceError("reconciliation_required")
         owned_target = saved_owned_token_target(latest) if latest and latest.status == "paused" else None
-        _, preflight = _build_locked_preflight(locked_bill.pk, credential, owned_target=owned_target)
+        _, preflight = _build_locked_preflight(locked_bill.pk, credential, owned_target=owned_target, reuse_publication=not enhancement.rerun_after)
         base_fingerprint = preflight.request_fingerprint
         reused_result = reusable_publication(enhancement, credential)
         if reused_result:

@@ -1217,7 +1217,7 @@ export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFe
 
 type TrackingMutationOptions = PersonalizedRequestOptions & { source?: "recommendation" };
 
-async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: TrackingMutationOptions): Promise<T> {
+export async function sessionMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
   const initial = options.scope ?? capturePersonalizedScope();
   assertPersonalizedScope(initial, options.signal);
   const scope = { ...initial };
@@ -1236,12 +1236,19 @@ async function trackingMutation<T>(request: (options: PersonalizedRequestOptions
   try {
     const result = await request({ scope, signal: controller.signal });
     assertPersonalizedScope(scope, controller.signal);
-    announceTrackingChange(options.source);
+    // The caller decides which cached reads this successful write invalidates.
     return result;
   } finally {
     unsubscribe();
     options.signal?.removeEventListener("abort", cancel);
   }
+}
+
+async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: TrackingMutationOptions): Promise<T> {
+  const scope = options.scope ?? capturePersonalizedScope();
+  const result = await sessionMutation(request, { ...options, scope });
+  if (scope.sessionGeneration === capturePersonalizedScope().sessionGeneration) announceTrackingChange(options.source);
+  return result;
 }
 
 export function trackBill(billId: number, options: TrackingMutationOptions = {}): Promise<TrackedBillItem> {

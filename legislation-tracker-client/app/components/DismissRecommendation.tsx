@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { authPost, isPersonalizedScopeCurrent, type PersonalizedScope } from "@/lib/api";
+import { authPost, capturePersonalizedScope, sessionMutation, type PersonalizedScope } from "@/lib/api";
 import styles from "./recommendations.module.css";
 
 export default function DismissRecommendation({ kind, id, name, scope, onDismiss }: {
@@ -15,11 +15,11 @@ export default function DismissRecommendation({ kind, id, name, scope, onDismiss
     setFailed(false);
     try {
       const endpoint = kind === "bill" ? "recommendations" : "representative-recommendations";
-      await authPost(`/api/tracking/${endpoint}/${id}/dismiss/`, undefined, { scope });
-      if (!isPersonalizedScopeCurrent(scope)) return;
-      onDismiss(scope, id);
+      await sessionMutation(options => authPost(`/api/tracking/${endpoint}/${id}/dismiss/`, undefined, options), { scope });
+      const current = capturePersonalizedScope();
+      if (current.sessionGeneration === scope.sessionGeneration) onDismiss(current, id);
     } catch {
-      if (isPersonalizedScopeCurrent(scope)) setFailed(true);
+      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFailed(true);
     } finally {
       setSaving(false);
     }

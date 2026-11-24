@@ -170,3 +170,8 @@ def test_fuzzy_discovery_requires_explicit_cycle_scoped_confirmation(monkeypatch
     assert resolve_candidate(rep.pk, 2026).candidate_ids == ["H8IL04134"]
     assert resolve_candidate(rep.pk, 2024).status == "not_found"
     assert client.post(url, choice).status_code == 409
+    from apps.campaign_finance.models import RepresentativeCandidate
+    mapping = RepresentativeCandidate.objects.get(representative=rep, candidate_id=choice["candidate_id"])
+    mapping.verified = False
+    mapping.save()
+    assert resolve_candidate(rep.pk, 2026).status == "needs_review"

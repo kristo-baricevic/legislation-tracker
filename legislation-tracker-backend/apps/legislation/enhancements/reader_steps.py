@@ -85,6 +85,14 @@ class DurableReaderProvider:
             if (request.provider, request.requested_model) == ('openrouter', 'openrouter/free') and current.pinned_model:
                 dispatch_request = replace(request, requested_model=current.pinned_model)
             fingerprint, _ = call_identity(dispatch_request, adapter=adapter)
+            # Serialize all generations on the unsalted logical call, including
+            # reruns paid for by another user. The fence survives owner deletion.
+            BillEnhancementCallCache.objects.select_for_update().get_or_create(
+                fingerprint=logical_fingerprint, defaults={"status": "ready"})
+            blocked = BillEnhancementCallCache.objects.filter(
+                dispatch_identity=logical_fingerprint, status="dispatching").values_list("pk", flat=True).first()
+            if blocked:
+                raise unresolved_reservation(blocked)
             rerun = self.attempt.enhancement.rerun_after
             if rerun:
                 import hashlib
@@ -207,7 +215,8 @@ class DurableReaderProvider:
                     'reserved_output': reserved_output},
                 unit_ids=[f"{s['source_ref']}:{i}" for s in request.source_snapshot for i in s.get('review_quote_ids', [])])
             cached.status = 'dispatching'
-            cached.save(update_fields=['status', 'updated_at'])
+            cached.dispatch_identity = logical_fingerprint
+            cached.save(update_fields=['status', 'dispatch_identity', 'updated_at'])
         try:
             self.paid_calls += 1
             from .private_diagnostics import capture_step

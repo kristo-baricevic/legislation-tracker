@@ -73,7 +73,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
   async function follow(id: number) {
     const scope = state.scope ?? capturePersonalizedScope();
     if (!isPersonalizedScopeCurrent(scope)) return;
-    const key = `${scope.sessionGeneration}:${scope.interestGeneration}:${filterQuery}`;
+
     const finish = begin(id);
     if (!finish) return;
     setError(null);
@@ -84,7 +84,11 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
         const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
       });
     }
-    catch (error) { if (isPersonalizedScopeCurrent(scope)) setError({ text: error instanceof Error && error.name === "AbortError" ? "" : "Your follow was not saved. Try again.", generation: key }); }
+    catch (error) {
+      const current = capturePersonalizedScope();
+      if (scope.sessionGeneration === current.sessionGeneration && !(error instanceof Error && error.name === "AbortError"))
+        setError({ text: "Your follow was not saved. Try again.", generation: `${current.sessionGeneration}:${current.interestGeneration}:${filterQuery}` });
+    }
     finally { finish(); }
   }
   async function more() {

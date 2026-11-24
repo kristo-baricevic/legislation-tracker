@@ -47,7 +47,7 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
       await (wasTracked ? untrackLegislator : trackLegislator)(representativeId, { scope });
       if (mounted.current && capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setState(wasTracked ? "untracked" : "tracked");
     } catch {
-      if (mounted.current && isPersonalizedScopeCurrent(scope)) setError("Could not update tracking. Try again.");
+      if (mounted.current && capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setError("Could not update tracking. Try again.");
     } finally {
       pending.current = false;
       if (mounted.current) setSaving(false);
