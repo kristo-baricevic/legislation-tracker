@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
   getRelatedBills,
+  getBillChanges,
   getAllCurrentRepresentatives,
   getTrackedTopics,
   getMyTracking,
@@ -43,6 +44,18 @@ describe("tracking API helpers", () => {
 
     assert.deepEqual(result, [{ id: 1, topic: { id: 7, name: "Health", slug: "health" } }]);
     assert.equal(requests[0].url, "http://api.test/api/tracking/topics/");
+  });
+
+  it("browses public bill history independently of the saved unread position", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return Response.json({ results: [] });
+    };
+    await getBillChanges(1434);
+    await getBillChanges(1434, { beforeCursor: "older" });
+    assert.deepEqual(requests.map(request => request.init?.credentials), ["omit", "omit"]);
+    assert.ok(requests[1].url.endsWith("/changes/?before_cursor=older"));
   });
 
   it("loads related bills from the public bill endpoint", async () => {

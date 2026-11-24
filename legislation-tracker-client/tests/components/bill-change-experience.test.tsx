@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BillChangeExperience, {
+  BillHistory,
   selectDocumentComparisonPair,
 } from "@/app/bills/[id]/bill-change-experience";
 import {
@@ -36,11 +37,8 @@ describe("BillChangeExperience", () => {
 
   it("shows history details without a seen control for tracked bills", async () => {
     const user = userEvent.setup();
-    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
-    const history = screen.getByText("Bill history");
-    expect(history.closest("details")).not.toHaveAttribute("open");
-    expect(screen.getByRole("button", { name: "Compare versions" }).compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await user.click(history);
+    render(<BillHistory billId={10} />);
+    expect(screen.getByRole("heading", { name: "Bill history" })).toBeVisible();
     expect(await screen.findByText("Bill status changed")).toBeVisible();
     expect(screen.queryByRole("tooltip")).toBeNull();
     await user.hover(screen.getByText("Bill status changed"));
@@ -56,8 +54,7 @@ describe("BillChangeExperience", () => {
     vi.mocked(getBillChanges).mockResolvedValueOnce({
       ...page, results: [{ ...page.results[0], before: { status: prefix }, after: { status: full } }],
     });
-    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
-    await userEvent.click(screen.getByText("Bill history"));
+    render(<BillHistory billId={10} />);
     await userEvent.hover(await screen.findByText("Bill status changed"));
     const tooltip = screen.getByRole("tooltip");
     expect(tooltip).toHaveTextContent(full);
@@ -77,8 +74,7 @@ describe("BillChangeExperience", () => {
       initial_window_truncated: true,
     });
 
-    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
-    await userEvent.click(screen.getByText("Bill history"));
+    render(<BillHistory billId={10} />);
     expect(await screen.findByText("Recent change")).toBeVisible();
     expect(screen.getByRole("button", { name: "Load older changes" })).toBeVisible();
   });
@@ -119,8 +115,7 @@ describe("BillChangeExperience", () => {
         initial_window_truncated: false,
       });
 
-    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
-    await user.click(screen.getByText("Bill history"));
+    render(<BillHistory billId={10} />);
     await user.click(await screen.findByRole("button", { name: "Load older changes" }));
     expect(await screen.findByText("Old change")).toBeVisible();
     expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("New change");
@@ -152,8 +147,7 @@ describe("BillChangeExperience", () => {
         initial_window_truncated: false,
       });
 
-    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
-    await user.click(screen.getByText("Bill history"));
+    render(<BillHistory billId={10} />);
     await user.click(await screen.findByRole("button", { name: "Load newer changes" }));
 
     expect(getBillChanges).toHaveBeenLastCalledWith(10, { afterCursor: "shown-cursor" });

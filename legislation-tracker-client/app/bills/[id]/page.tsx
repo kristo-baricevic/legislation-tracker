@@ -28,7 +28,7 @@ import { DocumentReader } from "./document-reader";
 import BillEnhancementPanel from "./bill-enhancement-panel";
 import { stageFor } from "@/lib/bill-stage";
 import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
-import BillChangeExperience from "./bill-change-experience";
+import BillChangeExperience, { BillHistory } from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
 import RepresentativeAvatarBadge from "../../components/RepresentativeAvatarBadge";
 import { ReaderTabsProvider, ReaderTabBar, ReaderTabPanel } from "./reader-tabs";
@@ -467,6 +467,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             </div>
           )}
           </ReaderTabPanel>
+          <BillHistory key={bill.id} billId={bill.id} />
           <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
         </div>
       </div>

@@ -259,12 +259,12 @@ export async function logout(): Promise<void> {
 
 export async function publicGet<T = unknown>(
   path: string,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; credentials?: "omit" },
 ): Promise<T> {
   const base = getApiBase();
   const res = await fetch(
     `${base}${path}`,
-    options?.signal ? { signal: options.signal } : undefined,
+    options,
   );
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
@@ -822,13 +822,8 @@ export function getBillChanges(
   if (params?.afterCursor) search.set("after_cursor", params.afterCursor);
   if (params?.beforeCursor) search.set("before_cursor", params.beforeCursor);
   const query = search.toString();
-  return authGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`)
-    .catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 401) {
-        return publicGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`);
-      }
-      throw error;
-    });
+  // Signed-in requests default to unread changes. History uses the public stream.
+  return publicGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`, { credentials: "omit" });
 }
 
 export function acknowledgeBillChanges(
