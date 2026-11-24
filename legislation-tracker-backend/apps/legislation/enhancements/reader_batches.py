@@ -521,7 +521,7 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                     validation_detail=detail, usage=combined.usage,
                     response_id=combined.response_id, resolved_model=combined.resolved_model)
             error.validation_detail = {**error.validation_detail, "stage": stage, "batch_index": max(0, index - 1)}
-            error.citation_resolution = {"reader": {"completed_calls": completed, "total_calls": calls + len(queue), "maximum_calls": maximum_calls},
+            error.citation_resolution = {**error.citation_resolution, "reader": {"completed_calls": completed, "total_calls": calls + len(queue), "maximum_calls": maximum_calls},
                                          "failed_stage": stage}
             raise error from None
     try:

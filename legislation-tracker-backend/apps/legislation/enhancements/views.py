@@ -156,6 +156,11 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             .order_by("-created_at")
             .first()
         )
+        matching_payload = enhancement_payload(matching, detail=False) if matching else None
+        latest = matching_payload.get("latest_attempt") if matching_payload else None
+        if latest and latest["status"] == "outcome_unknown" and not latest["retry_allowed"]:
+            return Response({**base, "unavailable_reason": "reconciliation_required",
+                             "matching_enhancement": matching_payload})
         reused = reusable_publication(matching, credential) if matching else None
         if reused:
             with planning_for(credential_target(credential)):
@@ -195,9 +200,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                     TRUNCATED_COVERAGE_NOTICE if preflight.truncated else None
                 ),
                 "source_description": preflight.source_manifest.get("source_kind"),
-                "matching_enhancement": (
-                    enhancement_payload(matching, detail=False) if matching else None
-                ),
+                "matching_enhancement": matching_payload,
             }
         )
 

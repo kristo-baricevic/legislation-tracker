@@ -447,6 +447,7 @@ def test_invalid_response_retains_sanitized_failure_stage(status, text, reason, 
         output_text=text,
         output=[],
         incomplete_details=SimpleNamespace(reason=reason),
+        usage={"output_tokens": 8000, "output_tokens_details": {"reasoning_tokens": 8000}},
     )
     provider = OpenAIEnhancementProvider(
         client_factory=FakeClientFactory(FakeResponses(result=response))
@@ -456,6 +457,8 @@ def test_invalid_response_retains_sanitized_failure_stage(status, text, reason, 
             api_key="sk-test-secret", request=_request(), timeout_seconds=90
         )
     assert caught.value.validation_code == code
+    assert caught.value.usage.reasoning_tokens == 8000
+    assert caught.value.usage.visible_output_tokens == 0
     assert "private" not in str(caught.value)
 
 

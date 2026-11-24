@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
+import httpx
 from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
@@ -28,19 +29,22 @@ def _usage(response) -> ProviderUsage:
         input_tokens=_value(usage, "prompt_token_count"),
         output_tokens=None if visible is None else visible + (thoughts or 0),
         total_tokens=_value(usage, "total_token_count"),
+        reasoning_tokens=thoughts,
+        visible_output_tokens=visible,
     )
 
 
 def _mapped_error(error: Exception) -> ProviderError:
     class_name = type(error).__name__.lower()
-    if "timeout" in class_name:
+    if isinstance(error, httpx.TimeoutException) or "timeout" in class_name:
         return ProviderError(
             "outcome_unknown",
             outcome_unknown=True,
             retry_allowed=True,
             validation_code="provider_timeout",
         )
-    if "connection" in class_name or "remoteprotocol" in class_name or "protocol" in class_name:
+    if (isinstance(error, (httpx.ReadError, httpx.WriteError, httpx.CloseError, httpx.RemoteProtocolError))
+            or "connection" in class_name or "protocol" in class_name):
         return ProviderError(
             "outcome_unknown",
             outcome_unknown=True,

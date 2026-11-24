@@ -133,6 +133,7 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
 
 
 function EnhancementUnavailable({ reason }: { reason: string | null }) {
+  if (reason === "reconciliation_required") return "The previous provider request may have been charged. Its outcome must be reconciled before retrying.";
   if (reason === "concrete_model_required") {
     return <p>Select a specific free model in <Link href="/settings" className="underline">Settings</Link> and validate it before enhancing this bill.</p>;
   }

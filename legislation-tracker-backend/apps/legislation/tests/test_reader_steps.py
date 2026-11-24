@@ -11,6 +11,39 @@ from apps.legislation.tests.test_enhancement_tasks import _pending_attempt
 from apps.legislation.tests.test_enhancement_service import source_bill, enhancement_owner, enhancement_settings
 
 
+@pytest.mark.django_db
+def test_ambiguous_reader_reservation_blocks_confirmation_until_reconciled(
+        source_bill, enhancement_owner, enhancement_settings, monkeypatch):
+    from unittest.mock import Mock
+    from rest_framework.test import APIClient
+    from apps.legislation.models import BillEnhancementCallCache
+    from apps.legislation.tasks import run_bill_enhancement_attempt
+    from .test_enhancement_service import _confirmation
+
+    install_reader(source_bill)
+    client = APIClient()
+    client.force_authenticate(enhancement_owner)
+    provider = Mock()
+    provider.enhance_bill.side_effect = ProviderError("outcome_unknown", outcome_unknown=True)
+    monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: provider)
+    url = f"/api/bills/{source_bill.pk}/enhancements/"
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        confirmation = _confirmation(source_bill, attempt.credential)
+        assert run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)["status"] == "outcome_unknown"
+        estimate = client.get(url + "estimate/").data
+        assert not estimate["can_enhance"]
+        assert estimate["unavailable_reason"] == "reconciliation_required"
+        assert not estimate["matching_enhancement"]["latest_attempt"]["retry_allowed"]
+        retry = client.post(url + f"{attempt.enhancement_id}/retry/", confirmation, format="json")
+        assert retry.status_code == 409 and "reconciliation_required" in str(retry.data)
+        assert attempt.enhancement.attempts.count() == provider.enhance_bill.call_count == 1
+        reservation = BillEnhancementCallCache.objects.get(status="dispatching")
+        reservation.status = "failed"  # Simulate a reconciled, known failure.
+        reservation.save()
+        assert client.get(url + "estimate/").data["matching_enhancement"]["latest_attempt"]["retry_allowed"]
+
+
 def test_cache_reference_remapping_does_not_edit_prose():
     from apps.legislation.enhancements.reader_cache import remap
     assert remap({'text': 'The name src_0042 appears in the source.', 'source_ref': 'src_0042'},
@@ -119,6 +152,12 @@ def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
             if crash == 'legacy_crash':
                 assert not a.steps.exists()
                 assert BillEnhancementCallCache.objects.get(pk=legacy_key).status == 'dispatching'
+                from apps.legislation.enhancements.service import retry_allowed
+                a.status = "outcome_unknown"
+                a.citation_resolution_json = error.value.citation_resolution
+                assert not retry_allowed(a)
+                BillEnhancementCallCache.objects.filter(pk=legacy_key).update(status="failed")
+                assert retry_allowed(a)
             else:
                 assert a.steps.get().status == 'dispatching'
         else:

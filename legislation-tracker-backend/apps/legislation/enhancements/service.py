@@ -87,6 +87,22 @@ def attempt_credential_failure(attempt):
     return None
 
 
+def reader_reconciliation_required(attempt):
+    if (attempt is None or attempt.status != BillEnhancementAttempt.Status.OUTCOME_UNKNOWN
+            or attempt.enhancement.output_schema_version != "1.4"):
+        return False
+    from django.db.models import Q
+    from apps.legislation.models import BillEnhancementCallCache, BillEnhancementStep
+
+    # Earlier retries can have no steps of their own. Check the shared reservation
+    # for the original dispatch as well as one encountered from another job.
+    steps = BillEnhancementStep.objects.filter(attempt__enhancement_id=attempt.enhancement_id)
+    blocked = attempt.citation_resolution_json.get("blocked_reservation")
+    return BillEnhancementCallCache.objects.filter(status="dispatching").filter(
+        Q(pk__in=steps.values("request_fingerprint")) | Q(pk=blocked)
+    ).exists()
+
+
 def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
     if attempt is None:
         return False
@@ -95,7 +111,9 @@ def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
         saved = attempt.enhancement
         return (saved.result_completeness == "partial" and saved.output_schema_version == "2.0-source-first"
                 or saved.result_json is not None and not _reader_result_valid(saved))
-    if attempt.status in (BillEnhancementAttempt.Status.OUTCOME_UNKNOWN, BillEnhancementAttempt.Status.PAUSED):
+    if attempt.status == BillEnhancementAttempt.Status.OUTCOME_UNKNOWN:
+        return not reader_reconciliation_required(attempt)
+    if attempt.status == BillEnhancementAttempt.Status.PAUSED:
         return True
     if attempt.status != BillEnhancementAttempt.Status.FAILED:
         return False
@@ -300,6 +318,8 @@ def retry_enhancement_attempt(
                 return AttemptCreation(shared, latest, False)
         credential = _locked_credential(user)
         latest = enhancement.attempts.order_by("-sequence").first()
+        if reader_reconciliation_required(latest):
+            raise EnhancementServiceError("reconciliation_required")
         owned_target = saved_owned_token_target(latest) if latest and latest.status == "paused" else None
         _, preflight = _build_locked_preflight(locked_bill.pk, credential, owned_target=owned_target)
         base_fingerprint = preflight.request_fingerprint

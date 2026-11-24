@@ -22,9 +22,13 @@ def usage_from_response(response) -> ProviderUsage:
     usage = value(response, "usage")
     if usage is None:
         return ProviderUsage()
+    output = value(usage, "output_tokens")
+    reasoning = value(value(usage, "output_tokens_details"), "reasoning_tokens")
     return ProviderUsage(
         input_tokens=value(usage, "input_tokens"),
-        output_tokens=value(usage, "output_tokens"),
+        output_tokens=output,
+        reasoning_tokens=reasoning,
+        visible_output_tokens=max(0, output - reasoning) if output is not None and reasoning is not None else None,
         total_tokens=value(usage, "total_tokens"),
     )
 

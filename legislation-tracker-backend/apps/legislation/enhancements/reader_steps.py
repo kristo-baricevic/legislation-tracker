@@ -24,6 +24,12 @@ def _validate_response(output, request):
     return valid
 
 
+def unresolved_reservation(fingerprint):
+    error = ProviderError("outcome_unknown", outcome_unknown=True)
+    error.citation_resolution["blocked_reservation"] = fingerprint
+    return error
+
+
 class ReaderDeliveryComplete(Exception):
     """Yield only between calls; completed calls remain durably reusable."""
 
@@ -89,7 +95,7 @@ class DurableReaderProvider:
                 legacy = BillEnhancementCallCache.objects.filter(
                     fingerprint=legacy_key).first()
                 if legacy and legacy.status == 'dispatching':
-                    raise ProviderError('outcome_unknown', outcome_unknown=True)
+                    raise unresolved_reservation(legacy_key)
                 if adapter == 'existing' and legacy and legacy.status == 'validated':
                     output = remap(legacy.result_json, {v: k for k, v in references.items()})
                     try:
@@ -154,7 +160,7 @@ class DurableReaderProvider:
                                                       reasoning_tokens=previous.get('reasoning_tokens'))
                     raise failure
                 if cached.status == 'dispatching':
-                    raise ProviderError('outcome_unknown', outcome_unknown=True)
+                    raise unresolved_reservation(fingerprint)
             existing = BillEnhancementStep.objects.filter(attempt=current, request_fingerprint=fingerprint).first()
             if existing:
                 if existing.status == 'failed' and cached.status == 'failed' and existing.diagnostics.get('code'):

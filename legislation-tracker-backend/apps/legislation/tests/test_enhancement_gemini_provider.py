@@ -138,12 +138,16 @@ def test_multi_part_candidate_normalizes_text():
 def test_max_tokens_maps_to_output_limit():
     response = _completed_response()
     response.candidates[0].finish_reason = "MAX_TOKENS"
+    response.usage_metadata.thoughts_token_count = 8000
+    response.usage_metadata.candidates_token_count = 0
     response.candidates[0].content.parts = [SimpleNamespace(text="{}", thought=False)]
     provider = GeminiEnhancementProvider(client_factory=FakeClientFactory(FakeModels(result=response)))
     with pytest.raises(ProviderError) as caught:
         provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
     assert caught.value.category == "invalid_output"
     assert caught.value.validation_code == "provider_output_limit"
+    assert caught.value.usage.output_tokens == caught.value.usage.reasoning_tokens == 8000
+    assert caught.value.usage.visible_output_tokens == 0
 
 
 def test_safety_maps_to_refusal():
@@ -228,6 +232,28 @@ def test_connection_lost_is_unknown_outcome():
     assert captured.value.outcome_unknown is True
     assert captured.value.validation_code == "provider_connection_lost"
     assert len(models.calls) == 1
+
+
+@pytest.mark.parametrize("error_name", ["ReadError", "WriteError"])
+def test_sdk_transport_failure_after_dispatch_is_unknown(error_name):
+    import httpx
+    from google import genai
+
+    calls = []
+    def respond(request):
+        calls.append(request)
+        raise getattr(httpx, error_name)("interrupted", request=request)
+
+    def client_factory(*, api_key, http_options):
+        http_options.client_args = {"transport": httpx.MockTransport(respond)}
+        return genai.Client(api_key=api_key, http_options=http_options)
+
+    with pytest.raises(ProviderError) as caught:
+        GeminiEnhancementProvider(client_factory=client_factory).enhance_bill(
+            api_key="offline", request=_request(), timeout_seconds=1)
+    assert len(calls) == 1
+    assert caught.value.category == "outcome_unknown"
+    assert caught.value.outcome_unknown
 
 
 def test_usage_and_resolved_model():

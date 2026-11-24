@@ -50,6 +50,8 @@ export default function DashboardBillReader({ bill, children }: { bill: BillList
         if (next.unavailable_reason === "shared_enhancement_available" && next.matching_enhancement) {
           const shared = await getBillEnhancement(bill.id, next.matching_enhancement.id);
           if (active.current) setSaved(shared);
+        } else if (next.unavailable_reason === "reconciliation_required") {
+          setError("The previous provider request may have been charged. Its outcome must be reconciled before retrying.");
         } else if (next.can_enhance && confirmationFromEstimate(next)) setEstimate(next);
         else setError(next.unavailable_reason?.startsWith("credential_") ? "Check your model in Settings." :
           next.unavailable_reason === "source_unavailable" ? "Bill text is not available yet." : "Enhancement is unavailable for this bill.");

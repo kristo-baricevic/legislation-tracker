@@ -300,6 +300,8 @@ LLM_ENHANCEMENT_CREATE_RATE=10/hour
 LLM_ENHANCEMENT_VALIDATION_RATE=5/hour
 ```
 
+The native OpenAI, Anthropic and Gemini adapters pass `LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS` to their SDKs. A response that continues delivering data can run longer than this interval. Both OpenRouter transports also enforce a wall-clock deadline on generation. A timeout after dispatch can leave a charge unresolved. For a reader with a pending call reservation, the estimate and retry endpoints report `reconciliation_required` until the reservation is resolved.
+
 Production additionally requires enforced TLS, secure cookies/HSTS, and the
 explicit TLS and secret-log-redaction confirmations documented in
 [PRODUCTION_OPERATIONS.md](PRODUCTION_OPERATIONS.md). `/health/` reports the
