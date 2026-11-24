@@ -6,7 +6,6 @@ import BillChangeExperience, {
   selectDocumentComparisonPair,
 } from "@/app/bills/[id]/bill-change-experience";
 import {
-  acknowledgeBillChanges,
   compareBillContracts,
   compareBillDocumentPassages,
   compareBillDocuments,
@@ -15,7 +14,6 @@ import {
 
 vi.mock("@/lib/api", () => ({
   getBillChanges: vi.fn(),
-  acknowledgeBillChanges: vi.fn(),
   compareBillContracts: vi.fn(),
   compareBillDocuments: vi.fn(),
   compareBillDocumentPassages: vi.fn(),
@@ -34,10 +32,9 @@ describe("BillChangeExperience", () => {
       personalized: true,
       initial_window_truncated: false,
     });
-    vi.mocked(acknowledgeBillChanges).mockResolvedValue({ unread_count: 0 });
   });
 
-  it("does not acknowledge on load and only marks displayed changes seen after an explicit action", async () => {
+  it("shows history details without a seen control for tracked bills", async () => {
     const user = userEvent.setup();
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
     const history = screen.getByText("Bill history");
@@ -48,14 +45,11 @@ describe("BillChangeExperience", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
     await user.hover(screen.getByText("Bill status changed"));
     expect(screen.getByRole("tooltip")).toHaveTextContent("Introduced → Reported");
+    expect(screen.queryByRole("button", { name: /seen/i })).toBeNull();
     expect(screen.queryByText(/\"status\"/)).not.toBeInTheDocument();
-    expect(acknowledgeBillChanges).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Mark 1 as seen" }));
-    expect(acknowledgeBillChanges).toHaveBeenCalledWith(10, "ack-cursor");
-    expect(await screen.findByRole("button", { name: "Changes seen" })).toBeVisible();
   });
 
-  it("withholds acknowledgement while the initial timeline window omits older changes", async () => {
+  it("offers older changes when the initial timeline is truncated", async () => {
     vi.mocked(getBillChanges).mockResolvedValueOnce({
       results: [{ id: 1, type: "status_update", occurred_at: "2026-01-01T00:00:00Z", summary: "Recent change", before: null, after: {}, document_id: null, contract_id: null }],
       page_end_cursor: "unsafe-ack-cursor",
@@ -71,7 +65,7 @@ describe("BillChangeExperience", () => {
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
     await userEvent.click(screen.getByText("Bill history"));
     expect(await screen.findByText("Recent change")).toBeVisible();
-    expect(screen.queryByRole("button", { name: /Mark .* as seen/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Load older changes" })).toBeVisible();
   });
 
   it("uses the source predecessor even when an older version is re-downloaded last", () => {
@@ -84,9 +78,8 @@ describe("BillChangeExperience", () => {
     expect(pair?.map((document) => document.id)).toEqual([4, 1]);
   });
 
-  it("keeps the server unread count and loads older timeline pages", async () => {
+  it("loads older timeline pages below newer changes", async () => {
     const user = userEvent.setup();
-    vi.mocked(acknowledgeBillChanges).mockResolvedValueOnce({ unread_count: 2 });
     vi.mocked(getBillChanges)
       .mockResolvedValueOnce({
         results: [{ id: 2, type: "status_update", occurred_at: "2026-01-02T00:00:00Z", summary: "New change", before: null, after: {}, document_id: null, contract_id: null }],
@@ -116,9 +109,6 @@ describe("BillChangeExperience", () => {
     await user.click(await screen.findByRole("button", { name: "Load older changes" }));
     expect(await screen.findByText("Old change")).toBeVisible();
     expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("New change");
-    await user.click(screen.getByRole("button", { name: "Mark 3 as seen" }));
-    expect(acknowledgeBillChanges).toHaveBeenCalledWith(10, "head");
-    expect(await screen.findByRole("button", { name: "Mark 2 as seen" })).toBeVisible();
   });
 
   it("loads changes newer than the displayed page-end cursor", async () => {

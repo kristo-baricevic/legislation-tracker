@@ -5,7 +5,6 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { useEffect, useState } from "react";
 
 import {
-  acknowledgeBillChanges,
   getBillChanges,
   type BillChangesPage,
   type BillDocumentItem,
@@ -80,7 +79,6 @@ export default function BillChangeExperience({
 }) {
   const [changes, setChanges] = useState<BillChangesPage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [acknowledging, setAcknowledging] = useState(false);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   useEffect(() => {
@@ -104,27 +102,6 @@ export default function BillChangeExperience({
       cancelled = true;
     };
   }, [billId]);
-
-  async function acknowledge() {
-    if (!changes?.page_end_cursor) return;
-    setAcknowledging(true);
-    setError(null);
-    try {
-      const result = await acknowledgeBillChanges(
-        billId,
-        changes.page_end_cursor,
-      );
-      setChanges((current) =>
-        current ? { ...current, unread_count: result.unread_count } : current,
-      );
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Could not acknowledge changes.",
-      );
-    } finally {
-      setAcknowledging(false);
-    }
-  }
 
   async function loadTimeline(direction: "older" | "newer") {
     if (!changes) return;
@@ -183,24 +160,6 @@ export default function BillChangeExperience({
       <details className="border-t border-slate-300 pt-4 dark:border-green-900">
       <summary className="cursor-pointer font-semibold">Bill history</summary>
       <div className="mt-4 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        {changes?.personalized &&
-          changes.page_end_cursor &&
-          !changes.initial_window_truncated && (
-          <button
-            type="button"
-            onClick={acknowledge}
-            disabled={acknowledging}
-            className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-          >
-            {acknowledging
-              ? "Saving…"
-              : changes.unread_count
-                ? `Mark ${changes.unread_count} as seen`
-                : "Changes seen"}
-          </button>
-        )}
-      </div>
       {error && (
         <p role="alert" className="text-sm text-red-700 dark:text-red-300">
           {error}
