@@ -73,11 +73,11 @@ export function ReaderSummary({ children }: { children: ReactNode }) {
   const sourceFirst = enhancement?.result?.schema_version === "2.0-source-first" ? enhancement.result : null;
   if (sourceFirst?.synopsis.status === "complete" && sourceFirst.synopsis.text)
     return <p>{sourceFirst.synopsis.text}</p>;
-  if (legacy?.overview.length && identity?.documentId != null) return <div className="mt-4 space-y-3">
+  if (legacy?.overview.length && identity?.documentId != null) return <div className="mt-2 space-y-3">
     {legacy.overview.map((item, index) => <p key={index} className="w-full text-base leading-7">{item.text}<Evidence number={index + 1} sources={item.cited_sources} documentId={identity.documentId!} /></p>)}
   </div>;
   if (!result?.summary.length || result.summary.some(item => !item.cited_sources.length)) return <>{children}</>;
-  return <div className="mt-4">
+  return <div className="mt-2">
     {result.summary.map((item, index) => <div key={index}>
       <p className="w-full text-base leading-7 text-slate-900 dark:text-green-100">{item.text}<Evidence number={index + 1} sources={item.cited_sources} documentId={result.identity.document_id} /></p>
     </div>)}

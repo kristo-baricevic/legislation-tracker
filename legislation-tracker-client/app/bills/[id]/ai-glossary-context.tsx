@@ -31,10 +31,7 @@ export const useAiGlossary = () => useContext(Context);
 
 export function BillAnalysisBoundary({ children }: { children: ReactNode }) {
   const { analysisPending } = useAiGlossary();
-  return <>
-    <LoadingSpinner reserveSpace active={analysisPending} label="Loading bill analysis…" />
-    {!analysisPending && children}
-  </>;
+  return analysisPending ? <LoadingSpinner reserveSpace label="Loading bill analysis…" /> : <>{children}</>;
 }
 
 export function ReaderModeSwitch() {

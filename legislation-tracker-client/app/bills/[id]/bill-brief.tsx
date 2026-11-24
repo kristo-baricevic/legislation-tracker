@@ -354,29 +354,29 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
 
   return (
     <>
-    <section className="mb-6 rounded-lg border border-slate-300 bg-white p-2 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
-      <div className="p-4 sm:p-5">
-        <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-green-400">Summary</h2>
-        <BillAnalysisBoundary><ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-4 space-y-3">
+    <section className="mb-6 rounded-lg border border-slate-300 bg-white shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
+      <div className="px-4 py-4 sm:px-5">
+        <h2 className="text-2xl font-semibold text-slate-950 dark:text-green-400">Summary</h2>
+        <BillAnalysisBoundary><ReaderSummary>{contract.reader_brief?.summary ? <div className="mt-2 space-y-3">
           <p className="text-base leading-7">{contract.reader_brief.summary}{contract.reader_brief.source_id && <SourceEvidence contractId={contract.id} lineItemId={contract.reader_brief.source_id} textUrl={document?.text_url} downloadUrl={document?.download_url} number={1} />}</p>
           {contract.reader_brief.money && <p className="text-base leading-7">{contract.reader_brief.money}</p>}
         </div> : sourceLabel ? (
-          <div className="mt-4">
+          <div className="mt-2">
             <p className="text-sm font-semibold text-slate-700 dark:text-green-500">{sourceLabel}{bill.summary_action_date ? ` · ${bill.summary_action_date}` : ""}</p>
             {preview && !summary && <p className="mt-2 w-full whitespace-pre-line text-base leading-7 text-slate-900 dark:text-green-100">{preview}</p>}
             {summary && <p className="mt-2 w-full whitespace-pre-line text-base leading-7 text-slate-900 dark:text-green-100">{summary}</p>}
-            <LoadingSpinner reserveSpace active={summaryLoading} label="Loading complete summary…" />
+            <LoadingSpinner active={summaryLoading} label="Loading complete summary…" />
             {bill.summary_has_more && !summary && <button type="button" disabled={summaryLoading} onClick={() => void loadSummary()} className="mt-3 cursor-pointer text-sm font-semibold text-blue-900 underline decoration-blue-300 underline-offset-4 dark:text-green-400">{bill.summary_source === "crs" ? "Read full official summary" : "Read full source description"}</button>}
             {summaryError && <div role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300"><p>{summaryError}</p><button type="button" onClick={() => void loadSummary()} className="mt-1 border border-current px-2 py-1 font-semibold">Retry complete summary</button></div>}
           </div>
-        ) : <div className="mt-4">
+        ) : <div className="mt-2">
           <p className="mt-2 w-full text-base leading-7 text-slate-900 dark:text-green-100">{fallbackOverview}</p>
           {contract.orientation.purpose_clause && contract.orientation.purpose_line_item_id && <SourceEvidence contractId={contract.id} lineItemId={contract.orientation.purpose_line_item_id} textUrl={document?.text_url} downloadUrl={document?.download_url} label="Read synopsis source text" />}
           {!contract.orientation.purpose_clause && document?.reader_summary && <a href={`/documents/${document.id}`} className="mt-2 inline-block underline">Read summary source text</a>}
         </div>}</ReaderSummary></BillAnalysisBoundary>
       </div>
 
-      <div className="border-y border-slate-300 bg-slate-50/70 p-4 dark:border-green-900 dark:bg-black/20 sm:p-5">
+      {bill.topics.length > 0 && <div className="rounded-b-lg border-t border-slate-300 bg-slate-50/70 px-4 py-3 dark:border-green-900 dark:bg-black/20 sm:px-5">
         <div aria-label="Topics" className="flex flex-wrap gap-2">
           {bill.topics.map((topic) => (
             <Link key={topic.topic_id} href={`/bills?topic_id=${topic.topic_id}`} className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-900 transition-colors hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:border-green-800 dark:bg-green-950/20 dark:text-green-300 dark:hover:border-green-600 dark:hover:bg-green-950/40 dark:focus-visible:outline-green-500">
@@ -384,7 +384,7 @@ function V21Brief({ bill, contract, onShowAllFinancial }: { bill: BillDetailSumm
             </Link>
           ))}
         </div>
-      </div>
+      </div>}
     </section>
     <ReaderTabBar />
     <ReaderTabPanel tab="changes">
