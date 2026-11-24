@@ -15,7 +15,7 @@ import {
 
 export default function TopicsPage() {
   const [topics, setTopics] = useState<TopicItem[]>([]);
-  const [followedIds, setFollowedIds] = useState<Set<number>>(new Set());
+  const [followedIds, setFollowedIds] = useState<Set<number> | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [topicsLoading, setTopicsLoading] = useState(true);
   const [topicsError, setTopicsError] = useState<string | null>(null);
@@ -68,6 +68,7 @@ export default function TopicsPage() {
   }, [loadFollowedTopics, loadTopics]);
 
   const handleToggle = async (topicId: number) => {
+    if (!followedIds) return;
     const finish = begin(topicId);
     if (!finish) return;
     setTrackingError(null);
@@ -91,6 +92,9 @@ export default function TopicsPage() {
       finish();
     }
   };
+
+  const trackingReady = loggedIn === false || (loggedIn === true && followedIds !== null);
+  const initialLoading = (topicsLoading && topics.length === 0) || (!trackingReady && !followedError);
 
   return (
     <div className="tracker-page">
@@ -125,7 +129,7 @@ export default function TopicsPage() {
         )}
       </div>
 
-      <LoadingSpinner centered active={topicsLoading && topics.length === 0} label="Loading topics…" />
+      <LoadingSpinner centered active={initialLoading} label="Loading topics…" />
 
       {topicsError && (
         <p
@@ -154,22 +158,22 @@ export default function TopicsPage() {
         </p>
       )}
 
-      {!topicsLoading && !topicsError && topics.length === 0 && (
+      {trackingReady && !topicsLoading && !topicsError && topics.length === 0 && (
         <p className="font-sans text-sm text-muted">
           No policy topics are available.
         </p>
       )}
 
-      {topics.length > 0 && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {trackingReady && topics.length > 0 && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[...topics]
           .sort((a, b) => {
-            const aFollowed = followedIds.has(a.id) ? 0 : 1;
-            const bFollowed = followedIds.has(b.id) ? 0 : 1;
+            const aFollowed = followedIds?.has(a.id) ? 0 : 1;
+            const bFollowed = followedIds?.has(b.id) ? 0 : 1;
             if (aFollowed !== bFollowed) return aFollowed - bFollowed;
             return a.name.localeCompare(b.name);
           })
           .map((topic) => {
-            const isFollowed = followedIds.has(topic.id);
+            const isFollowed = followedIds?.has(topic.id);
             return (
               <div
                 key={topic.id}
