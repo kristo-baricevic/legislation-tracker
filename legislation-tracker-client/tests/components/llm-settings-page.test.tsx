@@ -87,6 +87,15 @@ describe("LLM settings", () => {
     expect(await screen.findByText("Valid")).toBeVisible();
   });
 
+  it("keeps the saved key manageable when its model is excluded", async () => {
+    vi.mocked(getLLMSettings).mockResolvedValue({...configured, requested_model: "excluded-model"});
+    render(<SettingsPage />);
+    expect(await screen.findByRole("option", {name: "Choose a compatible model"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Validate key"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Delete API key"})).toBeEnabled();
+    expect(validateLLMCredential).not.toHaveBeenCalled();
+  });
+
   it("can select a saved provider after its previous model leaves the catalog", async () => {
     const user = userEvent.setup();
     vi.mocked(getLLMSettings).mockResolvedValue({...configured, saved_credentials: [

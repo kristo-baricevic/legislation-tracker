@@ -35,7 +35,7 @@ def reasoning_effort():
 
 def catalog():
     pairs = dict.fromkeys([default_target(), ("anthropic", "claude-haiku-5-5"),
-                           ("gemini", "gemini-4-hydrogen"), ("openrouter", "openrouter/free")])
+                           ("gemini", "gemini-4-hydrogen")])
     if default_target()[0] != "openai":
         pairs[("openai", "gpt-6-luna")] = None
     for pair in settings.LLM_READER_MODEL_CAPACITIES:
@@ -45,8 +45,17 @@ def catalog():
     from .openrouter_catalog import entries
     metadata = entries()
     pairs.update(dict.fromkeys(("openrouter", model) for model in metadata))
-    return [metadata[m] if p == "openrouter" and m in metadata else {"provider": p, "model": m, "free": False}
-            for p, m in pairs]
+    excluded = set(settings.LLM_OPENROUTER_EXCLUDED_MODELS) | {"openrouter/free"}
+    choices = []
+    for provider, model in pairs:
+        if provider == "openrouter":
+            if model in excluded or (model.endswith(":free") and model not in metadata):
+                continue
+            if model in metadata:
+                choices.append(metadata[model])
+                continue
+        choices.append({"provider": provider, "model": model, "free": False})
+    return choices
 
 
 def credential_target(credential):

@@ -28,9 +28,9 @@ def refresh_catalog():
         free = zero_price(row.get("pricing") or {})
         parameters = row.get("supported_parameters") or []
         limits = row.get("top_provider") or {}
-        if model == "openrouter/free" or (
+        if (
             model.endswith(":free") and free and {"structured_outputs", "max_tokens", "reasoning"}.issubset(parameters)
-            and limits.get("max_completion_tokens") and limits.get("context_length")
+            and all(type(limits.get(k)) is int and limits[k] > 0 for k in ("max_completion_tokens", "context_length"))
         ):
             entries[model] = {"provider": "openrouter", "model": model, "free": free,
                               "pricing": row.get("pricing"), "fetched_at": now, "provenance": CATALOG_URL,

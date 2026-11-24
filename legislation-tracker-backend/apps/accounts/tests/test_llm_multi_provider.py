@@ -10,13 +10,16 @@ def test_configured_native_models_available_with_openrouter_default(settings):
     assert selectable(("openai", "second"))
 
 
-def test_switching_back_preserves_provider_key(authenticated_client, llm_settings):
+def test_switching_back_preserves_provider_key(authenticated_client, llm_settings, monkeypatch):
+    model = "example/structured:free"
+    monkeypatch.setattr("apps.legislation.enhancements.openrouter_catalog.entries", lambda: {
+        model: {"model": model, "provider": "openrouter", "free": True}})
     client = authenticated_client
     base = "/api/settings/llm/"
     with llm_settings:
         for provider, model, secret in [
             ("openai", "gpt-5.6-luna", "first-1111"),
-            ("openrouter", "openrouter/free", "second-2222"),
+            ("openrouter", model, "second-2222"),
         ]:
             response = client.put(base + f"credentials/{provider}/", {
                 "api_key": secret, "requested_model": model,

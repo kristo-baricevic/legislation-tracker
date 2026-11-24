@@ -24,6 +24,7 @@ function LLMSettingsSection() {
   const [draft, setDraft] = useState("");
   const optionId = (p: string, m: string) => JSON.stringify([p, m]);
   const selected = settings?.models?.find(m => optionId(m.provider, m.model) === draft);
+  const compatible = Boolean(selected || (!draft && settings?.models.some(m => m.provider === settings.provider && m.model === settings.requested_model)));
   const changed = !!selected && (selected.provider !== settings?.provider || selected.model !== settings.requested_model);
   const provider = selected?.provider ?? settings?.provider ?? "";
   const saved = settings?.saved_credentials?.find(item => item.provider === provider);
@@ -51,7 +52,7 @@ function LLMSettingsSection() {
   async function saveKey(event: FormEvent) {
     event.preventDefault();
     const submittedKey = apiKey.trim();
-    if (!settings || (!submittedKey && (!changed || !hasKey))) return;
+    if (!settings || !compatible || (!submittedKey && (!changed || !hasKey))) return;
     setBusy("save");
     setError(null);
     setNotice(null);
@@ -162,6 +163,7 @@ function LLMSettingsSection() {
                   setError(null);
                   setNotice(null);
                 }}>
+                {!settings.models.some(item => item.provider === provider) && <option value={provider} disabled>{provider} (unavailable)</option>}
                 {Array.from(new Set(settings.models.map(item => item.provider))).map(name =>
                   <option key={name} value={name}>{name}</option>
                 )}
@@ -171,6 +173,8 @@ function LLMSettingsSection() {
                 value={draft || optionId(settings.provider, settings.requested_model)}
                 disabled={!settings.feature_available || busy !== null}
                 onChange={event => {setDraft(event.target.value); setApiKey(""); setConfirmDelete(false); setError(null); setNotice(null);}}>
+                {!draft && !settings.models.some(item => item.provider === provider && item.model === settings.requested_model) &&
+                  <option value={optionId(provider, settings.requested_model)} disabled>Choose a compatible model</option>}
                 {settings.models.filter(m => m.provider === provider).map(m => <option key={optionId(m.provider,m.model)} value={optionId(m.provider,m.model)}>
                   {m.model}{m.free ? " · Free" : ""}
                 </option>)}
@@ -206,7 +210,7 @@ function LLMSettingsSection() {
                   />
                   <button
                     type="submit"
-                    disabled={(!apiKey.trim() && (!changed || !hasKey)) || !settings.feature_available || busy !== null}
+                    disabled={!compatible || (!apiKey.trim() && (!changed || !hasKey)) || !settings.feature_available || busy !== null}
                     className="border border-control bg-ink px-4 py-2 font-semibold text-paper hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-focus disabled:opacity-50"
                   >
                     {busy === "save" ? "Saving…" : changed ? "Save model" : "Save API key"}
@@ -224,7 +228,7 @@ function LLMSettingsSection() {
                 <button
                   type="button"
                   onClick={validateKey}
-                  disabled={changed || !settings.configured || !settings.feature_available || busy !== null}
+                  disabled={!compatible || changed || !settings.configured || !settings.feature_available || busy !== null}
                   className="border border-control px-3 py-2 text-sm font-semibold hover:bg-wash disabled:opacity-50"
                 >
                   {busy === "validate" ? "Validating…" : "Validate key"}

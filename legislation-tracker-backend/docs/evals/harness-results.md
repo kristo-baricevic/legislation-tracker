@@ -50,7 +50,14 @@ Implementation commits are `d9d2680` (baseline), `de5949d` (pinned evidence), `9
 
 ## Publication evidence and rollout decision
 
-The regression fixtures distinguish S.4387's annual authorization from actual spending and distinguish the two different percentage bases in H.R.9300. Attempt 113 is the historical S.4387 failure used for the paired transport probe. The automatic approval review blocked sending that recorded request to OpenRouter. There is no paired live result or cold/warm bill-level comparison. Actual expenditure on this evaluation's generation calls was $0.
+The regression fixtures distinguish S.4387's annual authorization from actual spending and distinguish the two different percentage bases in H.R.9300. Attempt 113 is the historical S.4387 failure used for the paired transport probe. After explicit authorization, both adapters dispatched the same recorded request to OpenRouter with `inclusionai/ling-3.2-flash:free`, a zero-price routing ceiling and SDK retries disabled. The request hash was `0bab3ef671e2a775b2e286be02ecf089e5882e0b97631618bbcdf30c858f82bd`. Each call reserved 18,006 estimated input tokens and 24,000 output tokens, totaling 84,012 against the authorized 90,000.
+
+| Adapter | Elapsed | Outcome | Provider usage |
+| --- | ---: | --- | --- |
+| Direct | 120.987 s | Client deadline exceeded. Upstream completion unknown. | Unreported |
+| LangChain | 1.126 s | Rate limited. | Unreported |
+
+Neither call returned visible output or a confirmed resolved model. The two calls exhausted the authorization, so neither was retried. The results do not distinguish model quality, adapter reliability or schema compatibility. The full-bill cold/warm comparison remains outstanding.
 
 The browser checks used a simulated provider with real Django, worker, database and Chromium processes. Legacy, source-first and schema-1.4 results survived reload. The schema-1.4 case displayed the cited $100 rural-hospital grant in both Summary and Money. Desktop and mobile screenshots cover account settings, the Original view, the estimate dialog and the enhanced Money view. The browser test also opens the numbered source with Enter and restores focus with Escape. Queued, running and failed states have component coverage. Visual checks of those transient states and touch-device behavior remain outstanding. Screenshots and offline fixtures do not establish how a live model interprets these three bills.
 

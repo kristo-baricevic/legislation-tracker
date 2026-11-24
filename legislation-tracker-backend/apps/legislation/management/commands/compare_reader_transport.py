@@ -47,7 +47,8 @@ class Command(BaseCommand):
         parser.add_argument("--evidence-dir", type=Path)
 
     def handle(self, **options):
-        work = BillEnhancementWorkUnit.objects.select_related("attempt__enhancement", "attempt__credential").get(
+        work = BillEnhancementWorkUnit.objects.select_related("attempt__enhancement", "attempt__credential").defer(
+            "attempt__execution_config").get(
             attempt_id=options["attempt"], node_key=options["unit"])
         attempt = work.attempt
         envelope = work.request_json["envelope"]
@@ -82,7 +83,7 @@ class Command(BaseCommand):
             raise CommandError("Evidence directory must be private")
         key = decrypt_credential(credential)
         request = SimpleNamespace(provider="openrouter", requested_model=model, request_envelope=envelope,
-                                  source_snapshot=sources, reasoning_effort=attempt.enhancement.reasoning_effort)
+                                  source_snapshot=sources, output_schema_version=envelope["output_schema_version"], reasoning_effort=attempt.enhancement.reasoning_effort)
         for adapter in ("existing", "langchain"):
             path = directory / f"{attempt.pk}-{digest}-{adapter}.json"
             # An ambiguous dispatch continues to consume its entire reservation after a crash.

@@ -1363,7 +1363,8 @@ def _worker_preflight(attempt, cached_preflight=None):
     if not llm_feature_available():
         return None, None, "feature_disabled"
     pair = (attempt.enhancement.provider, attempt.enhancement.requested_model)
-    if attempt.credential and not selectable(pair):
+    legacy_router = pair == ("openrouter", "openrouter/free") and not attempt.execution_config
+    if attempt.credential and not legacy_router and not selectable(pair):
         return None, None, "credential_changed"
     if attempt.execution_config:
         from .enhancements.model_capabilities import resolve_capabilities

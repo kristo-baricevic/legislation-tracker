@@ -280,4 +280,4 @@ rtk git diff --check
 - [ ] Evidence includes actual model, provider request/response IDs, timing, token usage, and money semantics—not only pytest output.
 - [x] No manual enhanced-content edits, unapproved model changes, paid fallback, or whole-database regeneration.
 
-The implementation and offline verification are recorded in the [November 24 evaluation report](../../../legislation-tracker-backend/docs/evals/harness-results.md). The paired S.4387 live probe requires explicit authorization. S.1071 exceeded the context budget at each experimental target. The live bill comparison and rollout remain open.
+The implementation and offline verification are recorded in the [November 24 evaluation report](../../../legislation-tracker-backend/docs/evals/harness-results.md). The authorized paired S.4387 live probe exhausted its two calls with a timeout and a rate limit. S.1071 exceeded the context budget at each experimental target. The live bill comparison and rollout remain open.
