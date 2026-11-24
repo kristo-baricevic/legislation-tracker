@@ -14,13 +14,13 @@ import { useRecommendations } from "./useRecommendations";
 import { RecommendationState } from "./RecommendationState";
 import DashboardBillReader from "./DashboardBillReader";
 import StageTrack from "./StageTrack";
-import { dateLabel, readable } from "@/lib/bill-format";
+import { dateLabel, ordinal, readable } from "@/lib/bill-format";
 import { stageFor } from "@/lib/bill-stage";
 import { topicColor } from "@/lib/bill-format";
 import styles from "./recommendations.module.css";
 
 
-function ReasonBadges({ reasons }: { reasons: BillRecommendationReason[] }) {
+function ReasonBadges({ reasons, topic }: { reasons: BillRecommendationReason[]; topic?: BillListItem["topics"][number] }) {
   const badges = new Map<string, { label: string; href: string; representativeId: number | null; notes: Set<string> }>();
   for (const reason of reasons) {
     const isTopic = reason.kind === "followed_topic" || reason.kind === "followed_bill_topic";
@@ -34,9 +34,11 @@ function ReasonBadges({ reasons }: { reasons: BillRecommendationReason[] }) {
     else badge.notes.add(`${reason.relation === "cosponsor" ? "Cosponsored" : "Introduced"} this bill · You follow this representative`);
     badges.set(key, badge);
   }
-  return <ul className={styles.reasonBadges} aria-label="Why recommended">{[...badges].map(([key, badge]) => <li key={key}>
+  return <div className={styles.contextBadges}>
+    {topic && !badges.has(`topic:${topic.topic_id}`) && <Link className={styles.topicPill} href={`/bills?topic_id=${topic.topic_id}`}>{topic.name}</Link>}
+    <ul className={styles.reasonBadges} aria-label="Why recommended">{[...badges].map(([key, badge]) => <li key={key}>
     {badge.representativeId !== null ? <RepresentativeAvatarBadge id={badge.representativeId} name={badge.label} notes={[...badge.notes]} /> : <CardTooltip text={[...badge.notes].join("\n")}><Link className={styles.topicPill} href={badge.href} aria-description={[...badge.notes].join(". ")}>{badge.label}</Link></CardTooltip>}
-  </li>)}</ul>;
+  </li>)}</ul></div>;
 }
 export default function BillRecommendations({ onOpenBill, onDismissBill, filters }: { onOpenBill: (bill: BillListItem) => boolean | void; onDismissBill?: () => void; filters?: RecommendationFilters }) {
   const filterQuery = recommendationFilterQuery(filters);
@@ -102,14 +104,20 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
   return <section ref={section} className={styles.section} aria-labelledby="bill-recommendations-title">
     <div className={styles.heading}><h2 ref={heading} tabIndex={-1} id="bill-recommendations-title">Bills to discover</h2><button className={styles.action} aria-disabled={state.loading} aria-busy={state.loading} onClick={state.retry}>Refresh bill recommendations</button></div>
     {!dashboardLoading && <LoadingSpinner reserveSpace active={state.loading} label="Loading recommendations…" />}
-    {state.data && <div className="min-h-5 text-sm text-red-700" aria-live="polite">{state.error && <span role="alert">{state.error}</span>}</div>}
+    {state.data && state.error && <p className="text-sm text-red-700" role="alert">{state.error}</p>}
     {state.data?.results.length ? <>
       <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} data-enhanced={currentBill.enhancement_status === "succeeded"} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
         <div className={styles.bar} aria-hidden="true" /><div className={styles.body}>
-          <div className={styles.cardHeader}><p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p><DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} /></div>
-          <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
+          <div className={styles.cardHeader}>
+            <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title || "Untitled bill"}</a></h3>
+            <DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} />
+          </div>
+          <div className={styles.identifiers}>
+            <span>{item.bill.bill_number}</span>
+            <span>{item.bill.jurisdiction === "federal" ? `${ordinal(item.bill.session)} Congress` : `Session ${item.bill.session}`}</span>
+          </div>
           {summary}
-          <ReasonBadges reasons={item.reasons} />
+          <ReasonBadges reasons={item.reasons} topic={item.bill.topics[0]} />
           {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <div className={styles.footer}><span>Last action<br /><time>{dateLabel(item.bill.last_action_at)}</time></span>
             <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending.has(item.bill.id)} onClick={() => void follow(item.bill.id)}>{pending.has(item.bill.id) ? "Saving…" : followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}</div>
