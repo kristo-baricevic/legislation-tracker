@@ -30,6 +30,8 @@ from .test_enhancement_tasks import _pending_attempt
         "source_changed",
         "feature_disabled",
         "lease_lost",
+        "publication_source_changed",
+        "model_limit_changed",
     ],
 )
 def test_source_first_durable_dispatch(
@@ -55,6 +57,9 @@ def test_source_first_durable_dispatch(
                 source_bill.documents.update(
                     extracted_text="SEC. 1. CHANGED\nDifferent law."
                 )
+            if mode == "model_limit_changed":
+                from django.conf import settings
+                settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = 2048
             if mode == "feature_disabled":
                 from django.conf import settings
 
@@ -124,7 +129,7 @@ def test_source_first_durable_dispatch(
                 "test",
             )
 
-    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True):
+    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True, LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=8000):
         document = source_bill.documents.first()
         document.extracted_text = (
             "SEC. 1. REPORT\nThe Secretary shall publish a report within 90 days."
@@ -135,6 +140,19 @@ def test_source_first_durable_dispatch(
         assert preflight.source_manifest["budget"]["maximum_calls"] == 3
         attempt = _pending_attempt(enhancement_owner, source_bill)
         monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
+        from unittest.mock import Mock
+        from apps.legislation import tasks
+        from apps.legislation.enhancements import source_first_preflight
+        build_graph = Mock(wraps=source_first_preflight.build_source_graph)
+        pack_plan = Mock(wraps=source_first_preflight._plan_built_graph)
+        monkeypatch.setattr(source_first_preflight, "build_source_graph", build_graph)
+        monkeypatch.setattr(source_first_preflight, "_plan_built_graph", pack_plan)
+        if mode == "publication_source_changed":
+            finish = tasks._finish_enhancement_attempt
+            def change_before_publication(**kwargs):
+                source_bill.documents.update(extracted_text="SEC. 1. The Secretary must publish a different report.")
+                return finish(**kwargs)
+            monkeypatch.setattr(tasks, "_finish_enhancement_attempt", change_before_publication)
         outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
         attempt.refresh_from_db()
         attempt.enhancement.refresh_from_db()
@@ -143,14 +161,48 @@ def test_source_first_durable_dispatch(
             assert attempt.enhancement.published_attempt_id == attempt.id
             assert attempt.enhancement.result_completeness == "complete"
             assert attempt.total_tokens == 30
+            assert calls == ["generation", "synopsis"]
+            build_graph.assert_called_once()
+            pack_plan.assert_called_once()
         else:
             assert outcome["status"] != "succeeded"
-            assert calls == ["generation"]
+            assert calls == (["generation", "synopsis"] if mode == "publication_source_changed" else ["generation"])
             assert attempt.enhancement.published_attempt_id is None
         assert (
             run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)["status"]
             == "not_claimed"
         )
+
+
+@pytest.mark.django_db
+def test_source_first_reuse_rechecks_stored_xml_without_realigning(
+        source_bill, enhancement_owner, enhancement_settings, settings, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    from apps.ingestion.document_download import extract_document_text
+    from apps.legislation.enhancements import xml_sections
+    from apps.legislation.tasks import _worker_preflight
+
+    settings.STORAGES = {"default": {"BACKEND": "django.core.files.storage.FileSystemStorage",
+                                     "OPTIONS": {"location": tmp_path}}}
+    raw = b'<bill><legis-body><section id="one"><enum>1.</enum><text>The Secretary shall publish a report.</text></section></legis-body></bill>'
+    doc = source_bill.documents.get()
+    doc.object_storage_key, doc.content_hash = "bill.xml", ""
+    doc.extracted_text = extract_document_text(raw, "application/xml", doc.object_storage_key)
+    doc.save()
+    xml = tmp_path / doc.object_storage_key
+    xml.write_bytes(raw)
+    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True):
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        align = Mock(wraps=xml_sections.xml_boundaries)
+        monkeypatch.setattr(xml_sections, "xml_boundaries", align)
+        prepared, _, failure = _worker_preflight(attempt)
+        assert failure is None
+        assert _worker_preflight(attempt, cached_preflight=prepared)[0] is prepared
+        align.assert_called_once()
+        xml.write_bytes(raw.replace(b'id="one"', b'id="two"'))
+        assert _worker_preflight(attempt, cached_preflight=prepared)[2] == "source_unavailable"
+        xml.unlink()
+        assert _worker_preflight(attempt, cached_preflight=prepared)[2] == "source_unavailable"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -253,6 +305,14 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
                 "credential_revision": first.credential_revision,
             },
         ).attempt
+        from apps.legislation.tasks import _worker_preflight
+        prepared, _, failure = _worker_preflight(second)
+        assert failure is None
+        assert _worker_preflight(second, cached_preflight=prepared)[0] is prepared
+        # A checkpoint reloads the attempt. Clearing the partial result changes
+        # which units a fresh plan would dispatch under the prior confirmation.
+        second.reused_result_json = None
+        assert _worker_preflight(second, cached_preflight=prepared)[2] == "source_unavailable"
         phase[0] = 1
         run_bill_enhancement_attempt(second.pk, second.dispatch_token)
         enhancement.refresh_from_db()

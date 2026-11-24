@@ -28,7 +28,7 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
             or current.lease_expires_at <= timezone.now()
         ):
             raise ProviderError("outcome_unknown", outcome_unknown=True)
-        fresh, current_key, failure = worker_preflight(current)
+        fresh, current_key, failure = worker_preflight(current, cached_preflight=preflight)
         if failure:
             raise ProviderError(failure)
         if fresh.request_fingerprint != preflight.request_fingerprint:

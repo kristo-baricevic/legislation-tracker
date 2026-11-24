@@ -136,10 +136,10 @@ def xml_boundaries(raw, text):
     return tuple(rows)
 
 
-def stored_xml_sections(document, text):
+def read_stored_xml(document):
     key = getattr(document, "object_storage_key", "") or ""
     if not key or not (key.lower().endswith(".xml") or "xml" in (document.content_type or "").lower()):
-        return ()
+        return None, None
     from .source_packet import PreflightUnavailable
     try:
         limit = settings.DOCUMENT_DOWNLOAD_MAX_BYTES
@@ -149,10 +149,26 @@ def stored_xml_sections(document, text):
             raw = source.read(limit + 1)
         if len(raw) > limit:
             raise ValueError("xml_byte_limit")
-        if document.content_hash and sha256(raw).hexdigest() != document.content_hash:
+        digest = sha256(raw).hexdigest()
+        if document.content_hash and digest != document.content_hash:
             raise ValueError("xml_hash_mismatch")
+        return raw, digest
+    except (ValueError, KeyError, OSError, BotoCoreError, ClientError) as exc:
+        raise PreflightUnavailable("Stored XML could not be read or verified",
+                                   reason="source_unavailable") from exc
+
+
+def aligned_xml_sections(raw, text):
+    if raw is None:
+        return ()
+    from .source_packet import PreflightUnavailable
+    try:
         return xml_boundaries(raw, text)
-    except (ValueError, KeyError, ElementTree.ParseError, DefusedXmlException, OSError,
-            BotoCoreError, ClientError) as exc:
+    except (ValueError, KeyError, ElementTree.ParseError, DefusedXmlException) as exc:
         raise PreflightUnavailable("Stored XML could not be aligned with the bill text",
                                    reason="source_unavailable") from exc
+
+
+def stored_xml_sections(document, text):
+    raw, _ = read_stored_xml(document)
+    return aligned_xml_sections(raw, text)

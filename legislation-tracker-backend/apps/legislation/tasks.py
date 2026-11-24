@@ -1220,6 +1220,7 @@ def _finish_enhancement_attempt(
     provider_response_id="",
     resolved_model="",
     citation_resolution=None,
+    cached_preflight=None,
 ):
     usage = usage or ProviderUsage()
     now = timezone.now()
@@ -1252,8 +1253,8 @@ def _finish_enhancement_attempt(
             pk=attempt.enhancement_id
         )
         if fenced_publication and attempt_status == BillEnhancementAttempt.Status.SUCCEEDED:
-            _, _, publication_failure = _worker_preflight(attempt)
-            if publication_failure or not attempt.lease_expires_at or attempt.lease_expires_at <= now:
+            _, _, publication_failure = _worker_preflight(attempt, cached_preflight=cached_preflight)
+            if publication_failure or not attempt.lease_expires_at or attempt.lease_expires_at <= timezone.now():
                 attempt_status = BillEnhancementAttempt.Status.FAILED
                 failure_category = publication_failure or "outcome_unknown"
                 result_json = None
@@ -1382,13 +1383,15 @@ def _selected_worker_preflight(attempt, cached_preflight=None):
     credential = attempt.credential
     enhancement = attempt.enhancement
     try:
-        if cached_preflight is not None and cached_preflight.worker_guard:
+        if cached_preflight is not None and cached_preflight.output_schema_version == "1.4" and cached_preflight.worker_guard:
             from .enhancements.reader_batches import reader_input_guard
             if reader_input_guard(enhancement.bill) != cached_preflight.worker_guard:
                 return None, None, 'source_unavailable'
             preflight = cached_preflight
         else:
-            preflight = build_enhancement_preflight(enhancement.bill, reuse_result=attempt.reused_result_json)
+            preflight = build_enhancement_preflight(
+                enhancement.bill, reuse_result=attempt.reused_result_json, cached_preflight=cached_preflight,
+            )
     except PreflightUnavailable as exc:
         return None, None, exc.reason
     identity = (
@@ -1516,7 +1519,7 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
                 raise
             persisted = _finish_enhancement_attempt(attempt_id=attempt_id, run_token=run_token,
                 attempt_status=BillEnhancementAttempt.Status.SUCCEEDED,
-                usage=step_usage(attempt.pk), result_json=analysis.output)
+                usage=step_usage(attempt.pk), result_json=analysis.output, cached_preflight=preflight)
             attempt.refresh_from_db()
             return _terminal_task_result(persisted=persisted, status=attempt.status, category=attempt.failure_category or None)
         try:

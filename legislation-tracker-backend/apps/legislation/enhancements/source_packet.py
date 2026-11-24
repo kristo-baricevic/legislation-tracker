@@ -196,7 +196,7 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
     return current
 
 
-def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPreflight:
+def build_enhancement_preflight(bill, *, reuse_result=None, cached_preflight=None) -> EnhancementPreflight:
     if str(bill.jurisdiction or "").strip().lower() != "federal":
         raise PreflightUnavailable(
             "LLM enhancements are currently available only for federal bills",
@@ -207,7 +207,7 @@ def build_enhancement_preflight(bill, *, reuse_result=None) -> EnhancementPrefli
     document = active_document or _stored_document(bill)
     if document is None:
         raise PreflightUnavailable("No stored source text is available for this bill")
-    return build_document_preflight(document, reuse_result=reuse_result)
+    return build_document_preflight(document, reuse_result=reuse_result, cached_preflight=cached_preflight)
 
 
 def needs_large_document_review(text):
@@ -215,7 +215,7 @@ def needs_large_document_review(text):
                                            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS)
 
 
-def build_document_preflight(document, *, reuse_result=None):
+def build_document_preflight(document, *, reuse_result=None, cached_preflight=None):
     bill = document.bill
     text = document.extracted_text or document.raw_text or ""
     if not reuse_result and (needs_large_document_review(text) or owned_token_target()):
@@ -225,7 +225,7 @@ def build_document_preflight(document, *, reuse_result=None):
         return build_reader_preflight(document, xml_sections=sections)
     if getattr(settings, "LLM_SOURCE_FIRST_ENABLED", False):
         from .source_first_preflight import build_source_first_preflight
-        return build_source_first_preflight(document, text, reuse_result=reuse_result)
+        return build_source_first_preflight(document, text, reuse_result=reuse_result, cached_preflight=cached_preflight)
     from .reader_targets import reader_contract
     if reader_contract(document):
         from .reader_batches import build_reader_preflight
