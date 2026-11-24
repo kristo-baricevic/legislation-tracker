@@ -508,8 +508,8 @@ export default function BillEnhancementPanel({
       {confirming && estimate && <EnhancementEstimateDialog estimate={estimate} title={title}
         unknownOutcome={confirming === "retry" && estimate.matching_enhancement?.status === "outcome_unknown"}
         submitting={submitting} submitEnhancement={submitEnhancement} onCancel={() => setConfirming(null)} />}
-    {isSuperuser && <section aria-label="AI metadata" className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
-      <h2 className="text-lg font-semibold">AI metadata</h2>
+    {isSuperuser && <details key={billId} className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 px-4 py-2 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:px-5">
+      <summary className="cursor-pointer py-1 text-sm font-semibold">Enhancement history</summary>
 
       {isActive && <p role="status" className="mt-4 text-sm text-slate-700 dark:text-green-500">The confirmed request is {enhancement.status}. This panel will update automatically.</p>}
       {enhancement?.result && (
@@ -547,8 +547,7 @@ export default function BillEnhancementPanel({
         </details>
       )}
       {(historyLoading || history) && (
-        <details className="mt-5 border-t border-slate-300 pt-4 text-sm dark:border-green-900/70">
-          <summary className="cursor-pointer font-semibold">Enhancement history</summary>
+        <div className="mt-5 border-t border-slate-300 pt-4 text-sm dark:border-green-900/70">
           <LoadingSpinner active={historyLoading && !history} label="Loading enhancement history…" />
           {history && history.results.length === 0 && <p className="mt-2 text-slate-600 dark:text-green-600">No prior enhancements.</p>}
           {history && history.results.length > 0 && (
@@ -577,14 +576,14 @@ export default function BillEnhancementPanel({
               <button type="button" disabled={!history.next || historyLoading} onClick={() => setHistoryPage((page) => page + 1)} className="border border-slate-600 px-3 py-1 font-semibold disabled:opacity-50">Next</button>
             </nav>
           )}
-        </details>
+        </div>
       )}
       {signedIn && selectedHistory && <section className="mt-4 border-t pt-4" aria-label="Selected historical analysis">
         <button type="button" className="underline" onClick={() => setSelectedHistory(null)}>Close historical analysis</button>
         <p className="mt-2 text-sm">Historical analysis only; this does not change the bill page.</p>
         <EnhancementResult enhancement={selectedHistory} />
       </section>}
-    </section>}
+    </details>}
     </>
   );
 }

@@ -192,8 +192,8 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
     render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
     expect(await screen.findByRole("button", { name: "Enhanced" })).toBeVisible();
-    if (is_superuser) expect(screen.getByRole("region", { name: "AI metadata" })).toBeVisible();
-    else expect(screen.queryByRole("region", { name: "AI metadata" })).not.toBeInTheDocument();
+    if (is_superuser) expect(screen.getByText("Enhancement history")).toBeVisible();
+    else expect(screen.queryByText("Enhancement history")).not.toBeInTheDocument();
   });
   it("loads saved status without waiting for or building a paid-request estimate", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
@@ -212,7 +212,10 @@ describe("BillEnhancementPanel", () => {
     expect(await within(top).findByRole("button", { name: "Enhanced" })).toBeVisible();
     expect(within(top).queryByText(/older bill source/)).not.toBeInTheDocument();
     expect(within(top).getByRole("button", { name: "Enhance current version" })).toBeVisible();
-    const metadata = screen.getByRole("region", { name: "AI metadata" });
+    const summary = screen.getByText("Enhancement history");
+    const metadata = summary.closest("details")!;
+    expect(metadata.open).toBe(false);
+    await userEvent.click(summary);
     expect(within(metadata).getByText(/older bill source/)).toBeVisible();
     expect(within(metadata).queryByRole("button", { name: "Enhance current version" })).not.toBeInTheDocument();
   });
@@ -454,6 +457,7 @@ describe("BillEnhancementPanel", () => {
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
     expect(await screen.findByText("The bill requires a report.")).not.toBeVisible();
+    await user.click(screen.getByText("Enhancement history"));
     await user.click(screen.getByText("View saved analysis"));
     expect(screen.getByText("The bill requires a report.")).toBeVisible();
     expect(screen.getByText("The Secretary shall publish a report.")).not.toBeVisible();
@@ -504,6 +508,7 @@ describe("BillEnhancementPanel", () => {
     const dialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(createBillEnhancement).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByText("Enhancement history"));
     await userEvent.click(screen.getByText("Attempt history"));
     expect(screen.getByText(`${attempt.failure_detail.code} · ${attempt.failure_detail.path}`)).toBeVisible();
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(null);
@@ -537,6 +542,7 @@ describe("BillEnhancementPanel", () => {
     }));
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
     expect(await screen.findByText("Helps students finish college.")).not.toBeVisible();
+    await user.click(screen.getByText("Enhancement history"));
     await user.click(screen.getByText("View saved analysis"));
     expect(screen.getByText("Helps students finish college.")).toBeVisible();
     expect(screen.getByText("Only selected provisions were analyzed.")).toBeVisible();
@@ -590,6 +596,7 @@ describe("BillEnhancementPanel", () => {
 
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
 
+    await userEvent.click(await screen.findByText("Enhancement history"));
     expect(await screen.findByText(/older bill source or execution version/i)).toBeVisible();
     expect(screen.getByRole("button", { name: "Enhance" })).toBeVisible();
   });
@@ -642,6 +649,7 @@ describe("BillEnhancementPanel", () => {
 
       expect(getBillEnhancement).toHaveBeenCalledTimes(2);
       expect(screen.getByText("Recovered after a transient polling failure.")).not.toBeVisible();
+      act(() => screen.getByText("Enhancement history").click());
       act(() => screen.getByText("View saved analysis").click());
       expect(screen.getByText("Recovered after a transient polling failure.")).toBeVisible();
     } finally {
