@@ -10,5 +10,27 @@
   "chars": 3370908,
   "inventory": "xml_inventory/s1071_eah.json",
   "sample": "xml_inventory/s1071_eah_excerpt.xml",
-  "evidence": []
+  "evidence": [
+    {
+      "label": "First briefing due within 30 days, then at least monthly through year five",
+      "start": 3368827,
+      "end": 3369463,
+      "quote": "Not later than 30 days after the date of the enactment of this Act, and not less frequently than monthly thereafter until the date that is five years after such date of enactment, the Secretary of Veterans Affairs shall provide to the Committee on Veterans’ Affairs of the Senate and the Committee on Veterans’ Affairs of the House of Representatives a briefing on the status of implementation of the provisions of the Compact of Free Association Amendments Act of 2024 (title II of division G of Public Law 118–42) relating to veterans in the Freely Associated States in a way that is consistent with the intent of Congress, including—"
+    },
+    {
+      "label": "One-year deadline subject to prior next-of-kin notification",
+      "start": 3370216,
+      "end": 3370556,
+      "quote": "Not later than one year after the date of the enactment of this Act, the Secretary of Veterans Affairs shall disinter the remains of Fernando V. Cota from Fort Sam Houston National Cemetery, Texas.\n(b)\nNotification\nThe Secretary of Veterans Affairs may not carry out subsection (a) until after notifying the next of kin of Fernando V. Cota."
+    },
+    {
+      "label": "Disposition depends on whether next of kin responds",
+      "start": 3370573,
+      "end": 3370884,
+      "quote": "After carrying out subsection (a), the Secretary of Veterans Affairs shall—\n(1)\nrelinquish the remains to the next of kin described in subsection (b); or\n(2)\nif no such next of kin responds to the notification under subsection (b), arrange for disposition of the remains as the Secretary determines appropriate."
+    }
+  ],
+  "congress": 119,
+  "parser_snapshot_sha256": "6d81f359b7a02a1c7562ad29fcbee086e81a4c7015ee389a49beedc9f2cf11a3",
+  "xml_boundary_snapshot_sha256": "c0d5bb481a35677a7833845e71a443935827fd6a2348a2be56699c7754206f8b"
 }
