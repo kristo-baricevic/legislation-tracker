@@ -5,6 +5,16 @@ import LoadingSpinner from "./LoadingSpinner";
 
 const DashboardLoadingContext = createContext<((id: string, loading: boolean | null) => void) | null>(null);
 
+const DashboardBusyContext = createContext(false);
+
+export function useDashboardCardLoading(id: string, loading: boolean) {
+  const dashboardBusy = useContext(DashboardBusyContext);
+  // Wait for card details during a dashboard load. A newly followed card
+  // can fill in its details without hiding rows the reader is already using.
+  const [openedDuringLoad] = useState(dashboardBusy);
+  useDashboardLoading(id, openedDuringLoad && loading);
+}
+
 export function useDashboardLoading(id: string, loading: boolean) {
   const report = useContext(DashboardLoadingContext);
   useLayoutEffect(() => {
@@ -29,6 +39,8 @@ export default function DashboardLoading({ children, loading = false }: { childr
 
   return <DashboardLoadingContext.Provider value={report}>
     <LoadingSpinner centered active={pending} label="Loading dashboard…" />
-    <div hidden={pending} aria-busy={pending}>{children}</div>
+    <DashboardBusyContext.Provider value={pending}>
+      <div hidden={pending} aria-busy={pending}>{children}</div>
+    </DashboardBusyContext.Provider>
   </DashboardLoadingContext.Provider>;
 }

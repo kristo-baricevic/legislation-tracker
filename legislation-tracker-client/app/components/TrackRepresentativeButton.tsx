@@ -14,8 +14,10 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
-    const unsubscribe = subscribePersonalizedChanges(() => {
-      setState("loading"); setError(""); setRevision(value => value + 1);
+    const unsubscribe = subscribePersonalizedChanges(({ kind }) => {
+      if (kind === "session") setState("loading");
+      setError("");
+      setRevision(value => value + 1);
     });
     return () => { mounted.current = false; unsubscribe(); };
   }, []);
@@ -23,7 +25,6 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
     const controller = new AbortController();
     const scope = capturePersonalizedScope();
     const options = { scope, signal: controller.signal };
-    setState("loading");
     void (async () => {
       try {
         const session = await getSession(options);

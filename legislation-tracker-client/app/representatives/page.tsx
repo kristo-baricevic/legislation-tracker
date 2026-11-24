@@ -56,9 +56,11 @@ function RepresentativesDirectory() {
   const [partyFilter, setPartyFilter] = useState("");
   const [pageNum, setPageNum] = useState(1);
   const [retry, setRetry] = useState(0);
+  const refreshLoadedPages = useRef(false);
   const sentinel = useRef<HTMLDivElement>(null);
   const inFlight = useRef(true);
   function resetResults() {
+    refreshLoadedPages.current = false;
     inFlight.current = true;
     setPageNum(1);
     setError(null);
@@ -82,17 +84,30 @@ function RepresentativesDirectory() {
     inFlight.current = true;
     setLoading(true);
     setError(null);
-    getRepresentatives({
+    const refresh = refreshLoadedPages.current;
+    const loadPage = (number: number) => getRepresentatives({
       search: search || undefined,
       state: stateFilter || undefined,
       chamber: chamberFilter || undefined,
       party: partyFilter || undefined,
       tracking: trackingFilter || undefined,
-      page: pageNum,
-    })
+      page: number,
+    });
+    async function load() {
+      if (!refresh) return loadPage(pageNum);
+      let data = await loadPage(1);
+      const results = [...data.results];
+      let number = 1;
+      while (!cancelled && number < pageNum && data.next) {
+        data = await loadPage(++number);
+        results.push(...data.results);
+      }
+      return { ...data, results };
+    }
+    load()
       .then((data) => {
         if (!cancelled) setPage(previous => {
-          if (pageNum === 1 || !previous) return data;
+          if (refresh || pageNum === 1 || !previous) return data;
           const ids = new Set(previous.results.map(rep => rep.id));
           return { ...data, results: [...previous.results, ...data.results.filter(rep => !ids.has(rep.id))] };
         });
@@ -101,7 +116,7 @@ function RepresentativesDirectory() {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load representatives");
       })
       .finally(() => {
-        if (!cancelled) { inFlight.current = false; setLoading(false); }
+        if (!cancelled) { refreshLoadedPages.current = false; inFlight.current = false; setLoading(false); }
       });
     return () => {
       cancelled = true;
@@ -171,7 +186,10 @@ function RepresentativesDirectory() {
           ids.includes(representativeId) ? ids : [...ids, representativeId],
         );
       }
-      if (trackingFilter) { resetResults(); setRetry(value => value + 1); }
+      if (trackingFilter) {
+        refreshLoadedPages.current = true;
+        setRetry(value => value + 1);
+      }
     } catch (e) {
       setTrackingError(
         e instanceof Error ? e.message : "Failed to update tracked legislator",
@@ -272,7 +290,7 @@ function RepresentativesDirectory() {
               </RepresentativeAvatar>)}
             </ul>
             <div ref={sentinel} className="mt-6 min-h-10 text-center text-sm text-muted">
-              <LoadingSpinner active={loading && pageNum > 1} label="Loading more representatives…" />
+              <LoadingSpinner active={loading && pageNum > 1 && !refreshLoadedPages.current} label="Loading more representatives…" />
               {error && <div role="alert"><p>{error}</p><button type="button" className="mt-2 cursor-pointer underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button></div>}
               {!loading && !error && !page.next && page.results.length > 0 && <p>All {page.count} representatives shown</p>}
             </div>

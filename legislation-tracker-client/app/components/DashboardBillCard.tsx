@@ -1,4 +1,5 @@
 "use client";
+import { usePendingCards } from "./usePendingCards";
 import Link from "next/link";
 import React from "react";
 import { getMyTracking, trackBill, untrackBill, type BillListItem, type TrackingSummary } from "@/lib/api";
@@ -15,14 +16,14 @@ export function useDashboardBillTracking(onSessionChange?: () => void) {
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
   const [currentCongress, setCurrentCongress] = React.useState<number | null>(null);
-  const [pending, setPending] = React.useState<number | null>(null);
+  const { pending, begin } = usePendingCards();
   const [followError, setFollowError] = React.useState("");
 
   React.useEffect(() => subscribePersonalizedChanges(({ kind }) => {
-    if (kind === "revalidate" || kind === "tracking") { setPending(null); setAttempt(value => value + 1); return; }
+    if (kind === "revalidate" || kind === "tracking") { setAttempt(value => value + 1); return; }
     setTracking(null); setSignedIn(false); setIsSuperuser(false); setReady(false); setError("");
     onSessionChange?.();
-    setPending(null); setFollowError("");
+    setFollowError("");
     setAttempt(value => value + 1);
   }), [onSessionChange]);
 
@@ -47,14 +48,24 @@ export function useDashboardBillTracking(onSessionChange?: () => void) {
 
   const followed = new Set(tracking?.bills.map(item => item.bill.id));
   async function toggleFollow(bill: BillListItem) {
-    if (!tracking || pending !== null) return;
+    if (!tracking) return;
+    const finish = begin(bill.id);
+    if (!finish) return;
     const scope = capturePersonalizedScope();
-    setPending(bill.id); setFollowError("");
+    setFollowError("");
     try {
+      let saved: TrackingSummary["bills"][number] | null = null;
       if (followed.has(bill.id)) await untrackBill(bill.id, { scope });
-      else await trackBill(bill.id, { scope });
+      else saved = await trackBill(bill.id, { scope });
+      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) {
+        setTracking(current => {
+          if (!current) return current;
+          const bills = current.bills.filter(item => item.bill.id !== bill.id);
+          return { ...current, bills: saved ? [...bills, saved] : bills };
+        });
+      }
     } catch { if (isPersonalizedScopeCurrent(scope)) setFollowError("Your follow preference was not saved. Please try again."); }
-    finally { if (isPersonalizedScopeCurrent(scope)) setPending(null); }
+    finally { finish(); }
   }
   return { tracking, signedIn, isSuperuser, ready, error, followError, currentCongress, followed, pending, toggleFollow, retry: () => setAttempt(value => value + 1) };
 }
@@ -70,6 +81,6 @@ export default function DashboardBillCard({ bill, controls, onOpen, accentTopicI
   return <DashboardBillReader bill={bill}>{(summary, enhance, feedback, currentBill) =>
     <BillCard bill={currentBill} summary={summary} feedback={feedback} accentTopicId={accentTopicId}
       sponsorState={sponsorState} onOpen={() => onOpen(currentBill)}
-      footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending !== null} aria-pressed={followed.has(currentBill.id)} onClick={() => void toggleFollow(currentBill)}>{pending === currentBill.id ? "Saving…" : followed.has(currentBill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : <Link href="/login">Log in to follow</Link>} />}
+      footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending.has(currentBill.id)} aria-pressed={followed.has(currentBill.id)} onClick={() => void toggleFollow(currentBill)}>{pending.has(currentBill.id) ? "Saving…" : followed.has(currentBill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : <Link href="/login">Log in to follow</Link>} />}
   </DashboardBillReader>;
 }

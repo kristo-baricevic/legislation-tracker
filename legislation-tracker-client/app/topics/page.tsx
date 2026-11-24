@@ -1,4 +1,5 @@
 "use client";
+import { usePendingCards } from "../components/usePendingCards";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -20,7 +21,7 @@ export default function TopicsPage() {
   const [topicsError, setTopicsError] = useState<string | null>(null);
   const [followedLoading, setFollowedLoading] = useState(false);
   const [followedError, setFollowedError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<number | null>(null);
+  const { pending, begin } = usePendingCards();
   const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const loadTopics = useCallback(async () => {
@@ -67,8 +68,8 @@ export default function TopicsPage() {
   }, [loadFollowedTopics, loadTopics]);
 
   const handleToggle = async (topicId: number) => {
-    if (busy !== null) return;
-    setBusy(topicId);
+    const finish = begin(topicId);
+    if (!finish) return;
     setTrackingError(null);
     try {
       if (followedIds.has(topicId)) {
@@ -87,7 +88,7 @@ export default function TopicsPage() {
         error instanceof Error ? error.message : "Failed to update tracked topic",
       );
     } finally {
-      setBusy(null);
+      finish();
     }
   };
 
@@ -191,7 +192,7 @@ export default function TopicsPage() {
                   <button
                     type="button"
                     disabled={
-                      busy === topic.id || followedLoading || Boolean(followedError)
+                      pending.has(topic.id) || followedLoading || Boolean(followedError)
                     }
                     onClick={() => handleToggle(topic.id)}
                     className={`ml-3 flex-shrink-0 rounded-md px-3 py-1 font-sans text-xs font-medium transition-colors ${
@@ -200,8 +201,8 @@ export default function TopicsPage() {
                         : "border border-line text-muted hover:bg-wash"
                     } disabled:opacity-50`}
                   >
-                    {busy === topic.id
-                      ? "…"
+                    {pending.has(topic.id)
+                      ? "Saving…"
                       : isFollowed
                         ? "Following"
                         : "Follow"}

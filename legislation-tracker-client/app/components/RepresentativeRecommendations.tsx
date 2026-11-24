@@ -1,4 +1,5 @@
 "use client";
+import { usePendingCards } from "./usePendingCards";
 import { useDashboardLoading } from "./DashboardLoading";
 import DismissRecommendation from "./DismissRecommendation";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -40,14 +41,15 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
     }).catch(() => {});
     return () => { live = false; };
   }, [state.scope]);
-  const [pending, setPending] = React.useState<number | null>(null);
+  const { pending, begin } = usePendingCards();
   const [error, setError] = React.useState<{ text: string; session: number; interest: number } | null>(null);
   async function follow(id: number) {
-    if (pending !== null) return;
     const scope = state.scope;
     if (!scope || !isPersonalizedScopeCurrent(scope)) return;
+    const finish = begin(id);
+    if (!finish) return;
     restoreFocus.current = true;
-    setPending(id); setError(null);
+    setError(null);
     try {
       const wasFollowed = followed.has(id);
       await (wasFollowed ? untrackLegislator : trackLegislator)(id, { ...state.requestOptions(), scope });
@@ -56,7 +58,7 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
       });
     }
     catch (error) { if (isPersonalizedScopeCurrent(scope)) setError({ text: error instanceof Error && error.name === "AbortError" ? "" : "Your follow was not saved. Try again.", session: scope.sessionGeneration, interest: scope.interestGeneration }); }
-    finally { if (isPersonalizedScopeCurrent(scope)) restoreFocus.current = false; setPending(null); }
+    finally { if (isPersonalizedScopeCurrent(scope)) restoreFocus.current = false; finish(); }
   }
   return <section ref={section} className={cards.section} aria-labelledby="representative-recommendations-title">
     <div className={cards.heading}><h2 ref={heading} tabIndex={-1} id="representative-recommendations-title">Representatives to discover</h2><button className={styles.action} aria-label="Refresh representative recommendations" aria-disabled={state.loading} aria-busy={state.loading} onClick={state.retry}>Refresh</button></div>
@@ -65,7 +67,7 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
     {state.data?.results.length ? <>
       <div className={cards.row} role="region" aria-label="Recommended representatives" tabIndex={0}>{state.data.results.map(item => <LegislatorCard key={item.representative_id} representative={{ ...item.topic_activity_evidence.representative, id: item.representative_id, name: item.name, bioguide_id: item.bioguide_id }} facts={item.card} renderName={renderName} activity={item.topic_activity_evidence}
         headerAction={<DismissRecommendation kind="representative" id={item.representative_id} name={item.name} scope={state.scope} />}
-        actions={<button className={styles.action} aria-label={`${followed.has(item.representative_id) ? "Unfollow" : "Follow"} representative ${item.name}`} aria-pressed={followed.has(item.representative_id)} aria-disabled={pending !== null} onClick={() => void follow(item.representative_id)}>{pending === item.representative_id ? "Saving…" : followed.has(item.representative_id) ? "Unfollow" : "Follow"}</button>}>
+        actions={<button className={styles.action} aria-label={`${followed.has(item.representative_id) ? "Unfollow" : "Follow"} representative ${item.name}`} aria-pressed={followed.has(item.representative_id)} aria-disabled={pending.has(item.representative_id)} onClick={() => void follow(item.representative_id)}>{pending.has(item.representative_id) ? "Saving…" : followed.has(item.representative_id) ? "Unfollow" : "Follow"}</button>}>
         <div className={cards.similarAvatars}>{item.reasons.filter(reason => reason.kind === "followed_representative_activity").map(reason => {
           const profile = followedProfiles.find(value => value.representative.id === reason.representative_id);
           return <RepresentativeAvatarBadge key={reason.representative_id} id={reason.representative_id} representative={profile ? {...profile.representative, image_url: profile.card?.portrait?.url ?? profile.representative.image_url} : {bioguide_id: ""}} name={reason.name.replace(/\s*\[[^\]]*\]\s*$/, "")} notes={["Similar to this representative in recorded topic activity"]} />;

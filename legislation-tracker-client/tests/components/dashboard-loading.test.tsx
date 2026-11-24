@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import DashboardLoading, { useDashboardLoading } from "@/app/components/DashboardLoading";
+import DashboardLoading, { useDashboardCardLoading, useDashboardLoading } from "@/app/components/DashboardLoading";
 
 function Section({ name, loading }: { name: string; loading: boolean }) {
   useDashboardLoading(name, loading);
@@ -50,4 +50,15 @@ it("does not flash a spinner when all rows finish quickly", () => {
   act(() => vi.advanceTimersByTime(500));
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(screen.getByText("Following")).toBeVisible();
+});
+
+it("keeps visible rows interactive while a newly followed card loads its details", () => {
+  function NewCard() {
+    useDashboardCardLoading("new-representative", true);
+    return <article>Newly followed representative</article>;
+  }
+  const { rerender } = render(<DashboardLoading><Section name="Recommended bills" loading={false} /></DashboardLoading>);
+  rerender(<DashboardLoading><Section name="Recommended bills" loading={false} /><NewCard /></DashboardLoading>);
+  expect(screen.getByRole("heading", { name: "Recommended bills" })).toBeVisible();
+  expect(screen.getByRole("article")).toBeVisible();
 });

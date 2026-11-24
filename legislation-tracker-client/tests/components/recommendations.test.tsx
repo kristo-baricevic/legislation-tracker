@@ -29,6 +29,45 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
+  it.each(["bill", "representative"] as const)("isolates overlapping %s follows even when the second save finishes first", async kind => {
+    const ids = [1, 2];
+    const results = ids.map(id => kind === "bill"
+      ? { ...page.results[0], bill: { ...bill, id, bill_number: `HR ${id}` } }
+      : { representative_id: id, name: `Member ${id}`, bioguide_id: `A00000${id}`, reasons: [], topic_activity_evidence: activity });
+    mockRequests(() => Response.json({ ...page, results }));
+    const original = fetch;
+    const saved = new Set<number>();
+    const finish = new Map<number, () => void>();
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && url.includes("/api/tracking/")) {
+        const body = JSON.parse(String(init.body));
+        const id = body.bill ?? body.representative;
+        await new Promise<void>(resolve => finish.set(id, resolve));
+        saved.add(id);
+        return Response.json({});
+      }
+      if (url.endsWith("/api/tracking/")) {
+        const items = [...saved].map(id => ({ bill: { ...bill, id }, representative: { ...activity.representative, id } }));
+        return Response.json({ bills: items, legislators: items, topics: [] });
+      }
+      return original(url, init);
+    });
+    render(kind === "bill" ? <BillRecommendations onOpenBill={() => true} /> : <RepresentativeRecommendations />);
+    const [first, second] = await screen.findAllByRole("button", { name: new RegExp(`^Follow ${kind} `) });
+    fireEvent.click(first);
+    await waitFor(() => expect(finish.has(1)).toBe(true));
+    expect(first).toHaveTextContent("Saving…");
+    expect(second).toHaveAttribute("aria-disabled", "false");
+    fireEvent.click(second);
+    await waitFor(() => expect(finish.has(2)).toBe(true));
+    await act(async () => finish.get(2)!());
+    expect(second).toHaveTextContent("Unfollow");
+    expect(first).toHaveTextContent("Saving…");
+    await act(async () => finish.get(1)!());
+    expect(first).toHaveTextContent("Unfollow");
+    expect(second).toHaveTextContent("Unfollow");
+  });
+
   it("removes a dismissed bill after the saved rankings reload", async () => {
     let dismissed = false;
     mockRequests(() => Response.json(dismissed ? empty : page));

@@ -7,7 +7,7 @@ import { getRepresentativeTopicActivity, type RepresentativeTopicActivity } from
 import { topRepresentativeTopics } from "@/lib/representative-card";
 import LegislatorName from "./LegislatorName";
 import RepresentativeCardResearch from "./RepresentativeCardResearch";
-import { useDashboardLoading } from "./DashboardLoading";
+import { useDashboardCardLoading } from "./DashboardLoading";
 import CardTooltip from "./CardTooltip";
 import styles from "./tracked-legislators.module.css";
 import { representativeInitials } from "@/lib/representative-name";
@@ -38,7 +38,7 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
   React.useEffect(() => { setLoadedFacts(undefined); }, [rep.id, facts]);
   const cardFacts = loadedFacts ?? facts;
   const rowId = React.useId();
-  useDashboardLoading(rowId, !loadError && (!cardFacts || (!activity && !facts?.top_topics && !loadedActivity)));
+  useDashboardCardLoading(rowId, !loadError && (!cardFacts || (!activity && !facts?.top_topics && !loadedActivity)));
   const topics = cardFacts?.top_topics ?? topRepresentativeTopics(activity ?? loadedActivity);
   const plainName = rep.name.replace(/^(Rep\.|Sen\.|Del\.|Resident Commissioner)\s*/i, "").replace(/\s*\[[^\]]*\]\s*$/, "");
   const name = rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : plainName.includes(",") ? plainName.split(",").slice(1).join(",").trim() + " " + plainName.split(",")[0].trim() : plainName;
