@@ -333,16 +333,16 @@ def search_bills(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> BillSea
     return _postgres_search(queryset=queryset, query=query)
 
 
-def apply_bill_list_filters(queryset: QuerySet[Bill], params: dict, *, user=None) -> QuerySet[Bill]:
+def apply_bill_list_filters(queryset: QuerySet[Bill], params: dict, *, user_id=None) -> QuerySet[Bill]:
     """Apply the public list filters before search ranking or activity counts."""
     session = params.get("session") or params.get("congress")
     if params.get("tracking"):
         from rest_framework.exceptions import NotAuthenticated
         from apps.accounts.models import TrackedBill
 
-        if user is None or not user.is_authenticated:
+        if user_id is None:
             raise NotAuthenticated("Log in to filter tracked bills.")
-        tracked = TrackedBill.objects.filter(user=user).values("bill_id")
+        tracked = TrackedBill.objects.filter(user_id=user_id).values("bill_id")
         queryset = queryset.filter(pk__in=tracked) if params["tracking"] == "tracked" else queryset.exclude(pk__in=tracked)
     if session is not None:
         queryset = queryset.filter(session=session)

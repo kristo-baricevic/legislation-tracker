@@ -110,6 +110,22 @@ describe("LLM settings", () => {
     expect(deleteLLMSettings).toHaveBeenCalledWith("openrouter");
   });
 
+  it("retries only the settings read when refresh fails after deleting an inactive key", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getLLMSettings).mockResolvedValueOnce({...configured, saved_credentials: [
+      {provider: "openrouter", selected_model: "retired-model", key_suffix: "9876", revision: 3},
+    ]}).mockRejectedValueOnce(new Error("Refresh failed")).mockResolvedValue(configured);
+    render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", {name: "Provider"}), "openrouter");
+    await user.click(screen.getByRole("button", {name: "Delete API key"}));
+    await user.click(screen.getByRole("button", {name: "Confirm deletion"}));
+    expect(await screen.findByText("Refresh failed")).toBeVisible();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await user.click(screen.getByRole("button", {name: "Reload settings"}));
+    expect(await screen.findByLabelText("OpenAI API key")).toBeVisible();
+    expect(vi.mocked(deleteLLMSettings).mock.calls).toEqual([["openrouter"]]);
+  });
+
   it("can select a saved provider after its previous model leaves the catalog", async () => {
     const user = userEvent.setup();
     vi.mocked(getLLMSettings).mockResolvedValue({...configured, saved_credentials: [

@@ -71,6 +71,7 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
             "document_content_hash": _text_hash(text),
             "document_version_label": document.version_label,
             "source_kind": "pinned_passages",
+            "model_limits_version": 1,
             "budget": budget,
             "coverage": {**graph.coverage, "total_units": len(graph.units),
                          "planned_units": sum(len(c.unit_ids) for c in plan.calls),

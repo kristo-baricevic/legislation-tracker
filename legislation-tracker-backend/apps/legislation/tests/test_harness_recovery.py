@@ -109,6 +109,38 @@ def test_legacy_native_request_drains_on_previous_worker(enhancement_owner, enha
 
 
 @pytest.mark.django_db
+def test_cutover_drains_source_first_jobs_with_changed_confirmed_limits(enhancement_owner, enhancement_settings, source_bill):
+    from importlib import import_module
+    from types import SimpleNamespace
+    from django.apps import apps
+    from apps.legislation.enhancements.source_packet import build_enhancement_preflight
+
+    guard = import_module("apps.legislation.migrations.0035_require_source_first_model_limit_drain").require_source_first_drain
+    editor = SimpleNamespace(connection=connection)
+    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True, LLM_READER_OWNED_TOKEN_TARGET=0,
+            LLM_READER_MODEL_CAPACITIES={}):
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        saved = attempt.enhancement
+        assert saved.output_schema_version == "2.0-source-first"
+        assert build_enhancement_preflight(source_bill).analysis_plan.output_tokens == 8000
+        del saved.source_manifest_json["model_limits_version"]
+        saved.save()
+        guard(apps, editor)
+        with override_settings(LLM_READER_MODEL_CAPACITIES={"openai/gpt-5.6-luna": {"output_tokens": 2048}}):
+            rebuilt = build_enhancement_preflight(source_bill)
+            assert rebuilt.analysis_plan.output_tokens == 2048
+            assert rebuilt.request_fingerprint != saved.request_fingerprint
+            for state in ("pending", "running", "paused"):
+                attempt.status = state
+                attempt.save(update_fields=["status"])
+                with pytest.raises(RuntimeError, match="previous worker"):
+                    guard(apps, editor)
+            type(attempt).objects.create(enhancement=saved, sequence=2, credential_revision=1,
+                status="succeeded", estimated_input_tokens=0, available_at=timezone.now())
+            guard(apps, editor)
+
+
+@pytest.mark.django_db
 def test_recreated_key_cannot_authorize_an_old_estimate(enhancement_owner, enhancement_settings, source_bill):
     with enhancement_settings:
         original = _valid_credential(enhancement_owner)

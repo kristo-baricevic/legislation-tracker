@@ -295,7 +295,8 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
             ):
                 qs = qs.prefetch_related("latest_contract__evidence_spans")
             return qs
-        return apply_bill_list_filters(qs, query.validated_data, user=self.request.user)
+        user = self.request.user
+        return apply_bill_list_filters(qs, query.validated_data, user_id=user.pk if user.is_authenticated else None)
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
