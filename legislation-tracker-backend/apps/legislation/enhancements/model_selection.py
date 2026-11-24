@@ -6,6 +6,12 @@ from django.conf import settings
 
 
 _target = ContextVar("enhancement_target", default=None)
+_owned_target = ContextVar("enhancement_owned_token_target", default=None)
+
+
+def owned_token_target():
+    pinned = _owned_target.get()
+    return settings.LLM_READER_OWNED_TOKEN_TARGET if pinned is None else pinned
 
 
 def default_target():
@@ -55,11 +61,14 @@ def selectable(pair):
 
 
 @contextmanager
-def planning_for(pair):
+def planning_for(pair, *, owned_target=None):
     from .openrouter_catalog import catalog_scope
     token = _target.set(pair)
+    chunk_token = _owned_target.set(owned_target) if owned_target is not None else None
     try:
         with catalog_scope():
             yield
     finally:
         _target.reset(token)
+        if chunk_token is not None:
+            _owned_target.reset(chunk_token)

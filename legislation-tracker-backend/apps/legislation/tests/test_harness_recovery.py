@@ -33,6 +33,22 @@ def test_recreated_key_cannot_authorize_an_old_estimate(enhancement_owner, enhan
         assert not BillEnhancementStep.objects.exists()
 
 
+@pytest.mark.django_db
+def test_confirmed_reader_rebuilds_original_target_after_flag_changes(enhancement_owner, enhancement_settings, source_bill):
+    from apps.legislation.tasks import _worker_preflight
+    from .test_reader_enhancement_pipeline import install_reader
+    install_reader(source_bill)
+    with enhancement_settings, override_settings(LLM_READER_OWNED_TOKEN_TARGET=1000):
+        credential = _valid_credential(enhancement_owner)
+        attempt = create_enhancement_attempt(user=enhancement_owner, bill=source_bill,
+            confirmed=_confirmation(source_bill, credential)).attempt
+        assert attempt.execution_config["owned_token_target"] == 1000
+        with override_settings(LLM_READER_OWNED_TOKEN_TARGET=4000):
+            preflight, _, failure = _worker_preflight(attempt)
+            assert failure is None
+            assert preflight.request_fingerprint == attempt.enhancement.request_fingerprint
+
+
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_accounts_share_one_dispatch(enhancement_owner, enhancement_settings, source_bill):
     if connection.vendor != "postgresql":

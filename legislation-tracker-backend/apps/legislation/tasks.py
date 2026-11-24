@@ -1369,7 +1369,9 @@ def _worker_preflight(attempt, cached_preflight=None):
         from .enhancements.model_capabilities import resolve_capabilities
         if attempt.execution_config["capability_fingerprint"] != resolve_capabilities(*pair).fingerprint:
             return None, None, "preflight_changed"
-    with planning_for(pair):
+    saved_settings = attempt.enhancement.source_manifest_json.get("execution_settings", {})
+    chunk_target = attempt.execution_config.get("owned_token_target", saved_settings.get("owned_token_target", 0))
+    with planning_for(pair, owned_target=chunk_target):
         return _selected_worker_preflight(attempt, cached_preflight)
 
 

@@ -123,8 +123,10 @@ def reusable_publication(enhancement, credential):
 def execution_config(provider, model, credential):
     from .model_capabilities import resolve_capabilities
     from .provider_registry import adapter_for
+    from .model_selection import owned_token_target
     limits = resolve_capabilities(provider, model)
     return {"provider": provider, "model": model, "credential_id": credential.pk, "revision": credential.revision,
+            "owned_token_target": owned_token_target(),
             "adapter": adapter_for(provider), "capabilities": asdict(limits), "capability_fingerprint": limits.fingerprint}
 
 

@@ -6,7 +6,7 @@ from dataclasses import replace
 from functools import lru_cache
 
 from django.conf import settings
-from .model_selection import target as planning_target, reasoning_effort
+from .model_selection import target as planning_target, reasoning_effort, owned_token_target
 from jsonschema import ValidationError
 
 from .reader_targets import READER_VERSION, build_reader_targets, reader_contract, snapshot_targets, validate_reader_explanations
@@ -70,7 +70,7 @@ def reader_execution_settings():
     from .reader_cache import VALIDATOR_VERSION
     return {"policy_grouping_version": 7, "reader_execution_version": 9,
             "model_capacities": getattr(settings, 'LLM_READER_MODEL_CAPACITIES', {}),
-            **({"owned_token_target": settings.LLM_READER_OWNED_TOKEN_TARGET} if settings.LLM_READER_OWNED_TOKEN_TARGET else {}),
+            **({"owned_token_target": owned_token_target()} if owned_token_target() else {}),
             "validator_version": VALIDATOR_VERSION, **{name: getattr(settings, name) for name in (
         "LLM_READER_MAX_OUTPUT_TOKENS", "LLM_READER_MAX_CALLS",
         "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS", "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
@@ -273,9 +273,9 @@ def build_reader_preflight(document, *, xml_sections=()):
     from .reader_discovery import discovery_sources, discovery_schema, INSTRUCTIONS as DISCOVERY_INSTRUCTIONS, POLICY_INSTRUCTIONS
     scans = ([{**s, "source_ref": f"src_{i:04d}"} for i, s in enumerate(xml_scans, next_ref)]
              if xml_sections else discovery_sources(text, next_ref))
-    if settings.LLM_READER_OWNED_TOKEN_TARGET:
+    if owned_token_target():
         from .reader_chunking import planned_sources
-        scans = planned_sources(document, text, next_ref, settings.LLM_READER_OWNED_TOKEN_TARGET, xml_sections)
+        scans = planned_sources(document, text, next_ref, owned_token_target(), xml_sections)
         missing = [s["source_ref"] for s in scans if s["omitted_dependency_ranges"]]
         if missing:
             raise PreflightUnavailable("Required legal context exceeds the selected model budget",

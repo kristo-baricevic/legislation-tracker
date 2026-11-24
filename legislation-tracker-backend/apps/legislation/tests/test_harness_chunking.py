@@ -23,6 +23,14 @@ def test_giant_unicode_sentence_is_owned_exactly_once(target):
         assert len(part["quoted_text"].encode()) <= target
 
 
+def test_pinned_chunk_target_survives_flag_changes(settings):
+    from apps.legislation.enhancements.model_selection import owned_token_target, planning_for
+    settings.LLM_READER_OWNED_TOKEN_TARGET = 4000
+    with planning_for(("openrouter", "concrete"), owned_target=1000):
+        assert owned_token_target() == 1000
+    assert owned_token_target() == 4000
+
+
 def test_metadata_refresh_preserves_budget_identity():
     from dataclasses import replace
     cap = resolve_capabilities("openrouter", "example")

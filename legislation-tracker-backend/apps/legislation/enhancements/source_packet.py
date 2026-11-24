@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from django.conf import settings
-from .model_selection import target as planning_target, reasoning_effort
+from .model_selection import target as planning_target, reasoning_effort, owned_token_target
 
 from apps.legislation.models import BillDocument
 
@@ -209,7 +209,7 @@ def needs_large_document_review(text):
 def build_document_preflight(document, *, reuse_result=None):
     bill = document.bill
     text = document.extracted_text or document.raw_text or ""
-    if not reuse_result and (needs_large_document_review(text) or settings.LLM_READER_OWNED_TOKEN_TARGET):
+    if not reuse_result and (needs_large_document_review(text) or owned_token_target()):
         from .xml_sections import stored_xml_sections
         sections = stored_xml_sections(document, text)
         from .reader_batches import build_reader_preflight
