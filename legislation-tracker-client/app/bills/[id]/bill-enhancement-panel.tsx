@@ -492,10 +492,11 @@ export default function BillEnhancementPanel({
       <ControlsSlot targetId={controlsTargetId}>
         <div className="flex flex-wrap items-center gap-3">
           <ReaderModeSwitch />
-          {(!hasSavedReader || (!isActive && (canPrepareEstimate || canRerun))) && <button type="button"
-            aria-busy={preparing} disabled={preparing || Boolean(isActive) || !(canPrepareEstimate || canRerun)}
+          {(!hasSavedReader || isActive || canPrepareEstimate || canRerun) && <button type="button"
+            aria-live="polite" aria-busy={preparing || Boolean(isActive)} disabled={preparing || Boolean(isActive) || !(canPrepareEstimate || canRerun)}
             onClick={() => void prepareEnhancement(canRerun)}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
+            {isActive && <span aria-hidden="true" className="mr-2 inline-block size-3 rounded-full border-2 border-current border-r-transparent align-middle motion-safe:animate-spin" />}
             {preparing ? "Preparing AI estimate…" : canRerun ? "Re-run enhancement" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
           </button>}
         </div>
