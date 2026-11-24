@@ -112,9 +112,11 @@ function BillsCatalog() {
     if (change.kind === "session" && trackingFilter) {
       setHasAccount(null);
       setPage(null);
+      setPageNum(1);
       setError(null);
       setResultsRevision(value => value + 1);
     }
+    if (change.kind === "tracking" && trackingFilter) setResultsRevision(value => value + 1);
     setTrackingRefresh(value => value + 1);
   }), [trackingFilter]);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
@@ -321,7 +323,7 @@ function BillsCatalog() {
       : undefined;
 
     const refreshLoadedPages = committedResults.current.filters === resultFilters && committedResults.current.revision !== resultsRevision;
-    const start = refreshLoadedPages ? committedResults.current.start : pageNum;
+    const start = refreshLoadedPages ? 1 : pageNum;
     const requestPage = (requestedPage: number) => getBills({
       page: requestedPage,
       session: sessionParsed,
@@ -469,9 +471,6 @@ function BillsCatalog() {
       if (followed) await untrackBill(id, { scope });
       else await trackBill(id, { scope });
       if (isPersonalizedScopeCurrent(scope)) setTrackedBillIds(ids => followed ? ids.filter(value => value !== id) : [...new Set([...ids, id])]);
-      if (isPersonalizedScopeCurrent(scope) && trackingFilter) {
-        setResultsRevision(value => value + 1);
-      }
     } catch {
       if (isPersonalizedScopeCurrent(scope)) setTrackingError("Your follow preference was not saved. Please try again.");
     } finally {

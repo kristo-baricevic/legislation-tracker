@@ -125,6 +125,30 @@ for (const width of [1440, 390]) test(`bill tracking filter preserves layout at 
   await expect(page).toHaveURL(/tracking=tracked/);
 });
 
+test("following from an accumulated private list refreshes all loaded pages", async ({page}) => {
+  await fixtures(page);
+  let followed = false;
+  const requested: number[] = [];
+  await page.route("**/api/tracking/bills/", async route => {
+    followed = true;
+    await route.fulfill({json:{id:31,bill:{...bill,id:31}}});
+  });
+  await page.route("**/api/bills/?**", async route => {
+    const number = Number(new URL(route.request().url()).searchParams.get("page") || 1);
+    requested.push(number);
+    await route.fulfill({json:{count:followed?20:21,next:number===1&&!followed?"next":null,previous:null,
+      results:number===1?Array.from({length:20},(_,i)=>({...bill,id:i+10,title:`Loaded bill ${i+10}`})):[{...bill,id:31,title:"Last untracked bill"}]}});
+  });
+  await page.goto("/bills?session=119&tracking=untracked");
+  await expect(page.getByRole("article")).toHaveCount(20);
+  await page.locator('[aria-label="More bills"]').scrollIntoViewIfNeeded();
+  await expect(page.getByRole("article")).toHaveCount(21);
+  await page.getByRole("article").filter({hasText:"Last untracked bill"}).getByRole("button",{name:"Follow",exact:true}).click();
+  await expect(page.getByRole("article")).toHaveCount(20);
+  await expect(page.getByRole("link",{name:"Loaded bill 10",exact:true})).toBeAttached();
+  expect(requested).toEqual([1,2,1]);
+});
+
 test("dashboard filters scope both recommendation requests without losing search focus", async ({ page }) => {
   await fixtures(page);
   const calls: URL[] = [];

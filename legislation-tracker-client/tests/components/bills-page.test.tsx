@@ -66,6 +66,13 @@ describe("BillsPage", () => {
     const first = screen.getAllByRole("article")[0];
     vi.mocked(getBills).mockClear();
     vi.mocked(getBills).mockImplementation(async params => ({count: 2, next: params?.page === 1 ? "next" : null, previous: null, results: params?.page === 1 ? [item(1)] : [item(3)]}));
+    const api = await import("@/lib/api");
+    vi.mocked(api.trackBill).mockImplementationOnce(async () => {
+      // The real mutation announces a new interest generation before resolving.
+      const listener = vi.mocked(api.subscribePersonalizedChanges).mock.calls[0][0];
+      listener({kind: "tracking", scope: {sessionGeneration: 1, interestGeneration: 2}});
+      return {} as never;
+    });
     await userEvent.click(screen.getAllByRole("button", {name: "Follow"})[1]);
     await screen.findByRole("link", {name: "Bill 3"});
     expect(screen.getAllByRole("article")[0]).toBe(first);
