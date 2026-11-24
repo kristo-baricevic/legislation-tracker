@@ -11,6 +11,7 @@ import StackDialog from "./ModalStack";
 import CardTooltip from "./CardTooltip";
 import RepresentativeAvatarBadge from "./RepresentativeAvatarBadge";
 import StageTrack from "./StageTrack";
+import DashboardBillReader from "./DashboardBillReader";
 import BillModalDetails from "./BillModalDetails";
 
 function generatedSynopsis(value: unknown, structuredOnly = false): string {
@@ -20,10 +21,14 @@ function generatedSynopsis(value: unknown, structuredOnly = false): string {
   }
   return structuredOnly ? "" : getContractSummary(value)?.trim() ?? "";
 }
-export default function BillDeckModal(props: { bill: BillListItem; onClose: () => void; fallbackFocus?: () => void }) {
-  return <BillModal key={props.bill.id} {...props} />;
+type BillModalProps = { bill: BillListItem; onClose: () => void; fallbackFocus?: () => void };
+
+export default function BillDeckModal(props: BillModalProps) {
+  return <DashboardBillReader key={props.bill.id} bill={props.bill}>
+    {(_, enhance, feedback, bill) => <BillModal {...props} bill={bill} enhance={enhance} feedback={feedback} />}
+  </DashboardBillReader>;
 }
-function BillModal({ bill, onClose, fallbackFocus }: { bill: BillListItem; onClose: () => void; fallbackFocus?: () => void }) {
+function BillModal({ bill, onClose, fallbackFocus, enhance, feedback }: BillModalProps & { enhance: React.ReactNode; feedback: React.ReactNode }) {
   const titleId = React.useId();
   const pagerId = React.useId();
   const [detail, setDetail] = React.useState<BillDetail | null>(null);
@@ -59,8 +64,9 @@ function BillModal({ bill, onClose, fallbackFocus }: { bill: BillListItem; onClo
   const status = detail?.status ?? bill.status;
   const stage = stageFor(status);
   return <StackDialog identity={`bill:${bill.id}`} titleId={titleId} className={`${styles.deck} ${styles.dialog}`} onClose={onClose} fallbackFocus={fallbackFocus}>
-    <div className={styles.modalHeader}><p>{bill.bill_number}, {ordinal(bill.session)} Congress</p><button autoFocus onClick={onClose} aria-label="Close bill details">Close ✕</button></div>
+    <div className={styles.modalHeader}><p>{bill.bill_number}, {ordinal(bill.session)} Congress</p><div className={styles.modalHeaderActions}>{enhance}<button autoFocus onClick={onClose} aria-label="Close bill details">Close ✕</button></div></div>
     <div className={styles.modalBody}>
+    {feedback}
     <h2 id={titleId} className={styles.modalTitle}><CardTooltip text="Click the title to open the full bill page."><Link href={`/bills/${bill.id}`}>{bill.title || "Untitled bill"} <span aria-hidden="true">↗</span></Link></CardTooltip></h2>
     {stage && <StageTrack stage={stage} color={topicColor(bill.topics[0]?.topic_id ?? 0)} />}
     <LoadingSpinner active={!error && !detail} label="Loading bill details…" />
