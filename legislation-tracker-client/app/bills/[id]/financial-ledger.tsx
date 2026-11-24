@@ -179,7 +179,7 @@ function OriginalFinancialLedger({
           </label>
           <label className="text-sm font-semibold text-slate-800 dark:text-green-300">
             Fiscal year
-            <input inputMode="numeric" value={yearInput} onChange={(event) => setYearInput(event.target.value)} placeholder="e.g. 2027" className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
+            <input inputMode="numeric" value={yearInput} onChange={(event) => setYearInput(event.target.value)} placeholder="e.g. 2027" className="filter-control mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
           </label>
           <button type="button" onClick={applyFilters} className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:border-green-700 dark:text-green-300">Apply money filters</button>
         </fieldset>}
