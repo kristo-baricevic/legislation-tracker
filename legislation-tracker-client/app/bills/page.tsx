@@ -601,7 +601,7 @@ function BillsCatalog() {
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Full-text search</span>
-              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
+              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, etc." className="rounded border border-control bg-paper px-2 py-1 text-ink" />
             </label>
             <SelectField label="Sort" value={sort} options={[
               { value: "recent_activity", label: "Recent activity" },
@@ -676,7 +676,7 @@ function BillsCatalog() {
                 type="text"
                 value={sponsorFilter}
                 onChange={resetPageAndSet(setSponsorFilter)}
-                placeholder="Name or numeric id"
+                placeholder="Sponsor name"
                 className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
@@ -691,12 +691,12 @@ function BillsCatalog() {
               }}
             />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted">Topic contains (fuzzy)</span>
+              <span className="text-muted">Topic contains</span>
               <SearchInput
                 type="text"
                 value={topicFuzzyFilter}
                 onChange={onTopicFuzzyChange}
-                placeholder="Matches topic name/slug"
+                placeholder="e.g. health"
                 disabled={Boolean(topicIdFilter)}
                 className="rounded border border-control bg-paper px-2 py-1 text-ink disabled:opacity-40"
               />

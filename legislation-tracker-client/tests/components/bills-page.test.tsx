@@ -463,7 +463,7 @@ describe("BillsPage", () => {
       expect(screen.getByLabelText("Bill # (contains)")).toHaveValue("S 9");
       expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("Filed");
       expect(screen.getByLabelText("Sponsor")).toHaveValue("Jones");
-      expect(screen.getByLabelText("Topic contains (fuzzy)")).toHaveValue("energy");
+      expect(screen.getByLabelText("Topic contains")).toHaveValue("energy");
       expect(screen.getByRole("searchbox", { name: "Full-text search" })).toHaveValue("grants");
       expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ session: 120, id: 9, page: 4, q: "grants" }));
     });
