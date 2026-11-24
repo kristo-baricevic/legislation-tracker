@@ -10,6 +10,7 @@
 .dismiss { flex: none; align-self: flex-start; margin-left: auto; display: grid; place-items: center; width: 2rem; height: 2rem; color: var(--muted); border-radius: 50%; font-size: 1.25rem; line-height: 1; }
 .dismiss:hover, .dismiss:focus-visible { background: var(--wash); color: var(--ink); }
 .identifiers, .contextBadges { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
+.contextBadges { margin-top: auto; }
 .identifiers span { padding: .15rem .55rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .75rem; line-height: 1.45; white-space: nowrap; }
 .identifiers span:first-child { color: var(--ink); font-weight: 600; }
 .body > p { margin-block: 0; }
@@ -28,7 +29,7 @@
 .representativeAvatar.representativeAvatar[data-party="republican"] { border-color: #a04c53; }
 .representativeAvatar.representativeAvatar[data-party="independent"] { border-color: #80659b; }
 .body .topicPill:hover { border-color: var(--control-line); text-decoration: underline; }
-.footer { margin-top: auto; display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; align-items: center; font-size: .75rem; border-top: 1px solid var(--line, #d8d9d5); padding-top: .8rem; }
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; align-items: center; font-size: .75rem; border-top: 1px solid var(--line, #d8d9d5); padding-top: .8rem; }
 .body > [aria-live="polite"]:empty { display: none; }
 .footer > span { white-space: nowrap; }
 .section button, .activity button { cursor: pointer; }
