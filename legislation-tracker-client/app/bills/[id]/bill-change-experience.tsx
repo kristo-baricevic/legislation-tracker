@@ -178,16 +178,11 @@ export default function BillChangeExperience({
 
   return (
     <section className="mb-6 space-y-4 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
+      <BillVersionComparison key={billId} billId={billId} documents={documents} initialPair={selectDocumentComparisonPair(documents)} />
+      <details className="border-t border-slate-300 pt-4 dark:border-green-900">
+      <summary className="cursor-pointer font-semibold">Bill history</summary>
+      <div className="mt-4 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-green-400">
-            What changed?
-          </h2>
-          <p className="text-sm text-slate-600 dark:text-green-600">
-            A chronological record of bill updates, versions, analysis,
-            relationships, and votes.
-          </p>
-        </div>
         {changes?.personalized &&
           changes.page_end_cursor &&
           !changes.initial_window_truncated && (
@@ -259,7 +254,8 @@ export default function BillChangeExperience({
         </div>
       )}
 
-      <BillVersionComparison key={billId} billId={billId} documents={documents} initialPair={selectDocumentComparisonPair(documents)} />
+      </div>
+      </details>
     </section>
   );
 }

@@ -18,6 +18,10 @@
 .body .topicPill { border-radius: 999px; }
 .representativeAvatar.representativeAvatar { display: flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 1px solid var(--control-line); background: var(--wash); text-decoration: none; font-size: .75rem; font-weight: 600; }
 .representativeAvatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; object-position: top; }
+.representativeAvatar.representativeAvatar[data-party] { border-width: 2px; }
+.representativeAvatar.representativeAvatar[data-party="democrat"] { border-color: #426b9b; }
+.representativeAvatar.representativeAvatar[data-party="republican"] { border-color: #a04c53; }
+.representativeAvatar.representativeAvatar[data-party="independent"] { border-color: #80659b; }
 .body .topicPill:hover { border-color: var(--control-line); text-decoration: underline; }
 .footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; align-items: center; font-size: .75rem; border-top: 1px solid var(--line, #d8d9d5); padding-top: .8rem; }
 .footer > span { white-space: nowrap; }

@@ -39,6 +39,111 @@ async function fixtures(page: Page, empty = false) {
   });
 }
 
+for (const path of ["/", "/bills?session=119"]) test(`sponsor avatars stay next to timelines on ${path}`, async ({page}) => {
+  await page.setViewportSize({width:1280,height:1000});
+  await fixtures(page);
+  const cards = ["D", "R", "I"].map((party, index) => ({...bill, id:index+1, sponsor_party:party, title:`Bill ${index+1}`, card_summary: "Supports students. ".repeat(index * 10 + 1)}));
+  await page.route("**/api/bills/?**", route => route.fulfill({json:{count:3,next:null,previous:null,results:cards}}));
+  await page.route("**/api/tracking/", route => route.fulfill({json:{bills:cards.map((bill,index)=>({id:index+1,bill,created_at:"2025-01-01"})),topics:[],legislators:[],is_staff:false}}));
+  await page.goto(path);
+  await expect(page.getByRole("article")).toHaveCount(3);
+  const gaps: number[] = [];
+  const colors: string[] = [];
+  for (const card of await page.getByRole("article").all()) {
+    const avatar = card.getByRole("link",{name:"Test Representative",exact:true});
+    const timeline = card.getByRole("img",{name:/Step .* of 5/});
+    const a = (await avatar.boundingBox())!, t = (await timeline.boundingBox())!;
+    gaps.push(t.y-a.y-a.height);
+    colors.push(await avatar.evaluate(el => getComputedStyle(el).borderTopColor));
+  }
+  expect(Math.max(...gaps)-Math.min(...gaps)).toBeLessThan(2);
+  expect(Math.max(...gaps)).toBeLessThan(30);
+  expect(new Set(colors).size).toBe(3);
+  expect(await page.getByText("Jurisdiction",{exact:true}).count()).toBe(0);
+  await page.screenshot({path:`/tmp/sponsor-anchored-${path === "/" ? "dashboard" : "catalog"}.png`});
+});
+
+for (const width of [1440, 390]) test(`list filters do not retain empty scroll space at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width, height:900});
+  await fixtures(page);
+  await page.route("**/api/bills/?**", async route => {
+    const filtered = new URL(route.request().url()).searchParams.has("status");
+    const results = filtered ? [bill] : Array.from({length:20}, (_, i) => ({...bill, id:i + 10, title:`Bill ${i + 10}`}));
+    await route.fulfill({json:{count:results.length,next:null,previous:null,results}});
+  });
+  await page.goto("/bills?session=119");
+  await expect(page.getByRole("article")).toHaveCount(20);
+  await page.getByRole("button",{name:"List",exact:true}).click();
+  await page.evaluate(() => document.fonts.ready);
+  await page.getByRole("combobox",{name:"Status",exact:true}).selectOption("stage:introduced");
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await expect.poll(() => page.getByRole("article").last().evaluate(el => document.documentElement.scrollHeight - (el.getBoundingClientRect().bottom + window.scrollY))).toBeLessThan(150);
+  await page.screenshot({path:`/tmp/bills-list-scroll-${width}.png`});
+});
+
+for (const width of [1440, 390]) test(`bills append on scroll at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width, height: 900});
+  await fixtures(page);
+  const requests: number[] = [];
+  await page.route("**/api/bills/?**", async route => {
+    const current = Number(new URL(route.request().url()).searchParams.get("page") || 1);
+    requests.push(current);
+    const results = current === 1 ? Array.from({length:20}, (_, i) => ({...bill, id:i + 10, title:`Bill ${i + 10}`})) : [{...other, id: 30, title:"Final bill"}];
+    await route.fulfill({json:{count:21, next:current === 1 ? "?page=2" : null, previous:null, results}});
+  });
+  await page.goto("/bills?session=119");
+  await expect(page.getByRole("article")).toHaveCount(20);
+  await expect(page.getByRole("button", {name:"Next",exact:true})).toHaveCount(0);
+  await page.locator('[aria-label="More bills"]').scrollIntoViewIfNeeded();
+  await expect(page.getByRole("article")).toHaveCount(21);
+  await expect(page.getByRole("link", {name:"Bill 10",exact:true})).toHaveCount(1);
+  expect(requests).toEqual([1,2]);
+  await page.screenshot({path:`/tmp/bills-infinite-${width}.png`});
+});
+
+for (const width of [1440, 390]) test(`bill tracking filter preserves layout at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await fixtures(page);
+  await page.route("**/api/bills/?**", async route => {
+    const tracking = new URL(route.request().url()).searchParams.get("tracking");
+    await route.fulfill({json: {count: 1, next: null, previous: null, results: [tracking === "untracked" ? other : bill]}});
+  });
+  await page.goto("/bills?session=119");
+  const filter = page.getByRole("combobox", { name: "Tracking", exact: true });
+  await expect(filter).toBeEnabled();
+  await filter.scrollIntoViewIfNeeded();
+  await filter.focus();
+  const before = await filter.boundingBox();
+  await filter.selectOption("untracked");
+  await expect(page.getByRole("link", {name: other.title, exact: true})).toBeVisible();
+  await expect(page).toHaveURL(/tracking=untracked/);
+  expect(await filter.boundingBox()).toEqual(before);
+  await expect(filter).toBeFocused();
+  await page.screenshot({path: `/tmp/bill-tracking-filter-${width}.png`});
+  await filter.selectOption("tracked");
+  await expect(page.getByRole("link", {name: bill.title, exact: true})).toBeVisible();
+  await expect(page).toHaveURL(/tracking=tracked/);
+});
+
+test("dashboard filters scope both recommendation requests without losing search focus", async ({ page }) => {
+  await fixtures(page);
+  const calls: URL[] = [];
+  await page.route("**/api/tracking/*recommendations/**", async route => {
+    calls.push(new URL(route.request().url()));
+    await route.fulfill({json:{algorithm:"fixture",generated_at:"2026-11-23",count:0,next_cursor:null,unsupported_follow_types:[],candidate_pool_truncated:false,ranking_limit_reached:false,empty_reason:"no_matches",results:[]}});
+  });
+  await page.goto("/");
+  await expect(page.getByRole("combobox", {name:"Topic",exact:true})).toBeVisible();
+  await page.getByRole("combobox", {name:"Topic",exact:true}).selectOption("1");
+  await page.getByRole("combobox", {name:"Representative (sponsor)",exact:true}).selectOption("id:1");
+  await page.getByRole("combobox", {name:"Status",exact:true}).selectOption("introduced");
+  await page.getByRole("searchbox", {name:"Search bills",exact:true}).fill("tax");
+  for (const path of ["/api/tracking/recommendations/", "/api/tracking/representative-recommendations/"]) {
+    await expect.poll(() => calls.some(url => url.pathname === path && url.searchParams.get("q") === "tax" && url.searchParams.get("topic_id") === "1" && url.searchParams.get("sponsor") === "id:1" && url.searchParams.get("status") === "introduced")).toBe(true);
+  }
+  await expect(page.getByRole("searchbox", {name:"Search bills",exact:true})).toBeFocused();
+});
+
 for (const width of [1280, 390]) test(`refreshing topics and recommendations keeps geometry at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await fixtures(page);
@@ -92,26 +197,24 @@ for (const width of [1280, 390]) test(`catalog pagination retains content during
   await page.route("**/api/bills/?**", async route => {
     const second = new URL(route.request().url()).searchParams.get("page") === "2";
     if (second) await new Promise<void>(resolve => {release = resolve;});
-    await route.fulfill({json:{count:21,next:second?null:"next",previous:second?"prev":null,results:second?[other]:Array.from({length:20}, (_, i) => ({...bill,id:bill.id+i,title:i?`Catalog bill ${i}`:bill.title}))}});
+    await route.fulfill({json:{count:21,next:second?null:"next",previous:second?"prev":null,results:second?[{...other,id:21}]:Array.from({length:20}, (_, i) => ({...bill,id:bill.id+i,title:i?`Catalog bill ${i}`:bill.title}))}});
   });
   await page.goto("/bills?session=119");
   await expect(page.getByRole("link",{name:bill.title,exact:true})).toBeVisible();
-  const next = page.getByRole("button",{name:"Next",exact:true});
+  const next = page.locator('[aria-label="More bills"]');
   await next.scrollIntoViewIfNeeded();
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   const box = await next.boundingBox();
   const scroll = await page.evaluate(() => window.scrollY);
-  await next.click();
   await expect.poll(() => Boolean(release)).toBe(true);
   await expect(page.getByRole("link",{name:bill.title,exact:true})).toBeAttached();
   expect(await next.boundingBox()).toEqual(box);
   expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
   release();
   await expect(page.getByRole("link",{name:other.title,exact:true})).toBeAttached();
-  await expect(page.getByRole("button",{name:"Previous",exact:true})).toBeEnabled();
-  expect(Math.abs((await next.boundingBox())!.y - box!.y)).toBeLessThan(1);
+  await expect(page.getByRole("button",{name:"Previous",exact:true})).toHaveCount(0);
   expect(Math.abs(await page.evaluate(() => window.scrollY) - scroll)).toBeLessThan(1);
-  await expect(page.getByRole("link", { name: other.title, exact: true })).toBeInViewport();
+  await expect(page.getByRole("article")).toHaveCount(21);
 });
 
 for (const width of [1280, 390]) test(`directory filters preserve portraits while pending at ${width}px`, async ({ page }, info) => {
@@ -532,7 +635,7 @@ test("empty followed bills and topics", async ({ page }) => {
   await fixtures(page, true); await page.goto("/"); await expect(page.getByText("Your collection starts with a bill")).toBeVisible(); await expect(page.getByText("Follow topics to organize")).toBeVisible();
 });
 
-test("catalog cards preserve server pagination and open the shared detail modal", async ({ page }) => {
+test("catalog cards append in list view and link to full bill pages", async ({ page }) => {
   await fixtures(page);
   await page.route("**/api/bills/?**", async route => {
     const params = new URL(route.request().url()).searchParams;
@@ -542,21 +645,17 @@ test("catalog cards preserve server pagination and open the shared detail modal"
     await route.fulfill({ json: { count: 21, next: second ? null : "?page=2", previous: second ? "?page=1" : null, results: second ? [other] : firstPage } });
   });
   await page.goto("/bills?session=119");
-  const title = page.getByRole("button", { name: bill.title, exact: true });
+  const title = page.getByRole("link", { name: bill.title, exact: true });
   await expect(title).toBeVisible();
   await expect(page.getByRole("table")).toHaveCount(0);
-  await title.click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page.getByRole("button", { name: "Close bill details" }).click();
-  await expect(title).toBeFocused();
+  await expect(title).toHaveAttribute("href", "/bills/1");
   await page.getByRole("button", { name: "List", exact: true }).click();
   await expect(page.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(page.getByRole("button", { name: other.title })).toBeVisible();
-  await expect(title).toHaveCount(0);
+  await page.locator('[aria-label="More bills"]').scrollIntoViewIfNeeded();
+  await expect(page.getByRole("link", { name: other.title })).toBeAttached();
+  await expect(title).toHaveCount(1);
   await expect(page).toHaveURL(/page=2/);
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
-  await expect(title).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(21);
 });
 
 test("dashboard tracking errors remain actionable without offering a catalog", async ({ page }) => {

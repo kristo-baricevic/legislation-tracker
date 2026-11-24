@@ -36,6 +36,7 @@ it("combines name, member and level filters and clears them", async () => {
 it("shows leadership, profile links and bill cards; filters by chamber", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("introduced-bills") ? { results: [bill], next: null, count: 1 } : { congress:119, results: url.includes("chamber=house") ? [] : [committee], next: null, count: 1 })));
   render(<Committees />);
+  expect(screen.getByRole("heading", { name: "Committees", level: 1 })).toHaveClass("tracker-heading", "text-ink");
   expect(await screen.findByRole("heading", { name: "Finance" })).toBeVisible();
   expect(screen.getByText("Chair")).toBeVisible();
   expect(screen.getByRole("link", { name: "Jane Doe" })).toHaveAttribute("href", "/representatives/2?congress=119");

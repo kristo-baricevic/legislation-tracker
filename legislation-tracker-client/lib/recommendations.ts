@@ -68,15 +68,20 @@ export interface RepresentativeRecommendationsResponse {
   coverage: { status: "ingested_subset"; service_exposure: "unknown"; bill_families: "unavailable"; votes_used_for_ranking: false };
   results: RepresentativeRecommendation[];
 }
-export function getBillRecommendations(params: { cursor?: string; pageSize?: number } = {}, options: PersonalizedRequestOptions = {}): Promise<BillRecommendationsPage> {
-  const search = new URLSearchParams();
+export type RecommendationFilters = Partial<Record<"q" | "topic_id" | "sponsor" | "state" | "status" | "sort", string>>;
+export function recommendationFilterQuery(filters: RecommendationFilters = {}) {
+  return new URLSearchParams(Object.entries(filters).filter(([, value]) => value?.trim()).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => [key, value!.trim()])).toString();
+}
+export function getBillRecommendations(params: { cursor?: string; pageSize?: number; filters?: RecommendationFilters } = {}, options: PersonalizedRequestOptions = {}): Promise<BillRecommendationsPage> {
+  const search = new URLSearchParams(recommendationFilterQuery(params.filters));
   if (params.cursor) search.set("cursor", params.cursor);
   if (params.pageSize !== undefined) search.set("page_size", String(params.pageSize));
   const query = search.toString();
   return authGet(`/api/tracking/recommendations/${query ? `?${query}` : ""}`, options);
 }
-export function getRepresentativeRecommendations(options: PersonalizedRequestOptions = {}): Promise<RepresentativeRecommendationsResponse> {
-  return authGet("/api/tracking/representative-recommendations/", options);
+export function getRepresentativeRecommendations(options: PersonalizedRequestOptions = {}, filters: RecommendationFilters = {}): Promise<RepresentativeRecommendationsResponse> {
+  const query = recommendationFilterQuery(filters);
+  return authGet(`/api/tracking/representative-recommendations/${query ? `?${query}` : ""}`, options);
 }
 export async function getRepresentativeTopicActivity(id: number, options: { signal?: AbortSignal } = {}): Promise<RepresentativeTopicActivity> {
   const value = await publicGet<RepresentativeTopicActivity>(`/api/representatives/${id}/topic-activity/`, options);

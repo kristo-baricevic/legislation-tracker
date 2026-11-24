@@ -8,7 +8,7 @@ import BillChangeExperience, {
 import {
   acknowledgeBillChanges,
   compareBillContracts,
-  compareBillDocumentSection,
+  compareBillDocumentPassages,
   compareBillDocuments,
   getBillChanges,
 } from "@/lib/api";
@@ -18,7 +18,7 @@ vi.mock("@/lib/api", () => ({
   acknowledgeBillChanges: vi.fn(),
   compareBillContracts: vi.fn(),
   compareBillDocuments: vi.fn(),
-  compareBillDocumentSection: vi.fn(),
+  compareBillDocumentPassages: vi.fn(),
 }));
 
 describe("BillChangeExperience", () => {
@@ -40,6 +40,10 @@ describe("BillChangeExperience", () => {
   it("does not acknowledge on load and only marks displayed changes seen after an explicit action", async () => {
     const user = userEvent.setup();
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
+    const history = screen.getByText("Bill history");
+    expect(history.closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "Compare versions" }).compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(history);
     expect(await screen.findByText("Bill status changed")).toBeVisible();
     expect(screen.getByText("Introduced → Reported")).toBeVisible();
     expect(screen.queryByText(/\"status\"/)).not.toBeInTheDocument();
@@ -63,7 +67,7 @@ describe("BillChangeExperience", () => {
     });
 
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
-
+    await userEvent.click(screen.getByText("Bill history"));
     expect(await screen.findByText("Recent change")).toBeVisible();
     expect(screen.queryByRole("button", { name: /Mark .* as seen/ })).toBeNull();
   });
@@ -106,6 +110,7 @@ describe("BillChangeExperience", () => {
       });
 
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
+    await user.click(screen.getByText("Bill history"));
     await user.click(await screen.findByRole("button", { name: "Load older changes" }));
     expect(await screen.findByText("Old change")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Mark 3 as seen" }));
@@ -140,6 +145,7 @@ describe("BillChangeExperience", () => {
       });
 
     render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
+    await user.click(screen.getByText("Bill history"));
     await user.click(await screen.findByRole("button", { name: "Load newer changes" }));
 
     expect(getBillChanges).toHaveBeenLastCalledWith(10, { afterCursor: "shown-cursor" });
@@ -166,12 +172,12 @@ describe("BillChangeExperience", () => {
       fallback: false,
       truncation_reasons: [],
     });
-    vi.mocked(compareBillDocumentSection).mockResolvedValue({
+    vi.mocked(compareBillDocumentPassages).mockResolvedValue([{
       section_key: "sec. 1#1",
       operations: [{ operation: "replace", before: ["old line"], after: ["new line"] }],
       truncated: false,
       truncation_reasons: [],
-    });
+    }]);
     const contracts = [
       { id: 1, schema_version: "1", contract_json: {}, contract_hash: "a", computed_at: "2026-01-01T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
       { id: 2, schema_version: "1", contract_json: {}, contract_hash: "b", computed_at: "2026-01-02T00:00:00Z", document: null, document_version_label: null, evidence_spans: [] },
@@ -187,11 +193,15 @@ describe("BillChangeExperience", () => {
     expect(screen.getByText(/new line/)).toBeVisible();
     expect(screen.getByLabelText("Before version")).toHaveValue("1");
     expect(screen.getByLabelText("After version")).toHaveValue("2");
-    expect(compareBillDocumentSection).toHaveBeenCalledWith(10, 1, 2, "sec. 1#1");
+    expect(compareBillDocumentPassages).toHaveBeenCalledWith(10, 1, 2, ["sec. 1#1"]);
     expect(document.querySelector("pre")).toBeNull();
     await user.selectOptions(screen.getByLabelText("Before version"), "2");
     expect(screen.getByText("Choose two different versions.")).toBeVisible();
     expect(screen.queryByText("old line")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close comparison" }));
+    await user.click(screen.getByRole("button", { name: "Compare versions" }));
+    expect(screen.getByLabelText("Before version")).toHaveValue("1");
+    expect(screen.getByLabelText("After version")).toHaveValue("2");
     await user.selectOptions(screen.getByLabelText("Before version"), "1");
     expect(await screen.findByText("old line")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Close comparison" }));

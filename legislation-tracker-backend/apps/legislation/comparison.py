@@ -540,8 +540,19 @@ def compare_document_sections(
 
 
 def compare_document_section(*, before, after, section_key: str) -> DocumentLineDiff:
+    return compare_document_passages(before=before, after=after, section_keys=[section_key])[0]
+
+
+def compare_document_passages(*, before, after, section_keys):
+    if before.bill_id != after.bill_id:
+        raise ValueError("Documents must belong to the same bill.")
     before_sections, _, before_source_truncated = _section_map(before)
     after_sections, _, after_source_truncated = _section_map(after)
+    return [_compare_section_maps(before_sections, after_sections, before_source_truncated,
+                                  after_source_truncated, key) for key in section_keys]
+
+
+def _compare_section_maps(before_sections, after_sections, before_source_truncated, after_source_truncated, section_key):
     left = before_sections.get(section_key, "")[:50_000].splitlines()
     right = after_sections.get(section_key, "")[:50_000].splitlines()
     matcher = SequenceMatcher(a=left[:2_000], b=right[:2_000], autojunk=False)

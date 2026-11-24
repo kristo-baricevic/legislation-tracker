@@ -68,6 +68,7 @@ export default function SelectField({
         id={`${id}-button`}
         type="button"
         aria-haspopup="listbox"
+        data-dropdown="true"
         disabled={disabled}
         aria-expanded={open && !disabled}
         aria-labelledby={`${id}-label ${id}-button`}
@@ -81,9 +82,6 @@ export default function SelectField({
         className="flex min-h-10 w-full items-center justify-between gap-2 rounded border border-control bg-paper px-2 py-1 text-left text-ink outline-none hover:border-focus focus:border-focus"
       >
         <span className="truncate">{selected?.label ?? ""}</span>
-        <span aria-hidden="true" className="shrink-0 text-xs">
-          v
-        </span>
       </button>
       {open && !disabled && (
         <div

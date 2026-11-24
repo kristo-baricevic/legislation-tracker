@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,6 +49,64 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("BillsPage", () => {
+  it("refreshes every loaded tracking page after a follow change without discarding earlier cards", async () => {
+    searchState.query = "session=119&tracking=untracked";
+    vi.mocked(getSession).mockResolvedValue({authenticated: true, user: {email: "reader@example.test"}});
+    let intersect = () => {};
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) { intersect = () => callback([{isIntersecting: true} as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+      observe() {} disconnect() {}
+    });
+    const item = (id: number) => ({id, jurisdiction: "federal", session: 119, bill_number: `HR ${id}`, title: `Bill ${id}`, status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: []});
+    vi.mocked(getBills).mockImplementation(async params => ({count: 3, next: params?.page === 1 ? "next" : null, previous: null, results: params?.page === 1 ? [item(1)] : [item(2)]}));
+    render(<BillsPage />);
+    await screen.findByRole("button", {name: "Follow"});
+    await act(async () => intersect());
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(2));
+    const first = screen.getAllByRole("article")[0];
+    vi.mocked(getBills).mockClear();
+    vi.mocked(getBills).mockImplementation(async params => ({count: 2, next: params?.page === 1 ? "next" : null, previous: null, results: params?.page === 1 ? [item(1)] : [item(3)]}));
+    await userEvent.click(screen.getAllByRole("button", {name: "Follow"})[1]);
+    await screen.findByRole("link", {name: "Bill 3"});
+    expect(screen.getAllByRole("article")[0]).toBe(first);
+    expect(vi.mocked(getBills).mock.calls.map(([params]) => params?.page)).toEqual([1, 2]);
+    expect(screen.queryByRole("link", {name: "Bill 2"})).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+  it("waits for login resolution before requesting a private bill filter", async () => {
+    searchState.query = "session=119&tracking=tracked";
+    let resolveSession!: (value: any) => void;
+    vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
+    render(<BillsPage />);
+    await screen.findByRole("combobox", {name: "Tracking"});
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(getBills).not.toHaveBeenCalled();
+    resolveSession({authenticated: true, user: {email: "reader@example.test"}});
+    await waitFor(() => expect(getBills).toHaveBeenCalledWith(expect.objectContaining({tracking: "tracked"})));
+  });
+  it("does not display cancelled authentication requests as errors", async () => {
+    vi.mocked(getBills).mockRejectedValue(new DOMException("Session or followed interests changed", "AbortError"));
+    render(<BillsPage />);
+    await waitFor(() => expect(getBills).toHaveBeenCalled());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(screen.queryByText("Session or followed interests changed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Failed to load bills")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("filters tracking on the server and resets pagination without moving focus", async () => {
+    searchState.query = "page=3&session=119";
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    render(<BillsPage />);
+    const filter = await screen.findByRole("combobox", { name: "Tracking" });
+    await waitFor(() => expect(filter).toBeEnabled());
+    await userEvent.selectOptions(filter, "tracked");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ tracking: "tracked", page: 1, session: 119 })));
+    expect(filter).toHaveFocus();
+    await userEvent.selectOptions(filter, "untracked");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ tracking: "untracked", page: 1 })));
+    await userEvent.selectOptions(filter, "");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ tracking: undefined })));
+  });
   it("keeps follow loading and retry labels compact and restores the follow action", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
     let rejectTracking!: (reason: Error) => void;
@@ -66,22 +124,45 @@ describe("BillsPage", () => {
     expect(await screen.findByRole("button", { name: /^Follow$/ })).toBeEnabled();
     expect(screen.queryByText("Load follow status")).not.toBeInTheDocument();
   });
-  it("retains results and the committed page while the next page loads", async () => {
+  it("appends infinite-scroll results without replacing existing cards or skipping failed pages", async () => {
+    let intersect = () => {};
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) { intersect = () => callback([{isIntersecting: true} as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+      observe() {} disconnect() {}
+    });
     const result = { count: 2, next: "next", previous: null, results: [{ id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "School grants", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }] };
     vi.mocked(getBills).mockResolvedValue(result);
     render(<BillsPage />);
     const card = await screen.findByRole("article");
-    vi.mocked(getBills).mockReturnValueOnce(new Promise(() => {}));
-    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    let resolvePage!: (value: typeof result) => void;
+    vi.mocked(getBills).mockReturnValueOnce(new Promise(resolve => { resolvePage = resolve; }));
+    await act(async () => { intersect(); intersect(); });
     expect(screen.getByRole("article")).toBe(card);
-    expect(screen.getByText("2 bills (page 1)")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Previous" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Bill results" })).toHaveAttribute("aria-busy", "true");
+    expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({page: 2}));
+    await act(async () => resolvePage({...result, results: [{...result.results[0], id: 43, title: "Second bill"}]}));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.getAllByRole("article")[0]).toBe(card);
+    vi.mocked(getBills).mockRejectedValueOnce(new Error("Offline"));
+    await act(async () => intersect());
+    expect(await screen.findByRole("button", {name: "Retry loading bills"})).toBeVisible();
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    vi.mocked(getBills).mockResolvedValueOnce({...result, next: null, results: [{...result.results[0], id: 44, title: "Third bill"}]});
+    await userEvent.click(screen.getByRole("button", {name: "Retry loading bills"}));
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(3));
+    expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({page: 3}));
+    vi.mocked(getBills).mockResolvedValueOnce({...result, next: null});
+    await userEvent.selectOptions(screen.getByRole("combobox", {name: "Status"}), "stage:law");
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(1));
+    vi.unstubAllGlobals();
   });
   it("does not duplicate the navbar with a Dashboard back link", async () => {
     render(<BillsPage />);
     await screen.findByRole("heading", { name: "Ingested Bills" });
     expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Jurisdiction", {exact:true})).not.toBeInTheDocument();
   });
   it("selects a status stage and clears it without retaining the old page", async () => {
     searchState.query = "page=3&session=119";

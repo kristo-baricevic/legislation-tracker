@@ -1,10 +1,10 @@
 "use client";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { StableResults } from "@/app/components/StableResults";
-import { compareBillDocuments, compareBillDocumentSection, type BillDocumentItem, type DocumentComparison, type DocumentSectionComparison } from "@/lib/api";
+import { compareBillDocuments, compareBillDocumentPassages, type BillDocumentItem, type DocumentComparison, type DocumentSectionComparison } from "@/lib/api";
 
 const button = "cursor-pointer rounded border border-slate-400 px-3 py-2 text-sm font-semibold hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:border-green-800 dark:hover:bg-green-950";
 const PAGE_SIZE = 5;
@@ -31,6 +31,7 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
   const [shownPage, setShownPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
+  const pageCache = useRef(new Map<number, DocumentSectionComparison[]>());
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +39,7 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
     setError(null);
     compareBillDocuments(billId, before.id, after.id).then(result => {
       if (!cancelled) setComparison(result);
-    }).catch(() => { if (!cancelled) setError("Could not compare these versions. Please try again."); });
+    }).catch(() => { if (!cancelled) { setError("Comparison unavailable. Please retry."); setLoading(false); } });
     return () => { cancelled = true; };
   }, [billId, before.id, after.id, retry, comparison]);
 
@@ -47,10 +48,11 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
     setLoading(true);
     setError(null);
     if (comparison) {
-      Promise.all(comparison.sections.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-        .map(section => compareBillDocumentSection(billId, before.id, after.id, section.section_key)))
-        .then(results => { if (!cancelled) { setSections(results); setShownPage(page); } })
-        .catch(() => { if (!cancelled) setError("Could not load the changed passages. Please try again."); })
+      const cached = pageCache.current.get(page);
+      (cached ? Promise.resolve(cached) : compareBillDocumentPassages(billId, before.id, after.id,
+        comparison.sections.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(section => section.section_key)))
+        .then(results => { if (!cancelled) { pageCache.current.set(page, results); setSections(results); setShownPage(page); } })
+        .catch(() => { if (!cancelled) setError("Changed passages unavailable. Please retry."); })
         .finally(() => { if (!cancelled) setLoading(false); });
     }
     return () => { cancelled = true; };
@@ -59,7 +61,7 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
   const pages = Math.ceil((comparison?.sections.length ?? 0) / PAGE_SIZE);
   return <div className="space-y-4">
     <StableResults page={shownPage} busy={loading} label="Changed passages">
-    {error && <div role="alert"><p>{error}</p><button className={button} onClick={() => setRetry(value => value + 1)}>Retry comparison</button></div>}
+    {error && <div role="alert" className="text-sm text-red-700"><p>{error}</p><button className={button} disabled={loading} onClick={() => setRetry(value => value + 1)}>Retry comparison</button></div>}
     <LoadingSpinner active={(!comparison || !sections) && !error} label="Loading changed passages…" />
     {comparison && sections && <>
     <p className="text-sm text-slate-600 dark:text-green-600">
@@ -84,7 +86,7 @@ function ComparisonResults({ billId, before, after }: { billId: number; before: 
     {comparison && pages > 1 && <nav aria-label="Comparison pages" className="flex items-center justify-center gap-4">
       <button className={button} disabled={loading || shownPage === 0} onClick={() => { if (page === shownPage - 1) setRetry(value => value + 1); else setPage(shownPage - 1); }}>Prev</button>
       <span className="text-sm">Sections {shownPage * PAGE_SIZE + 1}–{Math.min((shownPage + 1) * PAGE_SIZE, comparison.sections.length)} of {comparison.sections.length}</span>
-      <button className={button} disabled={loading || shownPage + 1 >= pages} onClick={() => { if (page === shownPage + 1) setRetry(value => value + 1); else setPage(shownPage + 1); }}>Next</button>
+      <button className={button} disabled={loading || !sections || shownPage + 1 >= pages} onClick={() => { if (page === shownPage + 1) setRetry(value => value + 1); else setPage(shownPage + 1); }}>Next</button>
     </nav>}
   </div>;
 }
@@ -93,14 +95,24 @@ export default function BillVersionComparison({ billId, documents, initialPair }
   billId: number; documents: BillDocumentItem[]; initialPair: [BillDocumentItem, BillDocumentItem] | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [beforeId, setBeforeId] = useState(initialPair?.[0].id ?? documents[0]?.id);
-  const [afterId, setAfterId] = useState(initialPair?.[1].id ?? documents[1]?.id);
+  const [beforeId, setBeforeId] = useState<number | undefined>(initialPair?.[0].id ?? documents[0]?.id);
+  const [afterId, setAfterId] = useState<number | undefined>(initialPair?.[1].id ?? documents[1]?.id);
   const before = documents.find(doc => doc.id === beforeId);
   const after = documents.find(doc => doc.id === afterId);
-  return <div className="space-y-4 border-t border-slate-300 pt-4 dark:border-green-900">
+  function toggleComparison() {
+    if (!open && (!before || !after || before.id === after.id)) {
+      const first = documents.find(doc => doc.id === initialPair?.[0].id) ?? documents[0];
+      const second = documents.find(doc => doc.id === initialPair?.[1].id && doc.id !== first?.id)
+        ?? documents.find(doc => doc.id !== first?.id);
+      setBeforeId(first?.id);
+      setAfterId(second?.id);
+    }
+    setOpen(!open);
+  }
+  return <div className="space-y-4">
     <div className="flex items-center justify-between gap-3">
       <h3 className="font-semibold">Compare versions</h3>
-      <button className={button} disabled={documents.length < 2} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button className={button} disabled={documents.length < 2} aria-expanded={open} onClick={toggleComparison}>
         {open ? "Close comparison" : "Compare versions"}
       </button>
     </div>

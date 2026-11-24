@@ -4,10 +4,11 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { StableResults } from "@/app/components/StableResults";
 
-import type { VoteDetailItem, VoteListItem, VoteRecordItem } from "@/lib/api";
+import type { PassageAction, VoteDetailItem, VoteListItem, VoteRecordItem } from "@/lib/api";
 import RepresentativeAvatarBadge from "../../components/RepresentativeAvatarBadge";
 
 interface VotingRecordProps {
+  passageActions?: PassageAction[];
   headingHref?: string;
   votes: VoteListItem[];
   selectedVote: VoteDetailItem | null;
@@ -32,6 +33,16 @@ const groupLabels: Record<PositionGroup, string> = {
 };
 
 const groupOrder: PositionGroup[] = ["yes", "no", "present", "not voting", "other"];
+
+function normalizedParty(party: string): string {
+  const value = party.trim();
+  switch (value.toLowerCase()) {
+    case "d": case "dem": case "democrat": case "democratic": return "Democrat";
+    case "r": case "rep": case "republican": return "Republican";
+    case "i": case "ind": case "independent": return "Independent";
+    default: return value;
+  }
+}
 
 function normalizedPosition(position: string): PositionGroup {
   const normalized = position.trim().toLowerCase().replaceAll("_", " ");
@@ -95,6 +106,7 @@ function VotePagination({
 }
 
 export function VotingRecord({
+  passageActions = [],
   loading = false,
   headingHref,
   votes,
@@ -123,7 +135,7 @@ export function VotingRecord({
     [votes],
   );
   const parties = useMemo(
-    () => [...new Set(selectedVote?.records.map((record) => record.representative.party).filter(Boolean) ?? [])].sort(),
+    () => [...new Set(selectedVote?.records.map((record) => normalizedParty(record.representative.party)).filter(Boolean) ?? [])].sort(),
     [selectedVote],
   );
   const states = useMemo(
@@ -135,7 +147,7 @@ export function VotingRecord({
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const filtered = selectedVote.records.filter((record) => (
       (!normalizedQuery || record.representative.name.toLocaleLowerCase().includes(normalizedQuery)) &&
-      (!party || record.representative.party === party) &&
+      (!party || normalizedParty(record.representative.party) === party) &&
       (!state || record.representative.state === state)
     ));
     const groups = new Map<PositionGroup, VoteRecordItem[]>();
@@ -159,10 +171,18 @@ export function VotingRecord({
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-4 dark:border-green-900 dark:bg-black/20">
         <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Congressional record</p>
         <h2 id="voting-record-heading" className="mt-1 text-xl font-semibold text-slate-950 dark:text-green-400">{headingHref ? <Link href={headingHref}>Voting record ↗</Link> : "Voting record"}</h2>
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 dark:text-green-200/80">Select a roll call to see every returned member record. Positions are reported as received; filters only change what is displayed.</p>
       </header>
       <div className="p-4">
-        <StableResults page={page} busy={loading} label="Vote history">
+        {passageActions.length > 0 && <ul className="mb-4 space-y-3" aria-label="Passage without roll call">
+          {passageActions.map(action => <li key={`${action.chamber}:${action.date}:${action.method}`} className="rounded border border-slate-300 p-3">
+            <p className="font-semibold">{action.chamber} · Passed by {action.method === "unanimous_consent" ? "unanimous consent" : "voice vote"}</p>
+            <p className="text-sm text-slate-600">{new Date(`${action.date}T12:00:00Z`).toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"})}</p>
+            <p className="mt-1 text-sm text-slate-600">No individual votes recorded.</p>
+            <a href={action.source_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-sm underline">Official passage record</a>
+          </li>)}
+        </ul>}
+        {votes.length > 0 && <>
+        <StableResults page={page} busy={loading} label="Vote history" reserveHeight={page > 1 || hasNext}>
         <ul className="divide-y divide-slate-300 rounded border border-slate-300 dark:divide-green-900/70 dark:border-green-900/70">
           {orderedVotes.map((vote) => (
             <li key={vote.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
@@ -185,12 +205,13 @@ export function VotingRecord({
         </ul>
         </StableResults>
         <VotePagination page={page} hasNext={hasNext} onPrevious={onPrevious} onNext={onNext} loading={loading} />
+        </>}
         <div ref={detailSlot}>
         {error && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">{error}</p>}
         {selectedVote && (
           <div className="mt-6 border-t border-slate-300 pt-5 dark:border-green-900/70">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-green-400">Member positions</h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div role="group" aria-label="Filter member positions" className="mt-3 mb-4 grid min-w-0 gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
               <label className="text-sm font-semibold text-slate-800 dark:text-green-300">Search members
                 <input aria-label="Search members" type="search" value={query} onChange={(event) => setQuery(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
               </label>

@@ -22,9 +22,10 @@ it("marks only successfully enhanced cards for the purple edge treatment", () =>
 });
 
 it("shows the sponsor as an avatar rather than a visible name", async () => {
-  render(<BillCard bill={{ ...bill, sponsor_id: 12, sponsor_name: "Bruce Westerman", sponsor_bioguide_id: "W000821" }} onOpen={() => {}} footer={null} />);
+  render(<BillCard bill={{ ...bill, sponsor_id: 12, sponsor_name: "Bruce Westerman", sponsor_party: "R", sponsor_bioguide_id: "W000821" }} onOpen={() => {}} footer={null} />);
   expect(await screen.findByRole("img", { name: "Bruce Westerman" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Bruce Westerman" })).toHaveAttribute("href", "/representatives/12?congress=119");
+  expect(screen.getByRole("link", { name: "Bruce Westerman" })).toHaveAttribute("data-party", "republican");
   expect(screen.queryByText("Bruce Westerman")).not.toBeInTheDocument();
 });
 

@@ -12,13 +12,16 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
   const [revision, reload] = React.useReducer(value => value + 1, 0);
   const controller = React.useRef<AbortController | null>(null);
   const current = React.useRef(state);
+  const currentKey = React.useRef(key);
+  currentKey.current = key;
+  const settledKey = React.useRef<string | null>(null);
   current.current = state;
   React.useEffect(() => subscribePersonalizedChanges(({ kind, scope }) => {
     if (kind === "revalidate") { reload(); return; }
     controller.current?.abort();
     if (kind === "tracking") {
       // Following must not clear mounted content or move the reader's focus.
-      if (keepOnTracking && current.current.data && current.current.scope?.sessionGeneration === scope.sessionGeneration) {
+      if (keepOnTracking && !current.current.loading && settledKey.current === currentKey.current && current.current.data && current.current.scope?.sessionGeneration === scope.sessionGeneration) {
         controller.current = new AbortController();
         setState(previous => ({ ...previous, scope, loading: false }));
         return;
@@ -31,6 +34,7 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     reload();
   }), [onInvalidate, keepOnTracking]);
   React.useEffect(() => {
+    setState(previous => ({ ...previous, loading: true, error: "" }));
     const abort = new AbortController();
     controller.current = abort;
     const initial = capturePersonalizedScope();
@@ -38,13 +42,14 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
       try {
         const session = await dashboardSession();
         if (abort.signal.aborted || !isPersonalizedScopeCurrent(initial)) return;
-        if (!session) { setState({ data: null, scope: initial, loading: false, signedIn: false, error: "" }); return; }
+        if (!session) { settledKey.current = key; setState({ data: null, scope: initial, loading: false, signedIn: false, error: "" }); return; }
         const data = await dashboardValue(key, () => load({ scope: initial }));
         if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) {
+          settledKey.current = key;
           setState({ data, scope: initial, loading: false, signedIn: true, error: "" });
         }
       } catch (error) {
-        if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) setState(previous => ({ ...previous, scope: initial, loading: false, signedIn: true, error: error instanceof Error && error.name === "AbortError" ? "" : "Recommendations could not be loaded. Try again." }));
+        if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) { settledKey.current = key; setState(previous => ({ ...previous, scope: initial, loading: false, signedIn: true, error: error instanceof Error && error.name === "AbortError" ? "" : "Recommendations could not be loaded. Try again." })); }
       }
     })();
     return () => abort.abort();
@@ -58,7 +63,7 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     reload();
   };
   const update = (scope: PersonalizedScope, transform: (data: T) => T) => {
-    if (isPersonalizedScopeCurrent(scope)) setState(previous => previous.data && previous.scope === scope ? { ...previous, data: transform(previous.data) } : previous);
+    if (currentKey.current === key && isPersonalizedScopeCurrent(scope)) setState(previous => previous.data && previous.scope === scope ? { ...previous, data: transform(previous.data) } : previous);
   };
-  return { ...state, retry, update, requestOptions: () => ({ scope: state.scope ?? undefined, signal: controller.current?.signal }) };
+  return { ...state, loading: state.loading || settledKey.current !== key, retry, update, requestOptions: () => ({ scope: state.scope ?? undefined, signal: controller.current?.signal }) };
 }

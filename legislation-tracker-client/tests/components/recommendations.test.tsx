@@ -29,6 +29,31 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
+  it("restarts an in-flight filter request after interests change", async () => {
+    mockRequests(() => Response.json(page));
+    const view = render(<BillRecommendations onOpenBill={() => true} filters={{q: "Before"}} />);
+    await screen.findByRole("link", {name: bill.title});
+    let requested = 0;
+    mockRequests(() => ++requested === 1 ? new Promise<Response>(() => {}) : Response.json({...page, results: [{...page.results[0], bill: {...bill, title: "Updated filter result"}}]}));
+    view.rerender(<BillRecommendations onOpenBill={() => true} filters={{q: "After"}} />);
+    await waitFor(() => expect(requested).toBe(1));
+    await act(async () => (await import("@/lib/personalized-scope")).announceTrackingChange());
+    expect(await screen.findByRole("link", {name: "Updated filter result"})).toBeVisible();
+    expect(screen.getByRole("button", {name: "Refresh bill recommendations"})).toHaveAttribute("aria-busy", "false");
+  });
+  it("scopes requests and cached cards to the dashboard filters", async () => {
+    mockRequests(() => Response.json(page));
+    const { rerender } = render(<BillRecommendations onOpenBill={() => true} filters={{q: "College", topic_id: "9"}} />);
+    await screen.findByRole("link", {name: bill.title});
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("q=College") && String(url).includes("topic_id=9"))).toBe(true);
+    rerender(<BillRecommendations onOpenBill={() => true} filters={{q: "Hospital"}} />);
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("q=Hospital"))).toBe(true));
+    const count = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/")).length;
+    const requests = count();
+    rerender(<BillRecommendations onOpenBill={() => true} filters={{q: "College", topic_id: "9"}} />);
+    await waitFor(() => expect(screen.getByRole("button", {name:"Refresh bill recommendations"})).toHaveAttribute("aria-busy", "false"));
+    expect(count()).toBe(requests);
+  });
   it("keeps a recommended representative and focus after following", async () => {
     mockRequests(() => Response.json({ ...empty, results: [{ representative_id: 1, name: "Member One", bioguide_id: "A000001", score: .4, reasons: [], topic_activity_evidence: activity }], activity_as_of: activity.captured_at }));
     render(<RepresentativeRecommendations />);

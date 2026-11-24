@@ -30,6 +30,11 @@ export default function BillDeck() {
   const [attempt, setAttempt] = React.useState(0);
   const [currentCongress, setCurrentCongress] = React.useState<number | null>(null);
   const [query, setQuery] = React.useState("");
+  const [recommendationQuery, setRecommendationQuery] = React.useState("");
+  React.useEffect(() => {
+    const timer = setTimeout(() => setRecommendationQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
   const [topic, setTopic] = React.useState("");
   const [sponsor, setSponsor] = React.useState("");
   const [state, setState] = React.useState("");
@@ -129,7 +134,7 @@ export default function BillDeck() {
       />}</DashboardBillReader>)}</div>
     </section>}
     {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}
-    <RecommendationsPreview renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
+    <RecommendationsPreview filters={{q: recommendationQuery, topic_id: topic, sponsor, state, status, sort}} renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
     {ready && signedIn && isSuperuser && <IngestionTelemetryLive />}
     {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}
   </div>;

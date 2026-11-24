@@ -83,8 +83,8 @@
 .cardTopics { color: var(--muted); font-size: .82rem; margin: 0; }
 .card h3 button { background: none; border: 0; padding: 0; text-align: left; }
 .card h3 button:hover, .card h3 a:hover { text-decoration: underline; text-underline-offset: 4px; }
-/* Free space collects under the sponsor, so every card's progress track and footer line up across a row. */
-.sponsor { display: flex; align-items: center; font-size: .9rem; margin: 0 0 auto; }
+/* Keep the sponsor attached to the timeline; spare space belongs above it. */
+.sponsor { display: flex; align-items: center; font-size: .9rem; margin: auto 0 0; }
 .actionText { margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .cardFooter { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem; font-size: .75rem; color: var(--muted); padding-top: .9rem; border-top: 1px solid var(--line); }
 .cardFooter > span { white-space: nowrap; }

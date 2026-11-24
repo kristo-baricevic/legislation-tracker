@@ -385,10 +385,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               </button>
             </div>
           )}
-          {votes && votes.length > 0 && (
+          {((votes && votes.length > 0) || (bill.passage_actions?.length ?? 0) > 0) && (
             <VotingRecord
+              passageActions={bill.passage_actions}
               loading={voteHistoryLoading}
-              votes={votes}
+              votes={votes ?? []}
               selectedVote={selectedVote}
               loadingVoteId={loadingVoteId}
               error={voteError}
@@ -399,7 +400,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               onNext={() => changeVoteHistoryPage((current) => current + 1)}
             />
           )}
-          {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
+          {votes && votes.length === 0 && !bill.passage_actions?.length && !voteHistoryLoading && !voteHistoryError && (
             <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
               <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
                 Voting record

@@ -333,6 +333,7 @@ export interface BillTopicItem {
 }
 
 export interface BillListItem {
+  sponsor_party?: string | null;
   card_summary?: string;
   enhancement_status?: "pending" | "running" | "succeeded" | null;
   enhancement_id?: number | null;
@@ -397,7 +398,16 @@ export interface BillContractsPage {
   results: BillContractItem[];
 }
 
+export interface PassageAction {
+  chamber: string;
+  date: string;
+  method: "unanimous_consent" | "voice_vote";
+  source_text: string;
+  source_url: string;
+}
+
 export interface BillDetail extends BillListItem {
+  passage_actions?: PassageAction[];
   summary: string | null;
   summary_source?: string | null;
   summary_action_date?: string | null;
@@ -443,6 +453,7 @@ export interface BillFilterOptions {
 }
 
 export interface GetBillsParams {
+  tracking?: "tracked" | "untracked";
   page?: number;
   session?: number;
   id?: number;
@@ -466,6 +477,7 @@ export function parseTopicIdFromSearchParam(
 
 export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   const sp = new URLSearchParams();
+  if (params?.tracking) sp.set("tracking", params.tracking);
   if (params?.page != null) sp.set("page", String(params.page));
   if (params?.session != null) sp.set("session", String(params.session));
   if (params?.id != null) sp.set("id", String(params.id));
@@ -478,7 +490,8 @@ export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   if (params?.q?.trim()) sp.set("q", params.q.trim());
   if (params?.sort) sp.set("sort", params.sort);
   const q = sp.toString();
-  return publicGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
+  const path = `/api/bills/${q ? `?${q}` : ""}`;
+  return params?.tracking ? authGet<BillsPage>(path) : publicGet<BillsPage>(path);
 }
 
 export async function getTopics(): Promise<TopicItem[]> {
@@ -900,6 +913,14 @@ export function compareBillDocuments(
   return publicGet<DocumentComparison>(
     `/api/bills/${billId}/comparisons/documents/?before=${before}&after=${after}`,
   );
+}
+
+export async function compareBillDocumentPassages(billId: number, before: number, after: number, sectionKeys: string[]): Promise<DocumentSectionComparison[]> {
+  if (!sectionKeys.length) return [];
+  const search = new URLSearchParams({ before: String(before), after: String(after) });
+  sectionKeys.forEach(key => search.append("section_keys", key));
+  const data = await publicGet<{ results: DocumentSectionComparison[] }>(`/api/bills/${billId}/comparisons/documents/section/?${search}`);
+  return data.results;
 }
 
 export interface RelatedBillItem {

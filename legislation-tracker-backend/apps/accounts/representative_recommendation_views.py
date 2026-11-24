@@ -14,6 +14,7 @@ from apps.congress.topic_activity import (
 )
 
 from .models import TrackedLegislator, TrackedTopic
+from .recommendation_filters import FILTER_NAMES, read_filters, filter_key, filter_bills
 from .recommendation_support import (
     FALLBACK_TOPIC,
     activity_day,
@@ -38,7 +39,7 @@ def vector_for(item):
     }
 
 
-def ranking(catalog, followed_topics, followed_reps):
+def ranking(catalog, followed_topics, followed_reps, eligible_ids=None):
     records = catalog["representatives"]
     vectors = {int(key): vector_for(value) for key, value in records.items()}
     references = {
@@ -59,6 +60,8 @@ def ranking(catalog, followed_topics, followed_reps):
     candidates = []
     for key, item in records.items():
         rep_id, member = int(key), item["activity"]["representative"]
+        if eligible_ids is not None and rep_id not in eligible_ids:
+            continue
         vector = vectors[rep_id]
         matched_evidence = sum(
             bool(set(unit) & matched_topics & vector.keys())
@@ -213,7 +216,9 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         return {**data, "results": [{**item, "card": cards.get(item["representative_id"])} for item in results]}
 
     def get(self, request):
-        strict_parameters(request.query_params, set())
+        strict_parameters(request.query_params, FILTER_NAMES)
+        filters = read_filters(request.query_params)
+        filters.pop("sort", None)  # Bill sort does not reorder people.
         with read_snapshot():
             topics = list(
                 TrackedTopic.objects.filter(user=request.user)
@@ -231,7 +236,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             if item["topic__slug"] != FALLBACK_TOPIC
         }
         fingerprint = hashlib.sha256(json.dumps([topics, reps, activity_revision(), activity_day().isoformat()], sort_keys=True).encode()).hexdigest()
-        key = f"representative-recommendations:v2:user:{request.user.pk}"
+        key = f"representative-recommendations:v2:user:{request.user.pk}" + (":" + filter_key(filters) if filters else "")
         cached = cache_call("get", key)
         if cached and cached["fingerprint"] == fingerprint:
             return Response(self.with_cards(cached["data"]))
@@ -246,7 +251,15 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             results, empty, catalog = [], "unsupported_follows_only", None
         else:
             catalog = representative_activity_catalog()
-            results, empty = ranking(catalog, followed_topics, reps)
+            if filters:
+                from apps.legislation.models import Bill
+                from apps.congress.models import BillCosponsor
+                matching = filter_bills(Bill.objects.all(), filters).order_by()
+                eligible = set(matching.values_list("sponsor_id", flat=True))
+                eligible.update(BillCosponsor.objects.filter(bill__in=matching, withdrawn_at__isnull=True).values_list("representative_id", flat=True))
+                results, empty = ranking(catalog, followed_topics, reps, eligible)
+            else:
+                results, empty = ranking(catalog, followed_topics, reps)
         response = Response(
             {
                 "algorithm": "explicit-representative-topics-mmr-v1",

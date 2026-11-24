@@ -7,7 +7,7 @@ import { ApiError, capturePersonalizedScope, isPersonalizedScopeCurrent, trackBi
 import { dashboardValue } from "@/lib/dashboard-cache";
 import RepresentativeAvatarBadge from "./RepresentativeAvatarBadge";
 import CardTooltip from "./CardTooltip";
-import { getBillRecommendations, type BillRecommendationReason } from "@/lib/recommendations";
+import { getBillRecommendations, recommendationFilterQuery, type RecommendationFilters, type BillRecommendationReason } from "@/lib/recommendations";
 import { useRecommendations } from "./useRecommendations";
 import { RecommendationState } from "./RecommendationState";
 import DashboardBillReader from "./DashboardBillReader";
@@ -36,7 +36,9 @@ function ReasonBadges({ reasons }: { reasons: BillRecommendationReason[] }) {
     {badge.representativeId !== null ? <RepresentativeAvatarBadge id={badge.representativeId} name={badge.label} notes={[...badge.notes]} /> : <CardTooltip text={[...badge.notes].join("\n")}><Link className={styles.topicPill} href={badge.href} aria-description={[...badge.notes].join(". ")}>{badge.label}</Link></CardTooltip>}
   </li>)}</ul>;
 }
-export default function BillRecommendations({ onOpenBill, onDismissBill }: { onOpenBill: (bill: BillListItem) => boolean | void; onDismissBill?: () => void }) {
+export default function BillRecommendations({ onOpenBill, onDismissBill, filters }: { onOpenBill: (bill: BillListItem) => boolean | void; onDismissBill?: () => void; filters?: RecommendationFilters }) {
+  const filterQuery = recommendationFilterQuery(filters);
+  const load = React.useCallback((options: Parameters<typeof getBillRecommendations>[1]) => getBillRecommendations({ filters: Object.fromEntries(new URLSearchParams(filterQuery)) }, options), [filterQuery]);
   const heading = React.useRef<HTMLHeadingElement>(null);
   const section = React.useRef<HTMLElement>(null);
   const restoreFocus = React.useRef(false);
@@ -46,7 +48,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
     onDismissBill?.();
     if (ownsFocus) heading.current?.focus({ preventScroll: true });
   }, [onDismissBill]);
-  const state = useRecommendations("bill-recommendations", getBillRecommendationsFirst, invalidate, true);
+  const state = useRecommendations(`bill-recommendations${filterQuery ? `:${filterQuery}` : ""}`, load, invalidate, true);
   const [followed, setFollowed] = React.useState<Set<number>>(new Set());
   React.useEffect(() => {
     const scope = state.scope;
@@ -62,12 +64,12 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
   const [error, setError] = React.useState<{ text: string; generation: string } | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
   const dashboardLoading = useDashboardLoading("bills", state.loading || paging !== null);
-  const generation = state.scope ? `${state.scope.sessionGeneration}:${state.scope.interestGeneration}` : "";
+  const generation = state.scope ? `${state.scope.sessionGeneration}:${state.scope.interestGeneration}:${filterQuery}` : "";
   async function follow(id: number) {
     if (pending?.generation === generation) return;
     const scope = state.scope ?? capturePersonalizedScope();
     if (!isPersonalizedScopeCurrent(scope)) return;
-    const key = `${scope.sessionGeneration}:${scope.interestGeneration}`;
+    const key = `${scope.sessionGeneration}:${scope.interestGeneration}:${filterQuery}`;
     setPending({ id, generation: key }); setError(null);
     try {
       const wasFollowed = followed.has(id);
@@ -81,11 +83,11 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
   }
   async function more() {
     const scope = state.scope, cursor = state.data?.next_cursor;
-    if (!scope || !cursor || paging === generation) return;
+    if (!scope || !cursor || state.loading || paging === generation) return;
     restoreFocus.current = true;
     setPaging(generation); setError(null);
     try {
-      const page = await getBillRecommendations({ cursor }, { ...state.requestOptions(), scope });
+      const page = await getBillRecommendations({ cursor, filters }, { ...state.requestOptions(), scope });
       state.update(scope, previous => ({ ...page, results: [...new Map([...previous.results, ...page.results].map(item => [item.bill.id, item])).values()] }));
     } catch (error) {
       if (isPersonalizedScopeCurrent(scope)) {
@@ -104,8 +106,8 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
           <p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p>
           <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
           {summary}
-          {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <ReasonBadges reasons={item.reasons} />
+          {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <div className={styles.footer}><span>Last action<br /><time>{dateLabel(item.bill.last_action_at)}</time></span>
             <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending?.generation === generation} onClick={() => void follow(item.bill.id)}>{pending && pending.generation === generation && pending.id === item.bill.id ? "Saving…" : followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}</div>
           </div>
@@ -119,4 +121,3 @@ export default function BillRecommendations({ onOpenBill, onDismissBill }: { onO
     {error && error.generation === generation && error.text && <p role="alert">{error.text}</p>}
   </section>;
 }
-const getBillRecommendationsFirst = (options: Parameters<typeof getBillRecommendations>[1]) => getBillRecommendations({}, options);

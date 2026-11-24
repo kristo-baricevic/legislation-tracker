@@ -272,7 +272,8 @@ def reasons_for(bill, profile, cosponsors):
     return reasons
 
 
-def build_ranking(profile):
+def build_ranking(profile, filters=None):
+    from .recommendation_filters import filter_bills, sort_results
     result = {
         "algorithm": ALGORITHM,
         "unsupported_follow_types": profile.unsupported,
@@ -294,7 +295,7 @@ def build_ranking(profile):
             )
         )
         return result
-    rows = list(candidate_query(profile).select_related("sponsor")[: POOL_LIMIT + 1])
+    rows = list(filter_bills(candidate_query(profile), filters or {}).select_related("sponsor")[: POOL_LIMIT + 1])
     result["candidate_pool_truncated"] = len(rows) > POOL_LIMIT
     rows = rows[:POOL_LIMIT]
     prefetch_related_objects(
@@ -358,6 +359,7 @@ def build_ranking(profile):
         for item in diverse_order(candidates)
     ]
     result["ranking_limit_reached"] = len(candidates) > RANKING_LIMIT
+    sort_results(result["results"], (filters or {}).get("sort"))
     if not result["results"]:
         result["empty_reason"] = "no_matches"
     return result

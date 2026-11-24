@@ -1,7 +1,6 @@
 .page { --radius:10px; --ink:#273b36; padding: 2rem clamp(1rem,3vw,3rem); max-width: 1600px; margin: auto; color: var(--ink); }
 .toolbar,.heading { display:flex; justify-content:space-between; align-items:center; gap:1rem; }
 .toolbar { margin-bottom:2rem; flex-wrap:wrap; }
-.toolbar h1 { font-size:2rem; }
 .filters { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) auto; gap:1rem; align-items:end; margin-bottom:1.5rem; }
 .filters label { display:grid; gap:.4rem; font-size:.85rem; min-width:0; }
 .filters input,.filters select,.filters button { height:42px; min-width:0; width:100%; border:1px solid var(--line); border-radius:.5rem; padding:.5rem .75rem; background:var(--paper); color:var(--ink); }

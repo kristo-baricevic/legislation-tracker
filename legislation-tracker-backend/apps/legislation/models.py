@@ -41,6 +41,7 @@ class Bill(models.Model):
     summary_last_updated_at = models.DateTimeField(blank=True, null=True)
     # Congress.gov supplies a complete latest-action sentence, not a short enum.
     status = models.TextField()
+    passage_actions = models.JSONField(default=list, blank=True)
     processing_status = models.CharField(
         max_length=20,
         choices=ProcessingStatus.choices,

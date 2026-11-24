@@ -235,7 +235,20 @@ class BillContractViewSet(viewsets.ReadOnlyModelViewSet):
 class BillViewSet(viewsets.ReadOnlyModelViewSet):
     """List and retrieve ingested bills. Public."""
 
-    authentication_classes = []
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        if request.query_params.get("tracking"):
+            from django.utils.cache import patch_vary_headers
+            response["Cache-Control"] = "private, no-store"
+            patch_vary_headers(response, ["Cookie", "Authorization"])
+        return response
+
+    def get_authenticators(self):
+        # Public bill reads remain anonymous. Personal filters use the same
+        # cookie/bearer authentication as tracking and the rest of the app.
+        if self.request.GET.get("tracking"):
+            return super().get_authenticators()
+        return []
     permission_classes = [AllowAny]
     queryset = (
         Bill.objects.all()
@@ -282,7 +295,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
             ):
                 qs = qs.prefetch_related("latest_contract__evidence_spans")
             return qs
-        return apply_bill_list_filters(qs, query.validated_data)
+        return apply_bill_list_filters(qs, query.validated_data, user=self.request.user)
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
