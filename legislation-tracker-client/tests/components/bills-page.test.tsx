@@ -324,6 +324,35 @@ describe("BillsPage", () => {
     expect(screen.getByRole("button", { name: "Save this search" })).toBeVisible();
   });
 
+  it("switches between oldest and recent activity for Congress 119 without a text query", async () => {
+    searchState.query = "session=119";
+    render(<BillsPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Sort Unsorted" }));
+    for (const [label, sort] of [["Relevance", "relevance"], ["Unsorted", "unsorted"]]) {
+      await userEvent.click(screen.getByRole("option", { name: label }));
+      await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort })));
+      await userEvent.click(screen.getByRole("button", { name: "Sort " + label }));
+    }
+    await userEvent.click(screen.getByRole("option", { name: "Oldest activity" }));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort: "oldest_activity" })));
+    await userEvent.click(screen.getByRole("button", { name: "Sort Oldest activity" }));
+    await userEvent.click(screen.getByRole("option", { name: "Recent activity" }));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort: "recent_activity" })));
+  });
+
+  it.each(["Unsorted", "Recent activity", "Oldest activity", "Relevance"])("keeps explicitly selected %s while entering and clearing a search", async label => {
+    searchState.query = "session=119";
+    render(<BillsPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Sort Unsorted" }));
+    await userEvent.click(screen.getByRole("option", { name: label }));
+    const input = screen.getByRole("searchbox");
+    const sort = label.toLowerCase().replace(" ", "_");
+    await userEvent.type(input, "clinic");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ q: "clinic", sort })));
+    await userEvent.clear(input);
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined, sort })));
+  });
+
   it("initializes the Congress filter from API metadata", async () => {
     searchState.query = "";
     render(<BillsPage />);
@@ -400,7 +429,7 @@ describe("BillsPage", () => {
     );
   });
 
-  it("debounces text search requests", async () => {
+  it("debounces search and switches automatically between unsorted and relevance", async () => {
     const user = userEvent.setup();
     searchState.query = "";
     render(<BillsPage />);
@@ -414,6 +443,8 @@ describe("BillsPage", () => {
       () => expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ q: "clinic", sort: "relevance" })),
       { timeout: 1000 },
     );
+    await user.clear(screen.getByRole("searchbox", { name: "Full-text search" }));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined, sort: "unsorted" })));
   });
 
   it("rehydrates every public filter when browser history changes", async () => {
@@ -432,7 +463,7 @@ describe("BillsPage", () => {
       expect(screen.getByLabelText("Bill # (contains)")).toHaveValue("S 9");
       expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("Filed");
       expect(screen.getByLabelText("Sponsor")).toHaveValue("Jones");
-      expect(screen.getByLabelText("Topic contains (fuzzy)")).toHaveValue("energy");
+      expect(screen.getByLabelText("Topic contains")).toHaveValue("energy");
       expect(screen.getByRole("searchbox", { name: "Full-text search" })).toHaveValue("grants");
       expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ session: 120, id: 9, page: 4, q: "grants" }));
     });

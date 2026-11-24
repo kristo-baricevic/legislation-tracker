@@ -34,7 +34,7 @@ class SavedSearchWatermark:
 
 
 def canonical_saved_query(value: object) -> tuple[dict, str]:
-    """Validate public bill params, removing pagination and default values."""
+    """Validate public bill params, removing pagination while retaining explicit sort choices."""
     if not isinstance(value, dict):
         raise ValueError("query must be an object")
     from apps.legislation.serializers import BillListQuerySerializer
@@ -45,8 +45,6 @@ def canonical_saved_query(value: object) -> tuple[dict, str]:
     normalized: dict = {}
     for key, item in serializer.validated_data.items():
         if key in {"page", "page_size"}:
-            continue
-        if key == "sort" and item == ("relevance" if serializer.validated_data.get("q") else "recent_activity"):
             continue
         normalized[key] = item
     rendered = json.dumps(normalized, sort_keys=True, separators=(",", ":"))

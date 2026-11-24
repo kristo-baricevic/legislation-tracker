@@ -38,7 +38,7 @@ const STATUS_OPTIONS = [
   ...STAGES.map(stage => ({ value: `stage:${stage.key}`, label: stage.name })),
   { value: "stage:other", label: "Other / unclassified" },
 ];
-type BillSort = "recent_activity" | "relevance";
+type BillSort = "recent_activity" | "oldest_activity" | "relevance" | "unsorted";
 
 function parsePositiveIntegerFilter(value: string): number | undefined {
   const normalized = value.trim();
@@ -47,11 +47,9 @@ function parsePositiveIntegerFilter(value: string): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function sortFromParams(params: URLSearchParams): BillSort {
-  if (!params.get("q")) return "recent_activity";
-  return params.get("sort") === "recent_activity"
-    ? "recent_activity"
-    : "relevance";
+function parseSort(value: unknown): BillSort | null {
+  if (value === "oldest_activity" || value === "recent_activity" || value === "relevance" || value === "unsorted") return value;
+  return null;
 }
 
 function BillsCatalog() {
@@ -87,7 +85,8 @@ function BillsCatalog() {
   const [sponsorFilter, setSponsorFilter] = useState(() => searchParams.get("sponsor") ?? "");
   const [queryInput, setQueryInput] = useState(() => searchParams.get("q") ?? "");
   const [queryFilter, setQueryFilter] = useState(() => searchParams.get("q") ?? "");
-  const [sort, setSort] = useState<BillSort>(() => sortFromParams(searchParams));
+  const [selectedSort, setSelectedSort] = useState(() => parseSort(searchParams.get("sort")));
+  const sort = selectedSort ?? (queryFilter.trim() ? "relevance" : "unsorted");
   const rawTopicIdFromUrl = searchParams.get("topic_id");
   const topicIdFromUrl = parseTopicIdFromSearchParam(rawTopicIdFromUrl);
   const topicUrlError =
@@ -141,7 +140,6 @@ function BillsCatalog() {
   } | null>(null);
   const currentCongressRef = useRef<number | null>(null);
   const queryInputRef = useRef(queryInput);
-  const queryFilterRef = useRef(queryFilter);
   const suppressNextQueryDebounceRef = useRef(true);
 
   const loadFilterMeta = useCallback(async () => {
@@ -196,9 +194,8 @@ function BillsCatalog() {
       queryInputRef.current = nextQuery;
       setQueryInput(nextQuery);
     }
-    queryFilterRef.current = nextQuery;
     setQueryFilter(nextQuery);
-    setSort(sortFromParams(params));
+    setSelectedSort(parseSort(params.get("sort")));
   }, [searchParamsKey]);
 
   useEffect(() => {
@@ -208,12 +205,8 @@ function BillsCatalog() {
     }
     const timeout = window.setTimeout(() => {
       const nextQuery = queryInput.trim();
-      const hadQuery = Boolean(queryFilterRef.current);
-      queryFilterRef.current = nextQuery;
       setQueryFilter(nextQuery);
-      if (!hadQuery && nextQuery) setSort("relevance");
       setPageNum(1);
-      if (!nextQuery) setSort("recent_activity");
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [queryInput]);
@@ -416,14 +409,14 @@ function BillsCatalog() {
     if (topicIdFilter) next.set("topic_id", topicIdFilter);
     if (topicFuzzyFilter) next.set("topic", topicFuzzyFilter);
     if (queryFilter) next.set("q", queryFilter);
-    if (queryFilter && sort === "recent_activity") next.set("sort", sort);
+    if (selectedSort) next.set("sort", selectedSort);
     const target = `/bills${next.size ? `?${next}` : ""}`;
     if (next.toString() !== searchParamsKey) {
       // These filters are client-owned. A route navigation can suspend the
       // provider tree and reset scroll even with scroll:false on mobile.
       window.history.replaceState(window.history.state, "", target);
     }
-  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, sort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
+  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, selectedSort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
 
   const resetPageAndSet = useCallback(
     (setter: React.Dispatch<React.SetStateAction<string>>) =>
@@ -544,7 +537,7 @@ function BillsCatalog() {
     if (topicId) query.topic_id = topicId;
     if (topicFuzzyFilter) query.topic = topicFuzzyFilter;
     if (queryFilter) query.q = queryFilter;
-    if (sort === "recent_activity" && queryFilter) query.sort = sort;
+    if (selectedSort) query.sort = selectedSort;
     return query;
   }
 
@@ -583,15 +576,8 @@ function BillsCatalog() {
         queryInputRef.current = nextQuery;
         setQueryInput(nextQuery);
       }
-      queryFilterRef.current = nextQuery;
       setQueryFilter(nextQuery);
-      setSort(
-        nextQuery
-          ? query.sort === "recent_activity"
-            ? "recent_activity"
-            : "relevance"
-          : "recent_activity",
-      );
+      setSelectedSort(parseSort(query.sort));
       setPage({ count: result.count, next: null, previous: null, results: result.results });
       setPageNum(1);
       setPendingSavedAck({ searchId: search.id, watermark: result.result_watermark });
@@ -615,9 +601,14 @@ function BillsCatalog() {
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Full-text search</span>
-              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
+              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, etc." className="rounded border border-control bg-paper px-2 py-1 text-ink" />
             </label>
-            <SelectField label="Sort" value={sort} options={[{ value: "recent_activity", label: "Recent activity" }, { value: "relevance", label: "Relevance" }]} onChange={(value) => { setPageNum(1); setSort(value === "relevance" && queryInput.trim() ? "relevance" : "recent_activity"); }} />
+            <SelectField label="Sort" value={sort} options={[
+              { value: "recent_activity", label: "Recent activity" },
+              { value: "oldest_activity", label: "Oldest activity" },
+              { value: "relevance", label: "Relevance" },
+              { value: "unsorted", label: "Unsorted" },
+            ]} onChange={value => { setPageNum(1); setSelectedSort(parseSort(value)); }} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill ID</span>
               <SearchInput
@@ -685,7 +676,7 @@ function BillsCatalog() {
                 type="text"
                 value={sponsorFilter}
                 onChange={resetPageAndSet(setSponsorFilter)}
-                placeholder="Name or numeric id"
+                placeholder="Sponsor name"
                 className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
@@ -700,12 +691,12 @@ function BillsCatalog() {
               }}
             />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted">Topic contains (fuzzy)</span>
+              <span className="text-muted">Topic contains</span>
               <SearchInput
                 type="text"
                 value={topicFuzzyFilter}
                 onChange={onTopicFuzzyChange}
-                placeholder="Matches topic name/slug"
+                placeholder="e.g. health"
                 disabled={Boolean(topicIdFilter)}
                 className="rounded border border-control bg-paper px-2 py-1 text-ink disabled:opacity-40"
               />
