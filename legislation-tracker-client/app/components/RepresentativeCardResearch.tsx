@@ -12,6 +12,8 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
   const [revision, setRevision] = useState(0);
   const action = useRef<AbortController | null>(null);
   const active = card?.research?.status === "queued" || card?.research?.status === "running";
+  const hasResearch = Boolean(card?.biography || card?.research?.status === "succeeded");
+  const idleLabel = hasResearch ? "Refresh research" : "Research";
   useEffect(() => () => action.current?.abort(), []);
   useEffect(() => {
     if (!active && !revision) return;
@@ -37,7 +39,7 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
     try {
       const year = new Date().getFullYear();
       const period = card?.research?.period ?? year + year % 2;
-      const run = await startResearch(id, period, controller.signal, Boolean(card?.biography || card?.research?.status === "succeeded"));
+      const run = await startResearch(id, period, controller.signal, hasResearch);
       if (controller.signal.aborted) return;
       onCard({...card, biography: card?.biography ?? null, portrait: card?.portrait ?? null, latest_bill: card?.latest_bill ?? null, research: {period, status: run.status, overview_ready: false}});
       window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: id }));
@@ -45,5 +47,5 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
     } catch { if (!controller.signal.aborted) setError(true); }
     finally { if (!controller.signal.aborted) setBusy(false); }
   }
-  return <div className={styles.cardControls}><CardTooltip text="Find and save a biography, photo, donations and outside spending."><button type="button" className={styles.researchButton} aria-label={`Research ${name}`} disabled={busy} onClick={() => void research()}>{busy ? "Starting…" : error ? "Retry research" : active ? card?.research?.overview_ready ? "Researched" : card?.research?.status === "queued" ? "Queued…" : "Researching…" : "Research"}</button></CardTooltip></div>;
+  return <div className={styles.cardControls}><CardTooltip text="Find and save a biography, photo, donations and outside spending."><button type="button" className={styles.researchButton} aria-label={hasResearch ? `Refresh research for ${name}` : `Research ${name}`} disabled={busy} onClick={() => void research()}>{busy ? "Starting…" : error ? "Retry research" : active ? card?.research?.overview_ready ? "Researched" : card?.research?.status === "queued" ? "Queued…" : "Researching…" : idleLabel}</button></CardTooltip></div>;
 }
