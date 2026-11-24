@@ -343,14 +343,14 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </DocumentReader>
           {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
           <ReaderTabPanel tab="votes">
-          <dl className="mb-6 flex items-center gap-x-5 overflow-x-auto whitespace-nowrap py-1 text-sm [&>div]:flex [&>div]:shrink-0 [&>div]:items-center [&>div]:gap-2">
+          <dl className="mb-6 flex items-start justify-between gap-x-6 overflow-x-auto py-1 [&>div]:shrink-0 [&_dd]:mt-1">
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Session</dt>
               <dd>{bill.session}</dd>
             </div>
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Status</dt>
-              <dd>{stageFor(bill.status)?.label ?? bill.status}</dd>
+              <dd className="max-w-48">{stageFor(bill.status)?.label ?? bill.status}</dd>
             </div>
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
@@ -366,7 +366,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
                 <dd>{bill.introduced_at}</dd>
               </div>
             )}
-            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div>
+            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="min-w-56 flex-1">
               <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
               <dd>{bill.status}</dd>
             </div>}
