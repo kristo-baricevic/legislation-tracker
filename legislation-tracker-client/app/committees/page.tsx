@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown, SearchInput } from "@/app/components/FilterControls";
 import { useEffect, useRef, useState } from "react";
 import { committeeRequest, type Committee, type CommitteeBill } from "@/lib/committees";
 import { getTopics, type TopicItem } from "@/lib/api";
@@ -93,11 +94,11 @@ export default function CommitteesPage(){
   function clear(){setChamber("");setSearch("");setMember("");setLevel("");setTopic("");setText({search:"",member:""});}
   return <main className={styles.page}><div className={styles.toolbar}><h1 className="tracker-heading text-ink">Committees</h1></div>
     <div className={styles.filters} role="search" aria-label="Committee filters">
-      <label>Committee name<input type="search" value={search} maxLength={200} onChange={e=>setSearch(e.target.value)} placeholder="Search committees"/></label>
-      <label>Member name<input type="search" value={member} maxLength={200} onChange={e=>setMember(e.target.value)} placeholder="Search members"/></label>
-      <label>Topic{topicError?<button type="button" onClick={()=>setTopicRevision(n=>n+1)}>Retry topics</button>:<select value={topic} onChange={e=>setTopic(e.target.value)} disabled={!topics.length}><option value="">All topics</option>{topics.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>}</label>
-      <label>Chamber<select value={chamber} onChange={e=>setChamber(e.target.value)}><option value="">All</option><option value="senate">Senate</option><option value="house">House</option><option value="joint">Joint</option></select></label>
-      <label>Type<select value={level} onChange={e=>setLevel(e.target.value)}><option value="">All</option><option value="committee">Committees</option><option value="subcommittee">Subcommittees</option></select></label>
+      <label>Committee name<SearchInput value={search} maxLength={200} onChange={e=>setSearch(e.target.value)} placeholder="Search committees"/></label>
+      <label>Member name<SearchInput value={member} maxLength={200} onChange={e=>setMember(e.target.value)} placeholder="Search members"/></label>
+      <label>Topic{topicError?<button type="button" onClick={()=>setTopicRevision(n=>n+1)}>Retry topics</button>:<Dropdown value={topic} onChange={e=>setTopic(e.target.value)} disabled={!topics.length}><option value="">All topics</option>{topics.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</Dropdown>}</label>
+      <label>Chamber<Dropdown value={chamber} onChange={e=>setChamber(e.target.value)}><option value="">All</option><option value="senate">Senate</option><option value="house">House</option><option value="joint">Joint</option></Dropdown></label>
+      <label>Type<Dropdown value={level} onChange={e=>setLevel(e.target.value)}><option value="">All</option><option value="committee">Committees</option><option value="subcommittee">Subcommittees</option></Dropdown></label>
       <button type="button" onClick={clear} disabled={!chamber&&!search&&!member&&!level&&!topic}>Clear filters</button>
     </div><Directory key={query} query={query} topic={topic}/></main>;
 }

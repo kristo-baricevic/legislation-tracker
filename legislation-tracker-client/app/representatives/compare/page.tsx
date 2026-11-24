@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
@@ -100,8 +101,8 @@ function RepresentativeCompareContent() {
         <LoadingSpinner centered active={loading || (comparisonLoading && !comparison)} label="Loading available representatives…" />
         {!loading && (
           <div className="grid gap-3 rounded border border-slate-300 p-4 sm:grid-cols-2 dark:border-green-900/70">
-            <label>First representative<select className="ml-2 max-w-full border bg-white p-2 text-slate-900 dark:bg-black dark:text-green-300" value={draftLeft} onChange={(event) => { const next = event.target.value; setDraftLeft(next); setSelection(next, draftRight); }}><option value="">Choose one</option>{people.map((person) => <option key={person.id} value={person.id} disabled={String(person.id) === draftRight}>{person.name} ({person.state})</option>)}</select></label>
-            <label>Second representative<select className="ml-2 max-w-full border bg-white p-2 text-slate-900 dark:bg-black dark:text-green-300" value={draftRight} onChange={(event) => { const next = event.target.value; setDraftRight(next); setSelection(draftLeft, next); }}><option value="">Choose one</option>{people.map((person) => <option key={person.id} value={person.id} disabled={String(person.id) === draftLeft}>{person.name} ({person.state})</option>)}</select></label>
+            <label>First representative<Dropdown className="ml-2 max-w-full border bg-white p-2 text-slate-900 dark:bg-black dark:text-green-300" value={draftLeft} onChange={(event) => { const next = event.target.value; setDraftLeft(next); setSelection(next, draftRight); }}><option value="">Choose one</option>{people.map((person) => <option key={person.id} value={person.id} disabled={String(person.id) === draftRight}>{person.name} ({person.state})</option>)}</Dropdown></label>
+            <label>Second representative<Dropdown className="ml-2 max-w-full border bg-white p-2 text-slate-900 dark:bg-black dark:text-green-300" value={draftRight} onChange={(event) => { const next = event.target.value; setDraftRight(next); setSelection(draftLeft, next); }}><option value="">Choose one</option>{people.map((person) => <option key={person.id} value={person.id} disabled={String(person.id) === draftLeft}>{person.name} ({person.state})</option>)}</Dropdown></label>
           </div>
         )}
         {error && <p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}

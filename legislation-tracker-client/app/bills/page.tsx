@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown, SearchInput } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import BillCard from "../components/BillCard";
 import DashboardBillReader from "../components/DashboardBillReader";
@@ -597,12 +598,12 @@ function BillsCatalog() {
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Full-text search</span>
-              <input type="search" value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
+              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
             </label>
             <SelectField label="Sort" value={sort} options={[{ value: "recent_activity", label: "Recent activity" }, { value: "relevance", label: "Relevance" }]} onChange={(value) => { setPageNum(1); setSort(value === "relevance" && queryInput.trim() ? "relevance" : "recent_activity"); }} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill ID</span>
-              <input
+              <SearchInput
                 type="text"
                 inputMode="numeric"
                 value={idFilter}
@@ -613,7 +614,7 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill # (contains)</span>
-              <input
+              <SearchInput
                 type="text"
                 value={billNumberFilter}
                 onChange={resetPageAndSet(setBillNumberFilter)}
@@ -623,7 +624,7 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Session (Congress)</span>
-              <input
+              <SearchInput
                 type="text"
                 value={sessionFilter ?? ""}
                 onChange={(event) => {
@@ -636,7 +637,7 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Status</span>
-              <select
+              <Dropdown
                 value={statusFilter}
                 onChange={(event) => {
                   setPageNum(1);
@@ -649,21 +650,21 @@ function BillsCatalog() {
                   <option value={statusFilter}>Saved filter: {statusFilter}</option>
                 )}
                 {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+              </Dropdown>
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Tracking</span>
-              <select value={trackingFilter} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
+              <Dropdown value={trackingFilter} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
                 onChange={resetPageAndSet(setTrackingFilter)}
                 className="min-h-10 min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink">
                 <option value="">All bills</option>
                 <option value="tracked" disabled={!hasAccount}>Tracked</option>
                 <option value="untracked" disabled={!hasAccount}>Untracked</option>
-              </select>
+              </Dropdown>
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Sponsor</span>
-              <input
+              <SearchInput
                 type="text"
                 value={sponsorFilter}
                 onChange={resetPageAndSet(setSponsorFilter)}
@@ -683,7 +684,7 @@ function BillsCatalog() {
             />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Topic contains (fuzzy)</span>
-              <input
+              <SearchInput
                 type="text"
                 value={topicFuzzyFilter}
                 onChange={onTopicFuzzyChange}

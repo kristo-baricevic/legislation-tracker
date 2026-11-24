@@ -1,5 +1,6 @@
 "use client";
 
+import { Dropdown, SearchInput } from "@/app/components/FilterControls";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { StableResults } from "@/app/components/StableResults";
@@ -216,19 +217,19 @@ export function VotingRecord({
             <h3 className="text-lg font-semibold text-slate-900 dark:text-green-400">Member positions</h3>
             <div role="group" aria-label="Filter member positions" className="mt-3 mb-4 grid min-w-0 gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
               <label className="text-sm font-semibold text-slate-800 dark:text-green-300">Search members
-                <input aria-label="Search members" type="search" value={query} onChange={(event) => setQuery(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
+                <SearchInput aria-label="Search members" value={query} onChange={(event) => setQuery(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
               </label>
               <label className="text-sm font-semibold text-slate-800 dark:text-green-300">Party
-                <select aria-label="Party" value={party} onChange={(event) => setParty(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
+                <Dropdown aria-label="Party" value={party} onChange={(event) => setParty(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
                   <option value="">All parties</option>
                   {parties.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
+                </Dropdown>
               </label>
               <label className="text-sm font-semibold text-slate-800 dark:text-green-300">State
-                <select aria-label="State" value={state} onChange={(event) => setState(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
+                <Dropdown aria-label="State" value={state} onChange={(event) => setState(event.target.value)} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
                   <option value="">All states</option>
                   {states.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
+                </Dropdown>
               </label>
             </div>
             {(fullCounts.get("yes") !== undefined && selectedVote.yeas !== fullCounts.get("yes")) && <p role="status" className="mt-3 text-sm text-amber-800 dark:text-amber-300">Reported yes total {selectedVote.yeas} differs from {fullCounts.get("yes")} returned member records. The official total may include records not returned here.</p>}

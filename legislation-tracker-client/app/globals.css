@@ -120,7 +120,7 @@ body {
 
 h1, h2, h3 { font-family: var(--font-reading), Georgia, "Times New Roman", serif; }
 
-:root body :is(input[type="search"], .responsive-field-grid input[type="text"], input.filter-control, select:not([multiple]), button[data-dropdown]) {
+:root body :is([data-search-input], [data-dropdown]) {
   box-sizing: border-box;
   height: 2.5rem;
   min-height: 2.5rem;
@@ -129,7 +129,7 @@ h1, h2, h3 { font-family: var(--font-reading), Georgia, "Times New Roman", serif
 
 /* One control appearance for native selects and the shared listbox trigger.
    Keep widths/margins local, but do not let page modules replace the chevron. */
-:root body :is(select:not([multiple]), button[data-dropdown]) {
+:root body [data-dropdown] {
   appearance: none;
   -webkit-appearance: none;
   border: 1px solid var(--control-line);
@@ -146,11 +146,11 @@ h1, h2, h3 { font-family: var(--font-reading), Georgia, "Times New Roman", serif
   line-height: 1.25rem;
   cursor: pointer;
 }
-:root body :is(select:not([multiple]), button[data-dropdown]):focus-visible {
+:root body [data-dropdown]:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-:root body :is(select:not([multiple]), button[data-dropdown]):disabled {
+:root body [data-dropdown]:disabled {
   opacity: .5;
   cursor: not-allowed;
 }

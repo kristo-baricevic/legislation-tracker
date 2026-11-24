@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown, SearchInput } from "@/app/components/FilterControls";
 import DashboardLoading from "./DashboardLoading";
 
 import Link from "next/link";
@@ -63,12 +64,12 @@ export default function BillDeck() {
       <h1 data-dashboard-heading tabIndex={-1}>Follow the bills that matter to you.</h1>
     </header>
     <div className={styles.filters}>
-      <label>Search bills<input type="search" placeholder="Title or bill number" value={query} onChange={event => setQuery(event.target.value)} /></label>
-      <label>Topic<select aria-label="Topic" value={topic} onChange={event => setTopic(event.target.value)}><option value="">All topics</option>{[...topics].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-      <label>Representative (sponsor)<select aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
-      <label>Sponsor state<select aria-label="Sponsor state" value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</select></label>
-      <label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{stageOptions.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}{statuses.map(value => <option key={value} value={`raw:${value}`}>{readable(value)}</option>)}</select></label>
-      <label>Sort bills<select value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></select></label>
+      <label>Search bills<SearchInput placeholder="Title or bill number" value={query} onChange={event => setQuery(event.target.value)} /></label>
+      <label>Topic<Dropdown aria-label="Topic" value={topic} onChange={event => setTopic(event.target.value)}><option value="">All topics</option>{[...topics].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</Dropdown></label>
+      <label>Representative (sponsor)<Dropdown aria-label="Representative (sponsor)" value={sponsor} onChange={event => setSponsor(event.target.value)}><option value="">All sponsors</option>{sponsors.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</Dropdown></label>
+      <label>Sponsor state<Dropdown aria-label="Sponsor state" value={state} onChange={event => setState(event.target.value)}><option value="">All states</option>{states.map(value => <option key={value}>{value}</option>)}</Dropdown></label>
+      <label>Status<Dropdown aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{stageOptions.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}{statuses.map(value => <option key={value} value={`raw:${value}`}>{readable(value)}</option>)}</Dropdown></label>
+      <label>Sort bills<Dropdown value={sort} onChange={event => setSort(event.target.value)}><option value="recent">Latest action first</option><option value="oldest">Oldest action first</option><option value="title">Title A–Z</option><option value="number">Bill number</option></Dropdown></label>
     </div>
     <div className="min-h-6 text-sm text-red-700" aria-live="polite">{error && <span role="alert">{error} <button onClick={controls.retry}>Retry</button></span>}</div>
     {followError && <p role="alert">{followError}</p>}

@@ -1,4 +1,5 @@
 "use client";
+import { SearchInput } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
@@ -100,7 +101,7 @@ export function DocumentReader({ documentId }: { documentId: string }) {
       </header>
       {readerText ? <>
         <div className="sticky top-0 z-10 mb-6 flex flex-wrap items-end gap-3 border-y border-slate-300 bg-white p-3 dark:border-green-800 dark:bg-black">
-          <label className="min-w-0 flex-1 text-sm">Find in bill text<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} className={control + " mt-1 block w-full bg-white dark:bg-black"} /></label>
+          <label className="min-w-0 flex-1 text-sm">Find in bill text<SearchInput value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} className={control + " mt-1 block w-full bg-white dark:bg-black"} /></label>
           <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + matches.length - 1) % matches.length)}>Previous match</button>
           <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + 1) % matches.length)}>Next match</button>
           <p role="status" className="w-full text-sm">{query.trim() ? matches.length ? `${selected + 1} of ${matches.length} matches${matches.length === 500 ? " (first 500 shown; refine your search)" : ""}` : "No matches" : "Search for a word or phrase."}</p>

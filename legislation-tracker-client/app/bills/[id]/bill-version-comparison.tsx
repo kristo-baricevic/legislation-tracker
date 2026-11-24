@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useRef, useState } from "react";
@@ -123,11 +124,11 @@ export default function BillVersionComparison({ billId, documents, initialPair }
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {(["Before", "After"] as const).map(label => <label key={label} className="space-y-2 text-sm font-semibold">
           <span>{label} version</span>
-          <select className="block w-full rounded border border-slate-400 bg-white p-2 dark:border-green-800 dark:bg-slate-950"
+          <Dropdown className="block w-full rounded border border-slate-400 bg-white p-2 dark:border-green-800 dark:bg-slate-950"
             value={label === "Before" ? beforeId : afterId}
             onChange={event => (label === "Before" ? setBeforeId : setAfterId)(Number(event.target.value))}>
             {documents.map(doc => <option key={doc.id} value={doc.id}>{doc.version_label}{doc.is_active_version ? " (current)" : ""} · Document {doc.id}</option>)}
-          </select>
+          </Dropdown>
         </label>)}
       </div>
       <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">

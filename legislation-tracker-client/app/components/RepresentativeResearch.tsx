@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown } from "@/app/components/FilterControls";
 import CandidateReview from "./CandidateReview";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React, { useEffect, useRef, useState } from "react";
@@ -152,7 +153,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     {review}
     <div className={styles.fundingToolbar} aria-label="Funding controls">
       <div className={styles.recordTabs} aria-label="Funding type"><button aria-pressed={fundingView === "donations"} onClick={() => setFundingView("donations")}>Donations</button><button aria-pressed={fundingView === "outside"} onClick={() => setFundingView("outside")}>Outside spending</button></div>
-      {fundingView === "donations" && <label>Period <select aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
+      {fundingView === "donations" && <label>Period <Dropdown aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</Dropdown></label>}
     </div>
     {error && <p role="alert">{error} <button onClick={() => void selectPeriod(period)}>Retry</button></p>}
     <div className={styles.fundingLoadStatus}><LoadingSpinner active={!data && !error} label="Loading funding…" />{overviewReady && active && <span role="status">Donations updating in background</span>}</div>
@@ -170,7 +171,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     <div className={styles.controls}>
       <button type="button" className={styles.primary} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : overviewReady && active ? "Researched" : data?.biography || data?.snapshot ? "Refresh research" : "Research"}</button>
       {compact && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "Hide research" : "View research"}</button>}
-      {!compact && <label>Reporting period <select aria-label="Reporting period" value={availablePeriods.includes(period) ? period : ""} disabled={busy || !availablePeriods.length} onChange={e => void selectPeriod(Number(e.target.value))}>{!availablePeriods.includes(period) && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
+      {!compact && <label>Reporting period <Dropdown aria-label="Reporting period" value={availablePeriods.includes(period) ? period : ""} disabled={busy || !availablePeriods.length} onChange={e => void selectPeriod(Number(e.target.value))}>{!availablePeriods.includes(period) && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</Dropdown></label>}
     </div>
     {error && <p role="alert">{error} <button type="button" onClick={() => { setError(""); setReload(n => n + 1); }}>Retry status</button></p>}
     {data?.run?.error && <p role="alert">{data.run.error} Saved information is unchanged.</p>}
@@ -282,7 +283,7 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
       {(Boolean(data?.failed_periods?.length) || data?.history_failed) && <CardTooltip text={data?.failed_periods?.length ? `Retry missing records for ${data.failed_periods.map(year => `${year - 1}–${year}`).join(", ")}. Totals are incomplete.` : "Retry missing reporting periods. Totals are incomplete."}>
         <button type="button" aria-label="Retry missing records" disabled={retrying} onClick={() => void retryMissing()}>{retrying ? "Retrying…" : "Retry"}</button>
       </CardTooltip>}
-      <label><span className={styles.note}>Years </span><select aria-label="Outside spending years" value={scope} onChange={event => { setLoading(true); setScope(event.target.value as typeof scope); setCursor(0); }}><option value="last_ten_years">Last 10 years</option><option value="all_years">All available years</option></select></label>
+      <label><span className={styles.note}>Years </span><Dropdown aria-label="Outside spending years" value={scope} onChange={event => { setLoading(true); setScope(event.target.value as typeof scope); setCursor(0); }}><option value="last_ten_years">Last 10 years</option><option value="all_years">All available years</option></Dropdown></label>
       </div>
     </div>
     {retryError && <p role="alert">{retryError}</p>}
@@ -311,7 +312,7 @@ function ContributorTable({ representativeId, period, snapshot, refreshToken, co
       <div className={styles.kindSwitch} aria-label="Record type">
         {(["contribution", "refund"] as const).map(value => <button key={value} aria-pressed={kind === value} onClick={() => { if (kind === value) return; setLoading(true); setKind(value); setCursor(0); }}>{value === "contribution" ? "Contributions" : "Refunds"}</button>)}
       </div>
-      <label>Sort <select value={sort} onChange={event => { setLoading(true); setSort(event.target.value); setCursor(0); }}><option value="amount">Amount</option><option value="date">Date</option><option value="name">Name</option></select></label>
+      <label>Sort <Dropdown value={sort} onChange={event => { setLoading(true); setSort(event.target.value); setCursor(0); }}><option value="amount">Amount</option><option value="date">Date</option><option value="name">Name</option></Dropdown></label>
     </div>
     {error && <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry contributors</button></p>}
     <div className={styles.listStatus}><LoadingSpinner active={loading} label="Loading contributors…" /></div>
@@ -333,8 +334,8 @@ function ContributorTable({ representativeId, period, snapshot, refreshToken, co
       </nav>
     </>
   </section>;
-  return <section><div className={styles.controls}><h3>Campaign contributors</h3><label>Sort <select value={sort} onChange={e => { setSort(e.target.value); setCursor(0); }}><option value="amount">Amount</option><option value="date">Date</option><option value="name">Name</option></select></label></div>
-    <label>Record type <select value={kind} onChange={e => { setKind(e.target.value); setCursor(0); setData(null); }}><option value="contribution">Contributions</option><option value="refund">Refunds</option></select></label>
+  return <section><div className={styles.controls}><h3>Campaign contributors</h3><label>Sort <Dropdown value={sort} onChange={e => { setSort(e.target.value); setCursor(0); }}><option value="amount">Amount</option><option value="date">Date</option><option value="name">Name</option></Dropdown></label></div>
+    <label>Record type <Dropdown value={kind} onChange={e => { setKind(e.target.value); setCursor(0); setData(null); }}><option value="contribution">Contributions</option><option value="refund">Refunds</option></Dropdown></label>
     {error && <p role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry contributors</button></p>}
     <LoadingSpinner active={loading} label="Loading contributors…" />
     {data && <>{data.status === "collecting" && <p className={styles.note}>{concise ? "Still collecting — amounts and rankings may change." : "Partial results — records are still being collected. Amounts and rankings may change."}</p>}{!concise && <p className={styles.note}>{data.count} reported {kind === "refund" ? "refunds" : "contributions"} in this view. Coverage: {data.status}. Contributions are not the same as total campaign receipts.</p>}

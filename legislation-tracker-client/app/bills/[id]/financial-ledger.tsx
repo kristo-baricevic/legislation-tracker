@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown, SearchInput } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useRef, useState } from "react";
@@ -172,14 +173,14 @@ function OriginalFinancialLedger({
         {totalCount > 0 && <fieldset className="grid gap-3 border-b border-slate-200 pb-4 disabled:opacity-50 dark:border-green-900/70 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
           <label className="text-sm font-semibold text-slate-800 dark:text-green-300">
             Financial action
-            <select value={action} onChange={(event) => setAction(event.target.value as FinancialAction | "")} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
+            <Dropdown value={action} onChange={(event) => setAction(event.target.value as FinancialAction | "")} className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200">
               <option value="">All actions</option>
               {Object.entries(financialGlossary).map(([value, term]) => <option key={value} value={value}>{term.label}</option>)}
-            </select>
+            </Dropdown>
           </label>
           <label className="text-sm font-semibold text-slate-800 dark:text-green-300">
             Fiscal year
-            <input inputMode="numeric" value={yearInput} onChange={(event) => setYearInput(event.target.value)} placeholder="e.g. 2027" className="filter-control mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
+            <SearchInput type="text" inputMode="numeric" value={yearInput} onChange={(event) => setYearInput(event.target.value)} placeholder="e.g. 2027" className="mt-1 block w-full border border-slate-400 bg-white px-3 py-2 font-normal text-slate-950 dark:border-green-800 dark:bg-black dark:text-green-200" />
           </label>
           <button type="button" onClick={applyFilters} className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 dark:border-green-700 dark:text-green-300">Apply money filters</button>
         </fieldset>}

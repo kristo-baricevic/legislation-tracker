@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { FormEvent, useEffect, useState } from "react";
@@ -154,7 +155,7 @@ function LLMSettingsSection() {
           {settings && (
             <>
               <label htmlFor="enhancement-provider" className="mt-5 block text-sm font-semibold">Provider</label>
-              <select id="enhancement-provider" value={provider} disabled={busy !== null}
+              <Dropdown id="enhancement-provider" value={provider} disabled={busy !== null}
                 onChange={event => {
                   const next = event.target.value;
                   const stored = settings.saved_credentials?.find(item => item.provider === next);
@@ -170,9 +171,9 @@ function LLMSettingsSection() {
                   ...(settings.saved_credentials ?? []).map(item => item.provider)])).map(name =>
                   <option key={name} value={name}>{name}</option>
                 )}
-              </select>
+              </Dropdown>
               <label htmlFor="enhancement-model" className="mt-5 block text-sm font-semibold">Model</label>
-              <select id="enhancement-model" className="mt-2 rounded border border-control bg-paper px-3 py-2"
+              <Dropdown id="enhancement-model" className="mt-2 rounded border border-control bg-paper px-3 py-2"
                 value={model}
                 disabled={!settings.feature_available || busy !== null}
                 onChange={event => {setDraft({provider, model: event.target.value}); setApiKey(""); setDeleteProvider(null); setError(null); setNotice(null);}}>
@@ -181,7 +182,7 @@ function LLMSettingsSection() {
                 {settings.models.filter(m => m.provider === provider).map(m => <option key={m.model} value={m.model}>
                   {m.model}{m.free ? " · Free" : ""}
                 </option>)}
-              </select>
+              </Dropdown>
               <dl className="mt-4 text-sm">
                 <div>
                   <dt className="text-muted">Validation</dt>

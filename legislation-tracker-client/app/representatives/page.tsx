@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchInput } from "@/app/components/FilterControls";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
@@ -206,7 +207,7 @@ function RepresentativesDirectory() {
           <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="block min-w-0 text-sm text-muted">
               <span className="mb-1 block">Search by name</span>
-              <input type="search" value={name} maxLength={200} placeholder="Name"
+              <SearchInput value={name} maxLength={200} placeholder="Name"
                 className="h-10 w-full rounded border border-control bg-paper px-2 py-1 text-base text-ink"
                 onChange={event => setName(event.target.value)} />
             </label>
