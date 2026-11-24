@@ -19,13 +19,16 @@ export function useDashboardBillTracking(onSessionChange?: () => void) {
   const { pending, begin } = usePendingCards();
   const [followError, setFollowError] = React.useState("");
 
-  React.useEffect(() => subscribePersonalizedChanges(({ kind }) => {
+  React.useEffect(() => subscribePersonalizedChanges(({ kind, source }) => {
+    // A recommendation updates its own button. Rebuild the collection on
+    // revalidation or remount so it cannot shift the row being used.
+    if (ready && kind === "tracking" && source === "recommendation") return;
     if (kind === "revalidate" || kind === "tracking") { setAttempt(value => value + 1); return; }
     setTracking(null); setSignedIn(false); setIsSuperuser(false); setReady(false); setError("");
     onSessionChange?.();
     setFollowError("");
     setAttempt(value => value + 1);
-  }), [onSessionChange]);
+  }), [onSessionChange, ready]);
 
   React.useEffect(() => {
     let live = true;

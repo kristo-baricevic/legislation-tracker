@@ -29,11 +29,11 @@ test("always-on row, shared bill modal, persisted follow and responsive scrollin
   await page.goto("/");
   const preview = page.getByLabel("Show recommendations on this browser");
   await expect(preview).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Your legislation, in view." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Follow the bills that matter to you." })).toBeVisible();
   const row = page.getByRole("region", { name: "Recommended bills" });
   const opener = row.getByRole("link", { name: bill.title });
   await expect(opener).toBeVisible();
-  await expect(row.getByLabel("Why recommended").first()).toContainText("a topic you follow");
+  await expect(row.getByLabel("Why recommended").first()).toContainText("Health");
   await opener.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByText("No bill summary is available yet.")).toBeVisible();
@@ -43,9 +43,8 @@ test("always-on row, shared bill modal, persisted follow and responsive scrollin
   await row.getByRole("button", { name: "Follow bill HR 1 / 119" }).click();
   expect((await request).postDataJSON()).toEqual({ bill: 1 });
   await expect(row.getByRole("link", { name: second.title })).toBeVisible();
-  await expect(row.getByRole("link", { name: bill.title })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Followed bills" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Bills to discover" })).toBeFocused();
+  await expect(opener).toBeVisible();
+  await expect(row.getByRole("button", { name: "Unfollow bill HR 1 / 119" })).toBeFocused();
   await page.reload();
   await expect(preview).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Followed bills" })).toBeVisible();
@@ -56,12 +55,11 @@ test("always-on row, shared bill modal, persisted follow and responsive scrollin
     if (name === "mobile") expect(await row.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/recommendations-${name}.png`, fullPage: true });
   }
-  await expect(page.getByRole("heading", { name: "Your legislation, in view." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Follow the bills that matter to you." })).toBeVisible();
   await expect(row).toBeVisible();
   await page.reload();
   await expect(preview).toHaveCount(0);
-  await page.getByLabel("Use card dashboard on this browser").uncheck();
-  await expect(page.getByRole("heading", { name: "Legislation Tracker Operations" })).toBeVisible();
+  await expect(page.getByLabel("Use card dashboard on this browser")).toHaveCount(0);
 });
 test("error, retry, no-match and logout clear private cards", async ({ page }) => {
   await fixtures(page);
@@ -153,6 +151,88 @@ for (const width of [390, 1280]) {
         await checkPending();
         await expect(cards).toHaveCount(3);
       });
+    });
+  }
+}
+
+for (const width of [390, 1280]) {
+  for (const surface of ["dashboard bills", "dashboard representatives", "dashboard followed bills", "bills", "representatives"] as const) {
+    test(`follow and unfollow keep scroll and neighboring cards stable on ${surface} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 600 });
+      await fixtures(page);
+      const dashboard = surface.startsWith("dashboard");
+      const people = surface.endsWith("representatives");
+      const items = Array.from({ length: 32 }, (_, i) => ({
+        ...bill, id: i + 1, title: `Bill ${i + 1}`, bill_number: `HR ${i + 1}`,
+      }));
+      const members = items.map(({ id }) => ({
+        id, name: `Member ${id}`, first_name: "Member", last_name: String(id), state: "NY", party: "D",
+        chamber: "house", is_current: true, bioguide_id: "",
+      }));
+      const card = { top_topics: [], biography: { text: "Representative biography" } };
+      const target = dashboard ? 1 : 24;
+      const collection = surface === "dashboard followed bills";
+      let tracked = collection;
+      let release!: () => void;
+      const endpoint = people ? "legislators" : "bills";
+      const writes: string[] = [];
+      await page.route("**/api/**", async route => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (path.startsWith(`/api/tracking/${endpoint}/`) && ["POST", "DELETE"].includes(request.method())) {
+          const following = request.method() === "POST";
+          if (following) expect(request.postDataJSON()[people ? "representative" : "bill"]).toBe(target);
+          else expect(path).toBe(`/api/tracking/${endpoint}/${target}/`);
+          writes.push(request.method());
+          await new Promise<void>(resolve => { release = resolve; });
+          tracked = following;
+          return following ? route.fulfill({ json: { id: target, bill: items[target - 1], representative: members[target - 1], card } }) : route.fulfill({ status: 204 });
+        }
+        if (path === "/api/tracking/") return route.fulfill({ json: {
+          bills: [...(tracked && !people ? [{ id: target, bill: items[target - 1] }] : []), ...(collection ? items.slice(1, 3).map(bill => ({ id: bill.id, bill })) : [])],
+          legislators: tracked && people ? [{ id: target, representative: members[target - 1], card }] : [],
+          topics: [], is_staff: false,
+        } });
+        if (path === "/api/topics/") return route.fulfill({ json: [] });
+        if (path.includes("saved-search")) return route.fulfill({ json: { count: 0, results: [] } });
+        if (path === "/api/bills/" || path === "/api/representatives/") return route.fulfill({ json: {
+          count: items.length, previous: null, next: null, results: path === "/api/bills/" ? items : members,
+        } });
+        if (path === "/api/tracking/representative-recommendations/") return route.fulfill({ json: {
+          ...recommendations, results: members.slice(0, 3).map(representative => ({
+            representative_id: representative.id, name: representative.name, reasons: [], card,
+            topic_activity_evidence: { representative },
+          })),
+        } });
+        return route.fallback();
+      });
+      await page.goto(dashboard ? "/" : people ? "/representatives" : "/bills?session=119");
+      const row = dashboard ? page.getByRole("region", { name: collection ? "Followed bills" : people ? "Recommended representatives" : "Recommended bills" })
+        : people ? page.getByRole("list", { name: "Representatives", exact: true }) : page.getByRole("region", { name: "Bill results" });
+      const buttons = row.locator("button[aria-pressed]");
+      const button = buttons.nth(target - 1);
+      await expect(button).toHaveAttribute("aria-pressed", String(collection));
+      const neighbors = await row.evaluateHandle((el, selected) =>
+        Array.from(el.querySelectorAll("button[aria-pressed]")).filter((_, index) => index !== selected).map(node => ({ node, html: node.outerHTML })), target - 1);
+      const checkNeighbors = async () => {
+        expect(await neighbors.evaluate(entries => entries.length > 0 && entries.every(({ node, html }) =>
+          node.isConnected && node.getClientRects().length > 0 && node.outerHTML === html))).toBe(true);
+      };
+      for (const [index, method] of (collection ? ["DELETE"] : ["POST", "DELETE"]).entries()) {
+        await expectStableClick(page, button, async () => {
+          await expect.poll(() => writes.length).toBe(index + 1);
+          expect(writes[index]).toBe(method);
+          await expect(button).toHaveText("Saving…");
+          await page.waitForTimeout(350);
+          await checkNeighbors();
+          release();
+          if (collection) await expect(buttons).toHaveCount(2);
+          else await expect(button).toHaveAttribute("aria-pressed", String(method === "POST"));
+          await expect(button).not.toHaveText("Saving…");
+          await checkNeighbors();
+        });
+      }
+      await neighbors.dispose();
     });
   }
 }

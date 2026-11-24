@@ -1215,7 +1215,9 @@ export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFe
   return authGet<TrackingFeed>(`/api/tracking/feed/${q ? `?${q}` : ""}`);
 }
 
-async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
+type TrackingMutationOptions = PersonalizedRequestOptions & { source?: "recommendation" };
+
+async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: TrackingMutationOptions): Promise<T> {
   const initial = options.scope ?? capturePersonalizedScope();
   assertPersonalizedScope(initial, options.signal);
   const scope = { ...initial };
@@ -1234,7 +1236,7 @@ async function trackingMutation<T>(request: (options: PersonalizedRequestOptions
   try {
     const result = await request({ scope, signal: controller.signal });
     assertPersonalizedScope(scope, controller.signal);
-    announceTrackingChange();
+    announceTrackingChange(options.source);
     return result;
   } finally {
     unsubscribe();
@@ -1242,32 +1244,32 @@ async function trackingMutation<T>(request: (options: PersonalizedRequestOptions
   }
 }
 
-export function trackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedBillItem> {
+export function trackBill(billId: number, options: TrackingMutationOptions = {}): Promise<TrackedBillItem> {
   return trackingMutation(request => authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId }, request), options);
 }
 
-export function untrackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+export function untrackBill(billId: number, options: TrackingMutationOptions = {}): Promise<void> {
   return trackingMutation(request => authDelete(`/api/tracking/bills/${billId}/`, request), options);
 }
 
-export function trackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedTopicItem> {
+export function trackTopic(topicId: number, options: TrackingMutationOptions = {}): Promise<TrackedTopicItem> {
   return trackingMutation(request => authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId }, request), options);
 }
 
-export function untrackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+export function untrackTopic(topicId: number, options: TrackingMutationOptions = {}): Promise<void> {
   return trackingMutation(request => authDelete(`/api/tracking/topics/${topicId}/`, request), options);
 }
 
 export function trackLegislator(
   representativeId: number,
-  options: PersonalizedRequestOptions = {},
+  options: TrackingMutationOptions = {},
 ): Promise<TrackedLegislatorItem> {
   return trackingMutation(request => authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
     representative: representativeId,
   }, request), options);
 }
 
-export function untrackLegislator(representativeId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+export function untrackLegislator(representativeId: number, options: TrackingMutationOptions = {}): Promise<void> {
   return trackingMutation(request => authDelete(`/api/tracking/legislators/${representativeId}/`, request), options);
 }
 

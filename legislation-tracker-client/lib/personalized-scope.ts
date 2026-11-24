@@ -5,6 +5,7 @@ export interface PersonalizedScope {
 }
 export interface PersonalizedChange {
   kind: "session" | "tracking" | "revalidate";
+  source?: "recommendation";
   scope: PersonalizedScope;
 }
 export interface PersonalizedRequestOptions {
@@ -43,7 +44,7 @@ function readTransition(epoch: string | null) {
   }, transitionExpires - Date.now());
 }
 
-function change(kind: PersonalizedChange["kind"], persist = false) {
+function change(kind: PersonalizedChange["kind"], persist = false, source?: PersonalizedChange["source"]) {
   if (kind === "tracking") interestGeneration += 1;
   else if (kind === "session") sessionGeneration += 1;
   if (persist && typeof window !== "undefined") {
@@ -55,7 +56,7 @@ function change(kind: PersonalizedChange["kind"], persist = false) {
     else lastSessionEpoch = readEpoch(key);
   }
   const scope = { sessionGeneration, interestGeneration };
-  for (const listener of listeners) listener({ kind, scope });
+  for (const listener of listeners) listener({ kind, scope, source });
   if (typeof window !== "undefined") window.dispatchEvent(new Event(kind === "tracking" ? "tracking-changed" : "auth-session-changed"));
 }
 
@@ -160,6 +161,6 @@ export function markSessionLost() {
   }
 }
 
-export function announceTrackingChange() { initialize(); change("tracking", true); }
+export function announceTrackingChange(source?: PersonalizedChange["source"]) { initialize(); change("tracking", true, source); }
 
 export function noteAuthenticatedResponse() { if (identity === null) identity = undefined; }

@@ -79,7 +79,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
     setError(null);
     try {
       const wasFollowed = followed.has(id);
-      await (wasFollowed ? untrackBill : trackBill)(id, { ...state.requestOptions(), scope });
+      await (wasFollowed ? untrackBill : trackBill)(id, { ...state.requestOptions(), scope, source: "recommendation" });
       if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFollowed(previous => {
         const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
       });
