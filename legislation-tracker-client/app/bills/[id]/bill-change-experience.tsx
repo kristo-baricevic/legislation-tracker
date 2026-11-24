@@ -58,7 +58,9 @@ function readableChangeDetail(change: BillChangesPage["results"][number]): strin
   const beforeStatus = objectValue(change.before, "status");
   const afterStatus = objectValue(change.after, "status");
   if (typeof afterStatus === "string") {
-    return typeof beforeStatus === "string" ? `${beforeStatus} → ${afterStatus}` : `Status: ${afterStatus}`;
+    const previous = typeof beforeStatus === "string" ? beforeStatus.trim() : "";
+    if (!previous || afterStatus.trimStart().startsWith(previous)) return `Status: ${afterStatus}`;
+    return `${previous} → ${afterStatus}`;
   }
   const version = objectValue(change.after, "version_label");
   if (typeof version === "string") return `Version: ${version}`;
@@ -187,7 +189,7 @@ export default function BillChangeExperience({
                 <li key={change.id} className="relative pb-4 pl-5 last:pb-0 before:absolute before:top-2 before:-bottom-2 before:left-0 before:border-l before:border-slate-300 last:before:hidden dark:before:border-green-800">
                   <span aria-hidden="true" className="absolute top-1.5 left-0 size-2 -translate-x-[3px] rounded-full bg-slate-500 dark:bg-green-400" />
                   <CardTooltip text={metadata}>
-                    <span tabIndex={0} className="flex cursor-help flex-wrap items-baseline gap-x-3 rounded-sm focus-visible:outline-2">
+                    <span tabIndex={0} className="flex cursor-default flex-wrap items-baseline gap-x-3 rounded-sm focus-visible:outline-2">
                       <span className="font-semibold">{change.summary}</span>
                       <time dateTime={change.occurred_at} className="whitespace-nowrap text-sm text-slate-600 dark:text-green-500">
                         {date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}

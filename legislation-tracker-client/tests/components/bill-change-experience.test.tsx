@@ -49,6 +49,21 @@ describe("BillChangeExperience", () => {
     expect(screen.queryByText(/\"status\"/)).not.toBeInTheDocument();
   });
 
+  it("shows an expanded status once when the previous text was truncated", async () => {
+    const page = await getBillChanges(10);
+    const prefix = "Referred to the Committee on Foreign Affairs";
+    const full = `${prefix}, and in addition to the Committee on the Judiciary.`;
+    vi.mocked(getBillChanges).mockResolvedValueOnce({
+      ...page, results: [{ ...page.results[0], before: { status: prefix }, after: { status: full } }],
+    });
+    render(<BillChangeExperience billId={10} contracts={[]} documents={[]} />);
+    await userEvent.click(screen.getByText("Bill history"));
+    await userEvent.hover(await screen.findByText("Bill status changed"));
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveTextContent(full);
+    expect(tooltip.textContent?.split(prefix)).toHaveLength(2);
+  });
+
   it("offers older changes when the initial timeline is truncated", async () => {
     vi.mocked(getBillChanges).mockResolvedValueOnce({
       results: [{ id: 1, type: "status_update", occurred_at: "2026-01-01T00:00:00Z", summary: "Recent change", before: null, after: {}, document_id: null, contract_id: null }],
