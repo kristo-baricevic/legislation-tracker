@@ -26,7 +26,7 @@ from .service import (
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement, source_compatible
-from .model_selection import credential_target, planning_for, reasoning_effort
+from .model_selection import credential_target, planning_for, reasoning_effort, saved_owned_token_target
 
 
 class PrivateEnhancementMixin:
@@ -124,9 +124,27 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             else:
                 reason = "credential_unverified"
             return Response({**base, "unavailable_reason": reason})
+        pair = credential_target(credential)
+        paused = BillEnhancementAttempt.objects.filter(
+            enhancement__user=request.user, enhancement__bill=bill, enhancement__status="paused",
+            enhancement__provider=pair[0], enhancement__requested_model=pair[1], status="paused",
+        ).select_related("enhancement").only(
+            "execution_config", "enhancement__request_fingerprint", "enhancement__source_manifest_json",
+        ).order_by("-pk").first()
+        preflight = None
+        if paused:
+            with planning_for(pair, owned_target=saved_owned_token_target(paused)):
+                try:
+                    candidate = build_enhancement_preflight(bill)
+                except PreflightUnavailable:
+                    pass
+                else:
+                    if candidate.request_fingerprint == paused.enhancement.request_fingerprint:
+                        preflight = candidate
         try:
-            with planning_for(credential_target(credential)):
-                preflight = build_enhancement_preflight(bill)
+            if preflight is None:
+                with planning_for(pair):
+                    preflight = build_enhancement_preflight(bill)
         except PreflightUnavailable as exc:
             return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
         matching = (

@@ -38,7 +38,7 @@ class Command(BaseCommand):
             raise CommandError("Stored document does not match the pinned case")
         with override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache",
                                                     "LOCATION": "reader-estimate-only"}},
-                               LLM_READER_MODEL_CAPABILITIES={f"{provider}/{model}": limits}), planning_for((provider, model)):
+                               LLM_READER_MODEL_CAPACITIES={f"{provider}/{model}": limits}), planning_for((provider, model)):
             for target in (1000, 2000, 4000):
                 started = monotonic()
                 report = {"document": document.pk, "xml_sha256": xml_digest, "target": target, "model": model,

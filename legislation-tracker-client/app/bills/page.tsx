@@ -641,12 +641,12 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Tracking</span>
-              <select value={trackingFilter} disabled={!hasAccount} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
+              <select value={trackingFilter} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
                 onChange={resetPageAndSet(setTrackingFilter)}
                 className="min-h-10 min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink">
                 <option value="">All bills</option>
-                <option value="tracked">Tracked</option>
-                <option value="untracked">Untracked</option>
+                <option value="tracked" disabled={!hasAccount}>Tracked</option>
+                <option value="untracked" disabled={!hasAccount}>Untracked</option>
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm">

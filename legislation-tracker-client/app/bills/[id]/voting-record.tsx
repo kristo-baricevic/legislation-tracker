@@ -175,7 +175,7 @@ export function VotingRecord({
       <div className="p-4">
         {passageActions.length > 0 && <ul className="mb-4 space-y-3" aria-label="Passage without roll call">
           {passageActions.map(action => <li key={`${action.chamber}:${action.date}:${action.method}`} className="rounded border border-slate-300 p-3">
-            <p className="font-semibold">{action.chamber} · Passed by {action.method === "unanimous_consent" ? "unanimous consent" : "voice vote"}</p>
+            <p className="font-semibold">{action.chamber} · Passed {action.method === "without_objection" ? "without objection" : action.method === "unanimous_consent" ? "by unanimous consent" : "by voice vote"}</p>
             <p className="text-sm text-slate-600">{new Date(`${action.date}T12:00:00Z`).toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"})}</p>
             <p className="mt-1 text-sm text-slate-600">No individual votes recorded.</p>
             <a href={action.source_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-sm underline">Official passage record</a>

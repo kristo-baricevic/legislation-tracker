@@ -90,6 +90,22 @@ describe("BillsPage", () => {
     await waitFor(() => expect(screen.queryByRole("button", {name: "Previous page"})).toBeNull());
   });
 
+  it.each([false, true])("clears a private filter when signed out (initially signed in %s)", async initiallySignedIn => {
+    searchState.query = "session=119&tracking=tracked";
+    if (initiallySignedIn) vi.mocked(getSession).mockResolvedValueOnce({authenticated: true, user: {email: "test@example.test"}});
+    render(<BillsPage />);
+    if (initiallySignedIn) {
+      await waitFor(() => expect(getBills).toHaveBeenCalledWith(expect.objectContaining({tracking: "tracked"})));
+      const api = await import("@/lib/api");
+      const listener = vi.mocked(api.subscribePersonalizedChanges).mock.calls[0][0];
+      act(() => listener({kind: "session", scope: {sessionGeneration: 2, interestGeneration: 2}}));
+    }
+    await screen.findByText("Log in to filter tracked bills.");
+    expect(screen.getByRole("option", {name: "Tracked"})).toBeDisabled();
+    await userEvent.selectOptions(screen.getByRole("combobox", {name: "Tracking"}), "");
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({tracking: undefined})));
+  });
+
   it("waits for login resolution before requesting a private bill filter", async () => {
     searchState.query = "session=119&tracking=tracked";
     let resolveSession!: (value: any) => void;

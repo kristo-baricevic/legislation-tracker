@@ -408,7 +408,7 @@ class OpenAICompatibleEnhancementProvider:
         return result
 
     def repair_citations(self, *, api_key=None, request=None, payload=None, timeout_seconds=None):
-        harness.ensure_citation_repair_fits(payload)
+        harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
             api_key=api_key,
             request=request,

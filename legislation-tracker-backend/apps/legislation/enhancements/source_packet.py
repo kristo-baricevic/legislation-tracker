@@ -77,8 +77,16 @@ def _snapshot(source: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in source.items() if key != "contract_value"}
 
 
+def legacy_token_limits(provider, model):
+    from .model_capabilities import resolve_capabilities
+
+    cap = resolve_capabilities(provider, model)
+    output = min(settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS, cap.output_tokens)
+    return min(settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS, cap.context_tokens - output - 1024), output
+
+
 def _request_envelope(
-    bill, sources: list[dict[str, Any]], *, truncated: bool, coverage=None
+    bill, sources: list[dict[str, Any]], *, truncated: bool, coverage=None, max_output_tokens=None
 ) -> dict[str, Any]:
     return {
         "provider": planning_target()[0],
@@ -87,7 +95,7 @@ def _request_envelope(
         "prompt_version": PROMPT_VERSION,
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
         "source_packet_version": SOURCE_PACKET_VERSION,
-        "max_output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+        "max_output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS if max_output_tokens is None else max_output_tokens,
         "citation_resolution": {"version": 2, "max_repair_calls": 1},
         "instructions": DEVELOPER_INSTRUCTIONS,
         "bill": {
@@ -115,11 +123,11 @@ def _request_envelope(
     }
 
 
-def _within_limits(request_bytes: bytes) -> bool:
+def _within_limits(request_bytes: bytes, input_limit=None) -> bool:
     return (
         len(request_bytes) <= settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
         and estimate_input_tokens(request_bytes)
-        <= settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS
+        <= (settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS if input_limit is None else input_limit)
     )
 
 
@@ -129,8 +137,9 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
 
     if not text.strip():
         raise PreflightUnavailable("No stored source text is available for this bill")
+    input_limit, output_limit = (None, None) if envelope_transform else legacy_token_limits(*planning_target())
     if not _within_limits(
-        canonical_json_bytes(_request_envelope(bill, [], truncated=True))
+        canonical_json_bytes(_request_envelope(bill, [], truncated=True, max_output_tokens=output_limit)), input_limit
     ):
         raise PreflightUnavailable(
             "The fixed request overhead exceeds configured limits",
@@ -152,14 +161,14 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
         attach_targets(sources, glossary_targets)
         coverage = section_coverage(groups, selected, sources)
         envelope = _request_envelope(
-            bill, sources, truncated=len(selected) != len(groups), coverage=coverage
+            bill, sources, truncated=len(selected) != len(groups), coverage=coverage, max_output_tokens=output_limit
         )
         if envelope_transform is not None:
             envelope = envelope_transform(sources, envelope)
         return sources, envelope, canonical_json_bytes(envelope)
 
     full = envelope_for(range(len(groups)))
-    if _within_limits(full[2]):
+    if _within_limits(full[2], input_limit):
         return full
     selected = []
     current = envelope_for(selected)
@@ -176,7 +185,7 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
         if len(current[2]) + raw_size > limit:
             continue
         candidate = envelope_for([*selected, index])
-        if _within_limits(candidate[2]):
+        if _within_limits(candidate[2], input_limit):
             selected.append(index)
             current = candidate
     if not selected:
@@ -272,7 +281,7 @@ def build_document_preflight(document, *, reuse_result=None):
         manifest["budget"] = {
             "maximum_calls": 2 + len(batches),  # Main generation + optional citation repair.
             "maximum_input": 2 * len(main_bytes) + sum(len(batch["bytes"]) for batch in batches),
-            "maximum_output": (2 + len(batches)) * settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+            "maximum_output": (2 + len(batches)) * request_envelope["max_output_tokens"],
         }
     preflight = EnhancementPreflight(
         provider=planning_target()[0],

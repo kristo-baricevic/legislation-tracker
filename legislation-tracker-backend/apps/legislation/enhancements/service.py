@@ -12,7 +12,7 @@ from apps.accounts.models import LLMCredential, selected_credentials
 from apps.legislation.models import Bill, BillEnhancement, BillEnhancementAttempt
 
 from .dispatch import request_enhancement_dispatch
-from .model_selection import credential_target, planning_for, selectable
+from .model_selection import credential_target, planning_for, saved_owned_token_target, selectable
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement
 
@@ -164,10 +164,10 @@ def _require_current_validation(credential: LLMCredential) -> None:
         raise EnhancementServiceError("credential_unverified")
 
 
-def _build_locked_preflight(bill_id: int, credential):
+def _build_locked_preflight(bill_id: int, credential, *, owned_target=None):
     bill = Bill.objects.select_for_update().get(pk=bill_id)
     try:
-        with planning_for(credential_target(credential)):
+        with planning_for(credential_target(credential), owned_target=owned_target):
             return bill, build_enhancement_preflight(bill)
     except PreflightUnavailable as exc:
         raise EnhancementServiceError(exc.reason) from exc
@@ -299,31 +299,33 @@ def retry_enhancement_attempt(
             if latest is not None:
                 return AttemptCreation(shared, latest, False)
         credential = _locked_credential(user)
-        _, preflight = _build_locked_preflight(locked_bill.pk, credential)
+        latest = enhancement.attempts.order_by("-sequence").first()
+        owned_target = saved_owned_token_target(latest) if latest and latest.status == "paused" else None
+        _, preflight = _build_locked_preflight(locked_bill.pk, credential, owned_target=owned_target)
         base_fingerprint = preflight.request_fingerprint
         reused_result = reusable_publication(enhancement, credential)
         if reused_result:
-            with planning_for(credential_target(credential)):
+            with planning_for(credential_target(credential), owned_target=owned_target):
                 preflight = build_enhancement_preflight(locked_bill, reuse_result=reused_result)
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
         if enhancement.request_fingerprint != base_fingerprint:
             raise EnhancementServiceError("preflight_changed")
 
-        latest = enhancement.attempts.order_by("-sequence").first()
         if latest is not None and latest.status in ACTIVE_STATUSES:
             return AttemptCreation(enhancement, latest, False)
         if not retry_allowed(latest):
             raise EnhancementServiceError("retry_not_allowed")
 
-        attempt = _create_attempt(
-            enhancement=enhancement,
-            credential=credential,
-            estimated_input_tokens=preflight.estimated_input_tokens,
-            sequence=latest.sequence + 1,
-            approved_request_fingerprint=preflight.request_fingerprint,
-            reused_result=reused_result,
-        )
+        with planning_for(credential_target(credential), owned_target=owned_target):
+            attempt = _create_attempt(
+                enhancement=enhancement,
+                credential=credential,
+                estimated_input_tokens=preflight.estimated_input_tokens,
+                sequence=latest.sequence + 1,
+                approved_request_fingerprint=preflight.request_fingerprint,
+                reused_result=reused_result,
+            )
         if latest.status == BillEnhancementAttempt.Status.PAUSED:
             from apps.legislation.models import BillEnhancementWorkUnit
             BillEnhancementWorkUnit.objects.bulk_create([

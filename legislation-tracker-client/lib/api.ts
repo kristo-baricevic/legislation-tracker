@@ -401,7 +401,7 @@ export interface BillContractsPage {
 export interface PassageAction {
   chamber: string;
   date: string;
-  method: "unanimous_consent" | "voice_vote";
+  method: "unanimous_consent" | "voice_vote" | "without_objection";
   source_text: string;
   source_url: string;
 }

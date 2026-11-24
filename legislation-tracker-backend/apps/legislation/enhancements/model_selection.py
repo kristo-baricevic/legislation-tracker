@@ -14,6 +14,11 @@ def owned_token_target():
     return settings.LLM_READER_OWNED_TOKEN_TARGET if pinned is None else pinned
 
 
+def saved_owned_token_target(attempt):
+    saved = attempt.enhancement.source_manifest_json.get("execution_settings", {})
+    return attempt.execution_config.get("owned_token_target", saved.get("owned_token_target", 0))
+
+
 def default_target():
     return settings.LLM_ENHANCEMENT_PROVIDER, settings.LLM_ENHANCEMENT_MODEL
 

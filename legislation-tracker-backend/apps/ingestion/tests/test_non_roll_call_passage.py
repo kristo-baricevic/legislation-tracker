@@ -29,6 +29,20 @@ def test_passage_without_roll_call_is_saved_deduplicated_and_exposed(monkeypatch
     assert bill.passage_actions == []
 
 
+@pytest.mark.parametrize("body,chamber,method", [
+    ("On passage Passed by voice vote.", "House", "voice_vote"),
+    ("On passage Passed without objection.", "House", "without_objection"),
+    ("Submitted in the Senate, considered, and agreed to without amendment and with a preamble by Unanimous Consent.",
+     "Senate", "unanimous_consent"),
+])
+def test_official_passage_actions(body, chamber, method):
+    from apps.ingestion.passage_actions import extract_passage_actions
+    actions = [{"actionDate": "2026-01-02", "text": text} for text in (
+        body, f"Passed/agreed to in {chamber}: {body}", "On agreeing to the Rules amendment Agreed to without objection.")]
+    result = extract_passage_actions(actions, source_url="https://www.congress.gov/")
+    assert [(item["chamber"], item["method"]) for item in result] == [(chamber, method)]
+
+
 def test_voice_vote_requires_passage_not_just_a_procedural_motion():
     from apps.ingestion.passage_actions import extract_passage_actions
     actions = [

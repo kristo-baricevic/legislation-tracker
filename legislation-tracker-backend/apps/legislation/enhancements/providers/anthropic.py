@@ -160,7 +160,7 @@ class AnthropicEnhancementProvider:
         return result
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
-        harness.ensure_citation_repair_fits(payload)
+        harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
             api_key=api_key,
             request=request,

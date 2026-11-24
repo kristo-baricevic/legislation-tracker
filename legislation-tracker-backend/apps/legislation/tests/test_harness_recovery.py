@@ -96,6 +96,19 @@ def test_confirmed_reader_rebuilds_original_target_after_flag_changes(enhancemen
             preflight, _, failure = _worker_preflight(attempt)
             assert failure is None
             assert preflight.request_fingerprint == attempt.enhancement.request_fingerprint
+            attempt.status = attempt.enhancement.status = "paused"
+            attempt.save()
+            attempt.enhancement.save()
+            client = APIClient()
+            client.force_authenticate(enhancement_owner)
+            url = f"/api/bills/{source_bill.pk}/enhancements/"
+            estimate = client.get(url + "estimate/").data
+            assert estimate["matching_enhancement"]["id"] == attempt.enhancement_id
+            response = client.post(url + f"{attempt.enhancement_id}/retry/", estimate, format="json")
+            assert response.status_code == 202, response.data
+            resumed = attempt.enhancement.attempts.get(sequence=2)
+            assert resumed.execution_config["owned_token_target"] == 1000
+            assert _worker_preflight(resumed)[0].request_fingerprint == preflight.request_fingerprint
 
 
 @pytest.mark.django_db(transaction=True)

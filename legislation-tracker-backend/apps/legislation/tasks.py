@@ -1359,7 +1359,7 @@ def _require_quota_revalidation(attempt):
 
 
 def _worker_preflight(attempt, cached_preflight=None):
-    from .enhancements.model_selection import planning_for, selectable
+    from .enhancements.model_selection import planning_for, saved_owned_token_target, selectable
     if not llm_feature_available():
         return None, None, "feature_disabled"
     pair = (attempt.enhancement.provider, attempt.enhancement.requested_model)
@@ -1370,9 +1370,7 @@ def _worker_preflight(attempt, cached_preflight=None):
         from .enhancements.model_capabilities import resolve_capabilities
         if attempt.execution_config["capability_fingerprint"] != resolve_capabilities(*pair).fingerprint:
             return None, None, "preflight_changed"
-    saved_settings = attempt.enhancement.source_manifest_json.get("execution_settings", {})
-    chunk_target = attempt.execution_config.get("owned_token_target", saved_settings.get("owned_token_target", 0))
-    with planning_for(pair, owned_target=chunk_target):
+    with planning_for(pair, owned_target=saved_owned_token_target(attempt)):
         return _selected_worker_preflight(attempt, cached_preflight)
 
 
