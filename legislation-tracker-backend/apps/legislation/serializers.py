@@ -20,7 +20,7 @@ class BillListQuerySerializer(PaginatedQuerySerializer):
     topic_id = serializers.IntegerField(required=False, min_value=1)
     q = serializers.CharField(required=False, allow_blank=False, trim_whitespace=True)
     sort = serializers.ChoiceField(
-        choices=("recent_activity", "oldest_activity", "relevance"),
+        choices=("recent_activity", "oldest_activity", "relevance", "unsorted"),
         required=False,
     )
     page_size = serializers.IntegerField(required=False, min_value=1, max_value=100)
@@ -32,11 +32,6 @@ class BillListQuerySerializer(PaginatedQuerySerializer):
             return normalize_search_text(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
-
-    def validate(self, attrs):
-        if attrs.get("sort") == "relevance" and not attrs.get("q"):
-            raise serializers.ValidationError({"sort": "relevance requires q."})
-        return attrs
 
 
 class BillContractListQuerySerializer(PaginatedQuerySerializer):

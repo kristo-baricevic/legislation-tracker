@@ -92,7 +92,7 @@ def test_activity_sort_uses_action_dates_before_pagination(query):
         for i, date in enumerate(["2026-11-20T00:00:00Z", "2025-02-10T00:00:00Z", None], 1)
     ]
     client = APIClient()
-    for sort, expected in [("recent_activity", bills), ("oldest_activity", [bills[1], bills[0], bills[2]])]:
+    for sort, expected in [("recent_activity", bills), ("oldest_activity", [bills[1], bills[0], bills[2]]), ("unsorted", bills)]:
         for page, bill in enumerate(expected, 1):
             response = client.get("/api/bills/", {"session": 119, "q": query, "sort": sort,
                                                    "page_size": 1, "page": page})
@@ -133,14 +133,13 @@ def test_bill_search_uses_safe_highlight_segments_and_recent_activity_sorting():
 
 
 @pytest.mark.django_db
-def test_bill_search_rejects_relevance_without_query_and_excessive_query():
+def test_bill_search_accepts_relevance_without_query_and_rejects_excessive_query():
     client = APIClient()
 
     relevance_without_query = client.get("/api/bills/?sort=relevance")
     too_large = client.get("/api/bills/", {"q": "x" * 513})
 
-    assert relevance_without_query.status_code == 400
-    assert "sort" in relevance_without_query.json()
+    assert relevance_without_query.status_code == 200
     assert too_large.status_code == 400
     assert "q" in too_large.json()
 

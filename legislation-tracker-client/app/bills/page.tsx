@@ -38,7 +38,7 @@ const STATUS_OPTIONS = [
   ...STAGES.map(stage => ({ value: `stage:${stage.key}`, label: stage.name })),
   { value: "stage:other", label: "Other / unclassified" },
 ];
-type BillSort = "recent_activity" | "oldest_activity" | "relevance";
+type BillSort = "recent_activity" | "oldest_activity" | "relevance" | "unsorted";
 
 function parsePositiveIntegerFilter(value: string): number | undefined {
   const normalized = value.trim();
@@ -48,7 +48,7 @@ function parsePositiveIntegerFilter(value: string): number | undefined {
 }
 
 function billSort(value: unknown, query: string | null): BillSort {
-  if (value === "oldest_activity" || value === "recent_activity") return value;
+  if (value === "oldest_activity" || value === "recent_activity" || value === "relevance" || value === "unsorted") return value;
   return query ? "relevance" : "recent_activity";
 }
 
@@ -211,7 +211,6 @@ function BillsCatalog() {
       setQueryFilter(nextQuery);
       if (!hadQuery && nextQuery) setSort(current => current === "recent_activity" ? "relevance" : current);
       setPageNum(1);
-      if (!nextQuery) setSort(current => current === "relevance" ? "recent_activity" : current);
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [queryInput]);
@@ -612,7 +611,8 @@ function BillsCatalog() {
             <SelectField label="Sort" value={sort} options={[
               { value: "recent_activity", label: "Recent activity" },
               { value: "oldest_activity", label: "Oldest activity" },
-              ...(queryFilter ? [{ value: "relevance", label: "Relevance" }] : []),
+              { value: "relevance", label: "Relevance" },
+              { value: "unsorted", label: "Unsorted" },
             ]} onChange={value => { setPageNum(1); setSort(billSort(value, queryFilter)); }} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill ID</span>

@@ -126,7 +126,12 @@ def parse_headline_segments(headline: str) -> tuple[SearchSegment, ...]:
     return tuple(segment for segment in result if segment.text)
 
 
-def _activity_order(queryset: QuerySet[Bill], sort: str) -> QuerySet[Bill]:
+def _bill_order(queryset: QuerySet[Bill], sort: str, *, ranked=False) -> QuerySet[Bill]:
+    if sort == "relevance" and ranked:
+        return queryset.order_by(F("_search_rank").desc(nulls_last=True), "id")
+    if sort in {"unsorted", "relevance"}:
+        # No ranking criterion. Use a stable order across result pages.
+        return queryset.order_by("id")
     date = F("last_action_at")
     if sort == "oldest_activity":
         return queryset.order_by(date.asc(nulls_last=True), "id")
@@ -151,9 +156,7 @@ def _metadata_match(queryset: QuerySet[Bill], query_text: str) -> QuerySet[Bill]
 def _fallback_metadata_search(
     *, queryset: QuerySet[Bill], query: BillSearchQuery
 ) -> BillSearchPage:
-    matching = _metadata_match(queryset, query.q).order_by("id")
-    if query.sort != "relevance":
-        matching = _activity_order(matching, query.sort)
+    matching = _bill_order(_metadata_match(queryset, query.q), query.sort)
     count = matching.count()
     offset = (query.page - 1) * query.page_size
     bills = list(matching[offset : offset + query.page_size])
@@ -229,10 +232,7 @@ def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> Bil
             output_field=FloatField(),
         )
     )
-    if query.sort != "relevance":
-        ranked = _activity_order(ranked, query.sort)
-    else:
-        ranked = ranked.order_by(F("_search_rank").desc(nulls_last=True), "id")
+    ranked = _bill_order(ranked, query.sort, ranked=True)
     count = ranked.count()
     offset = (query.page - 1) * query.page_size
     page_rows = list(
@@ -314,7 +314,7 @@ def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> Bil
 def search_bills(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> BillSearchPage:
     """Search a pre-filtered bill queryset and retain one safe response shape."""
     if not query.q:
-        ordered = _activity_order(queryset, query.sort)
+        ordered = _bill_order(queryset, query.sort)
         count = ordered.count()
         offset = (query.page - 1) * query.page_size
         return BillSearchPage(

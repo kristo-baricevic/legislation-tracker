@@ -328,7 +328,11 @@ describe("BillsPage", () => {
     searchState.query = "session=119";
     render(<BillsPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Sort Recent activity" }));
-    expect(screen.queryByRole("option", { name: "Relevance" })).toBeNull();
+    for (const [label, sort] of [["Relevance", "relevance"], ["Unsorted", "unsorted"]]) {
+      await userEvent.click(screen.getByRole("option", { name: label }));
+      await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort })));
+      await userEvent.click(screen.getByRole("button", { name: "Sort " + label }));
+    }
     await userEvent.click(screen.getByRole("option", { name: "Oldest activity" }));
     await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort: "oldest_activity" })));
     await userEvent.click(screen.getByRole("button", { name: "Sort Oldest activity" }));
