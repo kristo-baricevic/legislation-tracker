@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from apps.accounts.models import TrackedTopic, UserPreference
+from apps.accounts.models import TrackedBill, TrackedTopic, UserPreference
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
 from apps.legislation.models import Bill, BillTopic, Topic
@@ -51,6 +51,25 @@ def test_tracking_summary_requires_authentication():
     response = APIClient().get("/api/tracking/")
 
     assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_tracking_summary_batches_bill_topics(django_assert_num_queries):
+    user = make_user()
+    client = authenticated_client(user)
+    topics = [Topic.objects.create(name=f"Fixture {i}", slug=f"fixture-{i}") for i in range(3)]
+    for i in range(4):
+        bill = make_bill(bill_number=f"HR {i + 1}")
+        TrackedBill.objects.create(user=user, bill=bill)
+        BillTopic.objects.bulk_create([BillTopic(bill=bill, topic=topic) for topic in topics])
+
+    with django_assert_num_queries(5):
+        response = client.get("/api/tracking/")
+    assert response.status_code == 200
+    bills = response.json()["bills"]
+    assert len(bills) == 4
+    for item in bills:
+        assert {edge["topic_id"] for edge in item["bill"]["topics"]} == {topic.pk for topic in topics}
 
 
 @pytest.mark.django_db

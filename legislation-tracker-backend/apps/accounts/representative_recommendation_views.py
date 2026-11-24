@@ -259,7 +259,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         elif not followed_topics and not reps:
             results, empty, catalog = [], "unsupported_follows_only", None
         else:
-            catalog = representative_activity_catalog()
+            catalog = representative_activity_catalog(wait_for_build=True)
             if filters:
                 from apps.legislation.models import Bill
                 from apps.congress.models import BillCosponsor

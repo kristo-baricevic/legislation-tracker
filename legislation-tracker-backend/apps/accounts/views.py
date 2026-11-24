@@ -5,7 +5,7 @@ Auth API, user preferences, and private tracking APIs.
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.middleware.csrf import get_token
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -20,7 +20,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
-from apps.legislation.models import Bill, Topic
+from apps.legislation.models import Bill, BillTopic, Topic
 from apps.legislation.serializers import BillListSerializer
 from .dashboard_bill_cards import add_card_summaries
 from apps.legislation.throttles import BillSearchThrottle
@@ -444,6 +444,8 @@ class TrackingSummaryView(APIView):
         bills = TrackedBill.objects.filter(user=request.user).select_related(
             "bill",
             "bill__sponsor",
+        ).prefetch_related(
+            Prefetch("bill__bill_topics", queryset=BillTopic.objects.select_related("topic"))
         )
         topics = TrackedTopic.objects.filter(user=request.user).select_related("topic")
         from .legislator_cards import cards_for_representatives
