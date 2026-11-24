@@ -7,6 +7,34 @@ from .test_enhancement_service import enhancement_owner, enhancement_settings, s
 
 
 @pytest.mark.django_db
+def test_source_first_xml_outage_and_changed_section_ids(source_bill, monkeypatch):
+    from apps.legislation.models import BillEnhancement, BillProcessingCache
+    from apps.legislation.enhancements import shared, xml_sections
+    from apps.legislation.enhancements.source_graph import document_fingerprint
+    from apps.legislation.enhancements.source_packet import PreflightUnavailable
+
+    doc = source_bill.documents.get()
+    section = ("section-A", 0, 10, "Sec. 1", "Heading")
+    sections = (section,)
+    saved = BillEnhancement.objects.create(bill=source_bill, status="succeeded", result_json={},
+        output_schema_version="2.0-source-first", result_completeness="complete",
+        source_manifest_json={"document_id": doc.pk, "document_version_label": doc.version_label,
+            "document_content_hash": doc.reader_text_hash, "source_kind": "pinned_passages"},
+        source_fingerprint=document_fingerprint(str(doc.pk), doc.version_label, doc.reader_text_hash, sections))
+    def outage(*args):
+        raise PreflightUnavailable("temporarily unavailable")
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", outage)
+    assert not shared._reader_result_valid(saved)
+    assert not BillProcessingCache.objects.filter(kind="reader-validation").exists()
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", lambda *args: sections)
+    monkeypatch.setattr(shared, "_source_first_result_valid", lambda *args: True)
+    assert shared.shared_enhancement(source_bill).pk == saved.pk
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", lambda *args: (("section-B", *section[1:]),))
+    assert shared.shared_enhancement(source_bill) is None
+    assert not shared._reader_result_valid(saved)
+
+
+@pytest.mark.django_db
 def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
         enhancement_owner, enhancement_settings, source_bill):
     from django.test import override_settings

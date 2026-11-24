@@ -80,6 +80,16 @@ describe("BillsPage", () => {
     expect(screen.queryByRole("link", {name: "Bill 2"})).not.toBeInTheDocument();
     vi.unstubAllGlobals();
   });
+  it("reaches earlier pages after reloading a page-three URL", async () => {
+    searchState.query = "page=3&session=119";
+    render(<BillsPage />);
+    await userEvent.click(await screen.findByRole("button", {name: "Previous page"}));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({page: 2, session: 119})));
+    await userEvent.click(await screen.findByRole("button", {name: "Previous page"}));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({page: 1, session: 119})));
+    await waitFor(() => expect(screen.queryByRole("button", {name: "Previous page"})).toBeNull());
+  });
+
   it("waits for login resolution before requesting a private bill filter", async () => {
     searchState.query = "session=119&tracking=tracked";
     let resolveSession!: (value: any) => void;

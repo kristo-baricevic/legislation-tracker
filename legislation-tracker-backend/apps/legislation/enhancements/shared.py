@@ -2,19 +2,32 @@
 from apps.legislation.models import BillEnhancement
 
 
-def _source_first_result_valid(saved):
-    from .provision_pipeline import _plan_built_graph, run_analysis
-    from .source_graph import build_source_graph
+def _source_first_inputs(saved, document):
+    from .source_graph import document_fingerprint
+    from .source_packet import PreflightUnavailable
     from .xml_sections import stored_xml_sections
 
-    document = saved.bill.documents.filter(pk=saved.source_manifest_json["document_id"]).first()
-    if document is None:
-        return False
+    manifest = saved.source_manifest_json
+    if (document is None or manifest.get("document_id") != document.pk or manifest.get("source_kind") != "pinned_passages"
+            or manifest.get("document_version_label") != document.version_label
+            or manifest.get("document_content_hash", document.reader_text_hash) != document.reader_text_hash):
+        return None
     text = document.extracted_text or document.raw_text or ""
-    graph = build_source_graph(str(document.pk), document.version_label, text,
-                               xml_sections=stored_xml_sections(document, text))
-    if graph.document_fingerprint != saved.source_fingerprint:
-        return False
+    try:
+        sections = stored_xml_sections(document, text)
+    except PreflightUnavailable:
+        return None
+    if saved.source_fingerprint != document_fingerprint(str(document.pk), document.version_label, document.reader_text_hash, sections):
+        return None
+    return document, text, sections
+
+
+def _source_first_result_valid(saved, inputs):
+    from .provision_pipeline import _plan_built_graph, run_analysis
+    from .source_graph import build_source_graph
+
+    document, text, sections = inputs
+    graph = build_source_graph(str(document.pk), document.version_label, text, xml_sections=sections)
     result = saved.result_json
     plan = _plan_built_graph(graph, reuse_result=result)
     if plan.calls or plan.unresolved_unit_ids:
@@ -29,7 +42,7 @@ def _source_first_result_valid(saved):
     return projected == result
 
 
-def _reader_result_valid(saved):
+def _reader_result_valid(saved, *, source_first_inputs=None):
     import copy
     import hashlib
     from types import SimpleNamespace
@@ -37,7 +50,13 @@ def _reader_result_valid(saved):
     from apps.legislation.models import BillProcessingCache
     from .reader_cache import VALIDATOR_VERSION
     from .schema import validate_enhancement_output
-    fingerprint = hashlib.sha256(f"bill-validation:projection-7:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
+    if saved.output_schema_version == "2.0-source-first":
+        if source_first_inputs is None:
+            document = saved.bill.documents.filter(pk=saved.source_manifest_json.get("document_id")).first()
+            source_first_inputs = _source_first_inputs(saved, document)
+            if source_first_inputs is None:
+                return False
+    fingerprint = hashlib.sha256(f"bill-validation:projection-8:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
         return cached.result_json['valid']
@@ -52,7 +71,7 @@ def _reader_result_valid(saved):
             review['policy_changes'] = group_policy_drafts(
                 SimpleNamespace(source_snapshot=saved.source_snapshot_json), review['policy_drafts'])
         if saved.output_schema_version == "2.0-source-first":
-            valid = _source_first_result_valid(saved)
+            valid = _source_first_result_valid(saved, source_first_inputs)
         else:
             validate_enhancement_output(result, saved.source_snapshot_json, expected_version=saved.output_schema_version,
                                         aggregate_glossary=True)
@@ -81,25 +100,7 @@ def source_compatible(enhancement, bill, *, identity=None):
     if not document or manifest.get("document_id") != document.pk:
         return False
     if enhancement.output_schema_version == "2.0-source-first":
-        from .source_graph import NORMALIZATION_VERSION, _hash
-        identity = f"{document.pk}\0{document.version_label}\0{NORMALIZATION_VERSION}\0{document.reader_text_hash}"
-        if manifest.get("source_kind") != "pinned_passages" or manifest.get("document_version_label") != document.version_label:
-            return False
-        if "document_content_hash" in manifest:
-            return manifest["document_content_hash"] == document.reader_text_hash
-        # Older XML graphs incorporate section identities into their fingerprint.
-        if enhancement.source_fingerprint == _hash(identity):
-            return True
-        from .source_graph import build_source_graph
-        from .source_packet import PreflightUnavailable
-        from .xml_sections import stored_xml_sections
-        text = document.extracted_text or document.raw_text or ""
-        try:
-            sections = stored_xml_sections(document, text)
-        except PreflightUnavailable:
-            return False
-        return bool(sections and enhancement.source_fingerprint == build_source_graph(
-            str(document.pk), document.version_label, text, xml_sections=sections).document_fingerprint)
+        return _source_first_inputs(enhancement, document) is not None
     if manifest.get("document_content_hash") != document.reader_text_hash:
         return False
     if enhancement.output_schema_version == "1.4":
@@ -123,8 +124,14 @@ def shared_enhancement(bill, *, include_active=True):
         if status == BillEnhancement.Status.SUCCEEDED:
             rows = rows.exclude(result_json=None).exclude(result_completeness="partial")
         for saved in rows:
-            if source_compatible(saved, bill, identity=identity):
-                if status == BillEnhancement.Status.SUCCEEDED and not _reader_result_valid(saved):
+            inputs = None
+            if saved.output_schema_version == "2.0-source-first":
+                inputs = _source_first_inputs(saved, identity[0])
+                if inputs is None:
                     continue
-                return saved
+            elif not source_compatible(saved, bill, identity=identity):
+                continue
+            if status == BillEnhancement.Status.SUCCEEDED and not _reader_result_valid(saved, source_first_inputs=inputs):
+                continue
+            return saved
     return None

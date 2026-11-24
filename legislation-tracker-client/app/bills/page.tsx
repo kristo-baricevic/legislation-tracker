@@ -811,6 +811,9 @@ function BillsCatalog() {
 
         {page && (
           <>
+            {committedResults.current.start > 1 && <button type="button" disabled={loading}
+              onClick={() => setPageNum(committedResults.current.start - 1)}
+              className="mb-3 rounded border border-control px-3 py-1 text-ink">Previous page</button>}
             <p className="mb-4 text-muted">
               {page.count} bill{page.count !== 1 ? "s" : ""}
             </p>

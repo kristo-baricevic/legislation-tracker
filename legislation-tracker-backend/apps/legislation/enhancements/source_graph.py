@@ -83,10 +83,15 @@ def _safe_subsection_starts(raw):
     return [m.start() for m in markers]
 
 
+def document_fingerprint(document_id, version, text_hash, xml_sections):
+    fingerprint = _hash(f"{document_id}\0{version}\0{NORMALIZATION_VERSION}\0{text_hash}")
+    if xml_sections:
+        return _hash(fingerprint + ":xml-sections-v1:" + json.dumps(xml_sections))
+    return fingerprint
+
+
 def build_source_graph(document_id: str, version: str, text: str, *, xml_sections=()) -> SourceGraph:
-    fingerprint = _hash(
-        f"{document_id}\0{version}\0{NORMALIZATION_VERSION}\0{_hash(text)}"
-    )
+    fingerprint = document_fingerprint(document_id, version, _hash(text), xml_sections)
     try:
         structure = parse_federal_structure(text)
         sections = [s for s in structure if s.level == "section"]
@@ -97,7 +102,6 @@ def build_source_graph(document_id: str, version: str, text: str, *, xml_section
     # section labels and their later operative occurrence. Case alone is not proof.
     toc = re.search(r"(?im)^(?:[ \t]*\([a-z]\)[ \t]*)?[ \t]*TABLE OF CONTENTS\b", text)
     if xml_sections:
-        fingerprint = _hash(fingerprint + ":xml-sections-v1:" + json.dumps(xml_sections))
         toc = None  # Ignore text guesses; XML excludes contents and quoted law.
     if toc:
         operative = [

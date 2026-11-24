@@ -340,6 +340,8 @@ independent benchmark acceptance. Legacy generation and stored results remain su
 
 ## Provider credentials and harness evaluation
 
+Before the reader execution version 7 → 9 cutover, pause new enhancement create and retry requests at the ingress, keeping the previous workers and dispatcher running. Wait for all pending and running version 7 reader attempts to finish, then stop the previous workers, run migrations, start the updated services and reopen submissions. Migration 0032 blocks cutover while an incompatible reader attempt is still active. If it blocks, resume the previous workers and retry the migration after they drain. Keep historical ambiguous call reservations intact.
+
 Apply the forward account and legislation migrations before starting the updated API and worker. Second-provider writes are gated by `LLM_MULTI_PROVIDER_WRITES_ENABLED` (default false). Set it to true after routing all settings and enhancement traffic to upgraded services. Existing encrypted keys, revisions and attempt references are preserved. Use the expanded schema for application rollback once an account has two providers.
 
 Settings retain one key and model per provider. A user's active selection authorizes new estimates. Confirmation binds the exact key identity and revision, selected model, adapter and capability fingerprint. An existing shared result can be returned without generating again.

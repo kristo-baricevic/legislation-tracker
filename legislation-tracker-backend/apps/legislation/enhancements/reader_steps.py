@@ -84,11 +84,13 @@ class DurableReaderProvider:
             prior_step = current.steps.filter(diagnostics__logical_fingerprint=logical_fingerprint).first()
             if prior_step:
                 fingerprint = prior_step.request_fingerprint
-            elif adapter == "existing":
+            else:
                 legacy_key, _ = call_identity(dispatch_request, execution_version=2)
                 legacy = BillEnhancementCallCache.objects.filter(
-                    fingerprint=legacy_key, status='validated').first()
-                if legacy:
+                    fingerprint=legacy_key).first()
+                if legacy and legacy.status == 'dispatching':
+                    raise ProviderError('outcome_unknown', outcome_unknown=True)
+                if adapter == 'existing' and legacy and legacy.status == 'validated':
                     output = remap(legacy.result_json, {v: k for k, v in references.items()})
                     try:
                         _validate_response(output, request)

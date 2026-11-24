@@ -83,7 +83,7 @@ def test_empty_summary_is_not_saved_as_reusable_success(source_bill, enhancement
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize('crash', [False, True, 'legacy_cache'])
+@pytest.mark.parametrize('crash', [False, True, 'legacy_cache', 'legacy_crash'])
 def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
         source_bill, enhancement_owner, enhancement_settings, crash):
     install_reader(source_bill)
@@ -98,19 +98,29 @@ def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
             calls = 0
             def enhance_bill(self, **kwargs):
                 self.calls += 1
-                if crash is True:
+                if crash is True or crash == 'legacy_crash':
                     raise KeyboardInterrupt('simulate process death after dispatch')
                 return ProviderResult({'schema_version': '1.4', 'summary': [{'text': 'Requires a report.',
                     'source_quotes': [{'source_ref': p.source_snapshot[0]['source_ref'], 'quote_id': 'p0001'}]}], 'explanations': []}, ProviderUsage(10, 5, 15), 'response', 'test')
         real = Provider()
         wrapper = DurableReaderProvider(real, a, 'run', 2)
-        if crash is True:
+        if crash is True or crash == 'legacy_crash':
             with pytest.raises(KeyboardInterrupt):
                 wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
+            if crash == 'legacy_crash':
+                from apps.legislation.enhancements.reader_cache import call_identity
+                from apps.legislation.models import BillEnhancementCallCache
+                legacy_key, _ = call_identity(p, execution_version=2)
+                BillEnhancementCallCache.objects.update(fingerprint=legacy_key)
+                a.steps.all().delete()  # A later attempt has only the shared reservation.
             with pytest.raises(ProviderError) as error:
                 wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             assert error.value.outcome_unknown
-            assert a.steps.get().status == 'dispatching'
+            if crash == 'legacy_crash':
+                assert not a.steps.exists()
+                assert BillEnhancementCallCache.objects.get(pk=legacy_key).status == 'dispatching'
+            else:
+                assert a.steps.get().status == 'dispatching'
         else:
             first = wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             saved = a.steps.get()

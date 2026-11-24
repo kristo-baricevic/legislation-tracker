@@ -19,6 +19,31 @@ from rest_framework.test import APIClient
 
 
 @pytest.mark.django_db
+def test_cutover_requires_previous_reader_to_drain(enhancement_owner, enhancement_settings, source_bill):
+    from importlib import import_module
+    from types import SimpleNamespace
+    from django.apps import apps
+    from .test_reader_enhancement_pipeline import install_reader
+
+    require_drain = import_module("apps.legislation.migrations.0032_require_reader_queue_drain").require_reader_queue_drain
+    install_reader(source_bill)
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+    saved = attempt.enhancement
+    saved.source_manifest_json["execution_settings"]["reader_execution_version"] = 7
+    saved.save()
+    editor = SimpleNamespace(connection=connection)
+    for status in ("pending", "running"):
+        attempt.status = status
+        attempt.save()
+        with pytest.raises(RuntimeError, match="previous worker"):
+            require_drain(apps, editor)
+    attempt.status = "succeeded"
+    attempt.save()
+    require_drain(apps, editor)
+
+
+@pytest.mark.django_db
 def test_recreated_key_cannot_authorize_an_old_estimate(enhancement_owner, enhancement_settings, source_bill):
     with enhancement_settings:
         original = _valid_credential(enhancement_owner)
