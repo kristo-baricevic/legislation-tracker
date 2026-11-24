@@ -65,9 +65,12 @@ review), preserving complete source context. Only its children are requested;
 validated siblings and rejected parents are durably reused across deliveries.
 Subdivision stays within the confirmed call reserve and stops at indivisible units.
 
-OpenRouter receives an explicit reasoning effort only when one is requested.
-The legacy `none` setting leaves the model's reasoning default unchanged; it does
-not disable reasoning. OpenAI-compatible production calls use an async HTTP
+OpenRouter uses explicit `low` reasoning when the legacy `none` configuration
+is selected. Explicit low/medium/high settings are preserved. The effective
+effort appears in the estimate, request fingerprint, and attempt diagnostics;
+reasoning is not disabled. Prose regex checks run locally rather than in the
+provider's constrained decoder; citation ID and shape constraints remain.
+OpenAI-compatible production calls use an async HTTP
 client with a total elapsed-time deadline, in addition to transport timeouts.
 Deadline expiry cancels the HTTP operation and records an unknown outcome; it
 does not automatically resend a possibly processed request. Cancellation cannot
@@ -334,3 +337,17 @@ The optional `2.0-source-first` pipeline, per-call audit records, aggregate spen
 confirmation, partial retries and versioned reader are documented in
 [SOURCE_FIRST_ANALYSIS.md](SOURCE_FIRST_ANALYSIS.md). Its flag defaults off pending
 independent benchmark acceptance. Legacy generation and stored results remain supported.
+
+## Provider credentials and harness evaluation
+
+Apply the forward account and legislation migrations before starting the updated API and worker. Second-provider writes are gated by `LLM_MULTI_PROVIDER_WRITES_ENABLED` (default false). Set it to true after routing all settings and enhancement traffic to upgraded services. Existing encrypted keys, revisions and attempt references are preserved. Use the expanded schema for application rollback once an account has two providers.
+
+Settings retain one key and model per provider. A user's active selection authorizes new estimates. Confirmation binds the exact key identity and revision, selected model, adapter and capability fingerprint. An existing shared result can be returned without generating again.
+
+Refresh the OpenRouter catalog with `rtk proxy .venv/bin/python manage.py refresh_enhancement_models` at initial setup. Celery Beat refreshes it every six hours; entries expire after 24 hours. Choose a listed concrete free model for new requests when an older selection is `openrouter/free`. Pricing with missing metadata appears as unknown. The original direct adapters remain the defaults. `LLM_OPENROUTER_ADAPTER=langchain` selects the experimental OpenRouter transport for new confirmations; set it to `existing` for rollback. Preserve both implementations while prior attempts drain. There is no automatic free-to-paid fallback.
+
+Set `LLM_READER_OWNED_TOKEN_TARGET` only for a comparison arm. The 1000, 2000 and 4000 targets use conservative UTF-8-byte estimates when no matching tokenizer is available. Total envelopes still undergo capacity checks. Confirmation stores the chosen target on the attempt. In-flight reader work retains that target across worker deliveries when the flag changes. The planner records missing context and rejects work exceeding the legal-context budget before generation. Leave the default at zero outside an evaluation.
+
+Private transport diagnostics are off by default. A positive `LLM_DIAGNOSTIC_RETENTION_DAYS` enables visible response and sanitized request capture for reader steps. Access requires the owning account on the bill's diagnostic endpoint. Expired artifacts become inaccessible immediately and the recovery task prunes them in batches. Deleting the account cascades to its diagnostic artifacts.
+
+The comparison command defaults to offline inspection. A live invocation requires a recorded attempt/work unit, owner, concrete free model, an explicit token ceiling, two calls, a zero-dollar ceiling and a private evidence directory. The command records a reservation before each dispatch; preserve the directory across retries. A fresh directory represents a new experiment and requires separate authorization. Investigate unknown outcomes before authorizing any additional call.
