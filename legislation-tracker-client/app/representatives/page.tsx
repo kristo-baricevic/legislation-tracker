@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchInput } from "@/app/components/FilterControls";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SelectField, { type SelectOption } from "../components/SelectField";
@@ -72,12 +73,12 @@ function RepresentativesDirectory() {
   const trackingRequests = useRef(new Set<number>());
   const [trackingLegislatorIds, setTrackingLegislatorIds] = useState<Set<number>>(new Set());
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [currentCongress, setCurrentCongress] = useState<number | null>(null);
+  const [currentCongress, setCurrentCongress] = useState<number | null>();
 
   useEffect(() => {
     void getBillFilterOptions()
       .then((options) => setCurrentCongress(options.current_congress))
-      .catch(() => undefined);
+      .catch(() => setCurrentCongress(null));
   }, []);
 
   useEffect(() => {
@@ -137,7 +138,7 @@ function RepresentativesDirectory() {
     }, { rootMargin: "300px" });
     observer.observe(sentinel.current);
     return () => { active = false; observer.disconnect(); };
-  }, [page, loading, error, name, search, hasAccount]);
+  }, [page, loading, error, name, search, hasAccount, currentCongress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,6 +194,10 @@ function RepresentativesDirectory() {
     }
   }
 
+  if (currentCongress === undefined || (!page && loading && !error) || (hasAccount === null && !trackingError)) {
+    return <LoadingSpinner centered label="Loading representatives…" />;
+  }
+
   return (
     <div className="tracker-page min-h-[calc(100vh-4rem)] font-sans">
       <div className="w-full">
@@ -206,7 +211,7 @@ function RepresentativesDirectory() {
           <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="block min-w-0 text-sm text-muted">
               <span className="mb-1 block">Search by name</span>
-              <input type="search" value={name} maxLength={200} placeholder="Name"
+              <SearchInput value={name} maxLength={200} placeholder="Name"
                 className="h-10 w-full rounded border border-control bg-paper px-2 py-1 text-base text-ink"
                 onChange={event => setName(event.target.value)} />
             </label>
@@ -267,10 +272,6 @@ function RepresentativesDirectory() {
             <button type="button" className="ml-3 underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button>
           </div>
         )}
-
-        <div className="min-h-12">
-          <LoadingSpinner centered active={!error && ((!page && loading) || (hasAccount === null && !trackingError))} label="Loading representatives…" />
-        </div>
 
         {page && hasAccount !== null && (
           <>

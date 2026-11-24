@@ -6,6 +6,27 @@ import Committees from "@/app/committees/page";
 
 const committee = { id: 1, name: "Finance", chamber: "senate", parent_name: null, members: [{ role: "chair", rank: 1, representative: { id: 2, name: "Jane Doe", bioguide_id: "", image_url: "", party: "D", state: "NY" } }] };
 const bill = { id: 10, title: "Student support", bill_number: "S 10", jurisdiction: "federal", session: 119, topics: [], status: "Introduced", sponsor_id: null, last_action_at: null, card_summary: "Helps students." };
+it("waits for first-page bill cards before revealing the heading and filters", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.includes("introduced-bills")) {
+      await gate;
+      return Response.json({ results: [bill], next: null });
+    }
+    if (url.includes("/api/topics/")) return Response.json([{ id: 9, name: "Education", slug: "education" }]);
+    if (url.includes("/api/auth/")) return new Response(null, { status: 401 });
+    return Response.json({ congress: 119, results: [committee], next: null });
+  }));
+  render(<Committees />);
+  expect(await screen.findByRole("status", { name: "Loading committees" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Committees" })).toBeNull();
+  expect(screen.queryByRole("search")).toBeNull();
+  release();
+  expect(await screen.findByRole("link", { name: bill.title })).toBeVisible();
+  expect(screen.getByRole("search")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Committees" })).toBeVisible();
+});
 it("loads topic options and filters both committees and bill rows, then clears", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url:string) => {
     if(url.includes("/api/topics/"))return Response.json([{id:9,name:"Education",slug:"education"}]);
@@ -36,7 +57,7 @@ it("combines name, member and level filters and clears them", async () => {
 it("shows leadership, profile links and bill cards; filters by chamber", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("introduced-bills") ? { results: [bill], next: null, count: 1 } : { congress:119, results: url.includes("chamber=house") ? [] : [committee], next: null, count: 1 })));
   render(<Committees />);
-  expect(screen.getByRole("heading", { name: "Committees", level: 1 })).toHaveClass("tracker-heading", "text-ink");
+  expect(await screen.findByRole("heading", { name: "Committees", level: 1 })).toHaveClass("tracker-heading", "text-ink");
   expect(await screen.findByRole("heading", { name: "Finance" })).toBeVisible();
   expect(screen.getByText("Chair")).toBeVisible();
   expect(screen.getByRole("link", { name: "Jane Doe" })).toHaveAttribute("href", "/representatives/2?congress=119");

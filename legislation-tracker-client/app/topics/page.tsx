@@ -15,8 +15,9 @@ import {
 
 export default function TopicsPage() {
   const [topics, setTopics] = useState<TopicItem[]>([]);
-  const [followedIds, setFollowedIds] = useState<Set<number>>(new Set());
+  const [followedIds, setFollowedIds] = useState<Set<number> | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [topicsLoading, setTopicsLoading] = useState(true);
   const [topicsError, setTopicsError] = useState<string | null>(null);
   const [followedLoading, setFollowedLoading] = useState(false);
@@ -51,23 +52,26 @@ export default function TopicsPage() {
 
   useEffect(() => {
     let active = true;
-    void loadTopics();
-    void getSession()
+    const loadTracking = getSession()
       .then((session) => {
         if (!active) return;
         const authed = Boolean(session);
         setLoggedIn(authed);
-        if (authed) void loadFollowedTopics();
+        if (authed) return loadFollowedTopics();
       })
       .catch(() => {
         if (active) setLoggedIn(false);
       });
+    void Promise.all([loadTopics(), loadTracking]).then(() => {
+      if (active) setInitialLoading(false);
+    });
     return () => {
       active = false;
     };
   }, [loadFollowedTopics, loadTopics]);
 
   const handleToggle = async (topicId: number) => {
+    if (!followedIds) return;
     const finish = begin(topicId);
     if (!finish) return;
     setTrackingError(null);
@@ -91,6 +95,9 @@ export default function TopicsPage() {
       finish();
     }
   };
+
+  const trackingReady = loggedIn === false || (loggedIn === true && followedIds !== null);
+  if (initialLoading) return <LoadingSpinner centered label="Loading topics…" />;
 
   return (
     <div className="tracker-page">
@@ -125,8 +132,6 @@ export default function TopicsPage() {
         )}
       </div>
 
-      <LoadingSpinner centered active={topicsLoading && topics.length === 0} label="Loading topics…" />
-
       {topicsError && (
         <p
           role="alert"
@@ -154,22 +159,22 @@ export default function TopicsPage() {
         </p>
       )}
 
-      {!topicsLoading && !topicsError && topics.length === 0 && (
+      {trackingReady && !topicsLoading && !topicsError && topics.length === 0 && (
         <p className="font-sans text-sm text-muted">
           No policy topics are available.
         </p>
       )}
 
-      {topics.length > 0 && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {trackingReady && topics.length > 0 && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[...topics]
           .sort((a, b) => {
-            const aFollowed = followedIds.has(a.id) ? 0 : 1;
-            const bFollowed = followedIds.has(b.id) ? 0 : 1;
+            const aFollowed = followedIds?.has(a.id) ? 0 : 1;
+            const bFollowed = followedIds?.has(b.id) ? 0 : 1;
             if (aFollowed !== bFollowed) return aFollowed - bFollowed;
             return a.name.localeCompare(b.name);
           })
           .map((topic) => {
-            const isFollowed = followedIds.has(topic.id);
+            const isFollowed = followedIds?.has(topic.id);
             return (
               <div
                 key={topic.id}

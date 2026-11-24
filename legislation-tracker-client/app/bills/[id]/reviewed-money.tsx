@@ -1,5 +1,6 @@
 "use client";
 
+import { Dropdown } from "@/app/components/FilterControls";
 import { useState } from 'react';
 import { StableResults } from '@/app/components/StableResults';
 import type { ReaderEnhancementResult } from '@/lib/api';
@@ -18,12 +19,12 @@ export function ReviewedMoney({ result }: { result: ReaderEnhancementResult }) {
     <header className="border-b border-slate-200 bg-slate-50 p-4"><h2 className="text-xl font-semibold">Money in this bill</h2></header>
     <div className="p-4">
       {all.length > 0 && <div className="mb-4 flex flex-wrap gap-3">
-        <label className="text-sm font-semibold">Financial action<select className="ml-2 rounded border border-slate-300 bg-white px-3 py-2" value={action} onChange={e => { setAction(e.target.value); setPage(1); }}>
+        <label className="text-sm font-semibold">Financial action<Dropdown className="ml-2 rounded border border-slate-300 bg-white px-3 py-2" value={action} onChange={e => { setAction(e.target.value); setPage(1); }}>
           <option value="">All actions</option>{[...new Set(all.map(item => item.label))].sort().map(label => <option key={label}>{label}</option>)}
-        </select></label>
-        {years.length > 0 && <label className="text-sm font-semibold">Fiscal year<select className="ml-2 rounded border border-slate-300 bg-white px-3 py-2" value={year} onChange={e => { setYear(e.target.value); setPage(1); }}>
+        </Dropdown></label>
+        {years.length > 0 && <label className="text-sm font-semibold">Fiscal year<Dropdown className="ml-2 rounded border border-slate-300 bg-white px-3 py-2" value={year} onChange={e => { setYear(e.target.value); setPage(1); }}>
           <option value="">All years</option>{years.map(value => <option key={value}>{value}</option>)}
-        </select></label>}
+        </Dropdown></label>}
       </div>}
       <StableResults page={`${action}:${year}:${current}`} label="Enhanced financial provisions">
       {!rows.length && <p>{all.length === 0 ? "No financial provisions were found in this bill." : "No financial provisions match these filters."}</p>}

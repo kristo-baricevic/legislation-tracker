@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import Link from "next/link";
@@ -64,8 +65,8 @@ function FullVotes({ scope }: { scope: ProfileScope }) {
   }, [scope, page, retry, position, topic]);
   return <section className={styles.records}><h2>Voting record</h2>
     <div className={styles.voteFilters}>
-      <label>Vote<select value={position} onChange={event => { setPosition(event.target.value as typeof position); setPage(1); setLoading(true); }}><option value="">All votes</option><option value="yes">Yes</option><option value="no">No</option><option value="no_vote">No vote</option></select></label>
-      <label>Topic<select value={topic} onChange={event => { setTopic(event.target.value); setPage(1); setLoading(true); }}><option value="">All topics</option>{topics.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label>Vote<Dropdown value={position} onChange={event => { setPosition(event.target.value as typeof position); setPage(1); setLoading(true); }}><option value="">All votes</option><option value="yes">Yes</option><option value="no">No</option><option value="no_vote">No vote</option></Dropdown></label>
+      <label>Topic<Dropdown value={topic} onChange={event => { setTopic(event.target.value); setPage(1); setLoading(true); }}><option value="">All topics</option>{topics.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Dropdown></label>
       {topicsError && <button onClick={() => setTopicsRetry(value => value + 1)}>Retry topics</button>}
     </div>
     <div className={styles.voteStatus}>
@@ -309,7 +310,7 @@ function RepresentativeDetailContent() {
           {(["sponsored", "cosponsored"] as const).map(kind => {
             const title = kind === "sponsored" ? "Bills introduced" : "Bills cosponsored";
             return <section key={kind}>
-              <div className={styles.billHistoryToolbar}><h2>{title}</h2><select aria-label={`${title} topic`} value={selectedTopics[kind]} onChange={event => void filterBills(kind, event.target.value)}><option value="">All topics</option>{billTopics.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}</select></div>
+              <div className={styles.billHistoryToolbar}><h2>{title}</h2><Dropdown aria-label={`${title} topic`} value={selectedTopics[kind]} onChange={event => void filterBills(kind, event.target.value)}><option value="">All topics</option>{billTopics.map(topic => <option key={topic.id} value={topic.id}>{topic.name}</option>)}</Dropdown></div>
               <div className={styles.billHistoryResults} aria-busy={historyLoading[kind]} style={{ opacity: historyLoading[kind] || billErrors[kind] ? 0.55 : 1 }}><BillRows bills={kind === "sponsored" ? sponsored : activeCosponsoredBills.map(item => item.bill)} /></div>
               {billErrors[kind] && <p role="alert">Could not load bills. <button onClick={() => void filterBills(kind, selectedTopics[kind])}>Retry</button></p>}
               {historyHasMore[kind] && <div className={styles.pagination}><button disabled={historyLoading[kind] || billErrors[kind]} onClick={() => void loadMoreHistory(kind)}>Load more {kind} bills</button></div>}

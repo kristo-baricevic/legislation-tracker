@@ -111,7 +111,8 @@ describe("BillsPage", () => {
     let resolveSession!: (value: any) => void;
     vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
     render(<BillsPage />);
-    await screen.findByRole("combobox", {name: "Tracking"});
+    await screen.findByRole("status", {name: "Loading bills"});
+    expect(screen.queryByRole("combobox", {name: "Tracking"})).toBeNull();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
     expect(getBills).not.toHaveBeenCalled();
     resolveSession({authenticated: true, user: {email: "reader@example.test"}});
@@ -140,15 +141,15 @@ describe("BillsPage", () => {
     await userEvent.selectOptions(filter, "");
     await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ tracking: undefined })));
   });
-  it("keeps follow loading and retry labels compact and restores the follow action", async () => {
+  it("holds the catalog until tracking settles and restores follow actions after retry", async () => {
     vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
     let rejectTracking!: (reason: Error) => void;
     vi.mocked(getMyTracking).mockReturnValueOnce(new Promise((_, reject) => { rejectTracking = reject; }));
     vi.mocked(getBills).mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 42, jurisdiction: "federal", session: 119, bill_number: "HR 42", title: "School grants", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }] });
     render(<BillsPage />);
-    const loading = await screen.findByRole("button", { name: "Loading follow status" });
-    expect(loading).toBeDisabled();
-    expect(loading).toHaveTextContent(/^Follow$/);
+    await screen.findByRole("status", { name: "Loading bills" });
+    expect(screen.queryByRole("heading", { name: "Ingested Bills" })).toBeNull();
+    expect(screen.queryByRole("searchbox")).toBeNull();
     rejectTracking(new Error("Unavailable"));
     const retry = await screen.findByRole("button", { name: "Retry follow status" });
     expect(retry).toHaveTextContent(/^Retry$/);
@@ -302,6 +303,25 @@ describe("BillsPage", () => {
       expect(getBills).toHaveBeenCalledWith(expect.objectContaining({ topic_id: 7, session: undefined }));
     });
     expect(getBills).not.toHaveBeenCalledWith(expect.objectContaining({ topic_id: 7, session: 120 }));
+  });
+
+  it("reveals session 119 filters only after topic choices and saved searches settle", async () => {
+    const api = await import("@/lib/api");
+    searchState.query = "session=119";
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.test" } });
+    let resolveTopics!: (value: Awaited<ReturnType<typeof api.getTopics>>) => void;
+    let resolveSearches!: (value: Awaited<ReturnType<typeof api.getSavedBillSearches>>) => void;
+    vi.mocked(api.getTopics).mockReturnValueOnce(new Promise(resolve => { resolveTopics = resolve; }));
+    vi.mocked(api.getSavedBillSearches).mockReturnValueOnce(new Promise(resolve => { resolveSearches = resolve; }));
+    render(<BillsPage />);
+    await screen.findByRole("status", { name: "Loading bills" });
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    await act(async () => resolveTopics([]));
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    await act(async () => resolveSearches({ count: 0, results: [] }));
+    expect(screen.getByRole("searchbox")).toBeVisible();
+    expect(screen.getByLabelText("Session (Congress)")).toHaveValue("119");
+    expect(screen.getByRole("button", { name: "Save this search" })).toBeVisible();
   });
 
   it("initializes the Congress filter from API metadata", async () => {

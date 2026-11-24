@@ -1,4 +1,5 @@
 "use client";
+import { Dropdown, SearchInput } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import BillCard from "../components/BillCard";
 import DashboardBillReader from "../components/DashboardBillReader";
@@ -66,7 +67,8 @@ function BillsCatalog() {
   const [retryResults, setRetryResults] = useState(0);
 
   const [jurisdictions, setJurisdictions] = useState<string[]>([]);
-  const [topics, setTopics] = useState<TopicItem[]>([]);
+  const [topics, setTopics] = useState<TopicItem[] | null>(null);
+  const [catalogVisible, setCatalogVisible] = useState(false);
   const [filterMetaReady, setFilterMetaReady] = useState(false);
   const [filterMetaError, setFilterMetaError] = useState<string | null>(null);
   const [topicOptionsError, setTopicOptionsError] = useState<string | null>(null);
@@ -109,6 +111,9 @@ function BillsCatalog() {
   const [trackingRefresh, setTrackingRefresh] = useState(0);
   useEffect(() => subscribePersonalizedChanges(change => {
     if (change.kind === "session") {
+      setCatalogVisible(false);
+      setSavedSearches(null);
+      setSavedSearchError(null);
       setHasAccount(null);
       setTrackingReady(false);
       setTrackedBillIds([]);
@@ -126,7 +131,7 @@ function BillsCatalog() {
   }), [trackingFilter]);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [savedSearches, setSavedSearches] = useState<SavedBillSearch[]>([]);
+  const [savedSearches, setSavedSearches] = useState<SavedBillSearch[] | null>(null);
   const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
   const [isSaveSearchFormOpen, setIsSaveSearchFormOpen] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState("");
@@ -435,6 +440,17 @@ function BillsCatalog() {
     if (e.target.value.trim()) setTopicIdFilter("");
   };
 
+  // Reveal the catalog once per session. Later filter requests keep the controls
+  // mounted so typing, focus, and scroll position survive a results refresh.
+  const catalogReady = (filterMetaReady || Boolean(filterMetaError))
+    && (topics !== null || Boolean(topicOptionsError))
+    && hasAccount !== null
+    && (!hasAccount || ((trackingReady || Boolean(trackingError)) && (savedSearches !== null || Boolean(savedSearchError))))
+    && (page !== null || !loading);
+  useEffect(() => {
+    if (catalogReady) setCatalogVisible(true);
+  }, [catalogReady]);
+
   const hasNext = Boolean(page?.next);
   useEffect(() => {
     if (!endOfResults.current || !hasNext || loading || error || pageNum !== shownPage || committedResults.current.key !== resultsKey || queryInput.trim() !== queryFilter || typeof IntersectionObserver === "undefined") return;
@@ -447,9 +463,9 @@ function BillsCatalog() {
     }, {rootMargin: "300px"});
     observer.observe(endOfResults.current);
     return () => { active = false; observer.disconnect(); };
-  }, [hasNext, loading, error, pageNum, shownPage, resultsKey, queryInput, queryFilter]);
+  }, [catalogVisible, hasNext, loading, error, pageNum, shownPage, resultsKey, queryInput, queryFilter]);
   const selectedTopicId = topicIdFilter ? parseInt(topicIdFilter, 10) : NaN;
-  const selectedTopic = topics.find((topic) => topic.id === selectedTopicId);
+  const selectedTopic = topics?.find((topic) => topic.id === selectedTopicId);
   const selectedTopicIsTracked =
     !Number.isNaN(selectedTopicId) && trackedTopicIds.includes(selectedTopicId);
   const jurisdictionOptions: SelectOption[] = [
@@ -461,7 +477,7 @@ function BillsCatalog() {
   ];
   const topicOptions: SelectOption[] = [
     { value: "", label: "All" },
-    ...topics.map((topic) => ({
+    ...(topics ?? []).map((topic) => ({
       value: String(topic.id),
       label: topic.name,
     })),
@@ -539,7 +555,7 @@ function BillsCatalog() {
     setSavedSearchError(null);
     try {
       const saved = await createSavedBillSearch(name, currentSearchQuery());
-      setSavedSearches((items) => [saved, ...items]);
+      setSavedSearches((items) => [saved, ...(items ?? [])]);
       setSavedSearchName("");
       setIsSaveSearchFormOpen(false);
     } catch (cause) {
@@ -584,6 +600,8 @@ function BillsCatalog() {
     }
   }
 
+  if (!catalogVisible && !catalogReady) return <LoadingSpinner centered label="Loading bills…" />;
+
   return (
     <div className="tracker-page min-h-[calc(100vh-4rem)] font-sans">
       <div className="w-full">
@@ -597,12 +615,12 @@ function BillsCatalog() {
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Full-text search</span>
-              <input type="search" value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
+              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, analysis, or text" className="rounded border border-control bg-paper px-2 py-1 text-ink" />
             </label>
             <SelectField label="Sort" value={sort} options={[{ value: "recent_activity", label: "Recent activity" }, { value: "relevance", label: "Relevance" }]} onChange={(value) => { setPageNum(1); setSort(value === "relevance" && queryInput.trim() ? "relevance" : "recent_activity"); }} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill ID</span>
-              <input
+              <SearchInput
                 type="text"
                 inputMode="numeric"
                 value={idFilter}
@@ -613,7 +631,7 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill # (contains)</span>
-              <input
+              <SearchInput
                 type="text"
                 value={billNumberFilter}
                 onChange={resetPageAndSet(setBillNumberFilter)}
@@ -623,7 +641,7 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Session (Congress)</span>
-              <input
+              <SearchInput
                 type="text"
                 value={sessionFilter ?? ""}
                 onChange={(event) => {
@@ -636,7 +654,7 @@ function BillsCatalog() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Status</span>
-              <select
+              <Dropdown
                 value={statusFilter}
                 onChange={(event) => {
                   setPageNum(1);
@@ -649,21 +667,21 @@ function BillsCatalog() {
                   <option value={statusFilter}>Saved filter: {statusFilter}</option>
                 )}
                 {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+              </Dropdown>
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Tracking</span>
-              <select value={trackingFilter} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
+              <Dropdown value={trackingFilter} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
                 onChange={resetPageAndSet(setTrackingFilter)}
                 className="min-h-10 min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink">
                 <option value="">All bills</option>
                 <option value="tracked" disabled={!hasAccount}>Tracked</option>
                 <option value="untracked" disabled={!hasAccount}>Untracked</option>
-              </select>
+              </Dropdown>
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Sponsor</span>
-              <input
+              <SearchInput
                 type="text"
                 value={sponsorFilter}
                 onChange={resetPageAndSet(setSponsorFilter)}
@@ -683,7 +701,7 @@ function BillsCatalog() {
             />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Topic contains (fuzzy)</span>
-              <input
+              <SearchInput
                 type="text"
                 value={topicFuzzyFilter}
                 onChange={onTopicFuzzyChange}
@@ -703,7 +721,8 @@ function BillsCatalog() {
                   <button
                     type="button"
                     onClick={toggleSelectedTopicTracking}
-                    aria-disabled={trackingTopicId === selectedTopic.id}
+                    disabled={!trackingReady}
+                    aria-disabled={!trackingReady || trackingTopicId === selectedTopic.id}
                     className="cursor-pointer border border-control px-3 py-1.5 font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {selectedTopicIsTracked ? "Tracked topic" : "Track topic"}
@@ -771,8 +790,8 @@ function BillsCatalog() {
                     Save this search
                   </button>
                 )}
-                {savedSearches.length > 0 && <span className="text-muted">Saved searches:</span>}
-                {savedSearches.map((search) => <button key={search.id} type="button" onClick={() => void openSavedSearch(search)} className="cursor-pointer text-ink underline">{search.name}{search.new_result_count ? ` (${search.new_result_count} new)` : ""}</button>)}
+                {Boolean(savedSearches?.length) && <span className="text-muted">Saved searches:</span>}
+                {savedSearches?.map((search) => <button key={search.id} type="button" onClick={() => void openSavedSearch(search)} className="cursor-pointer text-ink underline">{search.name}{search.new_result_count ? ` (${search.new_result_count} new)` : ""}</button>)}
               </div>
               {savedSearchError && <p role="alert" className="mt-2 text-red-700 dark:text-red-300">{savedSearchError}</p>}
             </div>

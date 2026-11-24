@@ -120,15 +120,19 @@ body {
 
 h1, h2, h3 { font-family: var(--font-reading), Georgia, "Times New Roman", serif; }
 
-/* One control appearance for native selects and the shared listbox trigger.
-   Keep widths/margins local, but do not let page modules replace the chevron. */
-:root body :is(select:not([multiple]), button[data-dropdown]) {
-  appearance: none;
-  -webkit-appearance: none;
+:root body :is([data-search-input], [data-dropdown]) {
+  box-sizing: border-box;
   height: 2.5rem;
   min-height: 2.5rem;
-  border: 1px solid var(--control-line);
   border-radius: .5rem;
+}
+
+/* One control appearance for native selects and the shared listbox trigger.
+   Keep widths/margins local, but do not let page modules replace the chevron. */
+:root body [data-dropdown] {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--control-line);
   padding: .5rem 2.25rem .5rem .75rem;
   background-color: var(--paper);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23273b36' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -142,11 +146,11 @@ h1, h2, h3 { font-family: var(--font-reading), Georgia, "Times New Roman", serif
   line-height: 1.25rem;
   cursor: pointer;
 }
-:root body :is(select:not([multiple]), button[data-dropdown]):focus-visible {
+:root body [data-dropdown]:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-:root body :is(select:not([multiple]), button[data-dropdown]):disabled {
+:root body [data-dropdown]:disabled {
   opacity: .5;
   cursor: not-allowed;
 }

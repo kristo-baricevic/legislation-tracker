@@ -1,4 +1,5 @@
 "use client";
+import { SearchInput } from "./FilterControls";
 import React from "react";
 import { authGet, authPost } from "@/lib/api";
 import dashboard from "./ingestion-dashboard.module.css";
@@ -133,7 +134,7 @@ export default function IngestionTelemetryLive() {
       <div className={dashboard.header}>
         <p>Bring bills from Congress.gov into the tracker.</p>
         <div className={dashboard.actions}>
-          <label>Congress <input type="number" min="1" max="200" step="1" value={scope} disabled={busy} onChange={event => { epoch.current++; setScope(event.target.value); setTelemetry(null); setReadiness(null); setRequestKey(null); setAcceptedRunId(null); setNotice(""); }}/></label>
+          <label>Congress <SearchInput type="number" min="1" max="200" step="1" value={scope} disabled={busy} onChange={event => { epoch.current++; setScope(event.target.value); setTelemetry(null); setReadiness(null); setRequestKey(null); setAcceptedRunId(null); setNotice(""); }}/></label>
           <button type="button" className={dashboard.secondary} disabled={busy} aria-busy={busy} onClick={() => void refresh()}>Refresh telemetry</button>
           <button className={dashboard.primary} disabled={busy || !scope || !Number.isInteger(Number(scope)) || Number(scope) < 1 || Number(scope) > 200} onClick={() => void start()}>Start discovery and ingestion</button>
         </div>

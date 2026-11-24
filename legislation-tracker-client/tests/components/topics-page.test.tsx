@@ -55,6 +55,50 @@ describe("TopicsPage", () => {
     vi.mocked(untrackTopic).mockResolvedValue();
   });
 
+  it("first shows the topic cards with the resolved follow labels and order", async () => {
+    let resolveSession!: (session: Awaited<ReturnType<typeof getSession>>) => void;
+    let resolveTracked!: (rows: Awaited<ReturnType<typeof getTrackedTopics>>) => void;
+    vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
+    vi.mocked(getTrackedTopics).mockReturnValueOnce(new Promise(resolve => { resolveTracked = resolve; }));
+    render(<TopicsPage />);
+    await screen.findByRole("status", { name: "Loading topics" });
+    expect(screen.queryByRole("link", { name: "Health" })).toBeNull();
+    await act(async () => resolveSession({ authenticated: true, user: { email: "person@example.com" } }));
+    expect(screen.getByRole("status", { name: "Loading topics" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Policy Topics" })).toBeNull();
+    expect(screen.queryByText(/Browse all policy topics/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Refresh/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Follow" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Health" })).toBeNull();
+    await act(async () => resolveTracked([{ id: 1, topic: { id: 7, name: "Health", slug: "health" },
+      created_at: "2026-08-19T00:00:00Z" }]));
+    expect(screen.getByRole("heading", { name: "Policy Topics" })).toBeVisible();
+    expect(screen.getByText(/Browse all policy topics/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh topics" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh followed topics" })).toBeVisible();
+    expect(screen.getAllByRole("link").map(link => link.textContent)).toEqual(["Health", "Education"]);
+    expect(screen.getByRole("button", { name: "Following" })).toBeVisible();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("shows public topics for a guest without fetching followed topics", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce(null);
+    render(<TopicsPage />);
+    expect(await screen.findByRole("link", { name: "Health" })).toBeVisible();
+    expect(getTrackedTopics).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Follow" })).toBeNull();
+  });
+
+  it("retries an initial tracking failure without showing guessed labels", async () => {
+    vi.mocked(getTrackedTopics).mockRejectedValueOnce(new Error("Unavailable"));
+    render(<TopicsPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load followed topics");
+    expect(screen.queryByRole("link", { name: "Health" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Retry followed topics" }));
+    expect(await screen.findByRole("button", { name: "Following" })).toBeVisible();
+    expect(getTopics).toHaveBeenCalledTimes(1);
+  });
+
   it("updates the followed state after tracking an untracked topic", async () => {
     const user = userEvent.setup();
     render(<TopicsPage />);
