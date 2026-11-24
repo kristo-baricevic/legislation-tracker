@@ -4,7 +4,15 @@ import { beforeEach, expect, it, vi } from "vitest";
 import BillDeck from "@/app/components/BillDeck";
 import Home from "@/app/page";
 import { authGet, authPost, getBill, getMyTracking, getSession, getBillFilterOptions, getAllCurrentRepresentatives } from "@/lib/api";
-vi.mock("@/app/components/RecommendationsPreview", () => ({ default: () => <h2>Recommendation section</h2> }));
+import { useDashboardLoading } from "@/app/components/DashboardLoading";
+
+const recommendationRow = vi.hoisted(() => ({ loading: false }));
+vi.mock("@/app/components/RecommendationsPreview", () => ({
+  default: function RecommendationsPreview() {
+    useDashboardLoading("recommendations", recommendationRow.loading);
+    return <h2>Recommendation section</h2>;
+  },
+}));
 
 it("retains followed cards after a same-session refresh failure", async () => {
   const bill = { id: 463, title: "Saved bill", bill_number: "HR 9300", session: 119, jurisdiction: "federal", status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] };
@@ -46,6 +54,7 @@ beforeEach(() => {
   // Each case starts a separate signed-in session.
   window.dispatchEvent(new StorageEvent("storage", { key: "legislation-tracker-session-epoch" }));
   vi.clearAllMocks();
+  recommendationRow.loading = false;
   localStorage.clear();
   localStorage.setItem("legislation-tracker-ingestion-telemetry", "true");
   vi.mocked(getBillFilterOptions).mockResolvedValue({ jurisdictions: ["federal"], current_congress: 119 });
@@ -106,6 +115,18 @@ it("hides ingestion while session is loading and when signed out", async () => {
   expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
   await screen.findByRole("heading", { name: "Start your collection" });
   expect(screen.queryByRole("heading", { name: "Legislation ingestion" })).not.toBeInTheDocument();
+});
+
+it("reveals ingestion with the last recommendation row even when the admin session is ready", async () => {
+  vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "admin@example.com", is_superuser: true } });
+  recommendationRow.loading = true;
+  const { rerender } = render(<BillDeck />);
+  const ingestion = await screen.findByText("Legislation ingestion");
+  expect(ingestion).not.toBeVisible();
+  recommendationRow.loading = false;
+  rerender(<BillDeck />);
+  expect(screen.getByRole("heading", { name: "Recommendation section" })).toBeVisible();
+  expect(ingestion).toBeVisible();
 });
 
 it("shows real telemetry only to superusers", async () => {

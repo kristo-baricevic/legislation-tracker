@@ -85,8 +85,8 @@ export default function BillDeck() {
     </section>}
     {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}
     <RecommendationsPreview filters={{q: recommendationQuery, topic_id: topic, sponsor, state, status, sort}} renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
-    </DashboardLoading>
     {ready && signedIn && isSuperuser && <IngestionTelemetryLive />}
+    </DashboardLoading>
     {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}
   </div>;
 }
