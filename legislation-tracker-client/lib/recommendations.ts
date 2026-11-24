@@ -63,6 +63,7 @@ export interface RepresentativeRecommendation {
   reasons: RepresentativeRecommendationReason[]; topic_activity_evidence: RepresentativeTopicActivity;
 }
 export interface RepresentativeRecommendationsResponse {
+  has_more?: boolean;
   algorithm: string; policy_version: string | null; generated_at: string; activity_as_of: string | null;
   count: number; empty_reason: RecommendationEmptyReason | null; unsupported_follow_types: string[];
   coverage: { status: "ingested_subset"; service_exposure: "unknown"; bill_families: "unavailable"; votes_used_for_ranking: false };
@@ -79,8 +80,10 @@ export function getBillRecommendations(params: { cursor?: string; pageSize?: num
   const query = search.toString();
   return authGet(`/api/tracking/recommendations/${query ? `?${query}` : ""}`, options);
 }
-export function getRepresentativeRecommendations(options: PersonalizedRequestOptions = {}, filters: RecommendationFilters = {}): Promise<RepresentativeRecommendationsResponse> {
-  const query = recommendationFilterQuery(filters);
+export function getRepresentativeRecommendations(options: PersonalizedRequestOptions = {}, filters: RecommendationFilters = {}, shown: number[] = []): Promise<RepresentativeRecommendationsResponse> {
+  const search = new URLSearchParams(recommendationFilterQuery(filters));
+  if (shown.length) search.set("shown", shown.join(","));
+  const query = search.toString();
   return authGet(`/api/tracking/representative-recommendations/${query ? `?${query}` : ""}`, options);
 }
 export async function getRepresentativeTopicActivity(id: number, options: { signal?: AbortSignal } = {}): Promise<RepresentativeTopicActivity> {

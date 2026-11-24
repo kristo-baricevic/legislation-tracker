@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { authPost, isPersonalizedScopeCurrent, type PersonalizedScope } from "@/lib/api";
-import { forgetDashboardValue } from "@/lib/dashboard-cache";
 import styles from "./recommendations.module.css";
 
-export default function DismissRecommendation({ kind, id, name, scope }: {
-  kind: "bill" | "representative"; id: number; name: string; scope: PersonalizedScope | null;
+export default function DismissRecommendation({ kind, id, name, scope, onDismiss }: {
+  kind: "bill" | "representative"; id: number; name: string; scope: PersonalizedScope | null; onDismiss: (scope: PersonalizedScope, id: number) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -18,9 +17,7 @@ export default function DismissRecommendation({ kind, id, name, scope }: {
       const endpoint = kind === "bill" ? "recommendations" : "representative-recommendations";
       await authPost(`/api/tracking/${endpoint}/${id}/dismiss/`, undefined, { scope });
       if (!isPersonalizedScopeCurrent(scope)) return;
-      const key = kind === "bill" ? "bill-recommendations" : "rep-recommendations";
-      forgetDashboardValue(key);
-      window.dispatchEvent(new Event(`dismissed-${key}`));
+      onDismiss(scope, id);
     } catch {
       if (isPersonalizedScopeCurrent(scope)) setFailed(true);
     } finally {

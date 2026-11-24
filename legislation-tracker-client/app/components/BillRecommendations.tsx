@@ -66,9 +66,10 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
   React.useEffect(() => () => { onDismissBill?.(); }, [onDismissBill]);
   const { pending, begin } = usePendingCards();
   const [error, setError] = React.useState<{ text: string; generation: string } | null>(null);
+  const [completedPage, setCompletedPage] = React.useState<string | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
   const generation = state.scope ? `${state.scope.sessionGeneration}:${state.scope.interestGeneration}:${filterQuery}` : "";
-  const dashboardLoading = useDashboardLoading("bills", state.loading || (paging !== null && paging === generation));
+  const dashboardLoading = useDashboardLoading("bills", state.loading);
   async function follow(id: number) {
     const scope = state.scope ?? capturePersonalizedScope();
     if (!isPersonalizedScopeCurrent(scope)) return;
@@ -92,25 +93,37 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
     restoreFocus.current = true;
     setPaging(generation); setError(null);
     try {
-      const page = await getBillRecommendations({ cursor, filters }, { ...state.requestOptions(), scope });
+      const options = { ...state.requestOptions(), scope };
+      let page;
+      try {
+        page = await getBillRecommendations({ cursor, filters }, options);
+      } catch (error) {
+        if (!(error instanceof ApiError) || ![409, 410].includes(error.status)) throw error;
+        const shown = new Set(state.data?.results.map(item => item.bill.id));
+        page = await getBillRecommendations({ filters }, options);
+        while (page.next_cursor && page.results.every(item => shown.has(item.bill.id))) {
+          page = await getBillRecommendations({ cursor: page.next_cursor, filters }, options);
+        }
+      }
+      if (isPersonalizedScopeCurrent(scope)) setCompletedPage(page.next_cursor ? null : generation);
       state.update(scope, previous => ({ ...page, results: [...new Map([...previous.results, ...page.results].map(item => [item.bill.id, item])).values()] }));
     } catch (error) {
       if (isPersonalizedScopeCurrent(scope)) {
-        if (error instanceof ApiError && [409, 410].includes(error.status)) state.retry();
-        else setError({ text: "More recommendations could not be loaded. Try again.", generation });
+        setError({ text: "More recommendations could not be loaded. Try again.", generation });
       }
     } finally { if (isPersonalizedScopeCurrent(scope)) { restoreFocus.current = false; setPaging(null); } }
   }
+  const visible = state.data?.results.filter(item => !state.dismissed?.has(item.bill.id)) ?? [];
   return <section ref={section} className={styles.section} aria-labelledby="bill-recommendations-title">
     <div className={styles.heading}><h2 ref={heading} tabIndex={-1} id="bill-recommendations-title">Bills to discover</h2><button className={styles.action} aria-disabled={state.loading} aria-busy={state.loading} onClick={state.retry}>Refresh bill recommendations</button></div>
     {!dashboardLoading && <LoadingSpinner reserveSpace active={state.loading} label="Loading recommendations…" />}
     {state.data && state.error && <p className="text-sm text-red-700" role="alert">{state.error}</p>}
-    {state.data?.results.length ? <>
-      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} data-enhanced={currentBill.enhancement_status === "succeeded"} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
+    {visible.length && state.data ? <>
+      <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{visible.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} data-enhanced={currentBill.enhancement_status === "succeeded"} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
         <div className={styles.bar} aria-hidden="true" /><div className={styles.body}>
           <div className={styles.cardHeader}>
             <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title || "Untitled bill"}</a></h3>
-            <DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} />
+            <DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} onDismiss={state.dismiss} />
           </div>
           <div className={styles.identifiers}>
             <span>{item.bill.bill_number}</span>
@@ -126,9 +139,8 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
         </div>
       </article>}</DashboardBillReader>)}</div>
       {Boolean(state.data.unsupported_follow_types.length) && <p className={styles.note}>The General legislation fallback topic is excluded because it does not describe a specific subject.</p>}
-      {state.data.next_cursor && <button className={styles.action} disabled={paging === generation} onClick={() => void more()}>More recommendations</button>}
-    </> : <RecommendationState {...state} empty={state.data?.empty_reason} />}
-    {!dashboardLoading && <LoadingSpinner active={paging === generation} label="Loading more recommendations…" />}
+    </> : <RecommendationState {...state} empty={state.data?.empty_reason ?? "no_matches"} />}
+    {state.data?.next_cursor ? <button className={styles.action} disabled={paging === generation} aria-busy={paging === generation} onClick={() => void more()}>{paging === generation ? "Loading more…" : "More recommendations"}</button> : state.data && completedPage === generation ? <button className={styles.action} disabled>All recommendations shown</button> : null}
     {error && error.generation === generation && error.text && <p role="alert">{error.text}</p>}
   </section>;
 }

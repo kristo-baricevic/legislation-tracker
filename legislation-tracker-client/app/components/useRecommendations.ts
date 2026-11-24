@@ -10,12 +10,15 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     return { data: null, dataKey: null, scope: null, loading: true, signedIn: false, error: "" };
   });
   const [revision, reload] = React.useReducer(value => value + 1, 0);
-  const collection = key.split(":")[0];
-  React.useEffect(() => {
-    const event = `dismissed-${collection}`;
-    window.addEventListener(event, reload);
-    return () => window.removeEventListener(event, reload);
-  }, [collection]);
+  const [dismissals, setDismissals] = React.useState<{ session: number; ids: Set<number> } | null>(null);
+  function dismiss(scope: PersonalizedScope, id: number) {
+    if (!isPersonalizedScopeCurrent(scope)) return;
+    setDismissals(previous => ({
+      session: scope.sessionGeneration,
+      ids: new Set(previous?.session === scope.sessionGeneration ? previous.ids : []).add(id),
+    }));
+    forgetDashboardValue(key.split(":")[0]);
+  }
   const controller = React.useRef<AbortController | null>(null);
   const current = React.useRef(state);
   const currentKey = React.useRef(key);
@@ -71,5 +74,5 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
   const update = (scope: PersonalizedScope, transform: (data: T) => T) => {
     if (currentKey.current === key && isPersonalizedScopeCurrent(scope)) setState(previous => previous.dataKey === key && previous.data && previous.scope === scope ? { ...previous, data: transform(previous.data) } : previous);
   };
-  return { ...state, data: state.dataKey === key ? state.data : null, loading: state.loading || settledKey.current !== key, retry, update, requestOptions: () => ({ scope: state.scope ?? undefined, signal: controller.current?.signal }) };
+  return { ...state, dismiss, dismissed: dismissals && dismissals.session === state.scope?.sessionGeneration ? dismissals.ids : null, data: state.dataKey === key ? state.data : null, loading: state.loading || settledKey.current !== key, retry, update, requestOptions: () => ({ scope: state.scope ?? undefined, signal: controller.current?.signal }) };
 }

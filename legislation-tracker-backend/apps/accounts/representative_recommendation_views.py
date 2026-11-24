@@ -3,6 +3,7 @@
 from fractions import Fraction
 import hashlib
 import json
+import re
 
 from django.utils import timezone
 from rest_framework.response import Response
@@ -21,6 +22,7 @@ from .recommendation_support import (
     activity_revision,
     PrivateRecommendationView,
     RecommendationThrottle,
+    RecommendationError,
     read_snapshot,
     strict_parameters,
     cache_call,
@@ -162,7 +164,7 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismisse
         )
     candidates.sort(key=lambda item: item["tie"])
     selected, redundancy = [], {}
-    while candidates and len(selected) < 5:
+    while candidates and len(selected) < 6:
         chosen = min(
             candidates,
             key=lambda item: (
@@ -216,7 +218,11 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         return {**data, "results": [{**item, "card": cards.get(item["representative_id"])} for item in results]}
 
     def get(self, request):
-        strict_parameters(request.query_params, FILTER_NAMES)
+        strict_parameters(request.query_params, FILTER_NAMES | {"shown"})
+        shown = request.query_params.get("shown", "")
+        if shown and (len(shown) > 8000 or not re.fullmatch(r"[1-9][0-9]{0,9}(,[1-9][0-9]{0,9})*", shown)):
+            raise RecommendationError("invalid_recommendation_filter", 400)
+        shown_ids = {int(value) for value in shown.split(",") if value}
         filters = read_filters(request.query_params)
         filters.pop("sort", None)  # Bill sort does not reorder people.
         with read_snapshot():
@@ -237,7 +243,9 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             if item["topic__slug"] != FALLBACK_TOPIC
         }
         fingerprint = hashlib.sha256(json.dumps([topics, reps, sorted(dismissed), activity_revision(), activity_day().isoformat()], sort_keys=True).encode()).hexdigest()
-        key = f"representative-recommendations:v2:user:{request.user.pk}" + (":" + filter_key(filters) if filters else "")
+        key = f"representative-recommendations:v3:user:{request.user.pk}" + (":" + filter_key(filters) if filters else "")
+        if shown_ids:
+            key += ":" + filter_key(sorted(shown_ids))
         cached = cache_call("get", key)
         if cached and cached["fingerprint"] == fingerprint:
             return Response(self.with_cards(cached["data"]))
@@ -258,16 +266,17 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
                 matching = filter_bills(Bill.objects.all(), filters).order_by()
                 eligible = set(matching.values_list("sponsor_id", flat=True))
                 eligible.update(BillCosponsor.objects.filter(bill__in=matching, withdrawn_at__isnull=True).values_list("representative_id", flat=True))
-                results, empty = ranking(catalog, followed_topics, reps, eligible, dismissed)
+                results, empty = ranking(catalog, followed_topics, reps, eligible, dismissed | shown_ids)
             else:
-                results, empty = ranking(catalog, followed_topics, reps, dismissed=dismissed)
+                results, empty = ranking(catalog, followed_topics, reps, dismissed=dismissed | shown_ids)
         response = Response(
             {
                 "algorithm": "explicit-representative-topics-mmr-v1",
                 "policy_version": catalog["policy_version"] if catalog else None,
                 "generated_at": timezone.now().isoformat(),
                 "activity_as_of": catalog["captured_at"] if catalog else None,
-                "count": len(results),
+                "count": min(len(results), 5),
+                "has_more": len(results) > 5,
                 "empty_reason": empty,
                 "unsupported_follow_types": unsupported,
                 "coverage": {
@@ -276,7 +285,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
                     "bill_families": "unavailable",
                     "votes_used_for_ranking": False,
                 },
-                "results": results,
+                "results": results[:5],
             }
         )
         cache_call("set", key, bounded_json({"fingerprint": fingerprint, "data": response.data}, 3 * 1024 * 1024), timeout=300)

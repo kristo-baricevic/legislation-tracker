@@ -114,6 +114,10 @@ def test_top_five_is_deterministic_unique_and_isolated():
     first = api.get(PATH).json()["results"]
     second = api.get(PATH).json()["results"]
     assert [item["representative_id"] for item in first] == [rep.id for rep in reps[:5]]
+    assert api.get(PATH).json()["has_more"] is True
+    more = api.get(PATH, {"shown": ",".join(str(item["representative_id"]) for item in first)}).json()
+    assert [item["representative_id"] for item in more["results"]] == [rep.id for rep in reps[5:]]
+    assert more["has_more"] is False
     assert first == second
     assert len({item["representative_id"] for item in first}) == 5
     assert other_api.get(PATH).json()["results"] == []

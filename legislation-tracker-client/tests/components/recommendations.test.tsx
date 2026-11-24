@@ -68,7 +68,7 @@ describe("recommendation rows", () => {
     expect(second).toHaveTextContent("Unfollow");
   });
 
-  it("removes a dismissed bill after the saved rankings reload", async () => {
+  it("removes only the dismissed bill without reloading recommendations", async () => {
     let dismissed = false;
     mockRequests(() => Response.json(dismissed ? empty : page));
     const fetchRequest = fetch;
@@ -83,6 +83,7 @@ describe("recommendation rows", () => {
     fireEvent.click(await screen.findByRole("button", {name: "Dismiss HR 1 from recommendations"}));
     await waitFor(() => expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument());
     expect(dismissed).toBe(true);
+    expect(vi.mocked(fetchRequest).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(1);
   });
   it("restarts an in-flight filter request after interests change", async () => {
     mockRequests(() => Response.json(page));
@@ -247,6 +248,20 @@ describe("recommendation rows", () => {
     fails = false; fireEvent.click(screen.getByRole("button", { name: "Retry recommendations" }));
     expect(await screen.findByText(/Follow a topic or representative to start/)).toBeVisible();
   });
+  it("appends more representatives while the existing cards stay mounted", async () => {
+    const rep = (id: number) => ({ representative_id: id, name: `Member ${id}`, bioguide_id: "", reasons: [], topic_activity_evidence: activity });
+    let finish!: (r: Response) => void;
+    let requests = 0;
+    mockRequests(() => ++requests === 1 ? Response.json({ ...empty, has_more: true, results: [rep(1)] }) : new Promise<Response>(resolve => { finish = resolve; }));
+    render(<RepresentativeRecommendations />);
+    const first = await screen.findByRole("link", { name: "Member 1" });
+    fireEvent.click(await screen.findByRole("button", {name: "More representative recommendations"}));
+    expect(first).toBeVisible();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("shown=1"))).toBe(true);
+    await act(async () => finish(Response.json({ ...empty, has_more: false, results: [rep(2)] })));
+    expect(await screen.findByRole("link", { name: "Member 2" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Member 1" })).toBe(first);
+  });
   it("deduplicates continuation pages and restarts expired cursors", async () => {
     let count = 0;
     mockRequests(() => {
@@ -261,7 +276,8 @@ describe("recommendation rows", () => {
     expect(await screen.findByRole("link", { name: "Second proposal" })).toBeVisible();
     expect(screen.getAllByRole("link", { name: bill.title })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "More recommendations" }));
-    expect(await screen.findByText(/Follow a topic or representative to start/)).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "More recommendations" })).toBeNull());
+    expect(screen.getByRole("link", { name: "Second proposal" })).toBeVisible();
   });
   it("keeps followed recommendations mounted and focused but clears them on session loss", async () => {
     let calls = 0;
