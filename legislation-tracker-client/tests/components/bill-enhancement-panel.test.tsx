@@ -193,7 +193,12 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue({ ...estimate, rerun_after: 9 });
     vi.mocked(createBillEnhancement).mockResolvedValue(enhancementPayload({ status: "pending" }));
     render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
-    await userEvent.click(await screen.findByRole("button", { name: "Re-run enhancement" }));
+    const rerun = await screen.findByRole("button", { name: "Re-run enhancement" });
+    await userEvent.click(screen.getByRole("button", { name: "Original" }));
+    expect(screen.getByRole("button", { name: "Original" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Enhanced" }));
+    expect(screen.getByRole("button", { name: "Enhanced" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(rerun);
     expect(getBillEnhancementEstimate).toHaveBeenCalledWith(10, true);
     expect(createBillEnhancement).not.toHaveBeenCalled();
     await userEvent.click(await screen.findByRole("button", { name: "Confirm and enhance" }));
@@ -232,13 +237,14 @@ describe("BillEnhancementPanel", () => {
     expect(within(metadata).queryByRole("button", { name: "Enhance current version" })).not.toBeInTheDocument();
   });
 
-  it("shows Enhance instead of the selector before success and confirms next to that control", async () => {
+  it("keeps the reading switch beside Enhance before the first success", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     render(<AiGlossaryProvider><div id="reading-controls" data-testid="top-controls" /><BillEnhancementPanel billId={10} jurisdiction="federal" controlsTargetId="reading-controls" /></AiGlossaryProvider>);
     const top = screen.getByTestId("top-controls");
     await userEvent.click(await within(top).findByRole("button", { name: "Enhance" }));
-    expect(within(top).queryByRole("button", { name: "Original" })).not.toBeInTheDocument();
+    expect(within(top).getByRole("button", { name: "Original" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(top).getByRole("button", { name: "Enhanced" })).toBeDisabled();
     const dialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     expect(dialog.tagName).toBe("DIALOG");
     expect(top).not.toContainElement(dialog);

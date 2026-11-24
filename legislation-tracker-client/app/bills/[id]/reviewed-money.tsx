@@ -17,14 +17,14 @@ export function ReviewedMoney({ result }: { result: ReaderEnhancementResult }) {
   return <section className="mb-6 rounded-lg border border-slate-300 bg-white shadow-sm">
     <header className="border-b border-slate-200 bg-slate-50 p-4"><h2 className="text-xl font-semibold">Money in this bill</h2></header>
     <div className="p-4">
-      <div className="mb-4 flex flex-wrap gap-3">
+      {all.length > 0 && <div className="mb-4 flex flex-wrap gap-3">
         <label className="text-sm font-semibold">Financial action<select className="ml-2 rounded border border-slate-300 bg-white px-3 py-2" value={action} onChange={e => { setAction(e.target.value); setPage(1); }}>
           <option value="">All actions</option>{[...new Set(all.map(item => item.label))].sort().map(label => <option key={label}>{label}</option>)}
         </select></label>
         {years.length > 0 && <label className="text-sm font-semibold">Fiscal year<select className="ml-2 rounded border border-slate-300 bg-white px-3 py-2" value={year} onChange={e => { setYear(e.target.value); setPage(1); }}>
           <option value="">All years</option>{years.map(value => <option key={value}>{value}</option>)}
         </select></label>}
-      </div>
+      </div>}
       <StableResults page={`${action}:${year}:${current}`} label="Enhanced financial provisions">
       {!rows.length && <p>{all.length === 0 ? "No financial provisions were found in this bill." : "No financial provisions match these filters."}</p>}
       <ol className="divide-y divide-slate-200">{rows.slice((current - 1) * 10, current * 10).map((item, index) => <li key={`${current}-${index}`} className="grid gap-3 py-5 md:grid-cols-[12rem_minmax(0,1fr)]">
@@ -32,10 +32,10 @@ export function ReviewedMoney({ result }: { result: ReaderEnhancementResult }) {
         <p className="leading-7">{item.text}<Evidence number={(current - 1) * 10 + index + 1} sources={item.cited_sources} documentId={result.identity.document_id} /></p>
       </li>)}</ol>
       </StableResults>
-      <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
+      {rows.length > 0 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
         <button disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
         <span>Page {current} of {pages}</span><button disabled={current === pages} onClick={() => setPage(current + 1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
-      </nav>
+      </nav>}
     </div>
   </section>;
 }

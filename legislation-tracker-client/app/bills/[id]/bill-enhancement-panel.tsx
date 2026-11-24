@@ -490,13 +490,15 @@ export default function BillEnhancementPanel({
   return (
     <>
       <ControlsSlot targetId={controlsTargetId}>
-        {hasSavedReader && <ReaderModeSwitch />}
-        {(!hasSavedReader || (!isActive && (canPrepareEstimate || canRerun))) && <button type="button"
-          aria-busy={preparing} disabled={preparing || Boolean(isActive) || !(canPrepareEstimate || canRerun)}
-          onClick={() => void prepareEnhancement(canRerun)}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : canRerun ? "Re-run enhancement" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
-        </button>}
+        <div className="flex flex-wrap items-center gap-3">
+          <ReaderModeSwitch />
+          {(!hasSavedReader || (!isActive && (canPrepareEstimate || canRerun))) && <button type="button"
+            aria-busy={preparing} disabled={preparing || Boolean(isActive) || !(canPrepareEstimate || canRerun)}
+            onClick={() => void prepareEnhancement(canRerun)}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
+            {preparing ? "Preparing AI estimate…" : canRerun ? "Re-run enhancement" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
+          </button>}
+        </div>
         {!blockedByReconciliation && failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
         {blockedByReconciliation && (
           <p role="status" className="mt-1 text-sm"><EnhancementUnavailable reason="reconciliation_required" /></p>
