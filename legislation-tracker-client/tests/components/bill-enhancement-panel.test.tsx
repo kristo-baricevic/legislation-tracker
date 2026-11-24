@@ -650,6 +650,31 @@ describe("BillEnhancementPanel", () => {
     expect(screen.queryByRole("button", { name: "Enhancing…" })).not.toBeInTheDocument();
   });
 
+  it.each(["reload", "poll"])("explains a blocked reader retry on %s", async path => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getSession).mockResolvedValue({authenticated: true, user: {email: "reader@example.com"}});
+      const blocked = enhancementPayload({status: "outcome_unknown", output_schema_version: "1.4", result: null,
+        latest_attempt: {id: 12, sequence: 1, status: "outcome_unknown", retry_allowed: false,
+          failure_category: "outcome_unknown", credential_revision: 2, estimated_input_tokens: 600,
+          usage: {input_tokens: null, output_tokens: null, total_tokens: null}, resolved_model: null,
+          started_at: null, completed_at: null, created_at: "2026-11-24T12:00:00Z"}});
+      vi.mocked(getLatestBillEnhancement).mockResolvedValue(path === "reload" ? blocked :
+        enhancementPayload({status: "running", result: null, poll_after_seconds: 1}));
+      vi.mocked(getBillEnhancement).mockResolvedValue(blocked);
+      render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
+      await act(async () => {});
+      if (path === "poll") {
+        expect(screen.getByRole("button", {name: "Enhancing…"})).toBeDisabled();
+        await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      }
+      expect(screen.getByRole("status")).toHaveTextContent(/may have been charged.*reconciled before retrying/i);
+      expect(screen.getByRole("button", {name: "Enhance"})).toBeDisabled();
+      expect(getBillEnhancementEstimate).not.toHaveBeenCalled();
+      expect(retryBillEnhancement).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("leaves Enhancing state when polling returns a failed validation and offers an explicit retry", async () => {
     vi.useFakeTimers();
     try {

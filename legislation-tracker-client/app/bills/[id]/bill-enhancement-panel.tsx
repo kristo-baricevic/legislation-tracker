@@ -480,6 +480,7 @@ export default function BillEnhancementPanel({
   const retryable = Boolean(enhancement?.latest_attempt?.retry_allowed);
   const isActive = enhancement && ["pending", "running"].includes(enhancement.status);
   const canStartNewIdentity = Boolean(enhancement?.stale || (enhancement?.shared && ["failed", "refused", "outcome_unknown"].includes(enhancement.status)));
+  const blockedByReconciliation = !canStartNewIdentity && enhancement?.status === "outcome_unknown" && enhancement.latest_attempt?.retry_allowed === false;
   const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
     : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
   const hasSavedReader = Boolean(activeReader?.result);
@@ -493,10 +494,12 @@ export default function BillEnhancementPanel({
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
           {preparing ? "Preparing AI estimate…" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
         </button>}
-        {failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
-      {estimate && !estimate.can_enhance && (
-        <EnhancementUnavailable reason={estimate.unavailable_reason} />
-      )}
+        {!blockedByReconciliation && failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
+        {blockedByReconciliation ? (
+          <p role="status" className="mt-1 text-sm"><EnhancementUnavailable reason="reconciliation_required" /></p>
+        ) : estimate && !estimate.can_enhance && (
+          <EnhancementUnavailable reason={estimate.unavailable_reason} />
+        )}
       {hasSavedReader && enhancement && !isActive && (retryable || canStartNewIdentity) && (
         <button type="button" aria-busy={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
           {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : enhancement?.status === "paused" ? "Continue" : "Retry AI enhancement"}

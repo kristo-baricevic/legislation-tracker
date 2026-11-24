@@ -25,10 +25,19 @@ def _usage(response) -> ProviderUsage:
         return ProviderUsage()
     thoughts = _value(usage, "thoughts_token_count")
     visible = _value(usage, "candidates_token_count")
+    prompt = _value(usage, "prompt_token_count")
+    total = _value(usage, "total_token_count")
+    output = None if visible is None else visible + (thoughts or 0)
+    if visible is None and prompt is not None and total is not None:
+        # Gemini includes tool inputs in the total and cached inputs in the prompt.
+        tool_input = _value(usage, "tool_use_prompt_token_count") or 0
+        generated = total - prompt - tool_input
+        if min(prompt, tool_input, thoughts or 0) >= 0 and generated >= (thoughts or 0):
+            output = generated
     return ProviderUsage(
-        input_tokens=_value(usage, "prompt_token_count"),
-        output_tokens=None if visible is None else visible + (thoughts or 0),
-        total_tokens=_value(usage, "total_token_count"),
+        input_tokens=prompt,
+        output_tokens=output,
+        total_tokens=total,
         reasoning_tokens=thoughts,
         visible_output_tokens=visible,
     )

@@ -150,6 +150,37 @@ def test_max_tokens_maps_to_output_limit():
     assert caught.value.usage.visible_output_tokens == 0
 
 
+@pytest.mark.parametrize("candidate", [{}, {"candidatesTokenCount": None}, {"candidatesTokenCount": 0}])
+def test_thinking_only_sdk_response_preserves_starvation_signal(candidate):
+    from google.genai.types import GenerateContentResponse
+    from apps.legislation.enhancements.reader_sizing import reasoning_starved
+
+    response = GenerateContentResponse.model_validate({
+        "candidates": [{"finishReason": "MAX_TOKENS"}],
+        "usageMetadata": {"promptTokenCount": 12, "thoughtsTokenCount": 8000,
+                          "totalTokenCount": 8012, **candidate},
+    })
+    provider = GeminiEnhancementProvider(client_factory=FakeClientFactory(FakeModels(result=response)))
+    with pytest.raises(ProviderError) as caught:
+        provider.enhance_bill(api_key="offline", request=_request(), timeout_seconds=1)
+    assert caught.value.validation_code == "provider_output_limit"
+    assert caught.value.usage.output_tokens == 8000
+    assert reasoning_starved(caught.value.usage)
+
+
+@pytest.mark.parametrize("counts,expected", [
+    ({"prompt_token_count": 12, "tool_use_prompt_token_count": 30, "total_token_count": 8044}, 8002),
+    ({"prompt_token_count": 12}, None),
+    ({"total_token_count": 8012}, None),
+    ({"prompt_token_count": 12, "total_token_count": 8011}, None),
+])
+def test_missing_candidate_count_requires_consistent_totals(counts, expected):
+    from apps.legislation.enhancements.providers.gemini import _usage
+    usage = _usage({"usage_metadata": {"thoughts_token_count": 8000, **counts}})
+    assert usage.output_tokens == expected
+    assert usage.visible_output_tokens is None
+
+
 def test_safety_maps_to_refusal():
     response = _completed_response()
     response.candidates[0].finish_reason = "SAFETY"
