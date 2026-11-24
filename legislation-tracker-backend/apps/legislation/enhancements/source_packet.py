@@ -268,6 +268,7 @@ def build_document_preflight(document, *, reuse_result=None):
     manifest = {
         **source_identity,
         "source_kind": "document_chunk",
+        "model_limits_version": 1,
         "total_candidates": coverage["total_chunks"],
         "selected_count": len(numbered),
         "coverage": coverage,

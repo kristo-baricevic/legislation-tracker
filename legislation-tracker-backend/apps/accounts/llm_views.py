@@ -131,12 +131,11 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
     def get(self, request, provider=None):
         credential = _credential(request.user, provider)
         payload = _settings_payload(credential, request.user)
-        if provider:
-            choices = [item for item in catalog() if item["provider"] == provider]
+        if provider and credential is None:
+            choices = [item for item in payload["models"] if item["provider"] == provider]
             if not choices:
                 return Response(status=404)
-            if credential is None:
-                payload.update(provider=provider, requested_model=choices[0]["model"])
+            payload.update(provider=provider, requested_model=choices[0]["model"])
         return Response(payload)
 
     def put(self, request, provider=None):

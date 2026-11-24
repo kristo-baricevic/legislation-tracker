@@ -68,6 +68,47 @@ def test_cutover_preserves_outstanding_paused_work(enhancement_owner, enhancemen
 
 
 @pytest.mark.django_db
+def test_legacy_native_request_drains_on_previous_worker(enhancement_owner, enhancement_settings, source_bill, monkeypatch):
+    from importlib import import_module
+    from types import SimpleNamespace
+    from unittest.mock import Mock, patch
+    from django.apps import apps
+    from apps.legislation.enhancements.providers.base import ProviderResult, ProviderUsage
+    from apps.legislation.enhancements.source_packet import build_enhancement_preflight
+    from apps.legislation.tasks import run_bill_enhancement_attempt
+    from .test_enhancement_tasks import _valid_output
+
+    guard = import_module("apps.legislation.migrations.0034_require_legacy_model_limit_drain").require_legacy_model_limit_drain
+    editor = SimpleNamespace(connection=connection)
+    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=False, LLM_READER_OWNED_TOKEN_TARGET=0,
+            LLM_READER_MODEL_CAPACITIES={"openai/gpt-5.6-luna": {"output_tokens": 2048}}):
+        old_limits = patch("apps.legislation.enhancements.source_packet.legacy_token_limits", return_value=(100000, 8000))
+        with old_limits:
+            attempt = _pending_attempt(enhancement_owner, source_bill)
+        saved = attempt.enhancement
+        attempt.execution_config = {}
+        attempt.save(update_fields=["execution_config"])
+        del saved.source_manifest_json["model_limits_version"]
+        saved.save()
+        assert build_enhancement_preflight(source_bill).request_fingerprint != saved.request_fingerprint
+        for state in ("paused", "running", "pending"):
+            attempt.status = state
+            attempt.save(update_fields=["status"])
+            with pytest.raises(RuntimeError, match="previous worker"):
+                guard(apps, editor)
+        with override_settings(LLM_READER_MODEL_CAPACITIES={"openai/gpt-5.6-luna": {"context_tokens": 8192}}):
+            with pytest.raises(RuntimeError, match="previous worker"):
+                guard(apps, editor)
+        provider = Mock()
+        provider.enhance_bill.return_value = ProviderResult(_valid_output("src_0001"), ProviderUsage(4, 3, 7), "id", "model")
+        monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: provider)
+        with old_limits:
+            assert run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)["status"] == "succeeded"
+        assert provider.enhance_bill.call_args.kwargs["request"].request_envelope["max_output_tokens"] == 8000
+        guard(apps, editor)
+
+
+@pytest.mark.django_db
 def test_recreated_key_cannot_authorize_an_old_estimate(enhancement_owner, enhancement_settings, source_bill):
     with enhancement_settings:
         original = _valid_credential(enhancement_owner)

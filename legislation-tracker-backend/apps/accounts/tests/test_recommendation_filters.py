@@ -28,6 +28,33 @@ def test_filters_apply_before_pagination_and_have_independent_cached_cursors():
     assert TrackedTopic.objects.filter(user=user).count() == 1
 
 
+def test_dashboard_raw_status_accepts_full_official_action():
+    cache.clear()
+    api, user = client()
+    health = topic()
+    TrackedTopic.objects.create(user=user, topic=health)
+    rep = representative()
+    wanted = bill(2483, sponsor=rep, topics=(health,))
+    wanted.status = ("POSTPONED PROCEEDINGS - At the conclusion of debate on the Pettersen amendment, "
+                     "the Chair put the question on agreeing to the amendment and by voice vote, announced "
+                     "the noes had prevailed. Ms. Pettersen demanded a recorded vote, and the Chair postponed "
+                     "further proceedings until a time to be announced.")
+    wanted.save()
+    expected = {wanted.pk}
+    for number in range(1, 10):
+        related = bill(number, sponsor=rep, topics=(health,))
+        related.status = wanted.status
+        related.save()
+        expected.add(related.pk)
+    bill(99, sponsor=representative("B000002"), topics=(health,))
+    params = {"status": f"raw:{wanted.status}"}
+    assert len(params["status"]) > 300
+    page = api.get(PATH, {**params, "page_size": 10}).json()
+    assert {r["bill"]["id"] for r in page["results"]} == expected
+    reps = api.get("/api/tracking/representative-recommendations/", params)
+    assert [r["representative_id"] for r in reps.json()["results"]] == [rep.pk]
+
+
 def test_representative_filters_limit_candidates_before_top_five():
     cache.clear()
     api, user = client()

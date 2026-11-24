@@ -11,7 +11,9 @@ FILTER_NAMES = {"q", "topic_id", "sponsor", "state", "status", "sort"}
 
 def read_filters(params):
     values = {key: params[key].strip() for key in sorted(FILTER_NAMES) if params.get(key, "").strip()}
-    if any(len(value) > 300 for value in values.values()):
+    # Raw statuses are exact captions from Bill.status, an unbounded text field.
+    if any(len(value) > 300 for key, value in values.items()
+           if key != "status" or not value.startswith("raw:")):
         raise RecommendationError("invalid_recommendation_filter", 400)
     if "topic_id" in values and not re.fullmatch(r"[1-9][0-9]{0,9}", values["topic_id"]):
         raise RecommendationError("invalid_recommendation_filter", 400)

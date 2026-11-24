@@ -30,7 +30,13 @@ def test_switching_back_preserves_provider_key(authenticated_client, llm_setting
         }, format="json")
         assert response.status_code == 200
         assert client.get(base).json()["key_suffix"] == "1111"
+        monkeypatch.setattr("apps.legislation.enhancements.openrouter_catalog.entries", lambda: {})
+        scoped = client.get(base + "credentials/openrouter/")
+        assert scoped.status_code == 200
+        assert scoped.json()["key_suffix"] == "2222"
+        assert scoped.json()["requested_model"] == model
         assert client.delete(base + "credentials/openrouter/").status_code == 204
+        assert client.get(base + "credentials/openrouter/").status_code == 404
         assert client.get(base).json()["key_suffix"] == "1111"
         assert client.delete(base + "credentials/openai/").status_code == 204
         assert client.get(base + "selection/").json()["provider"] is None

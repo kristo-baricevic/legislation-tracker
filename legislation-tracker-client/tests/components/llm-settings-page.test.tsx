@@ -96,6 +96,20 @@ describe("LLM settings", () => {
     expect(validateLLMCredential).not.toHaveBeenCalled();
   });
 
+  it("deletes an inactive provider key after its entire catalog disappears", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getLLMSettings).mockResolvedValue({...configured, models: [configured.models[0]], saved_credentials: [
+      {provider: "openrouter", selected_model: "retired-model", key_suffix: "9876", revision: 3},
+    ]});
+    render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", {name: "Provider"}), "openrouter");
+    expect(screen.getByText(/ending in 9876/)).toBeVisible();
+    expect(screen.getByRole("button", {name: "Validate key"})).toBeDisabled();
+    await user.click(screen.getByRole("button", {name: "Delete API key"}));
+    await user.click(screen.getByRole("button", {name: "Confirm deletion"}));
+    expect(deleteLLMSettings).toHaveBeenCalledWith("openrouter");
+  });
+
   it("can select a saved provider after its previous model leaves the catalog", async () => {
     const user = userEvent.setup();
     vi.mocked(getLLMSettings).mockResolvedValue({...configured, saved_credentials: [

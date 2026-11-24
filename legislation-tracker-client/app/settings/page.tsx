@@ -21,12 +21,12 @@ function statusLabel(status: LLMSettings["validation_status"]): string {
 function LLMSettingsSection() {
   const [settings, setSettings] = useState<LLMSettings | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [draft, setDraft] = useState("");
-  const optionId = (p: string, m: string) => JSON.stringify([p, m]);
-  const selected = settings?.models?.find(m => optionId(m.provider, m.model) === draft);
-  const compatible = Boolean(selected || (!draft && settings?.models.some(m => m.provider === settings.provider && m.model === settings.requested_model)));
-  const changed = !!selected && (selected.provider !== settings?.provider || selected.model !== settings.requested_model);
-  const provider = selected?.provider ?? settings?.provider ?? "";
+  const [draft, setDraft] = useState<{provider: string; model: string} | null>(null);
+  const provider = draft?.provider ?? settings?.provider ?? "";
+  const model = draft?.model ?? settings?.requested_model ?? "";
+  const selected = settings?.models.find(item => item.provider === provider && item.model === model);
+  const compatible = Boolean(selected);
+  const changed = provider !== settings?.provider || model !== settings?.requested_model;
   const saved = settings?.saved_credentials?.find(item => item.provider === provider);
   const hasKey = Boolean(saved || (settings?.configured && provider === settings.provider));
   const providerLabel = ({openai: "OpenAI", openrouter: "OpenRouter", anthropic: "Anthropic", gemini: "Google"} as Record<string,string>)[provider] ?? provider;
@@ -62,7 +62,7 @@ function LLMSettingsSection() {
         provider, requested_model: selected?.model ?? settings.requested_model,
       });
       setSettings(updated);
-      setDraft("");
+      setDraft(null);
       setNotice("Saved. Validate the key before enhancing a bill.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save the API key.");
@@ -109,7 +109,7 @@ function LLMSettingsSection() {
     setNotice(null);
     try {
       await deleteLLMSettings(provider);
-      setDraft("");
+      setDraft(null);
       setApiKey("");
       setSettings(await getLLMSettings());
       setConfirmDelete(false);
@@ -151,38 +151,38 @@ function LLMSettingsSection() {
           {settings && (
             <>
               <label htmlFor="enhancement-provider" className="mt-5 block text-sm font-semibold">Provider</label>
-              <select id="enhancement-provider" value={provider} disabled={!settings.feature_available || busy !== null}
+              <select id="enhancement-provider" value={provider} disabled={busy !== null}
                 onChange={event => {
                   const next = event.target.value;
                   const stored = settings.saved_credentials?.find(item => item.provider === next);
                   const choices = settings.models.filter(item => item.provider === next);
                   const model = choices.find(item => item.model === stored?.selected_model)?.model ?? choices[0]?.model ?? "";
-                  setDraft(optionId(next, model));
+                  setDraft({provider: next, model});
                   setApiKey("");
                   setConfirmDelete(false);
                   setError(null);
                   setNotice(null);
                 }}>
-                {!settings.models.some(item => item.provider === provider) && <option value={provider} disabled>{provider} (unavailable)</option>}
-                {Array.from(new Set(settings.models.map(item => item.provider))).map(name =>
+                {Array.from(new Set([settings.provider, ...settings.models.map(item => item.provider),
+                  ...(settings.saved_credentials ?? []).map(item => item.provider)])).map(name =>
                   <option key={name} value={name}>{name}</option>
                 )}
               </select>
               <label htmlFor="enhancement-model" className="mt-5 block text-sm font-semibold">Model</label>
               <select id="enhancement-model" className="mt-2 rounded border border-control bg-paper px-3 py-2"
-                value={draft || optionId(settings.provider, settings.requested_model)}
+                value={model}
                 disabled={!settings.feature_available || busy !== null}
-                onChange={event => {setDraft(event.target.value); setApiKey(""); setConfirmDelete(false); setError(null); setNotice(null);}}>
-                {!draft && !settings.models.some(item => item.provider === provider && item.model === settings.requested_model) &&
-                  <option value={optionId(provider, settings.requested_model)} disabled>Choose a compatible model</option>}
-                {settings.models.filter(m => m.provider === provider).map(m => <option key={optionId(m.provider,m.model)} value={optionId(m.provider,m.model)}>
+                onChange={event => {setDraft({provider, model: event.target.value}); setApiKey(""); setConfirmDelete(false); setError(null); setNotice(null);}}>
+                {!compatible &&
+                  <option value={model} disabled>Choose a compatible model</option>}
+                {settings.models.filter(m => m.provider === provider).map(m => <option key={m.model} value={m.model}>
                   {m.model}{m.free ? " · Free" : ""}
                 </option>)}
               </select>
               <dl className="mt-4 text-sm">
                 <div>
                   <dt className="text-muted">Validation</dt>
-                  <dd className="mt-1 font-semibold">{changed ? "Not saved" : statusLabel(settings.validation_status)}</dd>
+                  <dd className="mt-1 font-semibold">{changed ? compatible ? "Not saved" : "Model unavailable" : statusLabel(settings.validation_status)}</dd>
                 </div>
               </dl>
 
