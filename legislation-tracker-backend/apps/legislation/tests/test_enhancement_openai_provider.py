@@ -201,7 +201,8 @@ def test_source_first_transport_uses_server_schema(method):
     assert not Draft202012Validator(IDS).is_valid(["same", "same"])
 
 
-def test_source_first_caps_output_even_if_deployment_limit_is_higher(settings):
+@pytest.mark.parametrize("planned,expected", [(None, 8000), (2048, 2048)])
+def test_source_first_caps_output_even_if_deployment_limit_is_higher(settings, planned, expected):
     settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = 16000
     response = _completed_response()
     response.output_text = json.dumps({"provisions": []})
@@ -209,8 +210,10 @@ def test_source_first_caps_output_even_if_deployment_limit_is_higher(settings):
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
     request.request_envelope["source_first_payload"] = {"units": [], "passages": {}}
+    if planned is not None:
+        request.request_envelope["max_output_tokens"] = planned
     provider.generate_provisions(api_key="test", request=request, timeout_seconds=30)
-    assert responses.calls[0]["max_output_tokens"] == 8000
+    assert responses.calls[0]["max_output_tokens"] == expected
 
 
 @pytest.mark.parametrize("output_limit", [4000, 8000])

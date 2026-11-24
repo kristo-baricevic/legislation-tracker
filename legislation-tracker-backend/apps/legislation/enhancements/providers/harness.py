@@ -80,7 +80,7 @@ def resolve_max_output_tokens(request, schema_name: str) -> int:
     if getattr(request, "output_schema_version", None) == "1.4":
         return envelope["max_output_tokens"]
     if str(schema_name).startswith("source_first_"):
-        return min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+        return min(envelope.get("max_output_tokens", 8000), 8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
     return settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS
 
 

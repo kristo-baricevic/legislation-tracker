@@ -91,7 +91,8 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
 
     def invoke(call):
         request = replace(
-            preflight, request_envelope={"source_first_payload": call.payload}
+            preflight, request_envelope={"source_first_payload": call.payload,
+                                         "max_output_tokens": preflight.analysis_plan.output_tokens}
         )
         method = getattr(
             provider,

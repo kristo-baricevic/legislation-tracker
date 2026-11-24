@@ -14,6 +14,10 @@ def test_source_first_xml_outage_and_changed_section_ids(source_bill, monkeypatc
     from apps.legislation.enhancements.source_packet import PreflightUnavailable
 
     doc = source_bill.documents.get()
+    from unittest.mock import Mock
+    doc.object_storage_key = "source.xml"
+    doc.content_hash = "a" * 64
+    doc.save()
     section = ("section-A", 0, 10, "Sec. 1", "Heading")
     sections = (section,)
     saved = BillEnhancement.objects.create(bill=source_bill, status="succeeded", result_json={},
@@ -26,12 +30,42 @@ def test_source_first_xml_outage_and_changed_section_ids(source_bill, monkeypatc
     monkeypatch.setattr(xml_sections, "stored_xml_sections", outage)
     assert not shared._reader_result_valid(saved)
     assert not BillProcessingCache.objects.filter(kind="reader-validation").exists()
-    monkeypatch.setattr(xml_sections, "stored_xml_sections", lambda *args: sections)
+    read = Mock(return_value=sections)
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", read)
     monkeypatch.setattr(shared, "_source_first_result_valid", lambda *args: True)
     assert shared.shared_enhancement(source_bill).pk == saved.pk
-    monkeypatch.setattr(xml_sections, "stored_xml_sections", lambda *args: (("section-B", *section[1:]),))
+    assert shared._reader_result_valid(saved)
+    read.assert_called_once()
+    doc.content_hash = "b" * 64
+    doc.save()
+    read.return_value = (("section-B", *section[1:]),)
     assert shared.shared_enhancement(source_bill) is None
     assert not shared._reader_result_valid(saved)
+
+
+@pytest.mark.django_db
+def test_pending_source_first_poll_reuses_xml_alignment(source_bill, enhancement_owner, monkeypatch):
+    from unittest.mock import Mock
+    from apps.legislation.models import BillEnhancement
+    from apps.legislation.enhancements import xml_sections
+    from apps.legislation.enhancements.source_graph import document_fingerprint
+
+    doc = source_bill.documents.get()
+    doc.content_hash, doc.object_storage_key = "c" * 64, "poll.xml"
+    doc.save()
+    sections = (("id", 0, 10, "Sec. 1", "Heading"),)
+    read = Mock(return_value=sections)
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", read)
+    saved = BillEnhancement.objects.create(user=enhancement_owner, bill=source_bill, status="pending",
+        output_schema_version="2.0-source-first", source_manifest_json={"document_id": doc.pk,
+            "document_version_label": doc.version_label, "source_kind": "pinned_passages"},
+        source_fingerprint=document_fingerprint(str(doc.pk), doc.version_label, doc.reader_text_hash, sections))
+    client = APIClient()
+    client.force_authenticate(enhancement_owner)
+    for route in ("latest", saved.pk, "latest"):
+        response = client.get(f"/api/bills/{source_bill.pk}/enhancements/{route}/")
+        assert response.status_code == 200 and response.data["source_compatible"]
+    read.assert_called_once()
 
 
 @pytest.mark.django_db

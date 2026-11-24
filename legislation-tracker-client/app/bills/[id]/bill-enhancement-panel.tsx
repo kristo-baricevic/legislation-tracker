@@ -311,8 +311,7 @@ export default function BillEnhancementPanel({
         return;
       }
       if (nextEstimate.can_enhance) {
-        const sameRequest = enhancement?.request_fingerprint === nextEstimate.request_fingerprint;
-        setConfirming(sameRequest && enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
+        setConfirming(nextEstimate.matching_enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
       }
     } catch (reason) {
       if (owner !== generation.current) return;
@@ -407,12 +406,13 @@ export default function BillEnhancementPanel({
     const owner = generation.current;
     if (!estimate || !confirming) return;
     const confirmation = confirmationFromEstimate(estimate);
-    if (!confirmation || !enhancement && confirming === "retry") return;
+    const matching = estimate.matching_enhancement;
+    if (!confirmation || (!matching && confirming === "retry")) return;
     setSubmitting(true);
     setError(null);
     try {
-      const updated = confirming === "retry" && enhancement
-        ? await retryBillEnhancement(billId, enhancement.id, confirmation)
+      const updated = confirming === "retry" && matching
+        ? await retryBillEnhancement(billId, matching.id, confirmation)
         : await createBillEnhancement(billId, confirmation);
       if (owner !== generation.current) return;
       setEnhancement(updated);
@@ -504,7 +504,7 @@ export default function BillEnhancementPanel({
         {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
       </ControlsSlot>
       {confirming && estimate && <EnhancementEstimateDialog estimate={estimate} title={title}
-        unknownOutcome={confirming === "retry" && enhancement?.status === "outcome_unknown"}
+        unknownOutcome={confirming === "retry" && estimate.matching_enhancement?.status === "outcome_unknown"}
         submitting={submitting} submitEnhancement={submitEnhancement} onCancel={() => setConfirming(null)} />}
     {isSuperuser && <section aria-label="AI metadata" className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
       <h2 className="text-lg font-semibold">AI metadata</h2>

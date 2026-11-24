@@ -125,6 +125,20 @@ def test_estimate_reports_full_confirmation_and_credential_state(
 
 
 @pytest.mark.django_db
+def test_source_first_estimate_uses_selected_models_output_limit(
+        enhancement_client, enhancement_owner, source_bill, enhancement_settings, settings):
+    settings.LLM_SOURCE_FIRST_ENABLED = True
+    settings.LLM_READER_MODEL_CAPACITIES = {"openai/gpt-5.6-luna": {"output_tokens": 2048, "context_tokens": 128000}}
+    with enhancement_settings:
+        _valid_credential(enhancement_owner)
+        response = enhancement_client.get(f"/api/bills/{source_bill.pk}/enhancements/estimate/")
+    body = response.json()
+    assert body["can_enhance"] and body["output_schema_version"] == "2.0-source-first"
+    assert body["max_output_tokens"] == 2048
+    assert body["aggregate_budget"]["maximum_output"] == body["aggregate_budget"]["maximum_calls"] * 2048
+
+
+@pytest.mark.django_db
 def test_estimate_distinguishes_a_disabled_credential(
     enhancement_client,
     enhancement_owner,

@@ -20,14 +20,18 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
     from .xml_sections import stored_xml_sections
     graph = build_source_graph(str(document.pk), document.version_label, text,
                                xml_sections=stored_xml_sections(document, text))
+    from .model_capabilities import resolve_capabilities
+    limits = resolve_capabilities(*planning_target())
+    output_limit = min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS, limits.output_tokens)
     try:
         plan = _plan_built_graph(
             graph,
             {
                 "model": planning_target()[1],
                 "reasoning_effort": reasoning_effort(),
-                "output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
+                "output_tokens": output_limit,
                 "per_call_input": min(
+                    limits.context_tokens - output_limit,
                     settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
                     settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
                 ),
@@ -50,9 +54,9 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
         "plan": plan.fingerprint,
         "provider": planning_target()[0],
         "reasoning_effort": reasoning_effort(),
-        "output_limit": min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS),
+        "output_limit": plan.output_tokens,
     }
-    envelope = {"source_first_plan": identity, "budget": budget}
+    envelope = {"source_first_plan": identity, "budget": budget, "max_output_tokens": plan.output_tokens}
     return EnhancementPreflight(
         provider=planning_target()[0],
         requested_model=plan.model,

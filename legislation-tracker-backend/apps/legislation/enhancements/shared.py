@@ -12,21 +12,39 @@ def _source_first_inputs(saved, document):
             or manifest.get("document_version_label") != document.version_label
             or manifest.get("document_content_hash", document.reader_text_hash) != document.reader_text_hash):
         return None
-    text = document.extracted_text or document.raw_text or ""
-    try:
-        sections = stored_xml_sections(document, text)
-    except PreflightUnavailable:
+    from django.core.cache import cache
+    from hashlib import sha256
+    from .source_graph import NORMALIZATION_VERSION
+    from .xml_sections import XML_SECTION_VERSION
+
+    cache_key = None
+    aligned = None
+    if document.content_hash and document.object_storage_key:
+        identity = (document.pk, document.version_label, document.content_hash, document.reader_text_hash,
+                    document.object_storage_key, document.content_type, NORMALIZATION_VERSION, XML_SECTION_VERSION)
+        cache_key = "reader-section-identity:" + sha256(repr(identity).encode()).hexdigest()
+        aligned = cache.get(cache_key)
+    if aligned is None:
+        text = document.extracted_text or document.raw_text or ""
+        try:
+            sections = stored_xml_sections(document, text)
+        except PreflightUnavailable:
+            return None
+        aligned = (document_fingerprint(str(document.pk), document.version_label, document.reader_text_hash, sections), sections)
+        if cache_key:
+            cache.set(cache_key, aligned, timeout=21600)
+    fingerprint, sections = aligned
+    if saved.source_fingerprint != fingerprint:
         return None
-    if saved.source_fingerprint != document_fingerprint(str(document.pk), document.version_label, document.reader_text_hash, sections):
-        return None
-    return document, text, sections
+    return document, sections
 
 
 def _source_first_result_valid(saved, inputs):
     from .provision_pipeline import _plan_built_graph, run_analysis
     from .source_graph import build_source_graph
 
-    document, text, sections = inputs
+    document, sections = inputs
+    text = document.extracted_text or document.raw_text or ""
     graph = build_source_graph(str(document.pk), document.version_label, text, xml_sections=sections)
     result = saved.result_json
     plan = _plan_built_graph(graph, reuse_result=result)
@@ -84,7 +102,7 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
 
 def _source_identity(bill):
     from apps.legislation.models import BillContract
-    documents = bill.documents.only("id", "bill_id", "version_label", "reader_text_hash").order_by("-created_at", "-id")
+    documents = bill.documents.only("id", "bill_id", "version_label", "reader_text_hash", "object_storage_key", "content_type", "content_hash").order_by("-created_at", "-id")
     document = (documents.filter(is_active_version=True).first()
         or documents.exclude(extracted_text__isnull=True).exclude(extracted_text="").first()
         or documents.exclude(raw_text__isnull=True).exclude(raw_text="").first())

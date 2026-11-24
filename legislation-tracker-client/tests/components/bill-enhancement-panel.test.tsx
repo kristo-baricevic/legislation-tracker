@@ -460,14 +460,18 @@ describe("BillEnhancementPanel", () => {
 
   it("requires confirmation to continue paused work without showing a failure", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { is_superuser: false, email: "person@example.com" } });
-    vi.mocked(getBillEnhancementEstimate).mockResolvedValue(estimate);
     const paused = enhancementPayload({ status: "paused", result: null });
     paused.latest_attempt = { ...paused.latest_attempt!, status: "paused", retry_allowed: true };
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue({...estimate, request_fingerprint: "c".repeat(64), matching_enhancement: paused});
+    vi.mocked(retryBillEnhancement).mockResolvedValue(paused);
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(paused);
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
     await userEvent.click(await screen.findByRole("button", { name: "Continue" }));
     expect(await screen.findByRole("dialog", { name: "Confirm enhancement" })).toBeVisible();
     expect(retryBillEnhancement).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", {name: "Confirm and enhance"}));
+    expect(retryBillEnhancement).toHaveBeenCalledWith(10, paused.id, expect.objectContaining({request_fingerprint: "c".repeat(64)}));
+    expect(createBillEnhancement).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 

@@ -84,6 +84,23 @@ describe("recommendation rows", () => {
     expect(refresh).toHaveFocus();
     expect(dismiss).not.toHaveBeenCalled();
   });
+  it("hides the previous filter's cards and cursor when a new filter fails and retries that filter", async () => {
+    let response = () => Response.json({...page, next_cursor: "first-filter-cursor"});
+    mockRequests(() => response());
+    const view = render(<BillRecommendations filters={{q: "first"}} onOpenBill={() => true} />);
+    await screen.findByRole("button", {name: "More recommendations"});
+    response = () => new Response(null, {status: 500});
+    view.rerender(<BillRecommendations filters={{q: "second"}} onOpenBill={() => true} />);
+    await screen.findByText(/Recommendations could not be loaded/);
+    expect(screen.queryByText(bill.title)).toBeNull();
+    expect(screen.queryByRole("button", {name: "More recommendations"})).toBeNull();
+    response = () => Response.json({...page, results: [{...page.results[0], bill: {...bill, title: "Second result"}}]});
+    fireEvent.click(screen.getByRole("button", {name: "Refresh bill recommendations"}));
+    await screen.findByRole("link", {name: "Second result"});
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url)).filter(url => url.includes("q=second")))
+      .toEqual([expect.not.stringContaining("cursor="), expect.not.stringContaining("cursor=")]);
+  });
+
   it("does not reveal cached private recommendations before confirming the returning session", async () => {
     mockRequests(() => Response.json(page));
     const view = render(<BillRecommendations onOpenBill={() => true} />);

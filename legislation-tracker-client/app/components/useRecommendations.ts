@@ -6,8 +6,8 @@ import { dashboardSession, dashboardValue, forgetDashboardValue } from "@/lib/da
 // Private, tab-local cache: never persisted to browser storage or shared across identities.
 
 export function useRecommendations<T>(key: string, load: (options: PersonalizedRequestOptions) => Promise<T>, onInvalidate?: () => void, keepOnTracking = false) {
-  const [state, setState] = React.useState<{ data: T | null; scope: PersonalizedScope | null; loading: boolean; signedIn: boolean; error: string }>(() => {
-    return { data: null, scope: null, loading: true, signedIn: false, error: "" };
+  const [state, setState] = React.useState<{ data: T | null; dataKey: string | null; scope: PersonalizedScope | null; loading: boolean; signedIn: boolean; error: string }>(() => {
+    return { data: null, dataKey: null, scope: null, loading: true, signedIn: false, error: "" };
   });
   const [revision, reload] = React.useReducer(value => value + 1, 0);
   const controller = React.useRef<AbortController | null>(null);
@@ -21,7 +21,7 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     controller.current?.abort();
     if (kind === "tracking") {
       // Following must not clear mounted content or move the reader's focus.
-      if (keepOnTracking && !current.current.loading && settledKey.current === currentKey.current && current.current.data && current.current.scope?.sessionGeneration === scope.sessionGeneration) {
+      if (keepOnTracking && !current.current.loading && settledKey.current === currentKey.current && current.current.dataKey === currentKey.current && current.current.data && current.current.scope?.sessionGeneration === scope.sessionGeneration) {
         controller.current = new AbortController();
         setState(previous => ({ ...previous, scope, loading: false }));
         return;
@@ -30,7 +30,7 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
       return;
     }
     onInvalidate?.();
-    setState({ data: null, scope: null, loading: true, signedIn: false, error: "" });
+    setState({ data: null, dataKey: null, scope: null, loading: true, signedIn: false, error: "" });
     reload();
   }), [onInvalidate, keepOnTracking]);
   React.useEffect(() => {
@@ -42,11 +42,11 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
       try {
         const session = await dashboardSession();
         if (abort.signal.aborted || !isPersonalizedScopeCurrent(initial)) return;
-        if (!session) { settledKey.current = key; setState({ data: null, scope: initial, loading: false, signedIn: false, error: "" }); return; }
+        if (!session) { settledKey.current = key; setState({ data: null, dataKey: null, scope: initial, loading: false, signedIn: false, error: "" }); return; }
         const data = await dashboardValue(key, () => load({ scope: initial }));
         if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) {
           settledKey.current = key;
-          setState({ data, scope: initial, loading: false, signedIn: true, error: "" });
+          setState({ data, dataKey: key, scope: initial, loading: false, signedIn: true, error: "" });
         }
       } catch (error) {
         if (!abort.signal.aborted && isPersonalizedScopeCurrent(initial)) { settledKey.current = key; setState(previous => ({ ...previous, scope: initial, loading: false, signedIn: true, error: error instanceof Error && error.name === "AbortError" ? "" : "Recommendations could not be loaded. Try again." })); }
@@ -63,7 +63,7 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     reload();
   };
   const update = (scope: PersonalizedScope, transform: (data: T) => T) => {
-    if (currentKey.current === key && isPersonalizedScopeCurrent(scope)) setState(previous => previous.data && previous.scope === scope ? { ...previous, data: transform(previous.data) } : previous);
+    if (currentKey.current === key && isPersonalizedScopeCurrent(scope)) setState(previous => previous.dataKey === key && previous.data && previous.scope === scope ? { ...previous, data: transform(previous.data) } : previous);
   };
-  return { ...state, loading: state.loading || settledKey.current !== key, retry, update, requestOptions: () => ({ scope: state.scope ?? undefined, signal: controller.current?.signal }) };
+  return { ...state, data: state.dataKey === key ? state.data : null, loading: state.loading || settledKey.current !== key, retry, update, requestOptions: () => ({ scope: state.scope ?? undefined, signal: controller.current?.signal }) };
 }

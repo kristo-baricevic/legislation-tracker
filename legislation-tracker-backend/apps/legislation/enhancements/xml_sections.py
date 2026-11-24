@@ -14,6 +14,9 @@ from apps.ingestion.document_download import (
 )
 
 
+XML_SECTION_VERSION = 1  # Bump when section alignment or rendering changes.
+
+
 def xml_boundaries(raw, text):
     root = ElementTree.fromstring(raw)
     def outer_bodies(node):

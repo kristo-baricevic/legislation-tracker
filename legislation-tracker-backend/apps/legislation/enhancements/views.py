@@ -222,7 +222,8 @@ class BillEnhancementListCreateView(PrivateEnhancementMixin, APIView):
 class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
-        enhancement = shared_enhancement(bill) or (
+        shared = shared_enhancement(bill)
+        enhancement = shared or (
             BillEnhancement.objects.filter(user=request.user, bill=bill)
             .prefetch_related(ATTEMPT_PREFETCH)
             .order_by("-created_at", "-id")
@@ -231,8 +232,8 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
         if enhancement is None:
             return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
         payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
-        payload["stale"] = not _source_compatible(enhancement, bill)
-        payload["source_compatible"] = _source_compatible(enhancement, bill)
+        payload["source_compatible"] = shared is not None or _source_compatible(enhancement, bill)
+        payload["stale"] = not payload["source_compatible"]
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
 
@@ -246,8 +247,8 @@ class BillEnhancementDetailView(PrivateEnhancementMixin, APIView):
             bill=bill,
         )
         payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
-        payload["stale"] = not _source_compatible(enhancement, bill)
         payload["source_compatible"] = _source_compatible(enhancement, bill)
+        payload["stale"] = not payload["source_compatible"]
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
 
