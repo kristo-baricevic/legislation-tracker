@@ -75,6 +75,6 @@ export default function BillModalDetails({ billId, contractId, contractHash, enh
         {pager ? createPortal(pagination, pager) : pagination}
       </>}
     </section>
-    {votes?.results?.length ? <VotingRecord loading={votesLoading} headingHref={`/bills/${billId}?tab=votes`} votes={votes.results} selectedVote={selected} loadingVoteId={loadingVote} error={voteError} onSelect={id => void selectVote(id)} page={shownVotePage} hasNext={Boolean(votes.next)} onPrevious={() => { setVotePage(Math.max(1, shownVotePage - 1)); setVoteRetry(n => n + 1); }} onNext={() => { setVotePage(shownVotePage + 1); setVoteRetry(n => n + 1); }} /> : voteError ? <p role="alert">{voteError} <button onClick={() => setVoteRetry(n => n + 1)}>Retry votes</button></p> : null}
+    {votes?.results?.length ? <VotingRecord loading={votesLoading} headingHref={`/bills/${billId}?tab=votes`} votes={votes.results} selectedVote={selected} loadingVoteId={loadingVote} error={voteError} onSelect={id => void selectVote(id)} onCollapse={() => setSelected(null)} page={shownVotePage} hasNext={Boolean(votes.next)} onPrevious={() => { setVotePage(Math.max(1, shownVotePage - 1)); setVoteRetry(n => n + 1); }} onNext={() => { setVotePage(shownVotePage + 1); setVoteRetry(n => n + 1); }} /> : voteError ? <p role="alert">{voteError} <button onClick={() => setVoteRetry(n => n + 1)}>Retry votes</button></p> : null}
   </>;
 }
