@@ -304,6 +304,8 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
 
 def validate_policy_copy(item):
     text = item['text']
+    if re.search(r'[,;:]\s*[.!?](?=\s|$)', text):
+        raise output_error('reader_policy_wording', ['policy_changes'])
     if not re.search(r'[A-Za-z]', text) or len(text.split()) > 65 or not re.search(r'[.!?]$', text) or re.search(r'\b(?:and|or)\s*[.!?]$', text, re.I) or re.search(
             r'\b(?:p\d{4}|src_\d{4})\b|\[\[|\b(?:amended by striking|inserting the following|subparagraph [A-Z] is amended)\b',
             text, re.I):

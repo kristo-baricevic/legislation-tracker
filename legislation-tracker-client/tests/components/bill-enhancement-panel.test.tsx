@@ -191,7 +191,9 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
     vi.mocked(getBillEnhancementEstimate).mockResolvedValue({ ...estimate, rerun_after: 9 });
-    vi.mocked(createBillEnhancement).mockResolvedValue(enhancementPayload({ status: "pending" }));
+    const active_reader = enhancementPayload();
+    vi.mocked(createBillEnhancement).mockResolvedValue(enhancementPayload({ status: "pending", active_reader, poll_after_seconds: 1 }));
+    vi.mocked(getBillEnhancement).mockResolvedValue(enhancementPayload({ status: "running", active_reader }));
     render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
     const rerun = await screen.findByRole("button", { name: "Re-run enhancement" });
     await userEvent.click(screen.getByRole("button", { name: "Original" }));
@@ -203,6 +205,9 @@ describe("BillEnhancementPanel", () => {
     expect(createBillEnhancement).not.toHaveBeenCalled();
     await userEvent.click(await screen.findByRole("button", { name: "Confirm and enhance" }));
     expect(createBillEnhancement).toHaveBeenCalledWith(10, expect.objectContaining({ rerun_after: 9 }));
+    expect(await screen.findByRole("button", { name: "Queued…" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Enhancing…" }, { timeout: 3000 })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Enhanced" })).toBeVisible();
   });
   it.each([false, true])("shows metadata only for superusers: %s", async (is_superuser) => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com", is_superuser } });

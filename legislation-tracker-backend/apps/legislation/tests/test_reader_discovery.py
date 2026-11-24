@@ -88,6 +88,7 @@ def test_policy_review_requires_a_complete_cited_policy_explanation():
 @pytest.mark.parametrize('text', ['The government must give', 'Cite p0001 for the grants.',
     'Officials must report on security, cybersecurity, and民主韧性;and.',
     'Officials must report on security threats and.',
+    'The guidance explains the risks; it is advice,.',
     'Section 4 is amended by striking a comma and inserting a semicolon.'])
 def test_policy_prose_rejects_clipped_sentences_citation_instructions_and_amendment_mechanics(text):
     from apps.legislation.enhancements.reader_discovery import discovery_sources, resolve_discovery
