@@ -62,10 +62,15 @@ def attach_targets(sources, targets):
 
 def build_glossary_batches(bill, text, version_label, targets, *, source_ref_start=1):
     """Pack every complete definition; never truncate or silently drop one."""
-    from .source_packet import _request_envelope, _within_limits, canonical_json_bytes, PreflightUnavailable
+    from .model_selection import target
+    from .source_packet import (
+        PreflightUnavailable, _request_envelope, _within_limits, canonical_json_bytes, legacy_token_limits,
+    )
+
+    input_limit, output_limit = legacy_token_limits(*target())
 
     def batch_for(sources):
-        envelope = _request_envelope(bill, sources, truncated=False)
+        envelope = _request_envelope(bill, sources, truncated=False, max_output_tokens=output_limit)
         envelope["instructions"] = GLOSSARY_INSTRUCTIONS
         envelope["citation_resolution"] = {"version": 2, "max_repair_calls": 0}
         return {"sources": sources, "envelope": envelope, "bytes": canonical_json_bytes(envelope)}
@@ -85,11 +90,11 @@ def build_glossary_batches(bill, text, version_label, targets, *, source_ref_sta
             "glossary_targets": [target],
         }
         candidate = batch_for([*pending, source])
-        if pending and (len(pending) >= GLOSSARY_BATCH_SIZE or not _within_limits(candidate["bytes"])):
+        if pending and (len(pending) >= GLOSSARY_BATCH_SIZE or not _within_limits(candidate["bytes"], input_limit)):
             batches.append(batch_for(pending))
             pending = []
             candidate = batch_for([source])
-        if not _within_limits(candidate["bytes"]):
+        if not _within_limits(candidate["bytes"], input_limit):
             raise PreflightUnavailable(
                 "A complete glossary definition exceeds the request limit",
                 reason="request_too_large",

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -124,6 +124,36 @@ const selectedVote: VoteDetailItem = {
 };
 
 describe("VotingRecord", () => {
+  it("shows unanimous-consent passage even without roll calls, without inventing member votes", () => {
+    render(<VotingRecord votes={[]} passageActions={[{chamber: "Senate", date: "2025-10-09", method: "unanimous_consent", source_text: "Passed Senate with an amendment by Unanimous Consent.", source_url: "https://www.congress.gov/bill/119th-congress/senate-bill/2403/all-actions"}]} selectedVote={null} loadingVoteId={null} error={null} onSelect={vi.fn()} page={1} hasNext={false} onPrevious={vi.fn()} onNext={vi.fn()} />);
+    expect(screen.getByText("Senate · Passed by unanimous consent")).toBeVisible();
+    expect(screen.getByText("Oct 9, 2025")).toBeVisible();
+    expect(screen.getByRole("link", {name: "Official passage record"})).toHaveAttribute("href", "https://www.congress.gov/bill/119th-congress/senate-bill/2403/all-actions");
+    expect(screen.queryByRole("button", {name: "View voting record"})).toBeNull();
+    expect(screen.queryByText(/Yes —/)).toBeNull();
+  });
+  it("fits an unpaginated vote list to its content but keeps paginated lists stable", () => {
+    const props = { votes: [votes[0]], selectedVote, loadingVoteId: null, error: null, onSelect: vi.fn(), page: 1, hasNext: false, onPrevious: vi.fn(), onNext: vi.fn() };
+    const { rerender } = render(<VotingRecord {...props} />);
+    expect(screen.getByRole("region", { name: "Vote history" })).not.toHaveClass("stable-results");
+    rerender(<VotingRecord {...props} hasNext />);
+    expect(screen.getByRole("region", { name: "Vote history" })).toHaveClass("stable-results");
+    rerender(<VotingRecord {...props} page={2} />);
+    expect(screen.getByRole("region", { name: "Vote history" })).toHaveClass("stable-results");
+  });
+  it("combines party abbreviations and full names into one filter without losing members", async () => {
+    const records = ["D", "Democratic", "Democrat", "R", "Republican", "I", "Independent"].map((party, index) => ({
+      ...selectedVote.records[0],
+      representative: { ...selectedVote.records[0].representative, id: index + 10, name: `Member ${index}`, party },
+    }));
+    render(<VotingRecord votes={votes} selectedVote={{ ...selectedVote, records }} loadingVoteId={null} error={null} onSelect={vi.fn()} page={1} hasNext={false} onPrevious={vi.fn()} onNext={vi.fn()} />);
+    const filter = screen.getByRole("combobox", { name: "Party" });
+    expect(within(filter).getAllByRole("option").map(option => option.textContent)).toEqual(["All parties", "Democrat", "Independent", "Republican"]);
+    for (const [party, count] of [["Democrat", 3], ["Republican", 2], ["Independent", 2]] as const) {
+      await userEvent.selectOptions(filter, party);
+      expect(screen.getAllByRole("link", { name: /Member \d/ })).toHaveLength(count);
+    }
+  });
   it("groups every returned member, sorts the vote list newest first, and retains the source", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
@@ -152,6 +182,9 @@ describe("VotingRecord", () => {
     expect(screen.getByRole("heading", { name: "No — 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Present — 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Not voting — 1" })).toBeVisible();
+    const filters = screen.getByRole("group", { name: "Filter member positions" });
+    expect(within(filters).getByRole("combobox", { name: "Party" })).toBeVisible();
+    expect(within(filters).queryByRole("link")).toBeNull();
     expect(screen.getAllByRole("link", { name: /Representative (Adams|Garcia|Baker|Chen|Diaz)/ })).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Representative Adams" }).compareDocumentPosition(
       screen.getByRole("link", { name: "Representative Garcia" }),
@@ -162,7 +195,7 @@ describe("VotingRecord", () => {
     expect(screen.getByRole("link", { name: "Representative Garcia" })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Representative Adams" })).not.toBeInTheDocument();
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "Party" }), "Democratic");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Party" }), "Democrat");
     await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "CA");
     expect(screen.getByRole("link", { name: "Representative Garcia" })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Representative Chen" })).not.toBeInTheDocument();

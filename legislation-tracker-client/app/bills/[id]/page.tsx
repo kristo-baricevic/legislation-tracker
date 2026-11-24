@@ -19,6 +19,7 @@ import {
   type VoteListItem,
   untrackBill,
 } from "@/lib/api";
+import { ReaderIdentityProvider, ReaderSummary } from "./reader-explanation";
 import type { BillContractSummary } from "@/lib/contracts";
 import { dashboardSession, peekDashboardValue } from "@/lib/dashboard-cache";
 import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
@@ -329,10 +330,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-green-500">
                 Summary
               </h2>
-              <p>
+              <ReaderIdentityProvider value={{documentId: sourceDocument?.id ?? null, contractId: null, contractHash: null}}>
+              <ReaderSummary><p>
                 {bill.summary_preview || summaryDocument?.reader_summary || (processing ? "The summary will appear here when processing finishes." : "We have not retrieved enough source text to summarize this bill yet.")}
               </p>
-              {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}
+              {!bill.summary_preview && summaryDocument?.reader_summary && <Link href={`/documents/${summaryDocument.id}`} className="mt-2 inline-block underline">Read summary source text</Link>}</ReaderSummary></ReaderIdentityProvider>
             </section>
             </BillAnalysisBoundary>
           )}
@@ -385,10 +387,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               </button>
             </div>
           )}
-          {votes && votes.length > 0 && (
+          {((votes && votes.length > 0) || (bill.passage_actions?.length ?? 0) > 0) && (
             <VotingRecord
+              passageActions={bill.passage_actions}
               loading={voteHistoryLoading}
-              votes={votes}
+              votes={votes ?? []}
               selectedVote={selectedVote}
               loadingVoteId={loadingVoteId}
               error={voteError}
@@ -399,7 +402,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               onNext={() => changeVoteHistoryPage((current) => current + 1)}
             />
           )}
-          {votes && votes.length === 0 && !voteHistoryLoading && !voteHistoryError && (
+          {votes && votes.length === 0 && !bill.passage_actions?.length && !voteHistoryLoading && !voteHistoryError && (
             <section className="mb-6 rounded-lg border border-dashed border-slate-400 p-4 text-sm text-slate-700 dark:border-green-900/60 dark:text-green-600">
               <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-green-400">
                 Voting record

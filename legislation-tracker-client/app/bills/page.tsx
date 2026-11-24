@@ -2,7 +2,6 @@
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import BillCard from "../components/BillCard";
 import DashboardBillReader from "../components/DashboardBillReader";
-import RetainedHeight from "../components/RetainedHeight";
 import styles from "../components/bill-deck.module.css";
 import { STAGES } from "@/lib/bill-stage";
 
@@ -62,6 +61,9 @@ function BillsCatalog() {
   const [loading, setLoading] = useState(true);
   const [shownPage, setShownPage] = useState(() => parsePositiveIntegerFilter(searchParams.get("page") ?? "") ?? 1);
   const [error, setError] = useState<string | null>(null);
+  const endOfResults = useRef<HTMLDivElement>(null);
+  const committedResults = useRef({key: "", filters: "", page: 0, start: 1, revision: 0});
+  const [retryResults, setRetryResults] = useState(0);
 
   const [jurisdictions, setJurisdictions] = useState<string[]>([]);
   const [topics, setTopics] = useState<TopicItem[]>([]);
@@ -78,6 +80,8 @@ function BillsCatalog() {
   const [sessionFilter, setSessionFilter] = useState<string | null>(() => searchParams.get("session"));
   const [jurisdictionFilter, setJurisdictionFilter] = useState(() => searchParams.get("jurisdiction") ?? "");
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
+  const [trackingFilter, setTrackingFilter] = useState(() => searchParams.get("tracking") ?? "");
+  const [resultsRevision, setResultsRevision] = useState(0);
   const [sponsorFilter, setSponsorFilter] = useState(() => searchParams.get("sponsor") ?? "");
   const [queryInput, setQueryInput] = useState(() => searchParams.get("q") ?? "");
   const [queryFilter, setQueryFilter] = useState(() => searchParams.get("q") ?? "");
@@ -97,15 +101,24 @@ function BillsCatalog() {
   );
   const initialTopicIdRef = useRef(topicIdFromUrl);
   const [hasAccount, setHasAccount] = useState<boolean | null>(null);
+  const filterAccount = trackingFilter ? hasAccount : true;
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
   const [trackedBillIds, setTrackedBillIds] = useState<number[]>([]);
   const [pendingBill, setPendingBill] = useState<number | null>(null);
   const [trackingReady, setTrackingReady] = useState(false);
   const [trackingRefresh, setTrackingRefresh] = useState(0);
-  useEffect(() => subscribePersonalizedChanges(() => {
+  useEffect(() => subscribePersonalizedChanges(change => {
     setTrackingReady(false); setTrackedBillIds([]); setPendingBill(null);
+    if (change.kind === "session" && trackingFilter) {
+      setHasAccount(null);
+      setPage(null);
+      setPageNum(1);
+      setError(null);
+      setResultsRevision(value => value + 1);
+    }
+    if (change.kind === "tracking" && trackingFilter) setResultsRevision(value => value + 1);
     setTrackingRefresh(value => value + 1);
-  }), []);
+  }), [trackingFilter]);
   const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedBillSearch[]>([]);
@@ -164,6 +177,7 @@ function BillsCatalog() {
     );
     setJurisdictionFilter(params.get("jurisdiction") ?? "");
     setStatusFilter(params.get("status") ?? "");
+    setTrackingFilter(params.get("tracking") ?? "");
     setSponsorFilter(params.get("sponsor") ?? "");
     setTopicIdFilter(nextTopicId ? String(nextTopicId) : "");
     setTopicFuzzyFilter(params.get("topic") ?? "");
@@ -263,8 +277,22 @@ function BillsCatalog() {
     };
   }, [pendingSavedAck]);
 
+  const resultFilters = JSON.stringify([idFilter, billNumberFilter, sessionFilter, jurisdictionFilter, statusFilter, trackingFilter, sponsorFilter, topicIdFilter, topicFuzzyFilter, queryFilter, sort, filterAccount]);
+  const resultsKey = JSON.stringify([resultFilters, resultsRevision]);
+
   useEffect(() => {
     if (!filterMetaReady || sessionFilter === null) return;
+    if (filterAccount === null) {
+      setLoading(true);
+      setError(null);
+      return;
+    }
+    if (!filterAccount) {
+      setPage(null);
+      setLoading(false);
+      setError("Log in to filter tracked bills.");
+      return;
+    }
     let cancelled = false;
 
     const sessionParsed = sessionFilter.trim()
@@ -294,25 +322,47 @@ function BillsCatalog() {
       ? parsePositiveIntegerFilter(topicIdFilter)
       : undefined;
 
-    getBills({
-      page: pageNum,
+    const refreshLoadedPages = committedResults.current.filters === resultFilters && committedResults.current.revision !== resultsRevision;
+    const start = refreshLoadedPages ? 1 : pageNum;
+    const requestPage = (requestedPage: number) => getBills({
+      page: requestedPage,
       session: sessionParsed,
       id: idParsed,
       bill_number: billNumberFilter || undefined,
       jurisdiction: jurisdictionFilter || undefined,
       status: statusFilter || undefined,
+      tracking: trackingFilter === "tracked" || trackingFilter === "untracked" ? trackingFilter : undefined,
       sponsor: sponsorFilter || undefined,
       topic: topicFuzzyFilter || undefined,
       topic_id: topicIdParsed,
       q: queryFilter || undefined,
       sort,
-    })
+    });
+    const load = async () => {
+      let data = await requestPage(start);
+      for (let next = start + 1; refreshLoadedPages && next <= pageNum && data.next && !cancelled; next++) {
+        const more = await requestPage(next);
+        data = {...more, results: [...data.results, ...more.results]};
+      }
+      return data;
+    };
+    load()
       .then((data) => {
-        if (!cancelled) { setPage(data); setShownPage(pageNum); }
+        if (!cancelled) {
+          const append = committedResults.current.key === resultsKey && pageNum === committedResults.current.page + 1;
+          committedResults.current = {key: resultsKey, filters: resultFilters, page: pageNum, start: append ? committedResults.current.start : start, revision: resultsRevision};
+          setPage(previous => {
+            if (!append || !previous) return data;
+            const ids = new Set(previous.results.map(bill => bill.id));
+            return {...data, results: [...previous.results, ...data.results.filter(bill => !ids.has(bill.id))]};
+          });
+          setShownPage(pageNum);
+        }
       })
       .catch((e) => {
+        if (e?.name === "AbortError") return;
         if (!cancelled)
-          setError(e instanceof Error ? e.message : "Failed to load bills");
+          setError("Could not load bills. Please try again.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -327,6 +377,9 @@ function BillsCatalog() {
     sessionFilter,
     jurisdictionFilter,
     statusFilter,
+    trackingFilter,
+    resultsRevision,
+    filterAccount,
     sponsorFilter,
     topicIdFilter,
     topicFuzzyFilter,
@@ -334,6 +387,9 @@ function BillsCatalog() {
     topicUrlError,
     queryFilter,
     sort,
+    resultsKey,
+    resultFilters,
+    retryResults,
   ]);
 
   useEffect(() => {
@@ -345,6 +401,7 @@ function BillsCatalog() {
     if (sessionFilter) next.set("session", sessionFilter);
     if (jurisdictionFilter) next.set("jurisdiction", jurisdictionFilter);
     if (statusFilter) next.set("status", statusFilter);
+    if (trackingFilter) next.set("tracking", trackingFilter);
     if (sponsorFilter) next.set("sponsor", sponsorFilter);
     if (topicIdFilter) next.set("topic_id", topicIdFilter);
     if (topicFuzzyFilter) next.set("topic", topicFuzzyFilter);
@@ -356,7 +413,7 @@ function BillsCatalog() {
       // provider tree and reset scroll even with scroll:false on mobile.
       window.history.replaceState(window.history.state, "", target);
     }
-  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, sort, sponsorFilter, statusFilter, topicFuzzyFilter, topicIdFilter]);
+  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, sort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
 
   const resetPageAndSet = useCallback(
     (setter: React.Dispatch<React.SetStateAction<string>>) =>
@@ -374,6 +431,18 @@ function BillsCatalog() {
   };
 
   const hasNext = Boolean(page?.next);
+  useEffect(() => {
+    if (!endOfResults.current || !hasNext || loading || error || pageNum !== shownPage || committedResults.current.key !== resultsKey || queryInput.trim() !== queryFilter || typeof IntersectionObserver === "undefined") return;
+    let active = true;
+    const observer = new IntersectionObserver(entries => {
+      if (active && entries.some(entry => entry.isIntersecting)) {
+        active = false;
+        setPageNum(shownPage + 1);
+      }
+    }, {rootMargin: "300px"});
+    observer.observe(endOfResults.current);
+    return () => { active = false; observer.disconnect(); };
+  }, [hasNext, loading, error, pageNum, shownPage, resultsKey, queryInput, queryFilter]);
   const selectedTopicId = topicIdFilter ? parseInt(topicIdFilter, 10) : NaN;
   const selectedTopic = topics.find((topic) => topic.id === selectedTopicId);
   const selectedTopicIsTracked =
@@ -442,6 +511,7 @@ function BillsCatalog() {
     if (billNumberFilter) query.bill_number = billNumberFilter;
     if (jurisdictionFilter) query.jurisdiction = jurisdictionFilter;
     if (statusFilter) query.status = statusFilter;
+    if (trackingFilter) query.tracking = trackingFilter;
     if (sponsorFilter) query.sponsor = sponsorFilter;
     if (topicId) query.topic_id = topicId;
     if (topicFuzzyFilter) query.topic = topicFuzzyFilter;
@@ -475,6 +545,7 @@ function BillsCatalog() {
       setBillNumberFilter(typeof query.bill_number === "string" ? query.bill_number : "");
       setJurisdictionFilter(typeof query.jurisdiction === "string" ? query.jurisdiction : "");
       setStatusFilter(typeof query.status === "string" ? query.status : "");
+      setTrackingFilter(typeof query.tracking === "string" ? query.tracking : "");
       setSponsorFilter(typeof query.sponsor === "string" ? query.sponsor : "");
       setTopicIdFilter(typeof query.topic_id === "number" ? String(query.topic_id) : "");
       setTopicFuzzyFilter(typeof query.topic === "string" ? query.topic : "");
@@ -551,15 +622,6 @@ function BillsCatalog() {
                 className="rounded border border-control bg-paper px-2 py-1 text-ink"
               />
             </label>
-            <SelectField
-              label="Jurisdiction"
-              value={jurisdictionFilter}
-              options={jurisdictionOptions}
-              onChange={(value) => {
-                setPageNum(1);
-                setJurisdictionFilter(value);
-              }}
-            />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Status</span>
               <select
@@ -575,6 +637,16 @@ function BillsCatalog() {
                   <option value={statusFilter}>Saved filter: {statusFilter}</option>
                 )}
                 {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted">Tracking</span>
+              <select value={trackingFilter} title={!hasAccount ? "Log in to filter tracked bills" : undefined}
+                onChange={resetPageAndSet(setTrackingFilter)}
+                className="min-h-10 min-w-0 w-full rounded border border-control bg-paper px-2 py-1 text-ink">
+                <option value="">All bills</option>
+                <option value="tracked" disabled={!hasAccount}>Tracked</option>
+                <option value="untracked" disabled={!hasAccount}>Untracked</option>
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -731,18 +803,19 @@ function BillsCatalog() {
           </div>
         )}
 
-        {error && (
-          <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
-            {error}
-          </div>
-        )}
+        <div className="min-h-6 text-sm text-red-700" aria-live="polite">
+          {!loading && error ? <span role="alert">{error}</span> : null}
+        </div>
 
         <LoadingSpinner centered active={loading && !page} label="Loading bills…" />
 
         {page && (
           <>
+            {committedResults.current.start > 1 && <button type="button" disabled={loading}
+              onClick={() => setPageNum(committedResults.current.start - 1)}
+              className="mb-3 rounded border border-control px-3 py-1 text-ink">Previous page</button>}
             <p className="mb-4 text-muted">
-              {page.count} bill{page.count !== 1 ? "s" : ""} (page {shownPage})
+              {page.count} bill{page.count !== 1 ? "s" : ""}
             </p>
             <div className={styles.deck}>
               {trackingError && <p role="alert">{trackingError}</p>}
@@ -751,33 +824,15 @@ function BillsCatalog() {
                   {(["grid", "list"] as const).map(value => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{value === "grid" ? "Grid" : "List"}</button>)}
                 </div>
               </div>
-              <RetainedHeight key={layout}>{!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
+              {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
                 <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" aria-busy={loading} tabIndex={0}>
                   {page.results.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback, currentBill) => <BillCard bill={currentBill} summary={summary} feedback={feedback}
                     footer={<div className="bill-card-actions">{hasAccount === null ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button disabled={!trackingError} aria-busy={!trackingError} aria-label={trackingError ? "Retry follow status" : "Loading follow status"} onClick={() => setTrackingRefresh(value => value + 1)}>{trackingError ? "Retry" : "Follow"}</button> : <Link href="/login">Log in to follow</Link>}{enhance}</div>} />}</DashboardBillReader>)}
-                </div>}</RetainedHeight>
+                </div>}
             </div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {(
-                <button
-                  type="button"
-                  disabled={loading || shownPage <= 1}
-                  onClick={() => setPageNum(shownPage - 1)}
-                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
-                >
-                  Previous
-                </button>
-              )}
-              {(
-                <button
-                  type="button"
-                  disabled={loading || !hasNext}
-                  onClick={() => setPageNum(shownPage + 1)}
-                  className="cursor-pointer rounded border border-control px-3 py-1 text-ink hover:bg-wash"
-                >
-                  Next
-                </button>
-              )}
+            <div ref={endOfResults} className="mt-4 flex min-h-12 items-center justify-center" aria-label="More bills">
+              <LoadingSpinner active={loading} label="Loading more bills…" />
+              {!loading && error && <button type="button" onClick={() => setRetryResults(value => value + 1)} className="rounded border border-control px-3 py-1 text-ink">Retry loading bills</button>}
             </div>
           </>
         )}

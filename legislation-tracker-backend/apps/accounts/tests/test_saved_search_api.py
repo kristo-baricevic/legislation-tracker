@@ -98,6 +98,24 @@ def test_saved_search_rejects_unknown_query_keys_and_duplicate_normalized_query(
     assert invalid.status_code == 400
 
 
+@pytest.mark.django_db
+def test_listing_saved_searches_uses_owner_ids_without_reloading_users():
+    owner = User.objects.create_user(username="saved-search-owner")
+    SavedBillSearch.objects.bulk_create([
+        SavedBillSearch(user=owner, name=str(i), normalized_hash=str(i),
+                        query_json={"session": 100 + i, **({"tracking": "tracked"} if i % 2 else {})})
+        for i in range(25)
+    ])
+    client = APIClient()
+    client.force_authenticate(owner)
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get("/api/saved-searches/")
+    assert response.status_code == 200 and response.json()["count"] == 25
+    assert not any(f'FROM "{User._meta.db_table}"' in query["sql"] for query in queries)
+    if connection.vendor == "postgresql":
+        assert sum("UNION ALL" in query["sql"] for query in queries) == 1
+
+
 @POSTGRESQL_ONLY
 @pytest.mark.django_db
 def test_saved_search_activity_counts_are_computed_in_one_database_query():

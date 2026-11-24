@@ -90,7 +90,7 @@ export default function CommitteesPage(){
   if(topic)params.set("topic_id",topic);
   const query=params.toString();
   function clear(){setChamber("");setSearch("");setMember("");setLevel("");setTopic("");setText({search:"",member:""});}
-  return <main className={styles.page}><div className={styles.toolbar}><h1>Committees</h1></div>
+  return <main className={styles.page}><div className={styles.toolbar}><h1 className="tracker-heading text-ink">Committees</h1></div>
     <div className={styles.filters} role="search" aria-label="Committee filters">
       <label>Committee name<input type="search" value={search} maxLength={200} onChange={e=>setSearch(e.target.value)} placeholder="Search committees"/></label>
       <label>Member name<input type="search" value={member} maxLength={200} onChange={e=>setMember(e.target.value)} placeholder="Search members"/></label>

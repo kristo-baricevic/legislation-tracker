@@ -245,7 +245,7 @@ def test_dispatch_budget_is_not_charged_for_a_cached_result(source_bill, enhance
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('router', [False, True])
-def test_partial_cache_survives_checkpoint_crash_and_remaps_citations(source_bill, enhancement_owner, enhancement_settings, router):
+def test_partial_cache_survives_checkpoint_crash_and_remaps_citations(source_bill, enhancement_owner, enhancement_settings, router, monkeypatch):
     from apps.legislation.enhancements.reader_steps import DurableReaderProvider
     from apps.legislation.enhancements.reader_partial import PartialReviewReady
     from apps.legislation.enhancements.reader_citations import citation_passages
@@ -298,6 +298,21 @@ def test_partial_cache_survives_checkpoint_crash_and_remaps_citations(source_bil
         a.refresh_from_db()
         assert a.pinned_model == 'test:free'
         assert len(sent) == 1
+
+    # A stricter current validator must not republish an old partial result or
+    # crash outside the recovery path. With no calls left, pause for more budget.
+    from apps.legislation.enhancements.diagnostics import output_error
+    from apps.legislation.enhancements.reader_steps import ReaderBudgetPaused
+    a.status = 'paused'
+    a.save(update_fields=['status'])
+    a.status, a.pk, a.sequence = 'running', None, a.sequence + 1
+    a.save()
+    def reject_old_copy(*args, **kwargs):
+        raise output_error('reader_amount_conflict', ['policy_changes'])
+    monkeypatch.setattr('apps.legislation.enhancements.reader_steps._validate_response', reject_old_copy)
+    with pytest.raises(ReaderBudgetPaused):
+        DurableReaderProvider(provider, a, 'lease', 0).enhance_bill(api_key='offline', request=renamed, timeout_seconds=1)
+    assert len(sent) == 1
 
 
 @pytest.mark.django_db(transaction=True)

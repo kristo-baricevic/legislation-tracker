@@ -4,7 +4,7 @@ import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React from "react";
 import { capturePersonalizedScope, getMyTracking, isPersonalizedScopeCurrent, trackLegislator, untrackLegislator } from "@/lib/api";
 import { dashboardValue } from "@/lib/dashboard-cache";
-import { getRepresentativeRecommendations } from "@/lib/recommendations";
+import { getRepresentativeRecommendations, recommendationFilterQuery, type RecommendationFilters } from "@/lib/recommendations";
 import RepresentativeAvatarBadge from "./RepresentativeAvatarBadge";
 import { useRecommendations } from "./useRecommendations";
 import { RecommendationState } from "./RecommendationState";
@@ -13,9 +13,12 @@ import cards from "./tracked-legislators.module.css";
 import { LegislatorCard } from "./TrackedLegislators";
 
 export interface RepresentativeRecommendationsProps {
+  filters?: RecommendationFilters;
   renderName?: (representative: { id: number; name: string; chamber: string }) => React.ReactNode;
 }
-export default function RepresentativeRecommendations({ renderName }: RepresentativeRecommendationsProps) {
+export default function RepresentativeRecommendations({ renderName, filters }: RepresentativeRecommendationsProps) {
+  const filterQuery = recommendationFilterQuery({ ...filters, sort: undefined });
+  const load = React.useCallback((options: Parameters<typeof getRepresentativeRecommendations>[0]) => getRepresentativeRecommendations(options, Object.fromEntries(new URLSearchParams(filterQuery))), [filterQuery]);
   const heading = React.useRef<HTMLHeadingElement>(null);
   const section = React.useRef<HTMLElement>(null);
   const restoreFocus = React.useRef(false);
@@ -23,7 +26,7 @@ export default function RepresentativeRecommendations({ renderName }: Representa
     if (restoreFocus.current || section.current?.contains(document.activeElement)) heading.current?.focus({ preventScroll: true });
     restoreFocus.current = false;
   }, []);
-  const state = useRecommendations("rep-recommendations", getRepresentativeRecommendations, invalidate, true);
+  const state = useRecommendations(`rep-recommendations${filterQuery ? `:${filterQuery}` : ""}`, load, invalidate, true);
   const dashboardLoading = useDashboardLoading("representatives", state.loading);
   const [followed, setFollowed] = React.useState<Set<number>>(new Set());
   const [followedProfiles, setFollowedProfiles] = React.useState<import("@/lib/api").TrackedLegislatorItem[]>([]);

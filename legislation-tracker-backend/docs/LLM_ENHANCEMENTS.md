@@ -65,9 +65,12 @@ review), preserving complete source context. Only its children are requested;
 validated siblings and rejected parents are durably reused across deliveries.
 Subdivision stays within the confirmed call reserve and stops at indivisible units.
 
-OpenRouter receives an explicit reasoning effort only when one is requested.
-The legacy `none` setting leaves the model's reasoning default unchanged; it does
-not disable reasoning. OpenAI-compatible production calls use an async HTTP
+OpenRouter uses explicit `low` reasoning when the legacy `none` configuration
+is selected. Explicit low/medium/high settings are preserved. The effective
+effort appears in the estimate, request fingerprint, and attempt diagnostics;
+reasoning is not disabled. Prose regex checks run locally rather than in the
+provider's constrained decoder; citation ID and shape constraints remain.
+OpenAI-compatible production calls use an async HTTP
 client with a total elapsed-time deadline, in addition to transport timeouts.
 Deadline expiry cancels the HTTP operation and records an unknown outcome; it
 does not automatically resend a possibly processed request. Cancellation cannot
@@ -297,6 +300,8 @@ LLM_ENHANCEMENT_CREATE_RATE=10/hour
 LLM_ENHANCEMENT_VALIDATION_RATE=5/hour
 ```
 
+The native OpenAI, Anthropic and Gemini adapters pass `LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS` to their SDKs. A response that continues delivering data can run longer than this interval. Both OpenRouter transports also enforce a wall-clock deadline on generation. A timeout after dispatch can leave a charge unresolved. For a reader with a pending call reservation, the estimate and retry endpoints report `reconciliation_required` until the reservation is resolved.
+
 Production additionally requires enforced TLS, secure cookies/HSTS, and the
 explicit TLS and secret-log-redaction confirmations documented in
 [PRODUCTION_OPERATIONS.md](PRODUCTION_OPERATIONS.md). `/health/` reports the
@@ -334,3 +339,21 @@ The optional `2.0-source-first` pipeline, per-call audit records, aggregate spen
 confirmation, partial retries and versioned reader are documented in
 [SOURCE_FIRST_ANALYSIS.md](SOURCE_FIRST_ANALYSIS.md). Its flag defaults off pending
 independent benchmark acceptance. Legacy generation and stored results remain supported.
+
+## Provider credentials and harness evaluation
+
+Before the reader execution version 7 → 9 cutover, pause new enhancement creates at ingress and keep the previous API, workers and dispatcher running. Allow authenticated owners to confirm retries for outstanding paused jobs on the previous release. Drain version 7 reader work and all OpenRouter jobs confirmed with reasoning effort `none` across schemas. When those jobs finish, close retries, wait for in-flight submissions, recheck the queue, then stop the previous services and migrate. Migration 0033 also checks the latest paused attempt so validated checkpoints remain resumable. If an owner has yet to authorize continuation, defer cutover and retain the checkpoint. Reopen submissions on the updated services. Migration 0032 blocks cutover while an incompatible reader attempt is still active. If it blocks, resume the previous workers and retry the migration after they drain. Keep historical ambiguous call reservations intact.
+
+Apply the forward account and legislation migrations before starting the updated API and worker. Second-provider writes are gated by `LLM_MULTI_PROVIDER_WRITES_ENABLED` (default false). Set it to true after routing all settings and enhancement traffic to upgraded services. Existing encrypted keys, revisions and attempt references are preserved. Use the expanded schema for application rollback once an account has two providers.
+
+Settings retain one key and model per provider. A user's active selection authorizes new estimates. Confirmation binds the exact key identity and revision, selected model, adapter and capability fingerprint. An existing shared result can be returned without generating again.
+
+Refresh the OpenRouter catalog with `rtk proxy .venv/bin/python manage.py refresh_enhancement_models` at initial setup. Celery Beat refreshes it every six hours; entries expire after 24 hours. Choose a listed concrete free model for new requests when an older selection is `openrouter/free`. Pricing with missing metadata appears as unknown. The original direct adapters remain the defaults. `LLM_OPENROUTER_ADAPTER=langchain` selects the experimental OpenRouter transport for new confirmations; set it to `existing` for rollback. Preserve both implementations while prior attempts drain. There is no automatic free-to-paid fallback.
+
+Free OpenRouter models appear in Settings only while the cached catalog reports zero pricing, structured outputs, reasoning, a maximum-token control and positive context and completion limits. The dynamic `openrouter/free` alias cannot be selected for new work. Set `LLM_OPENROUTER_EXCLUDED_MODELS` to a comma-separated list of exact model IDs to omit additional models, including a configured default. Apply that configuration to the API and workers. Account keys and saved results survive a model exclusion. A timeout or rate limit alone does not establish model incompatibility.
+
+Set `LLM_READER_OWNED_TOKEN_TARGET` only for a comparison arm. The 1000, 2000 and 4000 targets use conservative UTF-8-byte estimates when no matching tokenizer is available. Total envelopes still undergo capacity checks. Confirmation stores the chosen target on the attempt. In-flight reader work retains that target across worker deliveries when the flag changes. The planner records missing context and rejects work exceeding the legal-context budget before generation. Leave the default at zero outside an evaluation.
+
+Private transport diagnostics are off by default. A positive `LLM_DIAGNOSTIC_RETENTION_DAYS` enables visible response and sanitized request capture for reader steps. Access requires the owning account on the bill's diagnostic endpoint. Expired artifacts become inaccessible immediately and the recovery task prunes them in batches. Deleting the account cascades to its diagnostic artifacts.
+
+The comparison command defaults to offline inspection. A live invocation requires a recorded attempt/work unit, owner, concrete free model, an explicit token ceiling, two calls, a zero-dollar ceiling and a private evidence directory. The command records a reservation before each dispatch; preserve the directory across retries. A fresh directory represents a new experiment and requires separate authorization. Investigate unknown outcomes before authorizing any additional call.

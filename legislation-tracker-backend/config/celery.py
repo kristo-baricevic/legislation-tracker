@@ -89,6 +89,10 @@ app.conf.beat_schedule = {
         "task": "apps.legislation.tasks.dispatch_bill_enhancement_attempts",
         "schedule": 15.0,
     },
+    "refresh-enhancement-models": {
+        "task": "apps.legislation.tasks.refresh_enhancement_models",
+        "schedule": 21600.0,
+    },
     "recover-stale-bill-enhancements": {
         "task": "apps.legislation.tasks.recover_stale_bill_enhancement_attempts",
         "schedule": 60.0,

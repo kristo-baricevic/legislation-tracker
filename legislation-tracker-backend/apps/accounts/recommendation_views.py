@@ -18,14 +18,15 @@ from .recommendation_support import (
     strict_parameters,
 )
 from .recommendations import ALGORITHM, build_ranking, candidate_query, load_profile
+from .recommendation_filters import FILTER_NAMES, read_filters, filter_key, filter_bills
 
 CURSOR_SALT = "accounts.bill-recommendations.v1"
 SNAPSHOT_SECONDS = 300
 SNAPSHOT_BYTES = 1024 * 1024
 
 
-def snapshot_key(user_id):
-    return f"bill-recommendations:v1:user:{user_id}"
+def snapshot_key(user_id, filters=None):
+    return f"bill-recommendations:v1:user:{user_id}" + (":" + filter_key(filters) if filters else "")
 
 
 def decode_cursor(token, user_id):
@@ -72,14 +73,15 @@ def page_size(params, cursor):
 class BillRecommendationView(PrivateRecommendationView):
     def get(self, request):
         params = request.query_params
-        strict_parameters(params, {"page_size", "cursor"})
+        strict_parameters(params, {"page_size", "cursor"} | FILTER_NAMES)
+        filters = read_filters(params)
         cursor = (
             decode_cursor(params["cursor"], request.user.pk)
             if "cursor" in params
             else None
         )
         size = page_size(params, cursor)
-        key = snapshot_key(request.user.pk)
+        key = snapshot_key(request.user.pk, filters)
         now = timezone.now()
         offset = cursor["offset"] if cursor else 0
         with read_snapshot():
@@ -93,7 +95,7 @@ class BillRecommendationView(PrivateRecommendationView):
                          and cached["page_size"] == size)
             if reuse:
                 ids = [item["bill"]["id"] for item in cached["results"][:size]]
-                reuse = set(candidate_query(profile).filter(pk__in=ids).values_list("id", flat=True)) == set(ids)
+                reuse = set(filter_bills(candidate_query(profile), filters).filter(pk__in=ids).values_list("id", flat=True)) == set(ids)
             if cursor:
                 snapshot = cache_call("get", key)
                 if snapshot is None or snapshot["expires_at"] <= now.timestamp():
@@ -110,7 +112,7 @@ class BillRecommendationView(PrivateRecommendationView):
                     for item in snapshot["results"][offset : offset + size]
                 ]
                 eligible = set(
-                    candidate_query(profile)
+                    filter_bills(candidate_query(profile), filters)
                     .filter(pk__in=ids)
                     .values_list("id", flat=True)
                 )
@@ -119,7 +121,7 @@ class BillRecommendationView(PrivateRecommendationView):
             elif reuse:
                 snapshot = cached
             else:
-                ranking = build_ranking(profile)
+                ranking = build_ranking(profile, filters) if filters else build_ranking(profile)
                 snapshot = bounded_json(
                     {
                         **ranking,

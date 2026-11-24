@@ -171,7 +171,7 @@ class OpenAIEnhancementProvider:
         return result
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
-        harness.ensure_citation_repair_fits(payload)
+        harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
             api_key=api_key,
             request=request,
@@ -313,6 +313,9 @@ class OpenAIEnhancementProvider:
             if _value(content, "type") == "output_text"
             and isinstance(_value(content, "text"), str)
         ]
+        from ..private_diagnostics import capture_visible
+        capture_visible([{"instructions": instructions, "input": input_payload}], schema,
+                        output_text, _value(response, "status", ""), response_id, resolved_model, api_key)
         return harness.parse_json_output(
             output_text,
             usage=usage,

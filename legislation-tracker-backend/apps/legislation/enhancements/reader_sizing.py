@@ -90,18 +90,33 @@ def target_output_bytes(target):
     return prose + citations * 85 + 240
 
 
-def recover_output_limit(request):
-    """Split first; an indivisible unit gets at most one larger output allowance.
+def reasoning_starved(usage):
+    reasoning = getattr(usage, "reasoning_tokens", None)
+    output = getattr(usage, "output_tokens", None)
+    return isinstance(reasoning, int) and isinstance(output, int) and output > 0 and reasoning >= .8 * output
+
+
+def recover_output_limit(request, *, usage=None):
+    """Use headroom for reasoning starvation; otherwise split output ownership.
 
     The durable dispatcher still checks the original confirmed token/call budget.
     Nothing increases that authorization or retries a timeout/unknown outcome.
     """
-    children = split_reader_request(request)
-    if children:
-        return children
     from .reader_capacity import capacity, fits
     envelope = copy.deepcopy(request.request_envelope)
     maximum = capacity(envelope.get('provider'), envelope.get('requested_model'))['output_tokens']
+    starved = reasoning_starved(usage)
+    if starved and envelope.get('max_output_tokens', maximum) < maximum:
+        envelope['max_output_tokens'] = maximum
+        if fits(envelope, provider=envelope.get('provider'), model=envelope.get('requested_model')):
+            encoded = canonical_json_bytes(envelope)
+            return (replace(request, request_envelope=envelope, request_bytes=encoded, estimated_input_tokens=len(encoded)),)
+    if starved:
+        return ()
+    children = split_reader_request(request)
+    if children:
+        return children
+    envelope = copy.deepcopy(request.request_envelope)
     if envelope.get('max_output_tokens', maximum) >= maximum:
         return ()
     envelope['max_output_tokens'] = maximum

@@ -41,6 +41,7 @@ class Bill(models.Model):
     summary_last_updated_at = models.DateTimeField(blank=True, null=True)
     # Congress.gov supplies a complete latest-action sentence, not a short enum.
     status = models.TextField()
+    passage_actions = models.JSONField(default=list, blank=True)
     processing_status = models.CharField(
         max_length=20,
         choices=ProcessingStatus.choices,
@@ -384,6 +385,7 @@ class BillEnhancementAttempt(models.Model):
     )
     credential_revision = models.PositiveIntegerField()
     approved_request_fingerprint = models.CharField(max_length=64, default="", blank=True)
+    execution_config = models.JSONField(default=dict, blank=True)
     reused_result_json = models.JSONField(null=True, blank=True)
     status = models.CharField(
         max_length=24,
@@ -453,6 +455,14 @@ class BillProcessingCache(models.Model):
     kind = models.CharField(max_length=24)
     result_json = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class BillEnhancementDiagnostic(models.Model):
+    """Private transport evidence, deleted with its owner or after expiry."""
+    owner = models.ForeignKey("accounts.User", on_delete=models.CASCADE)
+    step = models.OneToOneField("BillEnhancementStep", on_delete=models.CASCADE)
+    expires_at = models.DateTimeField(db_index=True)
+    payload = models.JSONField()
 
 
 class BillEnhancementCallCache(models.Model):

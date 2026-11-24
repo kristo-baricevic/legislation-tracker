@@ -11,7 +11,7 @@ from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from apps.accounts.llm_credentials import llm_feature_available
-from apps.accounts.models import LLMCredential
+from apps.accounts.models import selected_credentials
 from apps.legislation.models import Bill, BillEnhancement, BillEnhancementAttempt
 
 from .prompts import TRUNCATED_COVERAGE_NOTICE
@@ -20,12 +20,13 @@ from .service import (
     EnhancementServiceError,
     create_enhancement_attempt,
     credential_is_current,
+    confirmation_fingerprint,
     retry_enhancement_attempt,
     reusable_publication,
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement, source_compatible
-from .model_selection import credential_target, planning_for
+from .model_selection import credential_target, planning_for, reasoning_effort, saved_owned_token_target
 
 
 class PrivateEnhancementMixin:
@@ -74,7 +75,7 @@ def _is_stale(enhancement, bill) -> bool:
         and enhancement.prompt_version == READER_PROMPT_VERSION
         and enhancement.provider == settings.LLM_ENHANCEMENT_PROVIDER
         and enhancement.requested_model == settings.LLM_ENHANCEMENT_MODEL
-        and enhancement.reasoning_effort == settings.LLM_ENHANCEMENT_REASONING_EFFORT
+        and enhancement.reasoning_effort == reasoning_effort()
         and enhancement.source_manifest_json.get("execution_settings") == reader_execution_settings()
     )
 
@@ -110,9 +111,11 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             return Response({**base, "unavailable_reason": "feature_unavailable"})
         if str(bill.jurisdiction or "").strip().lower() != "federal":
             return Response({**base, "unavailable_reason": "unsupported_jurisdiction"})
-        credential = LLMCredential.objects.filter(user=request.user).first()
+        credential = selected_credentials(request.user).first()
         base["credential_revision"] = credential.revision if credential else None
         base["requested_model"] = credential_target(credential)[1]
+        if credential_target(credential) == ("openrouter", "openrouter/free"):
+            return Response({**base, "unavailable_reason": "concrete_model_required"})
         if not credential_is_current(credential):
             if credential is None:
                 reason = "credential_not_configured"
@@ -121,9 +124,27 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             else:
                 reason = "credential_unverified"
             return Response({**base, "unavailable_reason": reason})
+        pair = credential_target(credential)
+        paused = BillEnhancementAttempt.objects.filter(
+            enhancement__user=request.user, enhancement__bill=bill, enhancement__status="paused",
+            enhancement__provider=pair[0], enhancement__requested_model=pair[1], status="paused",
+        ).select_related("enhancement").only(
+            "execution_config", "enhancement__request_fingerprint", "enhancement__source_manifest_json",
+        ).order_by("-pk").first()
+        preflight = None
+        if paused:
+            with planning_for(pair, owned_target=saved_owned_token_target(paused)):
+                try:
+                    candidate = build_enhancement_preflight(bill)
+                except PreflightUnavailable:
+                    pass
+                else:
+                    if candidate.request_fingerprint == paused.enhancement.request_fingerprint:
+                        preflight = candidate
         try:
-            with planning_for(credential_target(credential)):
-                preflight = build_enhancement_preflight(bill)
+            if preflight is None:
+                with planning_for(pair):
+                    preflight = build_enhancement_preflight(bill)
         except PreflightUnavailable as exc:
             return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
         matching = (
@@ -135,13 +156,23 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             .order_by("-created_at")
             .first()
         )
+        matching_payload = enhancement_payload(matching, detail=False) if matching else None
+        latest = matching_payload.get("latest_attempt") if matching_payload else None
+        if latest and latest["status"] == "outcome_unknown" and not latest["retry_allowed"]:
+            return Response({**base, "unavailable_reason": "reconciliation_required",
+                             "matching_enhancement": matching_payload})
         reused = reusable_publication(matching, credential) if matching else None
         if reused:
             with planning_for(credential_target(credential)):
                 preflight = build_enhancement_preflight(bill, reuse_result=reused)
+        from .model_capabilities import resolve_capabilities
+        from .openrouter_catalog import zero_price
+        capabilities = resolve_capabilities(preflight.provider, preflight.requested_model)
         return Response(
             {
                 **base,
+                "cost_status": "free" if capabilities.pricing and zero_price(capabilities.pricing) else "unknown",
+                "estimator": "Conservative UTF-8 byte estimate",
                 "can_enhance": True,
                 "provider": preflight.provider,
                 "requested_model": preflight.requested_model,
@@ -150,7 +181,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "output_schema_version": preflight.output_schema_version,
                 "source_packet_version": preflight.source_packet_version,
                 "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": preflight.request_fingerprint,
+                "request_fingerprint": confirmation_fingerprint(preflight, credential),
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": max(
@@ -169,9 +200,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                     TRUNCATED_COVERAGE_NOTICE if preflight.truncated else None
                 ),
                 "source_description": preflight.source_manifest.get("source_kind"),
-                "matching_enhancement": (
-                    enhancement_payload(matching, detail=False) if matching else None
-                ),
+                "matching_enhancement": matching_payload,
             }
         )
 
@@ -214,7 +243,8 @@ class BillEnhancementListCreateView(PrivateEnhancementMixin, APIView):
 class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
-        enhancement = shared_enhancement(bill) or (
+        shared = shared_enhancement(bill)
+        enhancement = shared or (
             BillEnhancement.objects.filter(user=request.user, bill=bill)
             .prefetch_related(ATTEMPT_PREFETCH)
             .order_by("-created_at", "-id")
@@ -223,8 +253,8 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
         if enhancement is None:
             return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
         payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
-        payload["stale"] = not _source_compatible(enhancement, bill)
-        payload["source_compatible"] = _source_compatible(enhancement, bill)
+        payload["source_compatible"] = shared is not None or _source_compatible(enhancement, bill)
+        payload["stale"] = not payload["source_compatible"]
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
 
@@ -238,10 +268,19 @@ class BillEnhancementDetailView(PrivateEnhancementMixin, APIView):
             bill=bill,
         )
         payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
-        payload["stale"] = not _source_compatible(enhancement, bill)
         payload["source_compatible"] = _source_compatible(enhancement, bill)
+        payload["stale"] = not payload["source_compatible"]
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
+
+
+class BillEnhancementDiagnosticView(PrivateEnhancementMixin, APIView):
+    def get(self, request, bill_id, step_id):
+        from django.utils import timezone
+        from apps.legislation.models import BillEnhancementDiagnostic
+        artifact = get_object_or_404(BillEnhancementDiagnostic, owner=request.user, step_id=step_id,
+                                     step__attempt__enhancement__bill_id=bill_id, expires_at__gt=timezone.now())
+        return Response(artifact.payload)
 
 
 class BillEnhancementRetryView(PrivateEnhancementMixin, APIView):

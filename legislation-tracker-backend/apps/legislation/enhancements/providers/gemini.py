@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
+import httpx
 from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
@@ -24,23 +25,35 @@ def _usage(response) -> ProviderUsage:
         return ProviderUsage()
     thoughts = _value(usage, "thoughts_token_count")
     visible = _value(usage, "candidates_token_count")
+    prompt = _value(usage, "prompt_token_count")
+    total = _value(usage, "total_token_count")
+    output = None if visible is None else visible + (thoughts or 0)
+    if visible is None and prompt is not None and total is not None:
+        # Gemini includes tool inputs in the total and cached inputs in the prompt.
+        tool_input = _value(usage, "tool_use_prompt_token_count") or 0
+        generated = total - prompt - tool_input
+        if min(prompt, tool_input, thoughts or 0) >= 0 and generated >= (thoughts or 0):
+            output = generated
     return ProviderUsage(
-        input_tokens=_value(usage, "prompt_token_count"),
-        output_tokens=None if visible is None else visible + (thoughts or 0),
-        total_tokens=_value(usage, "total_token_count"),
+        input_tokens=prompt,
+        output_tokens=output,
+        total_tokens=total,
+        reasoning_tokens=thoughts,
+        visible_output_tokens=visible,
     )
 
 
 def _mapped_error(error: Exception) -> ProviderError:
     class_name = type(error).__name__.lower()
-    if "timeout" in class_name:
+    if isinstance(error, httpx.TimeoutException) or "timeout" in class_name:
         return ProviderError(
             "outcome_unknown",
             outcome_unknown=True,
             retry_allowed=True,
             validation_code="provider_timeout",
         )
-    if "connection" in class_name or "remoteprotocol" in class_name or "protocol" in class_name:
+    if (isinstance(error, (httpx.ReadError, httpx.WriteError, httpx.CloseError, httpx.RemoteProtocolError))
+            or "connection" in class_name or "protocol" in class_name):
         return ProviderError(
             "outcome_unknown",
             outcome_unknown=True,
@@ -189,7 +202,7 @@ class GeminiEnhancementProvider:
         return result
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
-        harness.ensure_citation_repair_fits(payload)
+        harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
             api_key=api_key, request=request, timeout_seconds=timeout_seconds,
             input_payload=payload, instructions=REPAIR_INSTRUCTIONS, schema=REPAIR_SCHEMA,
@@ -352,6 +365,9 @@ class GeminiEnhancementProvider:
             if isinstance(fallback, str):
                 output_text = fallback
 
+        from ..private_diagnostics import capture_visible
+        capture_visible([{"instructions": instructions, "input": input_payload}], wire_schema,
+                        output_text, finish_reason_str, response_id, resolved_model, api_key)
         return harness.parse_json_output(
             output_text,
             usage=usage,

@@ -7,6 +7,68 @@ from .test_enhancement_service import enhancement_owner, enhancement_settings, s
 
 
 @pytest.mark.django_db
+def test_source_first_xml_outage_and_changed_section_ids(source_bill, monkeypatch):
+    from apps.legislation.models import BillEnhancement, BillProcessingCache
+    from apps.legislation.enhancements import shared, xml_sections
+    from apps.legislation.enhancements.source_graph import document_fingerprint
+    from apps.legislation.enhancements.source_packet import PreflightUnavailable
+
+    doc = source_bill.documents.get()
+    from unittest.mock import Mock
+    doc.object_storage_key = "source.xml"
+    doc.content_hash = "a" * 64
+    doc.save()
+    section = ("section-A", 0, 10, "Sec. 1", "Heading")
+    sections = (section,)
+    saved = BillEnhancement.objects.create(bill=source_bill, status="succeeded", result_json={},
+        output_schema_version="2.0-source-first", result_completeness="complete",
+        source_manifest_json={"document_id": doc.pk, "document_version_label": doc.version_label,
+            "document_content_hash": doc.reader_text_hash, "source_kind": "pinned_passages"},
+        source_fingerprint=document_fingerprint(str(doc.pk), doc.version_label, doc.reader_text_hash, sections))
+    def outage(*args):
+        raise PreflightUnavailable("temporarily unavailable")
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", outage)
+    assert not shared._reader_result_valid(saved)
+    assert not BillProcessingCache.objects.filter(kind="reader-validation").exists()
+    read = Mock(return_value=sections)
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", read)
+    monkeypatch.setattr(shared, "_source_first_result_valid", lambda *args: True)
+    assert shared.shared_enhancement(source_bill).pk == saved.pk
+    assert shared._reader_result_valid(saved)
+    read.assert_called_once()
+    doc.content_hash = "b" * 64
+    doc.save()
+    read.return_value = (("section-B", *section[1:]),)
+    assert shared.shared_enhancement(source_bill) is None
+    assert not shared._reader_result_valid(saved)
+
+
+@pytest.mark.django_db
+def test_pending_source_first_poll_reuses_xml_alignment(source_bill, enhancement_owner, monkeypatch):
+    from unittest.mock import Mock
+    from apps.legislation.models import BillEnhancement
+    from apps.legislation.enhancements import xml_sections
+    from apps.legislation.enhancements.source_graph import document_fingerprint
+
+    doc = source_bill.documents.get()
+    doc.content_hash, doc.object_storage_key = "c" * 64, "poll.xml"
+    doc.save()
+    sections = (("id", 0, 10, "Sec. 1", "Heading"),)
+    read = Mock(return_value=sections)
+    monkeypatch.setattr(xml_sections, "stored_xml_sections", read)
+    saved = BillEnhancement.objects.create(user=enhancement_owner, bill=source_bill, status="pending",
+        output_schema_version="2.0-source-first", source_manifest_json={"document_id": doc.pk,
+            "document_version_label": doc.version_label, "source_kind": "pinned_passages"},
+        source_fingerprint=document_fingerprint(str(doc.pk), doc.version_label, doc.reader_text_hash, sections))
+    client = APIClient()
+    client.force_authenticate(enhancement_owner)
+    for route in ("latest", saved.pk, "latest"):
+        response = client.get(f"/api/bills/{source_bill.pk}/enhancements/{route}/")
+        assert response.status_code == 200 and response.data["source_compatible"]
+    read.assert_called_once()
+
+
+@pytest.mark.django_db
 def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
         enhancement_owner, enhancement_settings, source_bill):
     from django.test import override_settings
@@ -175,7 +237,9 @@ def test_shared_result_needs_no_key_and_hides_payer_history(enhancement_owner, e
         confirmation = _confirmation(source_bill, credential)
         first = create_enhancement_attempt(user=enhancement_owner, bill=source_bill, confirmed=confirmation)
         saved = first.enhancement
-        saved.status = "succeeded"; saved.result_json = {"schema_version": "1.1", "overview": []}
+        saved.status = "succeeded"
+        saved.result_json = {"schema_version": saved.output_schema_version, "overview": [], "key_impacts": [],
+                             "obligations": [], "funding_and_timing": [], "uncertain_language": [], "glossary": []}
         saved.save()
         second = create_enhancement_attempt(user=other, bill=source_bill, confirmed=confirmation)
         response = client.get(f"/api/bills/{source_bill.pk}/enhancements/latest/")

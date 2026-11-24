@@ -24,6 +24,12 @@ def _validate_response(output, request):
     return valid
 
 
+def unresolved_reservation(fingerprint):
+    error = ProviderError("outcome_unknown", outcome_unknown=True)
+    error.citation_resolution["blocked_reservation"] = fingerprint
+    return error
+
+
 class ReaderDeliveryComplete(Exception):
     """Yield only between calls; completed calls remain durably reusable."""
 
@@ -69,7 +75,8 @@ class DurableReaderProvider:
             raise
 
     def _enhance_bill(self, *, api_key, request, timeout_seconds):
-        logical_fingerprint, references = call_identity(request)
+        adapter = self.attempt.execution_config.get("adapter", "existing")
+        logical_fingerprint, references = call_identity(request, adapter=adapter)
         with transaction.atomic():
             current = BillEnhancementAttempt.objects.select_for_update().get(pk=self.attempt.pk)
             if current.status != 'running' or current.run_token != self.run_token or current.lease_expires_at <= timezone.now():
@@ -77,12 +84,28 @@ class DurableReaderProvider:
             dispatch_request = request
             if (request.provider, request.requested_model) == ('openrouter', 'openrouter/free') and current.pinned_model:
                 dispatch_request = replace(request, requested_model=current.pinned_model)
-            fingerprint, _ = call_identity(dispatch_request)
+            fingerprint, _ = call_identity(dispatch_request, adapter=adapter)
             # A restart may happen after the router resolved the first call but
             # before its work-node checkpoint. Reuse that exact reservation.
             prior_step = current.steps.filter(diagnostics__logical_fingerprint=logical_fingerprint).first()
             if prior_step:
                 fingerprint = prior_step.request_fingerprint
+            else:
+                legacy_key, _ = call_identity(dispatch_request, execution_version=2)
+                legacy = BillEnhancementCallCache.objects.filter(
+                    fingerprint=legacy_key).first()
+                if legacy and legacy.status == 'dispatching':
+                    raise unresolved_reservation(legacy_key)
+                if adapter == 'existing' and legacy and legacy.status == 'validated':
+                    output = remap(legacy.result_json, {v: k for k, v in references.items()})
+                    try:
+                        _validate_response(output, request)
+                    except ValidationError:
+                        pass  # Invalid old prose must be regenerated, never reused.
+                    else:
+                        self._pin(request, legacy.resolved_model)
+                        self.cache_hits += 1
+                        return ProviderResult(output, ProviderUsage(0, 0, 0), legacy.response_id, legacy.resolved_model)
             # A unique durable reservation serializes callers across attempts
             # and users. It survives deletion of the originating user's run.
             cached, created = BillEnhancementCallCache.objects.get_or_create(fingerprint=fingerprint)
@@ -92,10 +115,19 @@ class DurableReaderProvider:
                     partial = remap(cached.result_json, {v: k for k, v in references.items()})
                     # Recheck each retained component under today's validator.
                     from .reader_sizing import select_review_units
+                    retained = []
+                    pending = list(partial['pending'])
                     for ids, output in partial['parts']:
-                        _validate_response(output, select_review_units(request, ids))
-                    self.cache_hits += 1
-                    raise PartialReviewReady(partial['parts'], partial['pending'], ProviderUsage(0, 0, 0), cached.resolved_model)
+                        try:
+                            _validate_response(output, select_review_units(request, ids))
+                        except ValidationError:
+                            pending.extend(ids)
+                        else:
+                            retained.append([ids, output])
+                    if retained:
+                        self.cache_hits += 1
+                        raise PartialReviewReady(retained, list(dict.fromkeys(pending)), ProviderUsage(0, 0, 0), cached.resolved_model)
+                    cached.status, cached.diagnostic_code = 'failed', ''
                 if cached.status == 'validated':
                     output = remap(cached.result_json, {v: k for k, v in references.items()})
                     try:
@@ -121,9 +153,14 @@ class DurableReaderProvider:
                     if cached.diagnostic_code in SUMMARY_FALLBACK_CODES:
                         raise ProviderError('invalid_output', validation_code=cached.diagnostic_code, usage=ProviderUsage(0, 0, 0))
                 if cached.diagnostic_code == 'provider_output_limit':
-                    raise ProviderError('invalid_output', validation_code='provider_output_limit', usage=ProviderUsage(0, 0, 0), resolved_model=cached.resolved_model)
+                    failure = ProviderError('invalid_output', validation_code='provider_output_limit',
+                        usage=ProviderUsage(0, 0, 0), resolved_model=cached.resolved_model)
+                    previous = cached.result_json or {}
+                    failure.call_usage = ProviderUsage(output_tokens=previous.get('output_tokens'),
+                                                      reasoning_tokens=previous.get('reasoning_tokens'))
+                    raise failure
                 if cached.status == 'dispatching':
-                    raise ProviderError('outcome_unknown', outcome_unknown=True)
+                    raise unresolved_reservation(fingerprint)
             existing = BillEnhancementStep.objects.filter(attempt=current, request_fingerprint=fingerprint).first()
             if existing:
                 if existing.status == 'failed' and cached.status == 'failed' and existing.diagnostics.get('code'):
@@ -141,8 +178,10 @@ class DurableReaderProvider:
             from .source_packet import canonical_json_bytes
             if not fits(request.request_envelope, provider=dispatch_request.provider, model=dispatch_request.requested_model):
                 raise ProviderError('request_too_large', validation_code='model_capacity_exceeded')
-            reserved_input = len(canonical_json_bytes(request.request_envelope)) + 1024
-            reserved_output = request.request_envelope.get('max_output_tokens', settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+            from .model_capabilities import resolve_capabilities
+            from .token_budget import plan_request
+            planned = plan_request(request.request_envelope, resolve_capabilities(dispatch_request.provider, dispatch_request.requested_model))
+            reserved_input, reserved_output = planned.input_tokens, planned.max_output_tokens
             budget = request.source_manifest.get('budget', {})
             rows = list(current.steps.values('input_tokens', 'output_tokens', 'diagnostics'))
             for name, reservation in (('input', reserved_input), ('output', reserved_output)):
@@ -151,6 +190,10 @@ class DurableReaderProvider:
                 ceiling = budget.get(f'maximum_{name}')
                 if ceiling is not None and spent + reservation > ceiling:
                     raise ReaderBudgetPaused()
+            from .service import attempt_credential_failure
+            failure = attempt_credential_failure(current)
+            if failure:
+                raise ProviderError(failure)
             step = BillEnhancementStep.objects.create(attempt=current, step_index=count,
                 stage='reader', request_fingerprint=fingerprint, status='dispatching', diagnostics={
                     'logical_fingerprint': logical_fingerprint, 'requested_model': dispatch_request.requested_model,
@@ -161,7 +204,9 @@ class DurableReaderProvider:
             cached.save(update_fields=['status', 'updated_at'])
         try:
             self.paid_calls += 1
-            response = self.provider.enhance_bill(api_key=api_key, request=dispatch_request, timeout_seconds=timeout_seconds)
+            from .private_diagnostics import capture_step
+            with capture_step(step, current.enhancement.user_id):
+                response = self.provider.enhance_bill(api_key=api_key, request=dispatch_request, timeout_seconds=timeout_seconds)
             if (request.provider, request.requested_model) == ('openrouter', 'openrouter/free') and current.pinned_model and response.resolved_model != current.pinned_model:
                 raise ProviderError('invalid_output', validation_code='pinned_model_changed', usage=response.usage)
             self._pin(request, response.resolved_model)
@@ -195,6 +240,8 @@ class DurableReaderProvider:
                     cached.diagnostic_code = code
                     cached.resolved_model = (getattr(exc, 'resolved_model', '') or
                         (response.resolved_model if 'response' in locals() else ''))
+                    if code == 'provider_output_limit':
+                        cached.result_json = {'output_tokens': usage.output_tokens, 'reasoning_tokens': usage.reasoning_tokens}
                     if parts:
                         cached.result_json = remap({'parts': parts, 'pending': pending}, references)
                     cached.save(update_fields=['status', 'diagnostic_code', 'result_json', 'resolved_model', 'updated_at'])

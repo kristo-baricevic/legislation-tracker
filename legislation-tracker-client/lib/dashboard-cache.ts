@@ -42,7 +42,7 @@ export function dashboardSession() {
       else {
         const refreshReps = revision !== next || researchRevision !== session.research_revision;
         if (revision !== next) {
-          entries.delete("bill-recommendations"); entries.delete("rep-recommendations");
+          for (const key of entries.keys()) if (key.startsWith("bill-recommendations") || key.startsWith("rep-recommendations")) entries.delete(key);
           for (const key of entries.keys()) if (key.endsWith(":activity") || key.endsWith(":card")) entries.delete(key);
         }
         if (trackingRevision !== session.tracking_revision) entries.delete("tracking");
@@ -61,7 +61,12 @@ export function dashboardSession() {
   }
   return flight;
 }
-export function forgetDashboardValue(key: string) { entries.delete(key); }
+export function forgetDashboardValue(key: string) {
+  entries.delete(key);
+  if (key === "bill-recommendations" || key === "rep-recommendations") {
+    for (const entry of entries.keys()) if (entry.startsWith(`${key}:`)) entries.delete(entry);
+  }
+}
 export function peekDashboardValue<T>(key: string): T | undefined {
   if (typeof window === "undefined" || !isPersonalizedScopeCurrent(capturePersonalizedScope())) return undefined;
   return entries.get(key)?.value as T | undefined;

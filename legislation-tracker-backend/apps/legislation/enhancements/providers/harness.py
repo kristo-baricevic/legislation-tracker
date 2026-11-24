@@ -22,9 +22,13 @@ def usage_from_response(response) -> ProviderUsage:
     usage = value(response, "usage")
     if usage is None:
         return ProviderUsage()
+    output = value(usage, "output_tokens")
+    reasoning = value(value(usage, "output_tokens_details"), "reasoning_tokens")
     return ProviderUsage(
         input_tokens=value(usage, "input_tokens"),
-        output_tokens=value(usage, "output_tokens"),
+        output_tokens=output,
+        reasoning_tokens=reasoning,
+        visible_output_tokens=max(0, output - reasoning) if output is not None and reasoning is not None else None,
         total_tokens=value(usage, "total_tokens"),
     )
 
@@ -80,8 +84,9 @@ def resolve_max_output_tokens(request, schema_name: str) -> int:
     if getattr(request, "output_schema_version", None) == "1.4":
         return envelope["max_output_tokens"]
     if str(schema_name).startswith("source_first_"):
-        return min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
-    return settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS
+        return min(envelope.get("max_output_tokens", 8000), 8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
+    return min(envelope.get("max_output_tokens", settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS),
+               settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
 
 
 def ensure_request_fits(envelope: dict, *, max_bytes: int) -> None:
@@ -90,12 +95,16 @@ def ensure_request_fits(envelope: dict, *, max_bytes: int) -> None:
         raise ProviderError("request_too_large", usage=ProviderUsage(0, 0, 0))
 
 
-def ensure_citation_repair_fits(payload) -> None:
+def ensure_citation_repair_fits(payload, request=None) -> None:
     envelope = dict(input=payload, instructions=REPAIR_INSTRUCTIONS, schema=REPAIR_SCHEMA)
     max_bytes = min(
         settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
         settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
     )
+    if request is not None:
+        from ..model_capabilities import resolve_capabilities
+        cap = resolve_capabilities(getattr(request, "provider", ""), request.requested_model)
+        max_bytes = min(max_bytes, cap.context_tokens - resolve_max_output_tokens(request, "citation_repair") - 1024)
     ensure_request_fits(envelope, max_bytes=max_bytes)
 
 

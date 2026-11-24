@@ -1,7 +1,7 @@
 from dataclasses import asdict
 
 from django.conf import settings
-from .model_selection import target as planning_target
+from .model_selection import target as planning_target, reasoning_effort
 
 from collections import Counter
 
@@ -12,28 +12,34 @@ from .source_graph import build_source_graph
 from .types import EnhancementPreflight
 
 
-def build_source_first_preflight(document, text, *, reuse_result=None):
-    from .source_packet import PreflightUnavailable
+def build_source_first_preflight(document, text, *, reuse_result=None, cached_preflight=None):
+    from .source_packet import PreflightUnavailable, _text_hash
 
     if not text.strip():
         raise PreflightUnavailable("Source text unavailable")
-    from .xml_sections import stored_xml_sections
+    from .xml_sections import aligned_xml_sections, read_stored_xml
+    raw, xml_digest = read_stored_xml(document)
+    text_hash = _text_hash(text)
+    from .model_capabilities import resolve_capabilities
+    limits = resolve_capabilities(*planning_target())
+    output_limit = min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS, limits.output_tokens)
+    plan_limits = {
+        "model": planning_target()[1],
+        "reasoning_effort": reasoning_effort(),
+        "output_tokens": output_limit,
+        "per_call_input": min(limits.context_tokens - output_limit, settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+                              settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS),
+    }
+    # Bind reuse to the inputs actually read for this build, including historical
+    # XML with no recorded content hash and accepted provisions from partial retries.
+    guard = digest([document.pk, document.version_label, text_hash, xml_digest, planning_target()[0],
+                    plan_limits, reuse_result, PROMPT_VERSION, VERSION])
+    if cached_preflight is not None and cached_preflight.worker_guard == guard:
+        return cached_preflight
     graph = build_source_graph(str(document.pk), document.version_label, text,
-                               xml_sections=stored_xml_sections(document, text))
+                               xml_sections=aligned_xml_sections(raw, text))
     try:
-        plan = _plan_built_graph(
-            graph,
-            {
-                "model": planning_target()[1],
-                "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
-                "output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
-                "per_call_input": min(
-                    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
-                    settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
-                ),
-            },
-            reuse_result=reuse_result,
-        )
+        plan = _plan_built_graph(graph, plan_limits, reuse_result=reuse_result)
     except BudgetExceeded as exc:
         raise PreflightUnavailable(
             "No executable analysis plan", reason=str(exc),
@@ -49,14 +55,14 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
     identity = {
         "plan": plan.fingerprint,
         "provider": planning_target()[0],
-        "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
-        "output_limit": min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS),
+        "reasoning_effort": reasoning_effort(),
+        "output_limit": plan.output_tokens,
     }
-    envelope = {"source_first_plan": identity, "budget": budget}
+    envelope = {"source_first_plan": identity, "budget": budget, "max_output_tokens": plan.output_tokens}
     return EnhancementPreflight(
         provider=planning_target()[0],
         requested_model=plan.model,
-        reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        reasoning_effort=reasoning_effort(),
         prompt_version=PROMPT_VERSION,
         output_schema_version=VERSION,
         source_packet_version=VERSION,
@@ -64,8 +70,10 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
         request_fingerprint=digest(identity),
         source_manifest={
             "document_id": document.pk,
+            "document_content_hash": text_hash,
             "document_version_label": document.version_label,
             "source_kind": "pinned_passages",
+            "model_limits_version": 1,
             "budget": budget,
             "coverage": {**graph.coverage, "total_units": len(graph.units),
                          "planned_units": sum(len(c.unit_ids) for c in plan.calls),
@@ -82,4 +90,5 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
         estimated_input_tokens=plan.maximum_input,
         truncated=False,
         analysis_plan=plan,
+        worker_guard=guard,
     )

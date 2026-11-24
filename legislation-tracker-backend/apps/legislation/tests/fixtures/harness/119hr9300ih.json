@@ -1,0 +1,52 @@
+{
+  "document": 511,
+  "bill": 463,
+  "number": "HR 9300",
+  "title": "Postsecondary Student Success Act of 2026",
+  "version": "Introduced in House",
+  "source": "https://www.congress.gov/119/bills/hr9300/BILLS-119hr9300ih.xml",
+  "text_sha256": "3b85dc247ae09a49f809bafafd26dac07c13a31d8d62739ddb511f72f1e8577f",
+  "xml_sha256": "b58ca26e499d57a6550fd68eb0e89d404ad6bdc12ddd2a46a28d8b1e03f3f584",
+  "chars": 10602,
+  "evidence": [
+    {
+      "label": "annual competitive grants",
+      "start": 4212,
+      "end": 4469,
+      "quote": "(a) Grant authorization.—For each of fiscal years 2027 through 2032, the Secretary shall award, on a competitive basis, grants to eligible entities to provide student services to increase participation, retention, and completion rates of high-need students."
+    },
+    {
+      "label": "eligible applicants",
+      "start": 1131,
+      "end": 1389,
+      "quote": "(4) Eligible entity.—The term eligible entity means—\n(A) a public institution of higher education;\n(B) a partnership between a nonprofit educational organization and an institution of higher education; or\n(C) a consortium of institutions of higher education."
+    },
+    {
+      "label": "tribal reservation, total annual appropriation",
+      "start": 3903,
+      "end": 4137,
+      "quote": "From the total amount appropriated to carry out this Act for a fiscal year, the Secretary shall reserve 2 percent for grants to eligible Indian entities to increase participation, retention, and completion rates of high-need students."
+    },
+    {
+      "label": "evidence tier reservation, remaining annual appropriation",
+      "start": 6699,
+      "end": 7022,
+      "quote": "(d) Evidence-Based student success programs.—From the total amount appropriated to carry out this Act for a fiscal year and not reserved under section 4, the Secretary shall reserve not less than 20 percent to award grants to eligible entities with applications that propose to include evidence-based reforms and practices—"
+    },
+    {
+      "label": "administration cap",
+      "start": 8813,
+      "end": 8920,
+      "quote": "(1) not more than 5 percent for administration, capacity building, research, evaluation, and reporting; and"
+    },
+    {
+      "label": "technical assistance cap",
+      "start": 8921,
+      "end": 9024,
+      "quote": "(2) not more than 2 percent for technical assistance to eligible entities and eligible Indian entities."
+    }
+  ],
+  "congress": 119,
+  "parser_snapshot_sha256": "6d81f359b7a02a1c7562ad29fcbee086e81a4c7015ee389a49beedc9f2cf11a3",
+  "xml_boundary_snapshot_sha256": "c0d5bb481a35677a7833845e71a443935827fd6a2348a2be56699c7754206f8b"
+}

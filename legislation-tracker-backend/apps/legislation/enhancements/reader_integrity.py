@@ -20,6 +20,16 @@ def validate_numbers(item, *, path):
     prose = '\n'.join(str(item.get(key) or '') for key in ('text', 'amount_display', 'label', 'title'))
     if _amounts(prose) - _amounts(evidence) or percentages(prose) - percentages(evidence):
         raise output_error('reader_amount_conflict', path)
+    # A matching dollar figure is not enough: authorization does not itself
+    # require spending. Keep this check amount-scoped so a separate mandatory
+    # allocation in the same evidence is not mistaken for an authorization.
+    authorized, other = set(), set()
+    for clause in re.split(r'(?<=[.;])\s+', evidence):
+        bucket = authorized if re.search(r'\bauthoriz\w*\s+to\s+be\s+appropriated\b', clause, re.I) else other
+        bucket.update(_amounts(clause))
+    for match in re.finditer(r'\b(?:must|shall|will)\s+(?:allocate|spend|appropriate|disburse)\b[^.;]{0,160}', prose, re.I):
+        if _amounts(match.group()) & (authorized - other):
+            raise output_error('reader_amount_conflict', path)
 
 
 def financial_signal_text(text):

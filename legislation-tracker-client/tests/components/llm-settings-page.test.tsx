@@ -87,9 +87,80 @@ describe("LLM settings", () => {
     expect(await screen.findByText("Valid")).toBeVisible();
   });
 
+  it("keeps the saved key manageable when its model is excluded", async () => {
+    vi.mocked(getLLMSettings).mockResolvedValue({...configured, requested_model: "excluded-model"});
+    render(<SettingsPage />);
+    expect(await screen.findByRole("option", {name: "Choose a compatible model"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Validate key"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Delete API key"})).toBeEnabled();
+    expect(validateLLMCredential).not.toHaveBeenCalled();
+  });
+
+  it("deletes an inactive provider key after its entire catalog disappears", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getLLMSettings).mockResolvedValue({...configured, models: [configured.models[0]], saved_credentials: [
+      {provider: "openrouter", selected_model: "retired-model", key_suffix: "9876", revision: 3},
+    ]});
+    render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", {name: "Provider"}), "openrouter");
+    expect(screen.getByText(/ending in 9876/)).toBeVisible();
+    expect(screen.getByRole("button", {name: "Validate key"})).toBeDisabled();
+    await user.click(screen.getByRole("button", {name: "Delete API key"}));
+    await user.click(screen.getByRole("button", {name: "Confirm deletion"}));
+    expect(deleteLLMSettings).toHaveBeenCalledWith("openrouter");
+  });
+
+  it("retries only the settings read when refresh fails after deleting an inactive key", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getLLMSettings).mockResolvedValueOnce({...configured, saved_credentials: [
+      {provider: "openrouter", selected_model: "retired-model", key_suffix: "9876", revision: 3},
+    ]}).mockRejectedValueOnce(new Error("Refresh failed")).mockResolvedValue(configured);
+    render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", {name: "Provider"}), "openrouter");
+    await user.click(screen.getByRole("button", {name: "Delete API key"}));
+    await user.click(screen.getByRole("button", {name: "Confirm deletion"}));
+    expect(await screen.findByText("Refresh failed")).toBeVisible();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await user.click(screen.getByRole("button", {name: "Reload settings"}));
+    expect(await screen.findByLabelText("OpenAI API key")).toBeVisible();
+    expect(vi.mocked(deleteLLMSettings).mock.calls).toEqual([["openrouter"]]);
+  });
+
+  it("activates the retained default key after deleting the active provider", async () => {
+    const user = userEvent.setup();
+    const retained = {provider: "openai", selected_model: configured.requested_model, key_suffix: "1234", revision: 2};
+    vi.mocked(getLLMSettings)
+      .mockResolvedValueOnce({...configured, provider: "openrouter", requested_model: "openrouter/free", key_suffix: "9876"})
+      .mockResolvedValueOnce({...configured, configured: false, enabled: false, key_suffix: null, revision: null,
+        saved_credentials: [retained]});
+    vi.mocked(updateLLMSettings).mockResolvedValueOnce(configured);
+    render(<SettingsPage />);
+    await user.click(await screen.findByRole("button", {name: "Delete API key"}));
+    await user.click(screen.getByRole("button", {name: "Confirm deletion"}));
+    expect(await screen.findByLabelText("OpenAI API key")).toHaveValue("");
+    await user.click(screen.getByRole("button", {name: "Save model"}));
+    expect(updateLLMSettings).toHaveBeenCalledWith({provider: "openai", requested_model: configured.requested_model});
+    expect(screen.getByRole("button", {name: "Validate key"})).toBeEnabled();
+    expect(validateLLMCredential).not.toHaveBeenCalled();
+  });
+
+  it("can select a saved provider after its previous model leaves the catalog", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getLLMSettings).mockResolvedValue({...configured, saved_credentials: [
+      {provider: "openrouter", selected_model: "retired-model", key_suffix: "9876", revision: 3},
+    ]});
+    render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", {name: "Provider"}), "openrouter");
+    expect(screen.getByText(/ending in 9876/)).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Save model"}));
+    expect(updateLLMSettings).toHaveBeenCalledWith({provider: "openrouter", requested_model: "openrouter/free"});
+    expect(validateLLMCredential).not.toHaveBeenCalled();
+  });
+
   it("marks the free route and requires its own key before switching", async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Provider" }), "openrouter");
     const select = await screen.findByRole("combobox", { name: "Model" });
     await user.selectOptions(select, screen.getByRole("option", {name: /openrouter\/free.*Free/i}));
     expect(screen.getByRole("button", {name: "Save model"})).toBeDisabled();

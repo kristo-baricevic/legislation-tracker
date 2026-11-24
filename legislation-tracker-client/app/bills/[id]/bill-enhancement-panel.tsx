@@ -133,6 +133,10 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
 
 
 function EnhancementUnavailable({ reason }: { reason: string | null }) {
+  if (reason === "reconciliation_required") return "The previous provider request may have been charged. Its outcome must be reconciled before retrying.";
+  if (reason === "concrete_model_required") {
+    return <p>Select a specific free model in <Link href="/settings" className="underline">Settings</Link> and validate it before enhancing this bill.</p>;
+  }
   if (reason === "unsupported_jurisdiction") {
     return (
       <p className="mt-4 text-sm text-slate-700 dark:text-green-500">
@@ -308,8 +312,7 @@ export default function BillEnhancementPanel({
         return;
       }
       if (nextEstimate.can_enhance) {
-        const sameRequest = enhancement?.request_fingerprint === nextEstimate.request_fingerprint;
-        setConfirming(sameRequest && enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
+        setConfirming(nextEstimate.matching_enhancement?.latest_attempt?.retry_allowed ? "retry" : "create");
       }
     } catch (reason) {
       if (owner !== generation.current) return;
@@ -404,12 +407,13 @@ export default function BillEnhancementPanel({
     const owner = generation.current;
     if (!estimate || !confirming) return;
     const confirmation = confirmationFromEstimate(estimate);
-    if (!confirmation || !enhancement && confirming === "retry") return;
+    const matching = estimate.matching_enhancement;
+    if (!confirmation || (!matching && confirming === "retry")) return;
     setSubmitting(true);
     setError(null);
     try {
-      const updated = confirming === "retry" && enhancement
-        ? await retryBillEnhancement(billId, enhancement.id, confirmation)
+      const updated = confirming === "retry" && matching
+        ? await retryBillEnhancement(billId, matching.id, confirmation)
         : await createBillEnhancement(billId, confirmation);
       if (owner !== generation.current) return;
       setEnhancement(updated);
@@ -476,6 +480,8 @@ export default function BillEnhancementPanel({
   const retryable = Boolean(enhancement?.latest_attempt?.retry_allowed);
   const isActive = enhancement && ["pending", "running"].includes(enhancement.status);
   const canStartNewIdentity = Boolean(enhancement?.stale || (enhancement?.shared && ["failed", "refused", "outcome_unknown"].includes(enhancement.status)));
+  const blockedByReconciliation = !canStartNewIdentity && enhancement?.status === "outcome_unknown" && enhancement.latest_attempt?.retry_allowed === false;
+  const canPrepareEstimate = !enhancement || retryable || canStartNewIdentity || blockedByReconciliation;
   const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
     : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
   const hasSavedReader = Boolean(activeReader?.result);
@@ -483,25 +489,24 @@ export default function BillEnhancementPanel({
   return (
     <>
       <ControlsSlot targetId={controlsTargetId}>
-        {hasSavedReader ? <ReaderModeSwitch /> : <button type="button"
-          aria-busy={preparing} disabled={Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
+        {hasSavedReader && <ReaderModeSwitch />}
+        {(!hasSavedReader || (!isActive && canPrepareEstimate)) && <button type="button"
+          aria-busy={preparing} disabled={preparing || Boolean(isActive) || !canPrepareEstimate}
           onClick={() => void prepareEnhancement()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
+          {preparing ? "Preparing AI estimate…" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
         </button>}
-        {failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
-      {estimate && !estimate.can_enhance && (
-        <EnhancementUnavailable reason={estimate.unavailable_reason} />
-      )}
-      {hasSavedReader && enhancement && !isActive && (retryable || canStartNewIdentity) && (
-        <button type="button" aria-busy={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
-          {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : enhancement?.status === "paused" ? "Continue" : "Retry AI enhancement"}
-        </button>
-      )}
+        {!blockedByReconciliation && failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
+        {blockedByReconciliation && (
+          <p role="status" className="mt-1 text-sm"><EnhancementUnavailable reason="reconciliation_required" /></p>
+        )}
+        {estimate && !estimate.can_enhance && (!blockedByReconciliation || estimate.unavailable_reason !== "reconciliation_required") && (
+          <EnhancementUnavailable reason={estimate.unavailable_reason} />
+        )}
         {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
       </ControlsSlot>
       {confirming && estimate && <EnhancementEstimateDialog estimate={estimate} title={title}
-        unknownOutcome={confirming === "retry" && enhancement?.status === "outcome_unknown"}
+        unknownOutcome={confirming === "retry" && estimate.matching_enhancement?.status === "outcome_unknown"}
         submitting={submitting} submitEnhancement={submitEnhancement} onCancel={() => setConfirming(null)} />}
     {isSuperuser && <section aria-label="AI metadata" className="mt-8 mb-6 border-l-4 border-amber-500 bg-white/80 p-4 shadow-sm dark:border-amber-400 dark:bg-green-950/20 dark:shadow-none sm:p-5">
       <h2 className="text-lg font-semibold">AI metadata</h2>

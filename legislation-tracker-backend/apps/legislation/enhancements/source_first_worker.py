@@ -28,7 +28,7 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
             or current.lease_expires_at <= timezone.now()
         ):
             raise ProviderError("outcome_unknown", outcome_unknown=True)
-        fresh, current_key, failure = worker_preflight(current)
+        fresh, current_key, failure = worker_preflight(current, cached_preflight=preflight)
         if failure:
             raise ProviderError(failure)
         if fresh.request_fingerprint != preflight.request_fingerprint:
@@ -91,7 +91,8 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
 
     def invoke(call):
         request = replace(
-            preflight, request_envelope={"source_first_payload": call.payload}
+            preflight, request_envelope={"source_first_payload": call.payload,
+                                         "max_output_tokens": preflight.analysis_plan.output_tokens}
         )
         method = getattr(
             provider,

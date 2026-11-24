@@ -124,7 +124,7 @@ def validate_reader_explanations(output, targets, sources):
             if item["text"] is not None or not item["unresolved_reason"] or item["source_quotes"]:
                 raise output_error("reader_target_invalid", ["explanations", index])
             continue
-        if not item["text"] or item["unresolved_reason"] is not None:
+        if not item["text"] or not any(ch.isalpha() for ch in item["text"]) or item["unresolved_reason"] is not None:
             raise output_error("reader_target_invalid", ["explanations", index])
         _validate_quotes(item, source_map, ["explanations", index], by_id[tid])
     if seen != set(by_id):

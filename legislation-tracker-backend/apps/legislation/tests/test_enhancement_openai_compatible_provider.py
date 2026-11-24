@@ -137,6 +137,24 @@ def test_json_schema_mode():
     assert call["response_format"]["json_schema"]["strict"] is True
 
 
+def test_openrouter_keeps_prose_rules_local_without_relaxing_citation_ids():
+    from apps.legislation.enhancements.reader_citations import READER_PROMPT_VERSION
+    completions = FakeCompletions(result=_completed_response())
+    provider = OpenAICompatibleEnhancementProvider(client_factory=FakeClientFactory(completions))
+    request = _request()
+    request.provider = 'openrouter'
+    schema = {'type': 'object', 'properties': {
+        'text': {'type': 'string', 'pattern': r'^(?:\S+\s+){0,64}\S*[.!?]$', 'maxLength': 420},
+        'quote_id': {'type': 'string', 'pattern': r'^p[0-9]{4,}$'}}}
+    request.request_envelope.update(output_schema_version='1.4', prompt_version=READER_PROMPT_VERSION, output_schema=schema)
+    provider.enhance_bill(api_key='offline', request=request, timeout_seconds=1)
+    wire = completions.calls[0]['response_format']['json_schema']['schema']
+    assert 'pattern' not in wire['properties']['text']
+    assert wire['properties']['text']['maxLength'] == 420
+    assert wire['properties']['quote_id']['pattern'] == r'^p[0-9]{4,}$'
+    assert 'pattern' in schema['properties']['text']  # Local validation stays strict.
+
+
 def test_json_object_mode():
     completions = FakeCompletions(result=_completed_response())
     factory = FakeClientFactory(completions)
@@ -294,6 +312,16 @@ def test_validate_credential():
     assert check.valid is True
     assert len(completions.calls) == 1
     assert completions.calls[0]["max_tokens"] == 16
+
+
+def test_free_key_validation_pins_price_and_returned_model():
+    completions = FakeCompletions(result=SimpleNamespace(model="unexpected", choices=[object()]))
+    provider = OpenAICompatibleEnhancementProvider(client_factory=FakeClientFactory(completions),
+                                                   base_url="https://openrouter.ai/api/v1")
+    result = provider.validate_credential(api_key="fixture", requested_model="org/test:free", timeout_seconds=3)
+    assert not result.valid
+    assert completions.calls[0]["extra_body"]["provider"]["max_price"] == {"prompt": 0, "completion": 0, "request": 0}
+    assert len(completions.calls) == 1
 
 
 def test_no_leak():

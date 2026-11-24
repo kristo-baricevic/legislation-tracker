@@ -75,6 +75,7 @@ def saved_search_queryset(search: SavedBillSearch):
             "bill_topics__topic"
         ),
         search.query_json,
+        user_id=search.user_id,
     )
 
 

@@ -97,8 +97,9 @@ def test_policy_prose_rejects_clipped_sentences_citation_instructions_and_amendm
         'policy_changes': [{'title': 'Help schools', 'text': text,
             'source_quotes': [{'source_ref': 'src_0001', 'quote_id': 'p0001'}]}],
         'policy_checks': {'src_0001:p0001': 'explained'}}
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as caught:
         resolve_discovery(output, sources)
+    assert caught.value.validator == 'reader_policy_wording'
 
 
 def test_hr10906_answer_key_is_source_pinned_and_catches_empty_money_inventory():

@@ -11,6 +11,39 @@ from apps.legislation.tests.test_enhancement_tasks import _pending_attempt
 from apps.legislation.tests.test_enhancement_service import source_bill, enhancement_owner, enhancement_settings
 
 
+@pytest.mark.django_db
+def test_ambiguous_reader_reservation_blocks_confirmation_until_reconciled(
+        source_bill, enhancement_owner, enhancement_settings, monkeypatch):
+    from unittest.mock import Mock
+    from rest_framework.test import APIClient
+    from apps.legislation.models import BillEnhancementCallCache
+    from apps.legislation.tasks import run_bill_enhancement_attempt
+    from .test_enhancement_service import _confirmation
+
+    install_reader(source_bill)
+    client = APIClient()
+    client.force_authenticate(enhancement_owner)
+    provider = Mock()
+    provider.enhance_bill.side_effect = ProviderError("outcome_unknown", outcome_unknown=True)
+    monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: provider)
+    url = f"/api/bills/{source_bill.pk}/enhancements/"
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        confirmation = _confirmation(source_bill, attempt.credential)
+        assert run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)["status"] == "outcome_unknown"
+        estimate = client.get(url + "estimate/").data
+        assert not estimate["can_enhance"]
+        assert estimate["unavailable_reason"] == "reconciliation_required"
+        assert not estimate["matching_enhancement"]["latest_attempt"]["retry_allowed"]
+        retry = client.post(url + f"{attempt.enhancement_id}/retry/", confirmation, format="json")
+        assert retry.status_code == 409 and "reconciliation_required" in str(retry.data)
+        assert attempt.enhancement.attempts.count() == provider.enhance_bill.call_count == 1
+        reservation = BillEnhancementCallCache.objects.get(status="dispatching")
+        reservation.status = "failed"  # Simulate a reconciled, known failure.
+        reservation.save()
+        assert client.get(url + "estimate/").data["matching_enhancement"]["latest_attempt"]["retry_allowed"]
+
+
 def test_cache_reference_remapping_does_not_edit_prose():
     from apps.legislation.enhancements.reader_cache import remap
     assert remap({'text': 'The name src_0042 appears in the source.', 'source_ref': 'src_0042'},
@@ -83,7 +116,7 @@ def test_empty_summary_is_not_saved_as_reusable_success(source_bill, enhancement
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize('crash', [False, True])
+@pytest.mark.parametrize('crash', [False, True, 'legacy_cache', 'legacy_crash'])
 def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
         source_bill, enhancement_owner, enhancement_settings, crash):
     install_reader(source_bill)
@@ -98,28 +131,50 @@ def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
             calls = 0
             def enhance_bill(self, **kwargs):
                 self.calls += 1
-                if crash:
+                if crash is True or crash == 'legacy_crash':
                     raise KeyboardInterrupt('simulate process death after dispatch')
                 return ProviderResult({'schema_version': '1.4', 'summary': [{'text': 'Requires a report.',
                     'source_quotes': [{'source_ref': p.source_snapshot[0]['source_ref'], 'quote_id': 'p0001'}]}], 'explanations': []}, ProviderUsage(10, 5, 15), 'response', 'test')
         real = Provider()
         wrapper = DurableReaderProvider(real, a, 'run', 2)
-        if crash:
+        if crash is True or crash == 'legacy_crash':
             with pytest.raises(KeyboardInterrupt):
                 wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
+            if crash == 'legacy_crash':
+                from apps.legislation.enhancements.reader_cache import call_identity
+                from apps.legislation.models import BillEnhancementCallCache
+                legacy_key, _ = call_identity(p, execution_version=2)
+                BillEnhancementCallCache.objects.update(fingerprint=legacy_key)
+                a.steps.all().delete()  # A later attempt has only the shared reservation.
             with pytest.raises(ProviderError) as error:
                 wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             assert error.value.outcome_unknown
-            assert a.steps.get().status == 'dispatching'
+            if crash == 'legacy_crash':
+                assert not a.steps.exists()
+                assert BillEnhancementCallCache.objects.get(pk=legacy_key).status == 'dispatching'
+                from apps.legislation.enhancements.service import retry_allowed
+                a.status = "outcome_unknown"
+                a.citation_resolution_json = error.value.citation_resolution
+                assert not retry_allowed(a)
+                BillEnhancementCallCache.objects.filter(pk=legacy_key).update(status="failed")
+                assert retry_allowed(a)
+            else:
+                assert a.steps.get().status == 'dispatching'
         else:
             first = wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             saved = a.steps.get()
             assert saved.status == 'validated' and saved.result_json == first.output
+            if crash == 'legacy_cache':
+                from apps.legislation.enhancements.reader_cache import call_identity
+                from apps.legislation.models import BillEnhancementCallCache
+                old_key, _ = call_identity(p, execution_version=2)
+                BillEnhancementCallCache.objects.update(fingerprint=old_key)
+                a.steps.all().delete()  # A new run has no old step reservation.
             second = wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             assert second.output == first.output and second.usage.total_tokens == 0
             assert second.resolved_model == first.resolved_model
             from apps.legislation.enhancements.source_first_worker import step_usage
-            assert step_usage(a.pk).total_tokens == 15
+            assert step_usage(a.pk).total_tokens == (0 if crash == 'legacy_cache' else 15)
         assert real.calls == 1
 
 

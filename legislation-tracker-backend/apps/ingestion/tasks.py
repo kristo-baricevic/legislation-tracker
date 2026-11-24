@@ -2460,7 +2460,7 @@ def _process_roll_call_vote_impl(work_item):
 
 
 def _process_bill_votes_impl(bill_id):
-    """Discover bill action references and queue canonical roll-call work only."""
+    """Save non-roll-call passage and queue canonical roll-call references."""
     logger.info("process_bill_votes: starting bill_id=%s", bill_id)
     bill = Bill.objects.filter(pk=bill_id).first()
     if not bill:
@@ -2473,6 +2473,12 @@ def _process_bill_votes_impl(bill_id):
     num = parts[1] if len(parts) >= 2 else bill.bill_number.replace(" ", "")
     congress = bill.session
     actions = bill_actions(congress, bill_type, num)
+    from .passage_actions import extract_passage_actions
+    source_type = {"s": "senate-bill", "hr": "house-bill", "sres": "senate-resolution", "hres": "house-resolution", "sjres": "senate-joint-resolution", "hjres": "house-joint-resolution", "sconres": "senate-concurrent-resolution", "hconres": "house-concurrent-resolution"}.get(bill_type)
+    if source_type:
+        passage_actions = extract_passage_actions(actions, source_url=f"https://www.congress.gov/bill/{congress}th-congress/{source_type}/{num}/all-actions")
+        if bill.passage_actions != passage_actions:
+            Bill.objects.filter(pk=bill.id).update(passage_actions=passage_actions)
     votes_refs = []
     for action in actions:
         recorded_votes = action.get("recordedVotes") or []

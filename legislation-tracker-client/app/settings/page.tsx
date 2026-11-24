@@ -21,14 +21,18 @@ function statusLabel(status: LLMSettings["validation_status"]): string {
 function LLMSettingsSection() {
   const [settings, setSettings] = useState<LLMSettings | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [draft, setDraft] = useState("");
-  const optionId = (p: string, m: string) => JSON.stringify([p, m]);
-  const selected = settings?.models?.find(m => optionId(m.provider, m.model) === draft);
-  const changed = !!selected && (selected.provider !== settings?.provider || selected.model !== settings.requested_model);
-  const provider = selected?.provider ?? settings?.provider ?? "";
+  const [draft, setDraft] = useState<{provider: string; model: string} | null>(null);
+  const provider = draft?.provider ?? settings?.provider ?? "";
+  const model = draft?.model ?? settings?.requested_model ?? "";
+  const selected = settings?.models.find(item => item.provider === provider && item.model === model);
+  const compatible = Boolean(selected);
+  const saved = settings?.saved_credentials?.find(item => item.provider === provider);
+  const changed = provider !== settings?.provider || model !== settings?.requested_model || Boolean(saved && !settings?.configured);
+  const hasKey = Boolean(saved || (settings?.configured && provider === settings.provider));
   const providerLabel = ({openai: "OpenAI", openrouter: "OpenRouter", anthropic: "Anthropic", gemini: "Google"} as Record<string,string>)[provider] ?? provider;
   const [busy, setBusy] = useState<"save" | "validate" | "toggle" | "delete" | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteProvider, setDeleteProvider] = useState<string | null>(null);
+  const [settingsRevision, setSettingsRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -44,12 +48,12 @@ function LLMSettingsSection() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [settingsRevision]);
 
   async function saveKey(event: FormEvent) {
     event.preventDefault();
     const submittedKey = apiKey.trim();
-    if (!settings || (!submittedKey && (!changed || provider !== settings.provider || !settings.configured))) return;
+    if (!settings || !compatible || (!submittedKey && (!changed || !hasKey))) return;
     setBusy("save");
     setError(null);
     setNotice(null);
@@ -59,7 +63,7 @@ function LLMSettingsSection() {
         provider, requested_model: selected?.model ?? settings.requested_model,
       });
       setSettings(updated);
-      setDraft("");
+      setDraft(null);
       setNotice("Saved. Validate the key before enhancing a bill.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save the API key.");
@@ -74,7 +78,7 @@ function LLMSettingsSection() {
     setError(null);
     setNotice(null);
     try {
-      const updated = await validateLLMCredential();
+      const updated = await validateLLMCredential(provider);
       setSettings(updated);
       setNotice(updated.validation_status === "valid" ? "API key validated." : "The API key is not valid for this model.");
     } catch (reason) {
@@ -90,7 +94,7 @@ function LLMSettingsSection() {
     setError(null);
     setNotice(null);
     try {
-      const updated = await updateLLMSettings({ enabled: !settings.enabled });
+      const updated = await updateLLMSettings({ enabled: !settings.enabled }, provider);
       setSettings(updated);
       setNotice(updated.enabled ? "AI enhancement enabled." : "AI enhancement disabled.");
     } catch (reason) {
@@ -101,26 +105,17 @@ function LLMSettingsSection() {
   }
 
   async function removeKey() {
+    if (!deleteProvider) return;
     setBusy("delete");
     setError(null);
     setNotice(null);
     try {
-      await deleteLLMSettings();
-      setDraft("");
+      await deleteLLMSettings(deleteProvider);
+      setDeleteProvider(null);
+      setDraft(null);
       setApiKey("");
-      setSettings((current) => current ? {
-        ...current,
-        provider: current.models[0].provider,
-        requested_model: current.models[0].model,
-        configured: false,
-        key_suffix: null,
-        revision: null,
-        enabled: false,
-        validation_status: "unverified",
-        validated_revision: null,
-        validated_at: null,
-      } : current);
-      setConfirmDelete(false);
+      setSettings(null);
+      setSettingsRevision(value => value + 1);
       setNotice("API key deleted. Existing enhancement history remains private and readable.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not delete the API key.");
@@ -158,25 +153,45 @@ function LLMSettingsSection() {
           <LoadingSpinner centered active={!settings && !error} label="Loading settings…" />
           {settings && (
             <>
+              <label htmlFor="enhancement-provider" className="mt-5 block text-sm font-semibold">Provider</label>
+              <select id="enhancement-provider" value={provider} disabled={busy !== null}
+                onChange={event => {
+                  const next = event.target.value;
+                  const stored = settings.saved_credentials?.find(item => item.provider === next);
+                  const choices = settings.models.filter(item => item.provider === next);
+                  const model = choices.find(item => item.model === stored?.selected_model)?.model ?? choices[0]?.model ?? "";
+                  setDraft({provider: next, model});
+                  setApiKey("");
+                  setDeleteProvider(null);
+                  setError(null);
+                  setNotice(null);
+                }}>
+                {Array.from(new Set([settings.provider, ...settings.models.map(item => item.provider),
+                  ...(settings.saved_credentials ?? []).map(item => item.provider)])).map(name =>
+                  <option key={name} value={name}>{name}</option>
+                )}
+              </select>
               <label htmlFor="enhancement-model" className="mt-5 block text-sm font-semibold">Model</label>
               <select id="enhancement-model" className="mt-2 rounded border border-control bg-paper px-3 py-2"
-                value={draft || optionId(settings.provider, settings.requested_model)}
+                value={model}
                 disabled={!settings.feature_available || busy !== null}
-                onChange={event => {setDraft(event.target.value); setApiKey(""); setConfirmDelete(false); setError(null); setNotice(null);}}>
-                {settings.models.map(m => <option key={optionId(m.provider,m.model)} value={optionId(m.provider,m.model)}>
+                onChange={event => {setDraft({provider, model: event.target.value}); setApiKey(""); setDeleteProvider(null); setError(null); setNotice(null);}}>
+                {!compatible &&
+                  <option value={model} disabled>Choose a compatible model</option>}
+                {settings.models.filter(m => m.provider === provider).map(m => <option key={m.model} value={m.model}>
                   {m.model}{m.free ? " · Free" : ""}
                 </option>)}
               </select>
               <dl className="mt-4 text-sm">
                 <div>
                   <dt className="text-muted">Validation</dt>
-                  <dd className="mt-1 font-semibold">{changed ? "Not saved" : statusLabel(settings.validation_status)}</dd>
+                  <dd className="mt-1 font-semibold">{changed ? compatible ? "Not saved" : "Model unavailable" : statusLabel(settings.validation_status)}</dd>
                 </div>
               </dl>
 
-              {settings.configured && provider === settings.provider && (
+              {hasKey && (
                 <p className="mt-5 text-sm text-muted">
-                  {`Stored key ending in ${settings.key_suffix} · revision ${settings.revision}`}
+                  {`Stored key ending in ${saved?.key_suffix ?? settings.key_suffix} · revision ${saved?.revision ?? settings.revision}`}
                 </p>
               )}
 
@@ -193,12 +208,12 @@ function LLMSettingsSection() {
                     autoComplete="new-password"
                     spellCheck={false}
                     disabled={!settings.feature_available || busy !== null}
-                    placeholder={settings.configured && provider === settings.provider ? "Enter a replacement key" : "Enter API key"}
+                    placeholder={hasKey ? "Enter a replacement key" : "Enter API key"}
                     className="min-w-0 flex-1 border border-control bg-paper px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-focus disabled:opacity-60"
                   />
                   <button
                     type="submit"
-                    disabled={(!apiKey.trim() && (!changed || provider !== settings.provider || !settings.configured)) || !settings.feature_available || busy !== null}
+                    disabled={!compatible || (!apiKey.trim() && (!changed || !hasKey)) || !settings.feature_available || busy !== null}
                     className="border border-control bg-ink px-4 py-2 font-semibold text-paper hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-focus disabled:opacity-50"
                   >
                     {busy === "save" ? "Saving…" : changed ? "Save model" : "Save API key"}
@@ -207,8 +222,7 @@ function LLMSettingsSection() {
               </form>
 
               <p className="mt-4 text-xs leading-5 text-amber-800 dark:text-amber-300">
-                {changed && provider !== settings.provider ? "Saving replaces the current provider key." :
-                  settings.models.some(m => m.provider === settings.provider && m.model === settings.requested_model && m.free)
+                {settings.models.some(m => m.provider === provider && m.model === (selected?.model ?? settings.requested_model) && m.free)
                     ? "This model has no token charge. Provider limits apply."
                     : "Validating may create one small provider charge. It runs only when you select Validate key."}
               </p>
@@ -217,7 +231,7 @@ function LLMSettingsSection() {
                 <button
                   type="button"
                   onClick={validateKey}
-                  disabled={changed || !settings.configured || !settings.feature_available || busy !== null}
+                  disabled={!compatible || changed || !settings.configured || !settings.feature_available || busy !== null}
                   className="border border-control px-3 py-2 text-sm font-semibold hover:bg-wash disabled:opacity-50"
                 >
                   {busy === "validate" ? "Validating…" : "Validate key"}
@@ -230,11 +244,11 @@ function LLMSettingsSection() {
                 >
                   {busy === "toggle" ? "Saving…" : settings.enabled ? "Disable enhancement" : "Enable enhancement"}
                 </button>
-                {settings.configured && !confirmDelete && (
+                {hasKey && !deleteProvider && (
                   <button
                     type="button"
-                    onClick={() => setConfirmDelete(true)}
-                    disabled={changed || busy !== null}
+                    onClick={() => setDeleteProvider(provider)}
+                    disabled={busy !== null}
                     className="border border-red-700 px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
                   >
                     Delete API key
@@ -242,14 +256,14 @@ function LLMSettingsSection() {
                 )}
               </div>
 
-              {confirmDelete && (
+              {deleteProvider && (
                 <div role="alertdialog" aria-label="Delete API key" className="mt-5 border border-red-400 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/20">
-                  <p>The key will be removed immediately. A provider request already in progress cannot be recalled.</p>
+                  <p>The {deleteProvider} key will be removed immediately. A provider request already in progress cannot be recalled.</p>
                   <div className="mt-3 flex gap-3">
                     <button type="button" onClick={removeKey} disabled={busy !== null} className="bg-red-800 px-3 py-2 font-semibold text-white disabled:opacity-50">
                       {busy === "delete" ? "Deleting…" : "Confirm deletion"}
                     </button>
-                    <button type="button" onClick={() => setConfirmDelete(false)} disabled={busy !== null} className="border border-control px-3 py-2 font-semibold">
+                    <button type="button" onClick={() => setDeleteProvider(null)} disabled={busy !== null} className="border border-control px-3 py-2 font-semibold">
                       Keep key
                     </button>
                   </div>
@@ -259,6 +273,11 @@ function LLMSettingsSection() {
           )}
 
           {error && <p role="alert" className="mt-5 text-sm text-red-700 dark:text-red-400">{error}</p>}
+          {!settings && error && (
+            <button type="button" onClick={() => { setError(null); setSettingsRevision(value => value + 1); }}>
+              Reload settings
+            </button>
+          )}
           {notice && <p role="status" className="mt-5 text-sm text-muted">{notice}</p>}
         </section>
       </div>

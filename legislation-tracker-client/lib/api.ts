@@ -333,6 +333,7 @@ export interface BillTopicItem {
 }
 
 export interface BillListItem {
+  sponsor_party?: string | null;
   card_summary?: string;
   enhancement_status?: "pending" | "running" | "succeeded" | null;
   enhancement_id?: number | null;
@@ -397,7 +398,16 @@ export interface BillContractsPage {
   results: BillContractItem[];
 }
 
+export interface PassageAction {
+  chamber: string;
+  date: string;
+  method: "unanimous_consent" | "voice_vote" | "without_objection";
+  source_text: string;
+  source_url: string;
+}
+
 export interface BillDetail extends BillListItem {
+  passage_actions?: PassageAction[];
   summary: string | null;
   summary_source?: string | null;
   summary_action_date?: string | null;
@@ -443,6 +453,7 @@ export interface BillFilterOptions {
 }
 
 export interface GetBillsParams {
+  tracking?: "tracked" | "untracked";
   page?: number;
   session?: number;
   id?: number;
@@ -466,6 +477,7 @@ export function parseTopicIdFromSearchParam(
 
 export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   const sp = new URLSearchParams();
+  if (params?.tracking) sp.set("tracking", params.tracking);
   if (params?.page != null) sp.set("page", String(params.page));
   if (params?.session != null) sp.set("session", String(params.session));
   if (params?.id != null) sp.set("id", String(params.id));
@@ -478,7 +490,8 @@ export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   if (params?.q?.trim()) sp.set("q", params.q.trim());
   if (params?.sort) sp.set("sort", params.sort);
   const q = sp.toString();
-  return publicGet<BillsPage>(`/api/bills/${q ? `?${q}` : ""}`);
+  const path = `/api/bills/${q ? `?${q}` : ""}`;
+  return params?.tracking ? authGet<BillsPage>(path) : publicGet<BillsPage>(path);
 }
 
 export async function getTopics(): Promise<TopicItem[]> {
@@ -902,6 +915,14 @@ export function compareBillDocuments(
   );
 }
 
+export async function compareBillDocumentPassages(billId: number, before: number, after: number, sectionKeys: string[]): Promise<DocumentSectionComparison[]> {
+  if (!sectionKeys.length) return [];
+  const search = new URLSearchParams({ before: String(before), after: String(after) });
+  sectionKeys.forEach(key => search.append("section_keys", key));
+  const data = await publicGet<{ results: DocumentSectionComparison[] }>(`/api/bills/${billId}/comparisons/documents/section/?${search}`);
+  return data.results;
+}
+
 export interface RelatedBillItem {
   bill: BillListItem;
   similarity_score: number;
@@ -1310,6 +1331,7 @@ export function triggerTopicBackfill(params: {
 }
 
 export interface LLMSettings {
+  saved_credentials?: {provider: string; selected_model: string; key_suffix: string; revision: number}[];
   models: {provider: string; model: string; free: boolean}[];
   feature_available: boolean;
   configured: boolean;
@@ -1329,16 +1351,20 @@ export function getLLMSettings(): Promise<LLMSettings> {
 
 export function updateLLMSettings(
   values: { api_key?: string; enabled?: boolean; provider?: string; requested_model?: string },
+  scopedProvider?: string,
 ): Promise<LLMSettings> {
-  return authPut<LLMSettings>("/api/settings/llm/", values);
+  const path = scopedProvider ? `credentials/${encodeURIComponent(scopedProvider)}/` : "";
+  return authPut<LLMSettings>(`/api/settings/llm/${path}`, values);
 }
 
-export function validateLLMCredential(): Promise<LLMSettings> {
-  return authPost<LLMSettings>("/api/settings/llm/validate/");
+export function validateLLMCredential(provider?: string): Promise<LLMSettings> {
+  const path = provider ? `credentials/${encodeURIComponent(provider)}/` : "";
+  return authPost<LLMSettings>(`/api/settings/llm/${path}validate/`);
 }
 
-export function deleteLLMSettings(): Promise<void> {
-  return authDelete("/api/settings/llm/");
+export function deleteLLMSettings(provider?: string): Promise<void> {
+  const path = provider ? `credentials/${encodeURIComponent(provider)}/` : "";
+  return authDelete(`/api/settings/llm/${path}`);
 }
 
 export interface PublicCapabilities {
@@ -1513,6 +1539,8 @@ export interface BillEnhancement {
 }
 
 export interface BillEnhancementEstimate {
+  cost_status?: "free" | "unknown";
+  estimator?: string;
   reader_coverage?: { total_count: number; selected_count: number; unavailable_count: number; batch_count: number; unavailable: { target_id: string; reason: string }[] } | null;
   feature_available: boolean;
   can_enhance: boolean;

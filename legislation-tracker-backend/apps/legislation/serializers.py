@@ -8,6 +8,7 @@ from .models import Bill, BillContract, BillDocument, BillTopic, EvidenceSpan, T
 
 
 class BillListQuerySerializer(PaginatedQuerySerializer):
+    tracking = serializers.ChoiceField(choices=("tracked", "untracked"), required=False)
     session = serializers.IntegerField(required=False, min_value=1)
     congress = serializers.IntegerField(required=False, min_value=1)
     id = serializers.IntegerField(required=False, min_value=1)
@@ -531,6 +532,7 @@ class BillListSerializer(serializers.ModelSerializer):
 
     sponsor_name = serializers.SerializerMethodField()
     sponsor_state = serializers.CharField(source="sponsor.state", read_only=True, default=None)
+    sponsor_party = serializers.CharField(source="sponsor.party", read_only=True, default=None)
     sponsor_id = serializers.IntegerField(read_only=True, allow_null=True)
     sponsor_bioguide_id = serializers.CharField(
         source="sponsor.bioguide_id", read_only=True, allow_null=True, default=None
@@ -551,6 +553,7 @@ class BillListSerializer(serializers.ModelSerializer):
             "status",
             "sponsor_name",
             "sponsor_state",
+            "sponsor_party",
             "sponsor_id",
             "sponsor_bioguide_id",
             "congress_gov_url",
@@ -602,6 +605,7 @@ class BillDetailSerializer(serializers.ModelSerializer):
             "summary_last_updated_at",
             "status",
             "processing_status",
+            "passage_actions",
             "sponsor",
             "sponsor_name",
             "introduced_at",

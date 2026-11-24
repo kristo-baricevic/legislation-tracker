@@ -1,0 +1,262 @@
+{
+  "bill_id": 15778,
+  "bill_number": "S 4387",
+  "source": {
+    "kind": "document_chunk",
+    "end_char": 5843,
+    "field_path": null,
+    "source_ref": "src_0009",
+    "start_char": 1658,
+    "quoted_text": "SEC. 3. Grants for innovative approaches To improve maternal and child health outcomes\n(a) In general.—The Secretary of Health and Human Services, acting through the Administrator of the Health Resources and Services Administration, and in collaboration with the Assistant Secretary of the Administration for Children and Families, the Director of the Indian Health Service, the Assistant Secretary for Mental Health and Substance Use, and the Secretary of Veterans Affairs, shall award grants to eligible entities for developing and implementing innovative approaches, including culturally relevant public and provider education campaigns, to improve maternal and child health outcomes of victims of domestic violence, dating violence, sexual assault, stalking, human trafficking, sex trafficking, child sexual abuse, forced marriage, reproductive coercion, intergenerational violence, trauma, or psychiatric disorders.\n(b) Report to Congress on best practices.—Not later than 3 years after the date of enactment of this Act, and every 3 years thereafter, the Secretary of Health and Services shall report to Congress on best practices for developing and implementing innovative approaches described in subsection (a).\n(c) Eligible entity.—To seek a grant under this section, an entity shall be—\n(1) a State, local governmental entity, or federally recognized Tribal government;\n(2) a nonprofit organization or community-based organization that provides prevention or intervention services related to domestic violence, dating violence, sexual assault, stalking, human trafficking, sex trafficking, child sexual abuse, forced marriage, reproductive coercion, intergenerational violence, trauma, or psychiatric disorders;\n(3) an Indian Tribe, Tribal organization, or Urban Indian organization (as such terms are defined in section 4 of the Indian Health Care Improvement Act (25 U.S.C. 1603));\n(4) a Tribal epidemiology center described in section 214 of the Indian Health Care Improvement Act (25 U.S.C. 1621m);\n(5) a federally qualified health center (as defined in section 1861(aa) of the Social Security Act (42 U.S.C. 1395x(aa)));\n(6) a clinic certified as a certified community behavioral health clinic pursuant to section 223 of the Protecting Access to Medicare Act of 2014 (42 U.S.C. 1396a);\n(7) an entity, the principal purpose of which is to provide health care, such as a hospital, clinic, health department, or freestanding birth center;\n(8) an institution of higher education (as defined in section 101 of the Higher Education Act of 1965 (20 U.S.C. 1001));\n(9) a substance use disorder treatment program with specialized services for parents; or\n(10) a hospital or other health care facility of the Department of Veterans Affairs.\n(d) Priority in awarding grants.—In awarding grants under this section, the Secretary of Health and Human Services shall give priority to applicants proposing—\n(1) to address domestic violence, dating violence, sexual violence, and mental health and substance use disorders among pregnant persons;\n(2) to address issues relating to people experiencing domestic violence and sexual violence who are pregnant, persons at risk for becoming pregnant due to violence or abuse, and postpartum persons experiencing violence;\n(3) to develop or implement innovative approaches, including cultural bias training, antiracism training or implicit bias interruption or reduction strategies, and strategies to identify and prevent domestic violence within all racial, cultural, ethnic and community groups, including Black or African American, Hispanic or Latino, American Indian, Native Hawaiian, Pacific Islander, Alaskan Native, and LGBTQIA2S+ persons;\n(4) to develop or implement innovative approaches at Tribal epidemiology centers;\n(5) to develop or implement innovative approaches relating to the improvement of maternal health surveillance; or\n(6) to facilitate shared learning and dissemination of information through convening meetings with other grant recipients under this section.\n(e) Authorization of appropriations.—To carry out this section, there is authorized to be appropriated $15,000,000 for each of fiscal years 2027 through 2029.\n",
+    "text_sha256": "c4de13c2ea8852f581bfbfdde2932986748df2fed7ca5a27cff755839a4ce82b",
+    "section_label": "Introduced in Senate",
+    "reader_targets": [
+      {
+        "kind": "line_item",
+        "facts": {
+          "item": {
+            "id": "brief-25fa9149fca0823304f2",
+            "kind": "financial",
+            "actor": null,
+            "action": null,
+            "effect": null,
+            "source_id": "financial-5721-1",
+            "claim_refs": [
+              "financial-5721-1"
+            ],
+            "member_ids": [
+              "line-financial-5721-1"
+            ],
+            "section_id": "section-5684",
+            "reader_text": "Authorizes $15,000,000.00 for Grants for innovative approaches To improve maternal and child health outcomes for each fiscal year 2027 through 2029.",
+            "display_text": "Grouped source 23bf0f3197d6ac1a64935d21e5c5c550678f9183a2b6418c2d72fd74dae07984",
+            "member_texts": [
+              "Authorizes $15,000,000.00 for Grants for innovative approaches To improve maternal and child health outcomes for each fiscal year 2027 through 2029."
+            ],
+            "section_path": [
+              {
+                "label": "Sec. 3",
+                "level": "section",
+                "heading": "Grants for innovative approaches To improve maternal and child health outcomes"
+              },
+              {
+                "label": "(e)",
+                "level": "subsection",
+                "heading": "Authorization of appropriations"
+              }
+            ],
+            "timeline_refs": [],
+            "evidence_paths": [
+              "line_items[9].display_text",
+              "line_items[9].action",
+              "line_items[9].effect",
+              "financial_items[0].display_text"
+            ],
+            "definition_refs": [],
+            "exact_financial_refs": [
+              "financial-5721-1"
+            ]
+          },
+          "timeline_items": [],
+          "financial_items": [
+            {
+              "id": "financial-5721-1",
+              "amount": "15000000.00",
+              "purpose": "Grants for innovative approaches To improve maternal and child health outcomes",
+              "currency": "USD",
+              "direction": "increase",
+              "source_id": "financial-5721-1",
+              "section_id": "section-5684",
+              "amount_type": "specified",
+              "display_text": "Authorizes $15,000,000.00 for Grants for innovative approaches To improve maternal and child health outcomes for each fiscal year 2027 through 2029.",
+              "fiscal_years": [
+                2027,
+                2028,
+                2029
+              ],
+              "section_path": [
+                {
+                  "label": "Sec. 3",
+                  "level": "section",
+                  "heading": "Grants for innovative approaches To improve maternal and child health outcomes"
+                },
+                {
+                  "label": "(e)",
+                  "level": "subsection",
+                  "heading": "Authorization of appropriations"
+                }
+              ],
+              "section_label": "(e)",
+              "evidence_paths": [
+                "financial_items[0].display_text",
+                "financial_items[0].financial_action",
+                "financial_items[0].direction",
+                "financial_items[0].amount",
+                "financial_items[0].amount_type",
+                "financial_items[0].currency",
+                "financial_items[0].fiscal_years",
+                "financial_items[0].purpose"
+              ],
+              "source_account": null,
+              "financial_action": "authorization",
+              "destination_account": null
+            }
+          ]
+        },
+        "item_id": "brief-25fa9149fca0823304f2",
+        "end_char": 5843,
+        "target_id": "line_item:brief-25fa9149fca0823304f2",
+        "start_char": 1658,
+        "contract_id": 30454,
+        "document_id": 18636,
+        "contract_hash": "33c8cab6e13a90b0f54c4297a6c9f85e4ac96cb194b9e10040feab1441710c31",
+        "original_text": "Grouped source 23bf0f3197d6ac1a64935d21e5c5c550678f9183a2b6418c2d72fd74dae07984",
+        "evidence_ranges": [
+          [
+            1658,
+            1744
+          ],
+          [
+            5721,
+            5842
+          ]
+        ],
+        "document_content_hash": "fa5ae6df0c9fb3e164e9772e830e81c7b07483dba0e32aaba705928144c11e3b"
+      }
+    ]
+  },
+  "target": {
+    "kind": "line_item",
+    "facts": {
+      "item": {
+        "id": "brief-25fa9149fca0823304f2",
+        "kind": "financial",
+        "actor": null,
+        "action": null,
+        "effect": null,
+        "source_id": "financial-5721-1",
+        "claim_refs": [
+          "financial-5721-1"
+        ],
+        "member_ids": [
+          "line-financial-5721-1"
+        ],
+        "section_id": "section-5684",
+        "reader_text": "Authorizes $15,000,000.00 for Grants for innovative approaches To improve maternal and child health outcomes for each fiscal year 2027 through 2029.",
+        "display_text": "Grouped source 23bf0f3197d6ac1a64935d21e5c5c550678f9183a2b6418c2d72fd74dae07984",
+        "member_texts": [
+          "Authorizes $15,000,000.00 for Grants for innovative approaches To improve maternal and child health outcomes for each fiscal year 2027 through 2029."
+        ],
+        "section_path": [
+          {
+            "label": "Sec. 3",
+            "level": "section",
+            "heading": "Grants for innovative approaches To improve maternal and child health outcomes"
+          },
+          {
+            "label": "(e)",
+            "level": "subsection",
+            "heading": "Authorization of appropriations"
+          }
+        ],
+        "timeline_refs": [],
+        "evidence_paths": [
+          "line_items[9].display_text",
+          "line_items[9].action",
+          "line_items[9].effect",
+          "financial_items[0].display_text"
+        ],
+        "definition_refs": [],
+        "exact_financial_refs": [
+          "financial-5721-1"
+        ]
+      },
+      "timeline_items": [],
+      "financial_items": [
+        {
+          "id": "financial-5721-1",
+          "amount": "15000000.00",
+          "purpose": "Grants for innovative approaches To improve maternal and child health outcomes",
+          "currency": "USD",
+          "direction": "increase",
+          "source_id": "financial-5721-1",
+          "section_id": "section-5684",
+          "amount_type": "specified",
+          "display_text": "Authorizes $15,000,000.00 for Grants for innovative approaches To improve maternal and child health outcomes for each fiscal year 2027 through 2029.",
+          "fiscal_years": [
+            2027,
+            2028,
+            2029
+          ],
+          "section_path": [
+            {
+              "label": "Sec. 3",
+              "level": "section",
+              "heading": "Grants for innovative approaches To improve maternal and child health outcomes"
+            },
+            {
+              "label": "(e)",
+              "level": "subsection",
+              "heading": "Authorization of appropriations"
+            }
+          ],
+          "section_label": "(e)",
+          "evidence_paths": [
+            "financial_items[0].display_text",
+            "financial_items[0].financial_action",
+            "financial_items[0].direction",
+            "financial_items[0].amount",
+            "financial_items[0].amount_type",
+            "financial_items[0].currency",
+            "financial_items[0].fiscal_years",
+            "financial_items[0].purpose"
+          ],
+          "source_account": null,
+          "financial_action": "authorization",
+          "destination_account": null
+        }
+      ]
+    },
+    "item_id": "brief-25fa9149fca0823304f2",
+    "end_char": 5843,
+    "target_id": "line_item:brief-25fa9149fca0823304f2",
+    "start_char": 1658,
+    "contract_id": 30454,
+    "document_id": 18636,
+    "contract_hash": "33c8cab6e13a90b0f54c4297a6c9f85e4ac96cb194b9e10040feab1441710c31",
+    "original_text": "Grouped source 23bf0f3197d6ac1a64935d21e5c5c550678f9183a2b6418c2d72fd74dae07984",
+    "evidence_ranges": [
+      [
+        1658,
+        1744
+      ],
+      [
+        5721,
+        5842
+      ]
+    ],
+    "document_content_hash": "fa5ae6df0c9fb3e164e9772e830e81c7b07483dba0e32aaba705928144c11e3b"
+  },
+  "output": {
+    "summary": [],
+    "explanations": {
+      "line_item:brief-25fa9149fca0823304f2": {
+        "text": ".",
+        "status": "explained",
+        "target_id": "line_item:brief-25fa9149fca0823304f2",
+        "source_quotes": [
+          {
+            "quote_id": "p0001",
+            "source_ref": "src_0009"
+          },
+          {
+            "quote_id": "p0006",
+            "source_ref": "src_0009"
+          }
+        ],
+        "unresolved_reason": null
+      }
+    },
+    "schema_version": "1.4"
+  }
+}

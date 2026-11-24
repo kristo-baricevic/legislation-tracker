@@ -39,6 +39,29 @@ def _value(obj: Any, name: str, default=None):
     return harness.value(obj, name, default)
 
 
+def _local_prose_patterns(schema):
+    """Do not constrain prose token decoding with regexes; validate it locally.
+
+    OpenRouter routes use different grammar engines. Keep prose regex checks
+    local rather than relying on decoder-specific regex interpretation.
+    Citation ID patterns, shape, enums and length limits remain on the wire.
+    The original schema is never mutated.
+    """
+    if isinstance(schema, dict):
+        result = {key: _local_prose_patterns(value) for key, value in schema.items()}
+        text = result.get('properties', {}).get('text')
+        if isinstance(text, dict):
+            text.pop('pattern', None)
+        return result
+    if isinstance(schema, list):
+        return [_local_prose_patterns(value) for value in schema]
+    return schema
+
+
+def _free_routing():
+    return {"max_price": {"prompt": 0, "completion": 0, "request": 0}, "require_parameters": True}
+
+
 def _mapped_error(error: Exception) -> ProviderError:
     class_name = type(error).__name__.lower()
     if "timeout" in class_name:
@@ -326,6 +349,10 @@ class OpenAICompatibleEnhancementProvider:
             return self.model
         return None
 
+    def _send(self, *, api_key, timeout_seconds, **kwargs):
+        client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
+        return _complete(client, timeout_seconds, **kwargs)
+
     def validate_credential(
         self,
         *,
@@ -333,14 +360,15 @@ class OpenAICompatibleEnhancementProvider:
         requested_model=None,
         timeout_seconds=None,
     ) -> CredentialCheck:
-        client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
         model = self._model(requested_model=requested_model)
+        free_route = self.base_url.rstrip("/") == "https://openrouter.ai/api/v1" and model.endswith(":free")
+        options = {"extra_body": {"provider": _free_routing()}} if free_route else {"tools": []}
         try:
-            response = _complete(client, timeout_seconds,
+            response = self._send(api_key=api_key, timeout_seconds=timeout_seconds,
                 model=model,
                 messages=[{"role": "user", "content": "Reply with OK."}],
                 max_tokens=16,
-                tools=[],
+                **options,
             )
         except Exception as error:  # noqa: BLE001
             mapped = _mapped_error(error)
@@ -350,6 +378,8 @@ class OpenAICompatibleEnhancementProvider:
         choices = _value(response, "choices", []) or []
         if not choices:
             raise ProviderError("provider_unavailable", retry_allowed=True)
+        if free_route and _value(response, "model") != model:
+            return CredentialCheck(valid=False, category="model_access_denied")
         return CredentialCheck(valid=True)
 
     def enhance_bill(
@@ -378,7 +408,7 @@ class OpenAICompatibleEnhancementProvider:
         return result
 
     def repair_citations(self, *, api_key=None, request=None, payload=None, timeout_seconds=None):
-        harness.ensure_citation_repair_fits(payload)
+        harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
             api_key=api_key,
             request=request,
@@ -441,12 +471,13 @@ class OpenAICompatibleEnhancementProvider:
         schema,
         schema_name,
     ):
-        client = self._client(api_key=api_key, timeout_seconds=timeout_seconds)
         max_output_tokens = harness.resolve_max_output_tokens(request, schema_name)
         model = self._model(request=request)
         wire = harness.wire_schema(
             schema, unsupported_keywords=self.capabilities.unsupported_schema_keywords
         )
+        if getattr(request, 'provider', '') == 'openrouter':
+            wire = _local_prose_patterns(wire)
         messages = [
             {"role": "system", "content": instructions},
             {
@@ -484,8 +515,11 @@ class OpenAICompatibleEnhancementProvider:
             if effort != 'none':
                 kwargs['extra_body'] = {'reasoning': {'effort': effort}}
 
+        if getattr(request, "provider", "") == "openrouter" and model.endswith(":free"):
+            routing = kwargs.setdefault("extra_body", {})
+            routing["provider"] = _free_routing()
         try:
-            response = _complete(client, timeout_seconds, **kwargs)
+            response = self._send(api_key=api_key, timeout_seconds=timeout_seconds, **kwargs)
         except ProviderError:
             raise
         except Exception as error:  # noqa: BLE001
@@ -522,6 +556,12 @@ class OpenAICompatibleEnhancementProvider:
         response_id = str(_value(response, "id", "") or "")
         resolved_model = str(_value(response, "model", "") or "")
 
+        from ..private_diagnostics import capture_visible
+        capture_visible(messages, kwargs.get("response_format"), content if isinstance(content, str) else None,
+                        finish_reason, response_id, resolved_model, api_key)
+        if getattr(request, "provider", "") == "openrouter" and model.endswith(":free") and resolved_model != model:
+            raise ProviderError("model_access_denied", validation_code="pinned_model_changed",
+                                usage=usage, response_id=response_id, resolved_model=resolved_model)
         if refusal:
             raise ProviderError(
                 "content_refusal",
