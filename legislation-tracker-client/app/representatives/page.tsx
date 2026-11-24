@@ -73,12 +73,12 @@ function RepresentativesDirectory() {
   const trackingRequests = useRef(new Set<number>());
   const [trackingLegislatorIds, setTrackingLegislatorIds] = useState<Set<number>>(new Set());
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [currentCongress, setCurrentCongress] = useState<number | null>(null);
+  const [currentCongress, setCurrentCongress] = useState<number | null>();
 
   useEffect(() => {
     void getBillFilterOptions()
       .then((options) => setCurrentCongress(options.current_congress))
-      .catch(() => undefined);
+      .catch(() => setCurrentCongress(null));
   }, []);
 
   useEffect(() => {
@@ -138,7 +138,7 @@ function RepresentativesDirectory() {
     }, { rootMargin: "300px" });
     observer.observe(sentinel.current);
     return () => { active = false; observer.disconnect(); };
-  }, [page, loading, error, name, search, hasAccount]);
+  }, [page, loading, error, name, search, hasAccount, currentCongress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +192,10 @@ function RepresentativesDirectory() {
       trackingRequests.current.delete(representativeId);
       setTrackingLegislatorIds(new Set(trackingRequests.current));
     }
+  }
+
+  if (currentCongress === undefined || (!page && loading && !error) || (hasAccount === null && !trackingError)) {
+    return <LoadingSpinner centered label="Loading representatives…" />;
   }
 
   return (
@@ -268,10 +272,6 @@ function RepresentativesDirectory() {
             <button type="button" className="ml-3 underline" onClick={() => setRetry(value => value + 1)}>Retry loading representatives</button>
           </div>
         )}
-
-        <div className="min-h-12">
-          <LoadingSpinner centered active={!error && ((!page && loading) || (hasAccount === null && !trackingError))} label="Loading representatives…" />
-        </div>
 
         {page && hasAccount !== null && (
           <>

@@ -85,19 +85,17 @@ describe("RepresentativesPage", () => {
     expect(getRepresentatives).toHaveBeenCalledTimes(directoryCalls);
     expect(getMyTracking).toHaveBeenCalledTimes(trackingCalls);
   });
-  it.each([true, false])("keeps the same filter controls while the account check resolves: signed in %s", async signedIn => {
+  it.each([true, false])("reveals the heading and filters with the resolved account: signed in %s", async signedIn => {
     let resolveSession!: (value: Awaited<ReturnType<typeof getSession>>) => void;
     vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
     vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
     render(<RepresentativesPage />);
-    const tracking = screen.getByRole("button", { name: "Tracking All" });
-    const state = screen.getByRole("button", { name: "State All" });
-    expect(tracking).toBeDisabled();
-    await userEvent.click(tracking);
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Representatives" })).toBeNull();
+    expect(screen.queryByRole("searchbox")).toBeNull();
     await act(async () => resolveSession(signedIn ? { authenticated: true, user: { email: "reader@example.com" } } : null));
-    expect(screen.getByRole("button", { name: "Tracking All" })).toBe(tracking);
-    expect(screen.getByRole("button", { name: "State All" })).toBe(state);
+    const tracking = await screen.findByRole("button", { name: "Tracking All" });
+    expect(screen.getByRole("heading", { name: "Representatives" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Representative Example" })).toBeVisible();
     if (signedIn) expect(tracking).toBeEnabled();
     else expect(tracking).toBeDisabled();
   });
