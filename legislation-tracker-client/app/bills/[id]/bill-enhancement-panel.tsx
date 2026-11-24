@@ -481,6 +481,7 @@ export default function BillEnhancementPanel({
   const isActive = enhancement && ["pending", "running"].includes(enhancement.status);
   const canStartNewIdentity = Boolean(enhancement?.stale || (enhancement?.shared && ["failed", "refused", "outcome_unknown"].includes(enhancement.status)));
   const blockedByReconciliation = !canStartNewIdentity && enhancement?.status === "outcome_unknown" && enhancement.latest_attempt?.retry_allowed === false;
+  const canPrepareEstimate = !enhancement || retryable || canStartNewIdentity || blockedByReconciliation;
   const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
     : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
   const hasSavedReader = Boolean(activeReader?.result);
@@ -488,23 +489,20 @@ export default function BillEnhancementPanel({
   return (
     <>
       <ControlsSlot targetId={controlsTargetId}>
-        {hasSavedReader ? <ReaderModeSwitch /> : <button type="button"
-          aria-busy={preparing} disabled={Boolean(isActive) || Boolean(enhancement && !retryable && !canStartNewIdentity)}
+        {hasSavedReader && <ReaderModeSwitch />}
+        {(!hasSavedReader || (!isActive && canPrepareEstimate)) && <button type="button"
+          aria-busy={preparing} disabled={preparing || Boolean(isActive) || !canPrepareEstimate}
           onClick={() => void prepareEnhancement()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : "Enhance"}
+          {preparing ? "Preparing AI estimate…" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
         </button>}
         {!blockedByReconciliation && failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
-        {blockedByReconciliation ? (
+        {blockedByReconciliation && (
           <p role="status" className="mt-1 text-sm"><EnhancementUnavailable reason="reconciliation_required" /></p>
-        ) : estimate && !estimate.can_enhance && (
+        )}
+        {estimate && !estimate.can_enhance && (!blockedByReconciliation || estimate.unavailable_reason !== "reconciliation_required") && (
           <EnhancementUnavailable reason={estimate.unavailable_reason} />
         )}
-      {hasSavedReader && enhancement && !isActive && (retryable || canStartNewIdentity) && (
-        <button type="button" aria-busy={preparing} onClick={() => void prepareEnhancement()} className="mt-4 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-green-500 dark:bg-green-500 dark:text-black dark:hover:bg-green-400">
-          {preparing ? "Preparing AI estimate…" : canStartNewIdentity ? "Enhance current version" : enhancement?.status === "paused" ? "Continue" : "Retry AI enhancement"}
-        </button>
-      )}
         {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
       </ControlsSlot>
       {confirming && estimate && <EnhancementEstimateDialog estimate={estimate} title={title}

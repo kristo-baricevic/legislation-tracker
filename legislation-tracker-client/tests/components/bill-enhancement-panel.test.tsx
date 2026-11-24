@@ -118,6 +118,14 @@ function enhancementPayload(
   };
 }
 
+function unresolvedReader() {
+  return enhancementPayload({status: "outcome_unknown", output_schema_version: "1.4", result: null,
+  latest_attempt: {id: 12, sequence: 1, status: "outcome_unknown", retry_allowed: false,
+    failure_category: "outcome_unknown", credential_revision: 2, estimated_input_tokens: 600,
+    usage: {input_tokens: null, output_tokens: null, total_tokens: null}, resolved_model: null,
+    started_at: null, completed_at: null, created_at: "2026-11-24T12:00:00Z"}});
+}
+
 describe("BillEnhancementPanel", () => {
   it("keeps the mounted reader and selected mode when following interests change", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
@@ -654,11 +662,7 @@ describe("BillEnhancementPanel", () => {
     vi.useFakeTimers();
     try {
       vi.mocked(getSession).mockResolvedValue({authenticated: true, user: {email: "reader@example.com"}});
-      const blocked = enhancementPayload({status: "outcome_unknown", output_schema_version: "1.4", result: null,
-        latest_attempt: {id: 12, sequence: 1, status: "outcome_unknown", retry_allowed: false,
-          failure_category: "outcome_unknown", credential_revision: 2, estimated_input_tokens: 600,
-          usage: {input_tokens: null, output_tokens: null, total_tokens: null}, resolved_model: null,
-          started_at: null, completed_at: null, created_at: "2026-11-24T12:00:00Z"}});
+      const blocked = unresolvedReader();
       vi.mocked(getLatestBillEnhancement).mockResolvedValue(path === "reload" ? blocked :
         enhancementPayload({status: "running", result: null, poll_after_seconds: 1}));
       vi.mocked(getBillEnhancement).mockResolvedValue(blocked);
@@ -669,11 +673,39 @@ describe("BillEnhancementPanel", () => {
         await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
       }
       expect(screen.getByRole("status")).toHaveTextContent(/may have been charged.*reconciled before retrying/i);
-      expect(screen.getByRole("button", {name: "Enhance"})).toBeDisabled();
+      expect(screen.getByRole("button", {name: "Check current model estimate"})).toBeEnabled();
       expect(getBillEnhancementEstimate).not.toHaveBeenCalled();
       expect(retryBillEnhancement).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
+
+  it.each([["anthropic", "claude-haiku-5-5"], ["openai", "another-model"]])(
+    "prepares a separately confirmed request after switching to %s/%s", async (provider, model) => {
+      const user = userEvent.setup();
+      const blocked = unresolvedReader();
+      const readerEstimate = {...estimate, output_schema_version: blocked.output_schema_version};
+      vi.mocked(getSession).mockResolvedValue({authenticated: true, user: {email: "reader@example.com"}});
+      vi.mocked(getLatestBillEnhancement).mockResolvedValue(blocked);
+      vi.mocked(getBillEnhancementEstimate)
+        .mockResolvedValueOnce({...readerEstimate, can_enhance: false, credential_revision: 3,
+          unavailable_reason: "reconciliation_required", matching_enhancement: blocked})
+        .mockResolvedValueOnce({...readerEstimate, provider, requested_model: model, request_fingerprint: "c".repeat(64)});
+      vi.mocked(createBillEnhancement).mockResolvedValue(enhancementPayload({id: 20, provider,
+        requested_model: model, status: "pending", result: null}));
+      render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
+      const check = await screen.findByRole("button", {name: "Check current model estimate"});
+      await user.click(check);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("may have been charged");
+      await user.click(check);
+      const dialog = await screen.findByRole("dialog", {name: "Confirm enhancement"});
+      expect(dialog).toHaveTextContent(model);
+      expect(createBillEnhancement).not.toHaveBeenCalled();
+      await user.click(within(dialog).getByRole("button", {name: "Confirm and enhance"}));
+      expect(createBillEnhancement).toHaveBeenCalledWith(10, expect.objectContaining({request_fingerprint: "c".repeat(64)}));
+      expect(retryBillEnhancement).not.toHaveBeenCalled();
+    }
+  );
 
   it("leaves Enhancing state when polling returns a failed validation and offers an explicit retry", async () => {
     vi.useFakeTimers();
