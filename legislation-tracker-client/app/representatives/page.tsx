@@ -67,6 +67,7 @@ function RepresentativesDirectory() {
     setLoading(true);
   }
   const [hasAccount, setHasAccount] = useState<boolean | null>(null);
+  const [trackingRetry, setTrackingRetry] = useState(0);
   const [trackedLegislatorIds, setTrackedLegislatorIds] = useState<number[]>([]);
   const trackingRequests = useRef(new Set<number>());
   const [trackingLegislatorIds, setTrackingLegislatorIds] = useState<Set<number>>(new Set());
@@ -134,39 +135,29 @@ function RepresentativesDirectory() {
     }, { rootMargin: "300px" });
     observer.observe(sentinel.current);
     return () => { active = false; observer.disconnect(); };
-  }, [page, loading, error, name, search]);
+  }, [page, loading, error, name, search, hasAccount]);
 
   useEffect(() => {
     let cancelled = false;
-    void getSession()
-      .then((session) => {
+    async function loadTracking() {
+      try {
+        const session = await getSession();
         if (cancelled) return;
-        const signedIn = Boolean(session);
-        setHasAccount(signedIn);
-        if (!signedIn) return;
-        void getMyTracking()
-          .then((summary) => {
-            if (!cancelled) {
-              setTrackedLegislatorIds(
-                summary.legislators.map((item) => item.representative.id),
-              );
-            }
-          })
-          .catch((e) => {
-            if (!cancelled) {
-              setTrackingError(
-                e instanceof Error ? e.message : "Failed to load tracked legislators",
-              );
-            }
-          });
-      })
-      .catch(() => {
-        if (!cancelled) setHasAccount(false);
-      });
+        if (session) {
+          const summary = await getMyTracking();
+          if (cancelled) return;
+          setTrackedLegislatorIds(summary.legislators.map(item => item.representative.id));
+        }
+        setHasAccount(Boolean(session));
+      } catch (e) {
+        if (!cancelled) setTrackingError(e instanceof Error ? e.message : "Failed to load tracked legislators");
+      }
+    }
+    void loadTracking();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [trackingRetry]);
 
   async function toggleLegislatorTracking(representativeId: number) {
     if (trackingRequests.current.has(representativeId)) return;
@@ -261,6 +252,10 @@ function RepresentativesDirectory() {
         {trackingError && (
           <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             {trackingError}
+            {hasAccount === null && <button type="button" className="ml-3 underline" onClick={() => {
+              setTrackingError(null);
+              setTrackingRetry(value => value + 1);
+            }}>Retry loading tracking</button>}
           </div>
         )}
 
@@ -272,10 +267,10 @@ function RepresentativesDirectory() {
         )}
 
         <div className="min-h-12">
-          <LoadingSpinner centered active={loading && !page} label="Loading representatives…" />
+          <LoadingSpinner centered active={!error && ((!page && loading) || (hasAccount === null && !trackingError))} label="Loading representatives…" />
         </div>
 
-        {page && (
+        {page && hasAccount !== null && (
           <>
             <p className="mb-4 text-muted">
               {page.count ? <>{page.count} representative{page.count !== 1 ? "s" : ""}</> : "No representatives found."}

@@ -20,6 +20,21 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativesPage", () => {
+  it("waits for tracking before showing the first representative card", async () => {
+    const { results: [rep] } = await getRepresentatives();
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    let finish!: () => void;
+    vi.mocked(getMyTracking).mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({ is_staff: false, bills: [], topics: [], legislators: [{ id: 1, representative: rep, created_at: "" }] });
+    }));
+    render(<RepresentativesPage />);
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(screen.queryByRole("list", { name: "Representatives" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Loading representatives" })).toBeVisible();
+    await act(async () => finish());
+    expect(await screen.findByRole("button", { name: "Untrack Representative Example" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("status", { name: "Loading representatives" })).not.toBeInTheDocument();
+  });
   it("clears private tracking results on logout and ignores a late old-account response", async () => {
     const initial = await getRepresentatives();
     vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
