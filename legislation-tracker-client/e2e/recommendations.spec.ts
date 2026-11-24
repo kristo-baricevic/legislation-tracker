@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 const bill = { id: 1, jurisdiction: "federal", session: 119, bill_number: "HR 1", title: "Public health reporting", status: "introduced", sponsor_name: "Member One", introduced_at: "2025-01-10", last_action_at: null, topics: [{ topic_id: 1, name: "Health", slug: "health", confidence_score: null }] };
 const second = { ...bill, id: 2, bill_number: "HR 2", title: "Rural health reporting" };
 const third = { ...bill, id: 3, bill_number: "HR 3", title: "Community health reporting" };
@@ -83,3 +83,76 @@ test("error, retry, no-match and logout clear private cards", async ({ page }) =
   await expect(bills).toHaveCount(0);
   await expect(page.getByText("Log in to discover legislation", { exact: false })).toHaveCount(2);
 });
+
+async function expectStableClick(page: Page, button: Locator, settled: () => Promise<void>) {
+  await button.evaluate(el => el.scrollIntoView({ block: "center", inline: "nearest" }));
+  const measure = await page.evaluateHandle(() => {
+    const initial = window.scrollY;
+    let maxShift = 0;
+    let frame: number;
+    const sample = () => {
+      maxShift = Math.max(maxShift, Math.abs(window.scrollY - initial));
+      frame = requestAnimationFrame(sample);
+    };
+    sample();
+    return { initial, stop: () => { cancelAnimationFrame(frame); return maxShift; } };
+  });
+  expect(await measure.evaluate(value => value.initial)).toBeGreaterThan(0);
+  await button.click();
+  await settled();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(await measure.evaluate(value => value.stop())).toBeLessThanOrEqual(1);
+  await measure.dispose();
+}
+
+for (const width of [390, 1280]) {
+  for (const kind of ["bills", "representatives"] as const) {
+    test(`dashboard scroll stays stable on more and dismiss for ${kind} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 650 });
+      await fixtures(page);
+      const people = kind === "representatives";
+      const endpoint = people ? "representative-recommendations" : "recommendations";
+      const moreName = people ? "More representative recommendations" : "More recommendations";
+      const row = page.getByRole("region", { name: people ? "Recommended representatives" : "Recommended bills" });
+      let release!: () => void;
+      const waitForResponse = () => new Promise<void>(resolve => { release = resolve; });
+      await page.route(`**/api/tracking/${endpoint}/**`, async route => {
+        if (route.request().method() === "POST") {
+          await waitForResponse();
+          return route.fulfill({ status: 204 });
+        }
+        const more = new URL(route.request().url()).searchParams.has(people ? "shown" : "cursor");
+        if (more) await waitForResponse();
+        const results = (more ? [3, 4] : [1, 2]).map(id => {
+          const name = `Member ${id}`;
+          return people ? {
+            representative_id: id, name, reasons: [], bioguide_id: "",
+            card: { top_topics: [] }, topic_activity_evidence: { representative: { id, name, state: "NY", chamber: "house" } },
+          } : { bill: { ...bill, id, title: `Bill ${id}` }, reasons: [] };
+        });
+        return route.fulfill({ json: { ...recommendations, results, next_cursor: more ? null : "next", has_more: !more } });
+      });
+      await page.goto("/");
+      const cards = row.getByRole("article");
+      await expect(cards).toHaveCount(2);
+      const checkPending = async () => {
+        await expect.poll(() => typeof release).toBe("function");
+        // Hold the response past the dashboard spinner's delay.
+        await page.waitForTimeout(350);
+        await expect(row).toBeVisible();
+        await expect(page.getByRole("status", { name: "Loading dashboard" })).toHaveCount(0);
+        release();
+      };
+      await expectStableClick(page, page.getByRole("button", { name: moreName, exact: true }), async () => {
+        await checkPending();
+        await expect(cards).toHaveCount(4);
+      });
+      const dismissStarted = page.waitForRequest(req => req.method() === "POST" && req.url().endsWith("/dismiss/"));
+      await expectStableClick(page, cards.first().getByRole("button", { name: /^Dismiss/ }), async () => {
+        await dismissStarted;
+        await checkPending();
+        await expect(cards).toHaveCount(3);
+      });
+    });
+  }
+}
