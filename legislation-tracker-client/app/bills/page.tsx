@@ -104,13 +104,18 @@ function BillsCatalog() {
   const filterAccount = trackingFilter ? hasAccount : true;
   const [trackedTopicIds, setTrackedTopicIds] = useState<number[]>([]);
   const [trackedBillIds, setTrackedBillIds] = useState<number[]>([]);
-  const [pendingBill, setPendingBill] = useState<number | null>(null);
+  const [pendingBills, setPendingBills] = useState<Set<number>>(new Set());
   const [trackingReady, setTrackingReady] = useState(false);
   const [trackingRefresh, setTrackingRefresh] = useState(0);
   useEffect(() => subscribePersonalizedChanges(change => {
-    setTrackingReady(false); setTrackedBillIds([]); setPendingBill(null);
-    if (change.kind === "session" && trackingFilter) {
+    if (change.kind === "session") {
       setHasAccount(null);
+      setTrackingReady(false);
+      setTrackedBillIds([]);
+      setTrackedTopicIds([]);
+      setPendingBills(new Set());
+    }
+    if (change.kind === "session" && trackingFilter) {
       setPage(null);
       setPageNum(1);
       setError(null);
@@ -463,18 +468,25 @@ function BillsCatalog() {
   ];
 
   async function toggleBillTracking(id: number) {
-    if (!trackingReady || pendingBill !== null) return;
+    if (!trackingReady || pendingBills.has(id)) return;
     const scope = capturePersonalizedScope();
     const followed = trackedBillIds.includes(id);
-    setPendingBill(id); setTrackingError(null);
+    setPendingBills(ids => new Set(ids).add(id));
+    setTrackingError(null);
     try {
       if (followed) await untrackBill(id, { scope });
       else await trackBill(id, { scope });
-      if (isPersonalizedScopeCurrent(scope)) setTrackedBillIds(ids => followed ? ids.filter(value => value !== id) : [...new Set([...ids, id])]);
+      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setTrackedBillIds(ids => followed ? ids.filter(value => value !== id) : [...new Set([...ids, id])]);
     } catch {
-      if (isPersonalizedScopeCurrent(scope)) setTrackingError("Your follow preference was not saved. Please try again.");
+      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setTrackingError("Your follow preference was not saved. Please try again.");
     } finally {
-      if (isPersonalizedScopeCurrent(scope)) setPendingBill(null);
+      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) {
+        setPendingBills(ids => {
+          const next = new Set(ids);
+          next.delete(id);
+          return next;
+        });
+      }
     }
   }
 
@@ -827,7 +839,7 @@ function BillsCatalog() {
               {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
                 <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" aria-busy={loading} tabIndex={0}>
                   {page.results.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback, currentBill) => <BillCard bill={currentBill} summary={summary} feedback={feedback}
-                    footer={<div className="bill-card-actions">{hasAccount === null ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : hasAccount ? trackingReady ? <button disabled={pendingBill !== null} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBill === bill.id ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button disabled={!trackingError} aria-busy={!trackingError} aria-label={trackingError ? "Retry follow status" : "Loading follow status"} onClick={() => setTrackingRefresh(value => value + 1)}>{trackingError ? "Retry" : "Follow"}</button> : <Link href="/login">Log in to follow</Link>}{enhance}</div>} />}</DashboardBillReader>)}
+                    footer={<div className="bill-card-actions">{hasAccount === null ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : hasAccount ? trackingReady ? <button disabled={pendingBills.has(bill.id)} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBills.has(bill.id) ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button disabled={!trackingError} aria-busy={!trackingError} aria-label={trackingError ? "Retry follow status" : "Loading follow status"} onClick={() => setTrackingRefresh(value => value + 1)}>{trackingError ? "Retry" : "Follow"}</button> : <Link href="/login">Log in to follow</Link>}{enhance}</div>} />}</DashboardBillReader>)}
                 </div>}
             </div>
             <div ref={endOfResults} className="mt-4 flex min-h-12 items-center justify-center" aria-label="More bills">
