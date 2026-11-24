@@ -14,7 +14,7 @@ export function ReviewedMoney({ result }: { result: ReaderEnhancementResult }) {
   const pages = Math.max(1, Math.ceil(rows.length / 10));
   const current = Math.min(page, pages);
   const years = [...new Set(all.flatMap(item => item.fiscal_years))].sort();
-  return <section className="mb-6 rounded-lg border border-slate-300 bg-white shadow-sm">
+  return <section className="mb-6 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
     <header className="border-b border-slate-200 bg-slate-50 p-4"><h2 className="text-xl font-semibold">Money in this bill</h2></header>
     <div className="p-4">
       {all.length > 0 && <div className="mb-4 flex flex-wrap gap-3">
