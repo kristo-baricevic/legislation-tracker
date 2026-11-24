@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.accounts.dashboard_bill_cards import add_card_summaries
 from apps.legislation.serializers import BillListSerializer
 from config.api import StrictQuerySerializer
 
@@ -228,7 +229,9 @@ class RepresentativeViewSet(viewsets.ReadOnlyModelViewSet):
         if topic_id := query.validated_data.get("topic_id"):
             bills = bills.filter(bill_topics__topic_id=topic_id).distinct()
         page = self.paginate_queryset(bills)
-        return self.get_paginated_response(BillListSerializer(page, many=True).data)
+        cards = BillListSerializer(page, many=True).data
+        add_card_summaries([{"bill": card} for card in cards])
+        return self.get_paginated_response(cards)
 
     @action(detail=True, methods=["get"], url_path="cosponsored-bills")
     def cosponsored_bills(self, request, pk=None):
@@ -341,7 +344,6 @@ class CommitteeViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"], url_path="introduced-bills")
     def introduced_bills(self, request, pk=None):
         from apps.legislation.models import Bill
-        from apps.accounts.dashboard_bill_cards import add_card_summaries
         congress, _ = self.directory_scope()
         committee = self.get_object()
         members = CommitteeMembership.objects.filter(committee=committee, congress=congress, is_current=True).values("representative_id")
