@@ -42,7 +42,7 @@ class BillSearchHit:
 @dataclass(frozen=True)
 class BillSearchQuery:
     q: str | None = None
-    sort: str = "recent_activity"
+    sort: str = "unsorted"
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
 
@@ -51,7 +51,7 @@ class BillSearchQuery:
         q = params.get("q") or None
         return cls(
             q=q,
-            sort=params.get("sort") or ("relevance" if q else "recent_activity"),
+            sort=params.get("sort") or ("relevance" if q else "unsorted"),
             page=params.get("page", 1),
             page_size=params.get("page_size", DEFAULT_PAGE_SIZE),
         )

@@ -47,9 +47,9 @@ function parsePositiveIntegerFilter(value: string): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function billSort(value: unknown, query: string | null): BillSort {
+function parseSort(value: unknown): BillSort | null {
   if (value === "oldest_activity" || value === "recent_activity" || value === "relevance" || value === "unsorted") return value;
-  return query ? "relevance" : "recent_activity";
+  return null;
 }
 
 function BillsCatalog() {
@@ -85,7 +85,8 @@ function BillsCatalog() {
   const [sponsorFilter, setSponsorFilter] = useState(() => searchParams.get("sponsor") ?? "");
   const [queryInput, setQueryInput] = useState(() => searchParams.get("q") ?? "");
   const [queryFilter, setQueryFilter] = useState(() => searchParams.get("q") ?? "");
-  const [sort, setSort] = useState<BillSort>(() => billSort(searchParams.get("sort"), searchParams.get("q")));
+  const [selectedSort, setSelectedSort] = useState(() => parseSort(searchParams.get("sort")));
+  const sort = selectedSort ?? (queryFilter.trim() ? "relevance" : "unsorted");
   const rawTopicIdFromUrl = searchParams.get("topic_id");
   const topicIdFromUrl = parseTopicIdFromSearchParam(rawTopicIdFromUrl);
   const topicUrlError =
@@ -139,7 +140,6 @@ function BillsCatalog() {
   } | null>(null);
   const currentCongressRef = useRef<number | null>(null);
   const queryInputRef = useRef(queryInput);
-  const queryFilterRef = useRef(queryFilter);
   const suppressNextQueryDebounceRef = useRef(true);
 
   const loadFilterMeta = useCallback(async () => {
@@ -194,9 +194,8 @@ function BillsCatalog() {
       queryInputRef.current = nextQuery;
       setQueryInput(nextQuery);
     }
-    queryFilterRef.current = nextQuery;
     setQueryFilter(nextQuery);
-    setSort(billSort(params.get("sort"), nextQuery));
+    setSelectedSort(parseSort(params.get("sort")));
   }, [searchParamsKey]);
 
   useEffect(() => {
@@ -206,10 +205,7 @@ function BillsCatalog() {
     }
     const timeout = window.setTimeout(() => {
       const nextQuery = queryInput.trim();
-      const hadQuery = Boolean(queryFilterRef.current);
-      queryFilterRef.current = nextQuery;
       setQueryFilter(nextQuery);
-      if (!hadQuery && nextQuery) setSort(current => current === "recent_activity" ? "relevance" : current);
       setPageNum(1);
     }, 300);
     return () => window.clearTimeout(timeout);
@@ -413,14 +409,14 @@ function BillsCatalog() {
     if (topicIdFilter) next.set("topic_id", topicIdFilter);
     if (topicFuzzyFilter) next.set("topic", topicFuzzyFilter);
     if (queryFilter) next.set("q", queryFilter);
-    if (sort !== billSort(null, queryFilter)) next.set("sort", sort);
+    if (selectedSort) next.set("sort", selectedSort);
     const target = `/bills${next.size ? `?${next}` : ""}`;
     if (next.toString() !== searchParamsKey) {
       // These filters are client-owned. A route navigation can suspend the
       // provider tree and reset scroll even with scroll:false on mobile.
       window.history.replaceState(window.history.state, "", target);
     }
-  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, sort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
+  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, selectedSort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
 
   const resetPageAndSet = useCallback(
     (setter: React.Dispatch<React.SetStateAction<string>>) =>
@@ -541,7 +537,7 @@ function BillsCatalog() {
     if (topicId) query.topic_id = topicId;
     if (topicFuzzyFilter) query.topic = topicFuzzyFilter;
     if (queryFilter) query.q = queryFilter;
-    if (sort !== billSort(null, queryFilter)) query.sort = sort;
+    if (selectedSort) query.sort = selectedSort;
     return query;
   }
 
@@ -580,9 +576,8 @@ function BillsCatalog() {
         queryInputRef.current = nextQuery;
         setQueryInput(nextQuery);
       }
-      queryFilterRef.current = nextQuery;
       setQueryFilter(nextQuery);
-      setSort(billSort(query.sort, nextQuery));
+      setSelectedSort(parseSort(query.sort));
       setPage({ count: result.count, next: null, previous: null, results: result.results });
       setPageNum(1);
       setPendingSavedAck({ searchId: search.id, watermark: result.result_watermark });
@@ -613,7 +608,7 @@ function BillsCatalog() {
               { value: "oldest_activity", label: "Oldest activity" },
               { value: "relevance", label: "Relevance" },
               { value: "unsorted", label: "Unsorted" },
-            ]} onChange={value => { setPageNum(1); setSort(billSort(value, queryFilter)); }} />
+            ]} onChange={value => { setPageNum(1); setSelectedSort(parseSort(value)); }} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill ID</span>
               <SearchInput
