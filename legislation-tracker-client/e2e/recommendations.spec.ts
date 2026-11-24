@@ -223,16 +223,17 @@ for (const width of [390, 1280]) {
           node.isConnected && node.getClientRects().length > 0 && node.outerHTML === html))).toBe(true);
       };
       for (const [index, method] of (collection ? ["DELETE"] : ["POST", "DELETE"]).entries()) {
+        const originalLabel = await button.innerText();
         await expectStableClick(page, button, async () => {
           await expect.poll(() => writes.length).toBe(index + 1);
           expect(writes[index]).toBe(method);
-          await expect(button).toHaveText("Saving…");
+          await expect(button).toHaveText(originalLabel);
           await page.waitForTimeout(350);
           await checkNeighbors();
           release();
           if (collection) await expect(buttons).toHaveCount(2);
           else await expect(button).toHaveAttribute("aria-pressed", String(method === "POST"));
-          await expect(button).not.toHaveText("Saving…");
+          if (!collection) await expect(button).not.toHaveText(originalLabel);
           await checkNeighbors();
         });
       }

@@ -191,9 +191,8 @@ export default function TopicsPage() {
                 {loggedIn && (
                   <button
                     type="button"
-                    disabled={
-                      pending.has(topic.id) || followedLoading || Boolean(followedError)
-                    }
+                    disabled={followedLoading || Boolean(followedError)}
+                    aria-disabled={pending.has(topic.id) || followedLoading || Boolean(followedError)}
                     onClick={() => handleToggle(topic.id)}
                     className={`ml-3 flex-shrink-0 rounded-md px-3 py-1 font-sans text-xs font-medium transition-colors ${
                       isFollowed
@@ -201,11 +200,7 @@ export default function TopicsPage() {
                         : "border border-line text-muted hover:bg-wash"
                     } disabled:opacity-50`}
                   >
-                    {pending.has(topic.id)
-                      ? "Saving…"
-                      : isFollowed
-                        ? "Following"
-                        : "Follow"}
+                    {isFollowed ? "Following" : "Follow"}
                   </button>
                 )}
               </div>

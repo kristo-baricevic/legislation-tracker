@@ -58,7 +58,7 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
   if (state === "anonymous") return <Link href="/login" className={buttonClass}>Log in to track</Link>;
   if (state === "error") return <button className={buttonClass} onClick={() => setRevision(value => value + 1)}>Retry tracking</button>;
   return <div>
-    <button className={buttonClass} aria-label={state === "loading" ? "Loading tracking" : state === "tracked" ? "Untrack representative" : "Track representative"} aria-pressed={state === "tracked"} aria-busy={state === "loading" || saving} disabled={saving || state === "loading"} onClick={() => void toggle()}>{saving ? "Saving…" : state === "loading" ? "Track" : state === "tracked" ? "Untrack" : "Track"}</button>
+    <button className={buttonClass} aria-label={state === "loading" ? "Loading tracking" : state === "tracked" ? "Untrack representative" : "Track representative"} aria-pressed={state === "tracked"} aria-busy={state === "loading" || saving} aria-disabled={saving || state === "loading"} disabled={state === "loading"} onClick={() => void toggle()}>{state === "tracked" ? "Untrack" : "Track"}</button>
     {error && <p role="alert" className="mt-2 text-sm">{error}</p>}
   </div>;
 }

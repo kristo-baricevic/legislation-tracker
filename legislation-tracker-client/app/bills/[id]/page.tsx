@@ -292,14 +292,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
                   onClick={() => trackingReady ? void toggleBillTracking() : setTrackingRetry(value => value + 1)}
                   aria-label={!trackingReady && !trackingError ? "Loading follow status" : undefined}
                   aria-busy={!trackingReady || trackingLoading}
-                  disabled={(!trackingReady && !trackingError) || trackingLoading}
+                  disabled={!trackingReady && !trackingError} aria-disabled={(!trackingReady && !trackingError) || trackingLoading}
                   className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
                 >
-                  {!trackingReady ? trackingError ? "Retry follow status" : "Track bill" : trackingLoading
-                    ? "Saving..."
-                    : isTracked
-                      ? "Tracked bill"
-                      : "Track bill"}
+                  {!trackingReady ? trackingError ? "Retry follow status" : "Track bill" : isTracked ? "Tracked bill" : "Track bill"}
                 </button>
               ) : (
                 <Link

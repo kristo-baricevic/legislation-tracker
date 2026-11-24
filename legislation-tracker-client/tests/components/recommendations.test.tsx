@@ -56,13 +56,13 @@ describe("recommendation rows", () => {
     const [first, second] = await screen.findAllByRole("button", { name: new RegExp(`^Follow ${kind} `) });
     fireEvent.click(first);
     await waitFor(() => expect(finish.has(1)).toBe(true));
-    expect(first).toHaveTextContent("Saving…");
+    expect(first).toHaveTextContent(kind === "bill" ? /^Follow bill$/ : /^Follow$/);
     expect(second).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(second);
     await waitFor(() => expect(finish.has(2)).toBe(true));
     await act(async () => finish.get(2)!());
     expect(second).toHaveTextContent("Unfollow");
-    expect(first).toHaveTextContent("Saving…");
+    expect(first).toHaveTextContent(kind === "bill" ? /^Follow bill$/ : /^Follow$/);
     await act(async () => finish.get(1)!());
     expect(first).toHaveTextContent("Unfollow");
     expect(second).toHaveTextContent("Unfollow");

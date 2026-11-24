@@ -491,7 +491,7 @@ function BillsCatalog() {
   }
 
   async function toggleSelectedTopicTracking() {
-    if (Number.isNaN(selectedTopicId)) return;
+    if (Number.isNaN(selectedTopicId) || trackingTopicId === selectedTopicId) return;
     setTrackingTopicId(selectedTopicId);
     setTrackingError(null);
     try {
@@ -703,14 +703,10 @@ function BillsCatalog() {
                   <button
                     type="button"
                     onClick={toggleSelectedTopicTracking}
-                    disabled={trackingTopicId === selectedTopic.id}
+                    aria-disabled={trackingTopicId === selectedTopic.id}
                     className="cursor-pointer border border-control px-3 py-1.5 font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {trackingTopicId === selectedTopic.id
-                      ? "Saving..."
-                      : selectedTopicIsTracked
-                        ? "Tracked topic"
-                        : "Track topic"}
+                    {selectedTopicIsTracked ? "Tracked topic" : "Track topic"}
                   </button>
                 </div>
               ) : null
@@ -839,7 +835,7 @@ function BillsCatalog() {
               {!page.results.length ? <p className={styles.empty}>No bills match these filters.</p> :
                 <div className={layout === "grid" ? styles.grid : styles.list} role="region" aria-label="Bill results" aria-busy={loading} tabIndex={0}>
                   {page.results.map(bill => <DashboardBillReader key={bill.id} bill={bill}>{(summary, enhance, feedback, currentBill) => <BillCard bill={currentBill} summary={summary} feedback={feedback}
-                    footer={<div className="bill-card-actions">{hasAccount === null ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : hasAccount ? trackingReady ? <button disabled={pendingBills.has(bill.id)} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{pendingBills.has(bill.id) ? "Saving…" : trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button disabled={!trackingError} aria-busy={!trackingError} aria-label={trackingError ? "Retry follow status" : "Loading follow status"} onClick={() => setTrackingRefresh(value => value + 1)}>{trackingError ? "Retry" : "Follow"}</button> : <Link href="/login">Log in to follow</Link>}{enhance}</div>} />}</DashboardBillReader>)}
+                    footer={<div className="bill-card-actions">{hasAccount === null ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : hasAccount ? trackingReady ? <button aria-disabled={pendingBills.has(bill.id)} aria-pressed={trackedBillIds.includes(bill.id)} onClick={() => void toggleBillTracking(bill.id)}>{trackedBillIds.includes(bill.id) ? "Unfollow" : "Follow"}</button> : <button disabled={!trackingError} aria-busy={!trackingError} aria-label={trackingError ? "Retry follow status" : "Loading follow status"} onClick={() => setTrackingRefresh(value => value + 1)}>{trackingError ? "Retry" : "Follow"}</button> : <Link href="/login">Log in to follow</Link>}{enhance}</div>} />}</DashboardBillReader>)}
                 </div>}
             </div>
             <div ref={endOfResults} className="mt-4 flex min-h-12 items-center justify-center" aria-label="More bills">

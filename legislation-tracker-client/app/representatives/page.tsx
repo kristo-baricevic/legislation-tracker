@@ -283,9 +283,9 @@ function RepresentativesDirectory() {
             <ul aria-label="Representatives" aria-busy={loading} className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {page.results.map(rep => <RepresentativeAvatar key={rep.id} rep={rep} congress={currentCongress}>
                 {hasAccount && <button type="button" aria-pressed={trackedLegislatorIds.includes(rep.id)} aria-label={`${trackedLegislatorIds.includes(rep.id) ? "Untrack" : "Track"} ${rep.name}`}
-                  onClick={() => toggleLegislatorTracking(rep.id)} disabled={trackingLegislatorIds.has(rep.id)} aria-busy={trackingLegislatorIds.has(rep.id)}
+                  onClick={() => toggleLegislatorTracking(rep.id)} aria-disabled={trackingLegislatorIds.has(rep.id)} aria-busy={trackingLegislatorIds.has(rep.id)}
                   className={`mt-auto cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold disabled:opacity-50 ${trackedLegislatorIds.includes(rep.id) ? "border-ink bg-ink text-background" : "border-control text-ink hover:bg-wash"}`}>
-                  {trackingLegislatorIds.has(rep.id) ? "Saving…" : trackedLegislatorIds.includes(rep.id) ? "✓ Tracked" : "+ Track"}
+                  {trackedLegislatorIds.includes(rep.id) ? "✓ Tracked" : "+ Track"}
                 </button>}
               </RepresentativeAvatar>)}
             </ul>

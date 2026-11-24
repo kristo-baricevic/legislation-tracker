@@ -233,7 +233,7 @@ describe("BillsPage", () => {
     const [first, second] = await screen.findAllByRole("button", {name: "Follow"});
     vi.mocked(getMyTracking).mockReturnValueOnce(new Promise(() => {}));
     await userEvent.click(first);
-    expect(first).toHaveTextContent("Saving…");
+    expect(first).toHaveTextContent(/^Follow$/);
     expect(second).toBeEnabled();
     await act(async () => finish());
     expect(first).toHaveTextContent("Unfollow");
