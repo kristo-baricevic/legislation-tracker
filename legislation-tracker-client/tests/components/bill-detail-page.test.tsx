@@ -135,6 +135,7 @@ describe("BillDetailPage", () => {
     expect(links.closest("header")).toContainElement(screen.getByRole("heading", { name: "HR 10 · Congress 119" }));
     await userEvent.click(await screen.findByRole("tab", { name: "Versions" }));
     const versions = screen.getByRole("tabpanel", { name: "Versions" });
+    expect(within(versions).getByRole("heading", { name: "Bill history" })).toBeVisible();
     expect(within(versions).getByRole("heading", { name: "Bill versions" })).toBeVisible();
     expect(within(versions).getByRole("link", { name: "Read text" })).toHaveAttribute("href", "/documents/9");
     expect(screen.getAllByRole("link").filter(link => link.getAttribute("href") === "https://www.congress.gov/bill/119th-congress/house-bill/10")).toHaveLength(1);

@@ -467,8 +467,8 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               </ul>
             </div>
           )}
-          </ReaderTabPanel>
           <BillHistory key={bill.id} billId={bill.id} />
+          </ReaderTabPanel>
           <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
         </div>
       </div>
