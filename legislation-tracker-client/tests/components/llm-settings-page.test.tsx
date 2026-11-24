@@ -126,6 +126,24 @@ describe("LLM settings", () => {
     expect(vi.mocked(deleteLLMSettings).mock.calls).toEqual([["openrouter"]]);
   });
 
+  it("activates the retained default key after deleting the active provider", async () => {
+    const user = userEvent.setup();
+    const retained = {provider: "openai", selected_model: configured.requested_model, key_suffix: "1234", revision: 2};
+    vi.mocked(getLLMSettings)
+      .mockResolvedValueOnce({...configured, provider: "openrouter", requested_model: "openrouter/free", key_suffix: "9876"})
+      .mockResolvedValueOnce({...configured, configured: false, enabled: false, key_suffix: null, revision: null,
+        saved_credentials: [retained]});
+    vi.mocked(updateLLMSettings).mockResolvedValueOnce(configured);
+    render(<SettingsPage />);
+    await user.click(await screen.findByRole("button", {name: "Delete API key"}));
+    await user.click(screen.getByRole("button", {name: "Confirm deletion"}));
+    expect(await screen.findByLabelText("OpenAI API key")).toHaveValue("");
+    await user.click(screen.getByRole("button", {name: "Save model"}));
+    expect(updateLLMSettings).toHaveBeenCalledWith({provider: "openai", requested_model: configured.requested_model});
+    expect(screen.getByRole("button", {name: "Validate key"})).toBeEnabled();
+    expect(validateLLMCredential).not.toHaveBeenCalled();
+  });
+
   it("can select a saved provider after its previous model leaves the catalog", async () => {
     const user = userEvent.setup();
     vi.mocked(getLLMSettings).mockResolvedValue({...configured, saved_credentials: [

@@ -10,6 +10,27 @@ def test_configured_native_models_available_with_openrouter_default(settings):
     assert selectable(("openai", "second"))
 
 
+def test_reactivate_retained_default_key_without_replacing_it(authenticated_client, llm_settings, monkeypatch):
+    base = "/api/settings/llm/"
+    model = "example/structured:free"
+    monkeypatch.setattr("apps.legislation.enhancements.openrouter_catalog.entries", lambda: {
+        model: {"model": model, "provider": "openrouter", "free": True}})
+    client = authenticated_client
+    with llm_settings:
+        default = {"provider": "openai", "requested_model": "gpt-5.6-luna"}
+        original = client.put(base, {**default, "api_key": "first-1111"}, format="json")
+        assert original.status_code == 200
+        assert client.put(base, {"provider": "openrouter", "requested_model": model, "api_key": "second-2222"},
+                          format="json").status_code == 200
+        assert client.delete(base + "credentials/openrouter/").status_code == 204
+        assert client.get(base).json()["configured"] is False
+        activated = client.put(base, default, format="json")
+        assert activated.status_code == 200
+        assert activated.json()["revision"] == original.json()["revision"]
+        assert client.get(base).json()["key_suffix"] == "1111"
+        assert client.get(base + "selection/").json() == {"provider": "openai", "model": default["requested_model"]}
+
+
 def test_switching_back_preserves_provider_key(authenticated_client, llm_settings, monkeypatch):
     model = "example/structured:free"
     monkeypatch.setattr("apps.legislation.enhancements.openrouter_catalog.entries", lambda: {

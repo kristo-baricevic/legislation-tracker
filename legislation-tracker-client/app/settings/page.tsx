@@ -26,8 +26,8 @@ function LLMSettingsSection() {
   const model = draft?.model ?? settings?.requested_model ?? "";
   const selected = settings?.models.find(item => item.provider === provider && item.model === model);
   const compatible = Boolean(selected);
-  const changed = provider !== settings?.provider || model !== settings?.requested_model;
   const saved = settings?.saved_credentials?.find(item => item.provider === provider);
+  const changed = provider !== settings?.provider || model !== settings?.requested_model || Boolean(saved && !settings?.configured);
   const hasKey = Boolean(saved || (settings?.configured && provider === settings.provider));
   const providerLabel = ({openai: "OpenAI", openrouter: "OpenRouter", anthropic: "Anthropic", gemini: "Google"} as Record<string,string>)[provider] ?? provider;
   const [busy, setBusy] = useState<"save" | "validate" | "toggle" | "delete" | null>(null);
