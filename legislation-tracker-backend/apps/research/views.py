@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.http import FileResponse, Http404
+from django.db import transaction
 from django.db.models import Q, OuterRef, Subquery, Sum, Min
 from django.core.files.storage import default_storage
 from rest_framework import serializers
@@ -139,6 +140,48 @@ class ResearchRunView(APIView):
 
     def get(self, request, representative_id, run_id):
         return Response(run_data(get_object_or_404(ResearchRun.objects.select_related("work_item"), pk=run_id, representative_id=representative_id)))
+
+
+class ConfirmCandidateView(APIView):
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    @transaction.atomic
+    def post(self, request, representative_id, run_id):
+        from apps.campaign_finance.models import CandidateIdentity, ConfirmedCandidate, RepresentativeCandidate
+        from apps.campaign_finance.identity import review_choices, resolve_candidate
+        from .services import _request_period
+
+        rep = get_object_or_404(Representative.objects.select_for_update(), pk=representative_id)
+        run = get_object_or_404(ResearchRun, pk=run_id, representative=rep)
+        latest = ResearchRun.objects.filter(representative=rep, period=run.period).order_by("-created_at").first()
+        if latest.pk != run.pk or run.status != "needs_review" or resolve_candidate(rep.pk, run.period).status == "verified":
+            return Response({"detail": "This review has changed. Reload the saved research."}, status=409)
+        choices = review_choices(rep, run.sections.get("finance", {}).get("candidates", []))
+        choice = next((row for row in choices if row["candidate_id"] == request.data.get("candidate_id")), None)
+        if not choice:
+            return Response({"detail": "Choose one of the suggested FEC records."}, status=400)
+        if RepresentativeCandidate.objects.filter(representative=rep, candidate_id=choice["candidate_id"], revoked=True).exists():
+            return Response({"detail": "This mapping requires staff review."}, status=409)
+        candidate, _ = CandidateIdentity.objects.update_or_create(fec_id=choice["candidate_id"],
+            defaults={key: choice[key] for key in ("name", "state", "office")})
+        mapping, created = RepresentativeCandidate.objects.get_or_create(representative=rep, candidate=candidate,
+            defaults={"verified": True, "periods": [run.period], "evidence_url": f"https://www.fec.gov/data/candidate/{candidate.pk}/"})
+        if not created:
+            if not mapping.verified or not mapping.evidence_url:
+                # Fresh confirmation covers this election cycle only.
+                mapping.verified = True
+                mapping.periods = [run.period]
+                mapping.evidence_url = f"https://www.fec.gov/data/candidate/{candidate.pk}/?cycle={run.period}"
+                mapping.save(update_fields=["verified", "periods", "evidence_url"])
+            elif run.period not in mapping.periods:
+                mapping.periods = sorted({*mapping.periods, run.period})
+                mapping.save(update_fields=["periods"])
+        ConfirmedCandidate.objects.update_or_create(representative=rep, period=run.period, defaults=dict(candidate=candidate,
+            review_run=run, confirmed_by=request.user))
+        resumed = _request_period(rep.pk, run.period, request.user.pk, refresh=True, finance_only=True)
+        resumed.sections = {**run.sections, "finance": {"status": "queued"}}
+        resumed.save(update_fields=["sections"])
+        return Response(run_data(resumed), status=202)
 
 
 class ContributorsView(APIView):

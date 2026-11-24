@@ -63,6 +63,45 @@ def test_plain_name_member_evidence_includes_authoritative_party():
     assert evidence["representative"]["party"] == "D"
 
 
+def test_targeted_read_publishes_full_catalog_and_only_fetches_requested_members():
+    from unittest.mock import patch
+    from apps.congress.topic_activity import representative_activity_catalog, representative_topic_activity
+
+    cache.clear()
+    first, second = representative(), representative("B000002")
+    subset = representative_activity_catalog(representative_ids=[first.pk])
+    assert set(subset["representatives"]) == {str(first.pk)}
+    with patch.object(cache, "get_many", wraps=cache.get_many) as fetch:
+        assert representative_topic_activity(second.pk)["representative"]["id"] == second.pk
+        keys = fetch.call_args.args[0]
+        assert len(keys) == 1 and keys[0].endswith(f":member:{second.pk}")
+        cache.delete(keys[0])
+        assert representative_activity_catalog(representative_ids=[first.pk, -1]) == subset
+
+
+def test_dashboard_reader_joins_an_in_progress_catalog_build():
+    from unittest.mock import patch
+    from apps.congress.topic_activity import representative_activity_catalog
+
+    cache.clear()
+    rep = representative()
+    full = representative_activity_catalog()
+    real_get = cache.get
+    calls = []
+
+    def miss_then_publish(key, *args, **kwargs):
+        calls.append(key)
+        return None if len(calls) == 1 else real_get(key, *args, **kwargs)
+
+    with patch.object(cache, "get", side_effect=miss_then_publish), patch(
+        "apps.congress.topic_activity.time.sleep"
+    ) as wait:
+        result = representative_activity_catalog(representative_ids=[rep.pk], wait_for_build=True)
+    wait.assert_called_once()
+    assert calls[0] == calls[1]
+    assert result == full
+
+
 def test_repeat_group_does_not_inflate_intersection_mass():
     from apps.congress.topic_activity import representative_topic_activity
 

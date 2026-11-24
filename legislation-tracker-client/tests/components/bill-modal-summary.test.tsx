@@ -27,6 +27,18 @@ function selectedSection() {
   return within(screen.getByRole("heading", { name: "Summary" }).closest("section")!);
 }
 
+it("opens the enhancement estimate from the bill modal and returns to the bill on cancel", async () => {
+  const estimate = { can_enhance: true, provider: "test", requested_model: "test-model", source_fingerprint: "source", request_fingerprint: "request", credential_revision: 1 };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("estimate") ? estimate : url.includes("/votes/") || url.includes("reader-items") ? { count: 0, results: [], section_supplements: [] } : detail)));
+  render(<ProfileProvider><BillDeckModal bill={bill} onClose={() => {}} /></ProfileProvider>);
+  const action = await screen.findByRole("button", { name: "Enhance" });
+  await userEvent.click(action);
+  const confirmation = await screen.findByRole("dialog", { name: "Confirm enhancement" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  expect(action).toBeVisible();
+  expect(screen.queryByRole("dialog", { name: "Confirm enhancement" })).toBeNull();
+});
+
 it("waits for saved enhanced explanations instead of first rendering original items", async () => {
   vi.stubGlobal("fetch", vi.fn((url: string) => url.includes("enhancements/") ? new Promise(() => {}) : Promise.resolve(Response.json(url.includes("/votes/") || url.includes("reader-items") ? { count: 0, next: null, previous: null, results: [], section_supplements: [] } : detail))));
   render(<ProfileProvider><BillDeckModal bill={{ ...bill, enhancement_id: 99, enhancement_status: "succeeded", card_summary: "Enhanced summary" }} onClose={() => {}} /></ProfileProvider>);

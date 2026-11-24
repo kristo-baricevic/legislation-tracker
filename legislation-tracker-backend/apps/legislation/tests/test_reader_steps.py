@@ -44,6 +44,30 @@ def test_ambiguous_reader_reservation_blocks_confirmation_until_reconciled(
         assert client.get(url + "estimate/").data["matching_enhancement"]["latest_attempt"]["retry_allowed"]
 
 
+@pytest.mark.django_db
+def test_pending_salted_call_blocks_fresh_generation(source_bill, enhancement_owner, enhancement_settings):
+    from unittest.mock import Mock
+    from hashlib import sha256
+    from apps.legislation.models import BillEnhancementCallCache
+    from apps.legislation.enhancements.reader_cache import call_identity
+    install_reader(source_bill)
+    with enhancement_settings:
+        attempt = _pending_attempt(enhancement_owner, source_bill)
+        attempt.status, attempt.run_token, attempt.lease_expires_at = "running", "lease", timezone.now() + timedelta(minutes=1)
+        attempt.save()
+        attempt.enhancement.rerun_after = 9
+        attempt.enhancement.save()
+        request = build_enhancement_preflight(source_bill)
+        identity, _ = call_identity(request)
+        prior = BillEnhancementCallCache.objects.create(fingerprint=sha256(f"{identity}:rerun:8".encode()).hexdigest(),
+            dispatch_identity=identity, status="dispatching")
+        provider = Mock()
+        with pytest.raises(ProviderError) as error:
+            DurableReaderProvider(provider, attempt, "lease", 4).enhance_bill(api_key="offline", request=request, timeout_seconds=1)
+        assert error.value.citation_resolution["blocked_reservation"] == prior.pk
+        provider.enhance_bill.assert_not_called()
+
+
 def test_cache_reference_remapping_does_not_edit_prose():
     from apps.legislation.enhancements.reader_cache import remap
     assert remap({'text': 'The name src_0042 appears in the source.', 'source_ref': 'src_0042'},

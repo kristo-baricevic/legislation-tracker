@@ -99,6 +99,8 @@
 .modalBody { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: .5rem; }
 .modalBody :global(.stable-results) { height: auto; min-height: 24rem; overflow: visible; }
 .modalPagerSlot { flex: 0 0 3.5rem; }
+.modalHeaderActions { display: flex; align-items: center; gap: .5rem; }
+.modalBody > [aria-live="polite"]:empty { display: none; }
 .modalHeader { flex-shrink: 0; padding-bottom: .75rem; }
 .dialog::backdrop { background: rgba(28, 40, 33, .65); }
 .modalHeader { display: flex; justify-content: space-between; align-items: center; gap: 1rem; color: var(--muted); font-size: .85rem; }

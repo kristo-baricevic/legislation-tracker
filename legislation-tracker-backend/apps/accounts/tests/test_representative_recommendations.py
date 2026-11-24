@@ -56,6 +56,8 @@ def test_representatives_use_explicit_topics_and_exclude_followed():
     assert response.status_code == 200
     results = response.json()["results"]
     assert [item["representative_id"] for item in results] == [rep.id]
+    assert api.post(f"{PATH}{rep.pk}/dismiss/").status_code == 204
+    assert api.get(PATH).json()["results"] == []
     assert results[0]["score"] == 0.4
     assert results[0]["reasons"][0]["kind"] == "followed_topic"
     evidence = results[0]["topic_activity_evidence"]
@@ -112,6 +114,10 @@ def test_top_five_is_deterministic_unique_and_isolated():
     first = api.get(PATH).json()["results"]
     second = api.get(PATH).json()["results"]
     assert [item["representative_id"] for item in first] == [rep.id for rep in reps[:5]]
+    assert api.get(PATH).json()["has_more"] is True
+    more = api.get(PATH, {"shown": ",".join(str(item["representative_id"]) for item in first)}).json()
+    assert [item["representative_id"] for item in more["results"]] == [rep.id for rep in reps[5:]]
+    assert more["has_more"] is False
     assert first == second
     assert len({item["representative_id"] for item in first}) == 5
     assert other_api.get(PATH).json()["results"] == []

@@ -9,7 +9,7 @@ import { topRepresentativeTopics } from "@/lib/representative-card";
 import CardTooltip from "./CardTooltip";
 import type { Research } from "@/lib/representative-research";
 import RepresentativeResearch from "./RepresentativeResearch";
-import BillCard from "./BillCard";
+import DashboardBillCard, { useDashboardBillTracking } from "./DashboardBillCard";
 import deckStyles from "./bill-deck.module.css";
 import StackDialog from "./ModalStack";
 import styles from "./legislator-profile.module.css";
@@ -28,6 +28,7 @@ function useResource<T>(load: (signal: AbortSignal) => Promise<T>) {
 }
 
 function IntroducedBills({ scope, onOpenBill }: { scope: ProfileScope; onOpenBill: (bill: BillListItem) => boolean }) {
+  const controls = useDashboardBillTracking();
   const [bills, setBills] = React.useState<BillListItem[]>([]);
   const [request, setRequest] = React.useState({ page: 1, attempt: 0 });
   const [hasNext, setHasNext] = React.useState(false);
@@ -61,15 +62,16 @@ function IntroducedBills({ scope, onOpenBill }: { scope: ProfileScope; onOpenBil
     observer.observe(end.current);
     return () => observer.disconnect();
   }, [loadNext]);
-  return <section className={styles.section}><h3>Bills introduced</h3>
+  return <section className={`${styles.section} ${deckStyles.deck}`}><h3>Bills introduced</h3>
     {!loading && !error && !bills.length && <p>No bills introduced are available for this Congress.</p>}
     <div ref={row} className={`${deckStyles.followedRow} ${styles.billRow}`} role="region" aria-label="Bills introduced" tabIndex={0} onScroll={event => {
       const element = event.currentTarget;
       if (element.scrollWidth - element.clientWidth - element.scrollLeft < 300) loadNext();
     }}>
-      {bills.map(bill => <BillCard key={bill.id} bill={bill} onOpen={() => { if (!onOpenBill(bill)) window.location.assign(`/bills/${bill.id}`); }} footer={null} />)}
+      {bills.map(bill => <DashboardBillCard key={bill.id} bill={bill} controls={controls} onOpen={current => { if (!onOpenBill(current)) window.location.assign(`/bills/${current.id}`); }} />)}
       <div ref={end} className={styles.billSentinel} aria-hidden="true" />
     </div>
+    {controls.followError && <p role="alert">{controls.followError}</p>}
     <LoadingSpinner active={loading} label="Loading introduced bills…" />
     {error && <p role="alert">Could not load {bills.length ? "more bills" : "bills"}. <button onClick={() => {
       if (busy.current) return;

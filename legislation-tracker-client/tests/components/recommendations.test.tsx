@@ -29,6 +29,96 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
+  it.each([
+    ["bill", true, false], ["bill", false, false], ["bill", false, true],
+    ["representative", true, false], ["representative", false, false], ["representative", false, true],
+  ] as const)("isolates overlapping %s follows (success=%s, failure finishes first=%s)", async (kind, succeeds, failureFirst) => {
+    const ids = [1, 2];
+    const results = ids.map(id => kind === "bill"
+      ? { ...page.results[0], bill: { ...bill, id, bill_number: `HR ${id}` } }
+      : { representative_id: id, name: `Member ${id}`, bioguide_id: `A00000${id}`, reasons: [], topic_activity_evidence: activity });
+    mockRequests(() => Response.json({ ...page, results }));
+    const original = fetch;
+    const saved = new Set<number>();
+    const finish = new Map<number, () => void>();
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && url.includes("/api/tracking/")) {
+        const body = JSON.parse(String(init.body));
+        const id = body.bill ?? body.representative;
+        await new Promise<void>(resolve => finish.set(id, resolve));
+        if (id === 1 && !succeeds) return new Response(null, { status: 500 });
+        saved.add(id);
+        return Response.json({});
+      }
+      if (url.endsWith("/api/tracking/")) {
+        const items = [...saved].map(id => ({ bill: { ...bill, id }, representative: { ...activity.representative, id } }));
+        return Response.json({ bills: items, legislators: items, topics: [] });
+      }
+      return original(url, init);
+    });
+    render(kind === "bill" ? <BillRecommendations onOpenBill={() => true} /> : <RepresentativeRecommendations />);
+    const [first, second] = await screen.findAllByRole("button", { name: new RegExp(`^Follow ${kind} `) });
+    fireEvent.click(first);
+    await waitFor(() => expect(finish.has(1)).toBe(true));
+    expect(first).toHaveTextContent(kind === "bill" ? /^Follow bill$/ : /^Follow$/);
+    expect(second).toHaveAttribute("aria-disabled", "false");
+    fireEvent.click(second);
+    await waitFor(() => expect(finish.has(2)).toBe(true));
+    if (failureFirst) {
+      await act(async () => finish.get(1)!());
+      expect(await screen.findByRole("alert")).toHaveTextContent("Your follow was not saved.");
+    }
+    await act(async () => finish.get(2)!());
+    expect(second).toHaveTextContent("Unfollow");
+    expect(first).toHaveTextContent(kind === "bill" ? /^Follow bill$/ : /^Follow$/);
+    if (!failureFirst) await act(async () => finish.get(1)!());
+    if (succeeds) expect(first).toHaveTextContent("Unfollow");
+    else expect(await screen.findByText("Your follow was not saved. Try again.")).toBeVisible();
+    expect(second).toHaveTextContent("Unfollow");
+  });
+
+  it.each(["bill", "representative"] as const)("applies a pending %s dismissal after another follow succeeds", async kind => {
+    const results = [1, 2].map(id => kind === "bill"
+      ? { ...page.results[0], bill: { ...bill, id, bill_number: `HR ${id}` } }
+      : { representative_id: id, name: `Member ${id}`, bioguide_id: `A00000${id}`, reasons: [], topic_activity_evidence: activity });
+    mockRequests(() => Response.json({ ...page, results }));
+    const original = fetch;
+    let finish!: () => void;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/1/dismiss/")) {
+        await new Promise<void>(resolve => { finish = resolve; });
+        return new Response(null, { status: 204 });
+      }
+      return original(url, init);
+    });
+    render(kind === "bill" ? <BillRecommendations onOpenBill={() => true} /> : <RepresentativeRecommendations />);
+    const [first] = await screen.findAllByRole("button", { name: /^Dismiss / });
+    fireEvent.click(first);
+    await waitFor(() => expect(finish).toBeDefined());
+    fireEvent.click(screen.getAllByRole("button", { name: new RegExp(`^Follow ${kind} `) })[1]);
+    await screen.findByRole("button", { name: new RegExp(`^Unfollow ${kind} `) });
+    await act(async () => finish());
+    expect(first).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Dismiss / })).toHaveLength(1);
+  });
+
+  it("removes only the dismissed bill without reloading recommendations", async () => {
+    let dismissed = false;
+    mockRequests(() => Response.json(dismissed ? empty : page));
+    const fetchRequest = fetch;
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      if (url.endsWith("/recommendations/1/dismiss/") && init?.method === "POST") {
+        dismissed = true;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return fetchRequest(url, init);
+    });
+    render(<BillRecommendations onOpenBill={() => true} />);
+    fireEvent.click(await screen.findByRole("button", {name: "Dismiss HR 1 from recommendations"}));
+    await waitFor(() => expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument());
+    expect(dismissed).toBe(true);
+    expect(vi.mocked(fetchRequest).mock.calls.filter(([url]) => String(url).includes("/tracking/recommendations/"))).toHaveLength(1);
+  });
   it("restarts an in-flight filter request after interests change", async () => {
     mockRequests(() => Response.json(page));
     const view = render(<BillRecommendations onOpenBill={() => true} filters={{q: "Before"}} />);
@@ -192,6 +282,20 @@ describe("recommendation rows", () => {
     fails = false; fireEvent.click(screen.getByRole("button", { name: "Retry recommendations" }));
     expect(await screen.findByText(/Follow a topic or representative to start/)).toBeVisible();
   });
+  it("appends more representatives while the existing cards stay mounted", async () => {
+    const rep = (id: number) => ({ representative_id: id, name: `Member ${id}`, bioguide_id: "", reasons: [], topic_activity_evidence: activity });
+    let finish!: (r: Response) => void;
+    let requests = 0;
+    mockRequests(() => ++requests === 1 ? Response.json({ ...empty, has_more: true, results: [rep(1)] }) : new Promise<Response>(resolve => { finish = resolve; }));
+    render(<RepresentativeRecommendations />);
+    const first = await screen.findByRole("link", { name: "Member 1" });
+    fireEvent.click(await screen.findByRole("button", {name: "More representative recommendations"}));
+    expect(first).toBeVisible();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("shown=1"))).toBe(true);
+    await act(async () => finish(Response.json({ ...empty, has_more: false, results: [rep(2)] })));
+    expect(await screen.findByRole("link", { name: "Member 2" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Member 1" })).toBe(first);
+  });
   it("deduplicates continuation pages and restarts expired cursors", async () => {
     let count = 0;
     mockRequests(() => {
@@ -206,7 +310,8 @@ describe("recommendation rows", () => {
     expect(await screen.findByRole("link", { name: "Second proposal" })).toBeVisible();
     expect(screen.getAllByRole("link", { name: bill.title })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "More recommendations" }));
-    expect(await screen.findByText(/Follow a topic or representative to start/)).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "More recommendations" })).toBeNull());
+    expect(screen.getByRole("link", { name: "Second proposal" })).toBeVisible();
   });
   it("keeps followed recommendations mounted and focused but clears them on session loss", async () => {
     let calls = 0;

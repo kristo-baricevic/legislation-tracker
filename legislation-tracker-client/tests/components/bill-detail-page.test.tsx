@@ -135,6 +135,7 @@ describe("BillDetailPage", () => {
     expect(links.closest("header")).toContainElement(screen.getByRole("heading", { name: "HR 10 · Congress 119" }));
     await userEvent.click(await screen.findByRole("tab", { name: "Versions" }));
     const versions = screen.getByRole("tabpanel", { name: "Versions" });
+    expect(within(versions).getByRole("heading", { name: "Bill history" })).toBeVisible();
     expect(within(versions).getByRole("heading", { name: "Bill versions" })).toBeVisible();
     expect(within(versions).getByRole("link", { name: "Read text" })).toHaveAttribute("href", "/documents/9");
     expect(screen.getAllByRole("link").filter(link => link.getAttribute("href") === "https://www.congress.gov/bill/119th-congress/house-bill/10")).toHaveLength(1);
@@ -149,15 +150,21 @@ describe("BillDetailPage", () => {
     expect(screen.queryByRole("link", { name: "Congress.gov" })).not.toBeInTheDocument();
   });
 
-  it("shows a short stage and the complete latest action separately", async () => {
+  it("shows the stage and primary committee referral separately", async () => {
     const value = await getBill(10);
     const action = "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of provisions within their respective jurisdictions.";
-    vi.mocked(getBill).mockResolvedValue({ ...value, status: action });
+    vi.mocked(getBill).mockResolvedValue({ ...value, status: action, sponsor: 7, sponsor_name: "Roger Marshall", sponsor_bioguide_id: "M000001" });
     render(<BillDetailPage />);
     await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
     expect(screen.getAllByText("In committee").some(node => !node.closest("[hidden]"))).toBe(true);
     expect(screen.getByText("Latest action")).toBeVisible();
-    expect(screen.getByText(action)).toBeVisible();
+    expect(screen.getByText("Latest action").nextElementSibling?.textContent).toBe("Referred to the Committee on Education and Workforce");
+    expect(screen.queryByText("Jurisdiction")).not.toBeInTheDocument();
+    const sponsor = screen.getByRole("link", { name: "Roger Marshall" });
+    expect(sponsor).toHaveAttribute("href", "/representatives/7?congress=119");
+    expect(sponsor).not.toHaveTextContent("Roger Marshall");
+    await userEvent.hover(sponsor);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Roger Marshall");
   });
   it("shows the document summary before contract generation completes", async () => {
     const value = await getBill(10);

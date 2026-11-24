@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import DashboardLoading, { useDashboardLoading } from "@/app/components/DashboardLoading";
+import DashboardLoading, { useDashboardCardLoading, useDashboardLoading } from "@/app/components/DashboardLoading";
 
 function Section({ name, loading }: { name: string; loading: boolean }) {
   useDashboardLoading(name, loading);
@@ -31,11 +31,15 @@ it("uses one spinner and reveals all rows only when the slowest section settles"
   expect(screen.getByText("Representatives to discover")).toBeVisible();
   act(() => vi.runOnlyPendingTimers());
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  rerender(<Dashboard followed={false} bills representatives={false} />);
-  expect(screen.getByText("Following")).toBeVisible();
-  expect(screen.getByText("Bills to discover")).toBeVisible();
-  act(() => vi.advanceTimersByTime(1000));
+  rerender(<Dashboard followed={false} bills representatives />);
+  act(() => vi.advanceTimersByTime(250));
+  expect(screen.getByRole("status")).toBeVisible();
+  rerender(<Dashboard followed={false} bills={false} representatives />);
+  expect(screen.getByText("Bills to discover")).not.toBeVisible();
+  expect(screen.getByRole("status")).toBeVisible();
+  rerender(<Dashboard followed={false} bills={false} representatives={false} />);
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(screen.getByText("Bills to discover")).toBeVisible();
 });
 
 it("does not flash a spinner when all rows finish quickly", () => {
@@ -46,4 +50,15 @@ it("does not flash a spinner when all rows finish quickly", () => {
   act(() => vi.advanceTimersByTime(500));
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(screen.getByText("Following")).toBeVisible();
+});
+
+it("keeps visible rows interactive while a newly followed card loads its details", () => {
+  function NewCard() {
+    useDashboardCardLoading("new-representative", true);
+    return <article>Newly followed representative</article>;
+  }
+  const { rerender } = render(<DashboardLoading><Section name="Recommended bills" loading={false} /></DashboardLoading>);
+  rerender(<DashboardLoading><Section name="Recommended bills" loading={false} /><NewCard /></DashboardLoading>);
+  expect(screen.getByRole("heading", { name: "Recommended bills" })).toBeVisible();
+  expect(screen.getByRole("article")).toBeVisible();
 });

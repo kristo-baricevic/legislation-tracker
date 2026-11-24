@@ -72,6 +72,10 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     assert '$100,000,000' in policy[0]['cited_sources'][0]['quoted_text']
     with enhancement_settings:
         reuse = build_enhancement_preflight(source_bill)
+        fresh = build_enhancement_preflight(source_bill, reuse_publication=False)
+        assert fresh.request_fingerprint != reuse.request_fingerprint
+        assert not fresh.reader_reuse
+        assert any(batch.request_envelope.get("source_review") for batch in fresh.reader_batches)
     assert reuse.reader_reuse['source_review']['financial_items'] == attempt.enhancement.result_json['source_review']['financial_items']
     assert reuse.reader_reuse['source_review']['policy_changes'] == attempt.enhancement.result_json['source_review']['policy_drafts']
     assert not any(r.request_envelope.get('source_review') for r in reuse.reader_batches)
@@ -83,6 +87,21 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
         cached = build_enhancement_preflight(source_bill)
     assert cached.source_manifest['budget']['planned_calls'] == 1
     assert cached.source_manifest['budget']['maximum_calls'] == 1
+
+    from rest_framework.test import APIClient
+    from apps.legislation.models import BillEnhancementAttempt
+    client = APIClient()
+    client.force_authenticate(enhancement_owner)
+    url = f"/api/bills/{source_bill.pk}/enhancements/"
+    with enhancement_settings:
+        estimate = client.get(url + "estimate/?rerun=1").data
+        body = {key: estimate[key] for key in ("source_fingerprint", "request_fingerprint", "credential_revision", "rerun_after")}
+        assert estimate["aggregate_budget"]["planned_calls"] > 1
+        created = client.post(url, body, format="json")
+        assert created.status_code == 202
+        rerun = BillEnhancementAttempt.objects.get(enhancement_id=created.data["id"])
+        assert run_bill_enhancement_attempt(rerun.pk, rerun.dispatch_token)["status"] == "succeeded"
+        assert rerun.steps.filter(status="validated").count() > 1
 
 
 @pytest.mark.django_db

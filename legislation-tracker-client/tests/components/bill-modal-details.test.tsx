@@ -88,4 +88,9 @@ it("shows vote history and voter avatars instead of printed member names", async
   expect(await screen.findByRole("link", { name: "Burgess Owens" })).toBeVisible();
   expect(await screen.findByRole("img", { name: "Burgess Owens" })).toHaveAttribute("src", "https://www.congress.gov/img/member/o000086_200.jpg");
   expect(screen.queryByText("Burgess Owens")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Hide voting record", expanded: true }));
+  expect(screen.queryByRole("heading", { name: "Member positions" })).not.toBeInTheDocument();
+  expect(getVote).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole("button", { name: "View voting record", expanded: false }));
+  expect(await screen.findByRole("heading", { name: "Member positions" })).toBeVisible();
 });

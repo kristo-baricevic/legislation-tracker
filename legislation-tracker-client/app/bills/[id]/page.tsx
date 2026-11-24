@@ -26,11 +26,12 @@ import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import { DocumentReader } from "./document-reader";
 import BillEnhancementPanel from "./bill-enhancement-panel";
+import { latestActionLabel } from "@/lib/bill-format";
 import { stageFor } from "@/lib/bill-stage";
 import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
-import BillChangeExperience from "./bill-change-experience";
+import BillChangeExperience, { BillHistory } from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
-import LegislatorName from "../../components/LegislatorName";
+import RepresentativeAvatarBadge from "../../components/RepresentativeAvatarBadge";
 import { ReaderTabsProvider, ReaderTabBar, ReaderTabPanel } from "./reader-tabs";
 import { isLegalNlpV21ContractSummary } from "@/lib/contracts";
 
@@ -291,14 +292,10 @@ function BillDetailInner({ routeId }: { routeId: string }) {
                   onClick={() => trackingReady ? void toggleBillTracking() : setTrackingRetry(value => value + 1)}
                   aria-label={!trackingReady && !trackingError ? "Loading follow status" : undefined}
                   aria-busy={!trackingReady || trackingLoading}
-                  disabled={(!trackingReady && !trackingError) || trackingLoading}
+                  disabled={!trackingReady && !trackingError} aria-disabled={(!trackingReady && !trackingError) || trackingLoading}
                   className="cursor-pointer border border-slate-800 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
                 >
-                  {!trackingReady ? trackingError ? "Retry follow status" : "Track bill" : trackingLoading
-                    ? "Saving..."
-                    : isTracked
-                      ? "Tracked bill"
-                      : "Track bill"}
+                  {!trackingReady ? trackingError ? "Retry follow status" : "Track bill" : isTracked ? "Tracked bill" : "Track bill"}
                 </button>
               ) : (
                 <Link
@@ -343,22 +340,22 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </DocumentReader>
           {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
           <ReaderTabPanel tab="votes">
-          <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt className="text-sm text-slate-600 dark:text-green-500">Jurisdiction</dt>
-              <dd>{bill.jurisdiction}</dd>
-            </div>
+          <dl className="mb-6 flex items-start justify-between gap-x-6 overflow-x-auto py-1 [&>div]:shrink-0 [&_dd]:mt-1">
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Session</dt>
               <dd>{bill.session}</dd>
             </div>
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Status</dt>
-              <dd>{stageFor(bill.status)?.label ?? bill.status}</dd>
+              <dd className="max-w-48">{stageFor(bill.status)?.label ?? bill.status}</dd>
             </div>
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
-              <dd><LegislatorName id={bill.sponsor ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} /></dd>
+              <dd>{bill.sponsor ? (
+                <RepresentativeAvatarBadge id={bill.sponsor} name={bill.sponsor_name || "Sponsor"} congress={bill.session}
+                  representative={bill.sponsor_bioguide_id ? { bioguide_id: bill.sponsor_bioguide_id } : undefined}
+                  notes={[]} linkToPage />
+              ) : (bill.sponsor_name || "—")}</dd>
             </div>
             {bill.introduced_at && (
               <div>
@@ -366,9 +363,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
                 <dd>{bill.introduced_at}</dd>
               </div>
             )}
-            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="sm:col-span-2 lg:col-span-4">
+            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="min-w-56 flex-1">
               <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
-              <dd className="mt-1 leading-6">{bill.status}</dd>
+              <dd>{latestActionLabel(bill.status)}</dd>
             </div>}
           </dl>
           <LoadingSpinner active={voteHistoryLoading && votes === null} label="Loading vote history…" />
@@ -466,6 +463,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
               </ul>
             </div>
           )}
+          <BillHistory key={bill.id} billId={bill.id} />
           </ReaderTabPanel>
           <BillEnhancementPanel billId={bill.id} title={bill.title} jurisdiction={bill.jurisdiction} controlsTargetId="bill-ai-controls" />
         </div>

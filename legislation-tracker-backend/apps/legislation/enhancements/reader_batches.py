@@ -123,7 +123,7 @@ def _output_fits(sources, *, summary=False):
     return _output_allowance(sources, summary=summary) <= capacity()['output_tokens']
 
 
-def build_reader_preflight(document, *, xml_sections=()):
+def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True):
     from .source_packet import select_document_sources, _request_envelope, _within_limits, canonical_json_bytes, PreflightUnavailable, _text_hash
     from .types import EnhancementPreflight
     from .reader_capacity import fits
@@ -250,7 +250,8 @@ def build_reader_preflight(document, *, xml_sections=()):
     # The whitelist makes reuse deterministic while an upgraded run is pending.
     from apps.legislation.models import BillEnhancement
     reused = None
-    for prior in BillEnhancement.objects.filter(bill=document.bill, status='succeeded',
+    publications = BillEnhancement.objects.filter(bill=document.bill, status='succeeded') if reuse_publication else BillEnhancement.objects.none()
+    for prior in publications.filter(
             output_schema_version=READER_VERSION, prompt_version='reader-6-brief-wire').order_by('-created_at', '-pk'):
         if not contract or prior.source_manifest_json.get('contract_hash') != contract.contract_hash:
             continue
@@ -310,8 +311,7 @@ def build_reader_preflight(document, *, xml_sections=()):
     # An explicit presentation upgrade can keep a verified full-source review.
     # No source bytes, target identities, or financial inventory are guessed.
     from .reader_discovery import validate_source_review
-    for prior in BillEnhancement.objects.filter(bill=document.bill, status='succeeded',
-            prompt_version=READER_PROMPT_VERSION).order_by('pk'):
+    for prior in publications.filter(prompt_version=READER_PROMPT_VERSION).order_by('pk'):
         review = copy.deepcopy((prior.result_json or {}).get('source_review'))
         if review and 'policy_drafts' in review:
             review['policy_changes'] = review.pop('policy_drafts')
@@ -333,6 +333,7 @@ def build_reader_preflight(document, *, xml_sections=()):
                 "document_version_label": document.version_label}
     # Include exclusion decisions, identities, and the configured total-call ceiling.
     request_bytes = canonical_json_bytes({"main": main, "batches": envelopes, "identity": identity,
+                                         **({} if reuse_publication else {"reuse_publication": False}),
                                          "execution_settings": reader_execution_settings(),
                                          "excluded": excluded, "reused": reused, "policy_grouping": 1, "max_calls": settings.LLM_READER_MAX_CALLS})
     budget = {}

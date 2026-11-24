@@ -325,6 +325,7 @@ class BillEnhancement(models.Model):
             models.functions.SHA256(models.functions.Cast("source_snapshot_json", models.TextField())),
         )), output_field=models.CharField(max_length=64), db_persist=True,
     )
+    rerun_after = models.PositiveBigIntegerField(null=True, blank=True)
     successful_attempt = models.OneToOneField(
         "BillEnhancementAttempt",
         on_delete=models.SET_NULL,
@@ -349,7 +350,12 @@ class BillEnhancement(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "bill", "request_fingerprint"],
+                condition=models.Q(rerun_after__isnull=True),
                 name="legislation_enhancement_request_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["bill", "rerun_after"],
+                name="legislation_bill_rerun_uniq",
             )
         ]
         indexes = [
@@ -472,6 +478,7 @@ class BillEnhancementCallCache(models.Model):
     a crashed caller may have already incurred provider charges.
     """
     fingerprint = models.CharField(max_length=64, primary_key=True)
+    dispatch_identity = models.CharField(max_length=64, db_index=True, blank=True, default="")
     status = models.CharField(max_length=24, default='dispatching')
     result_json = models.JSONField(null=True)
     response_id = models.CharField(max_length=255, default='', blank=True)

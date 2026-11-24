@@ -23,6 +23,8 @@ from .service import (
     confirmation_fingerprint,
     retry_enhancement_attempt,
     reusable_publication,
+    retry_allowed,
+    reader_reconciliation_required,
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement, source_compatible
@@ -93,6 +95,15 @@ def _active_reader_payload(user, bill):
     return None
 
 
+def resumable_rerun(user, bill):
+    latest = BillEnhancement.objects.filter(bill=bill).order_by("-pk").first()
+    if (latest and latest.rerun_after and latest.user_id == user.pk
+            and latest.status not in {"pending", "running"}
+            and retry_allowed(latest.attempts.order_by("-sequence").first()) and source_compatible(latest, bill)):
+        return latest
+    return None
+
+
 class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
@@ -104,7 +115,18 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             "requested_model": settings.LLM_ENHANCEMENT_MODEL,
         }
         shared = shared_enhancement(bill)
-        if shared is not None:
+        rerun = request.query_params.get("rerun") == "1" and shared and shared.status == "succeeded"
+        continuation = resumable_rerun(request.user, bill) if not rerun else None
+        if rerun:
+            latest_row = BillEnhancement.objects.filter(bill=bill).order_by("-id").first()
+            active = BillEnhancement.objects.filter(bill=bill, status__in=["pending", "running"]).first()
+            if active:
+                return Response({**base, "unavailable_reason": "shared_enhancement_available",
+                    "matching_enhancement": enhancement_payload(active, detail=False, viewer=request.user)})
+            base["rerun_after"] = latest_row.pk
+        elif continuation:
+            base["rerun_after"] = continuation.rerun_after
+        elif shared is not None:
             return Response({**base, "unavailable_reason": "shared_enhancement_available",
                              "matching_enhancement": enhancement_payload(shared, detail=False, viewer=request.user)})
         if not base["feature_available"]:
@@ -125,6 +147,9 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 reason = "credential_unverified"
             return Response({**base, "unavailable_reason": reason})
         pair = credential_target(credential)
+        if (rerun and (latest_row.provider, latest_row.requested_model) == pair
+                and reader_reconciliation_required(latest_row.attempts.order_by("-sequence").first())):
+            return Response({**base, "unavailable_reason": "reconciliation_required"})
         paused = BillEnhancementAttempt.objects.filter(
             enhancement__user=request.user, enhancement__bill=bill, enhancement__status="paused",
             enhancement__provider=pair[0], enhancement__requested_model=pair[1], status="paused",
@@ -132,10 +157,11 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             "execution_config", "enhancement__request_fingerprint", "enhancement__source_manifest_json",
         ).order_by("-pk").first()
         preflight = None
-        if paused:
+        reuse_publication = "rerun_after" not in base
+        if paused and not rerun and (not continuation or paused.enhancement_id == continuation.pk):
             with planning_for(pair, owned_target=saved_owned_token_target(paused)):
                 try:
-                    candidate = build_enhancement_preflight(bill)
+                    candidate = build_enhancement_preflight(bill, reuse_publication=reuse_publication)
                 except PreflightUnavailable:
                     pass
                 else:
@@ -144,25 +170,38 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
         try:
             if preflight is None:
                 with planning_for(pair):
-                    preflight = build_enhancement_preflight(bill)
+                    preflight = build_enhancement_preflight(bill, reuse_publication=reuse_publication)
         except PreflightUnavailable as exc:
             return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
-        matching = (
-            BillEnhancement.objects.filter(
+        if continuation and (pair != (continuation.provider, continuation.requested_model)
+                or preflight.request_fingerprint != continuation.request_fingerprint):
+            # The estimate describes a different job. Confirm a new generation
+            # against the latest row rather than retrying the previous model.
+            if shared and shared.status == "succeeded":
+                base["rerun_after"] = continuation.pk
+                rerun = True
+            else:
+                base.pop("rerun_after")
+                try:
+                    with planning_for(pair):
+                        preflight = build_enhancement_preflight(bill)
+                except PreflightUnavailable as exc:
+                    return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
+            continuation = None
+        matching = continuation
+        if not rerun and matching is None:
+            matching = BillEnhancement.objects.filter(
                 user=request.user,
                 bill=bill,
                 request_fingerprint=preflight.request_fingerprint,
-            )
-            .order_by("-created_at")
-            .first()
-        )
+            ).order_by("-created_at").first()
         matching_payload = enhancement_payload(matching, detail=False) if matching else None
         latest = matching_payload.get("latest_attempt") if matching_payload else None
         if latest and latest["status"] == "outcome_unknown" and not latest["retry_allowed"]:
             return Response({**base, "unavailable_reason": "reconciliation_required",
                              "matching_enhancement": matching_payload})
         reused = reusable_publication(matching, credential) if matching else None
-        if reused:
+        if reused and not rerun:
             with planning_for(credential_target(credential)):
                 preflight = build_enhancement_preflight(bill, reuse_result=reused)
         from .model_capabilities import resolve_capabilities
@@ -181,7 +220,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "output_schema_version": preflight.output_schema_version,
                 "source_packet_version": preflight.source_packet_version,
                 "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": confirmation_fingerprint(preflight, credential),
+                "request_fingerprint": confirmation_fingerprint(preflight, credential, base.get("rerun_after")),
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": max(
@@ -200,7 +239,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                     TRUNCATED_COVERAGE_NOTICE if preflight.truncated else None
                 ),
                 "source_description": preflight.source_manifest.get("source_kind"),
-                "matching_enhancement": matching_payload,
+                "matching_enhancement": None if rerun else matching_payload,
             }
         )
 
@@ -234,8 +273,11 @@ class BillEnhancementListCreateView(PrivateEnhancementMixin, APIView):
             )
         except EnhancementServiceError as exc:
             return _service_error(exc)
+        payload = enhancement_payload(result.enhancement, detail=True, viewer=request.user)
+        if result.enhancement.rerun_after:
+            payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(
-            enhancement_payload(result.enhancement, detail=True, viewer=request.user),
+            payload,
             status=status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK,
         )
 
@@ -244,7 +286,8 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
         shared = shared_enhancement(bill)
-        enhancement = shared or (
+        active_rerun = BillEnhancement.objects.filter(bill=bill, rerun_after__isnull=False, status__in=["pending", "running"]).order_by("-pk").first()
+        enhancement = active_rerun or resumable_rerun(request.user, bill) or shared or (
             BillEnhancement.objects.filter(user=request.user, bill=bill)
             .prefetch_related(ATTEMPT_PREFETCH)
             .order_by("-created_at", "-id")
@@ -253,7 +296,7 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
         if enhancement is None:
             return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
         payload = enhancement_payload(enhancement, detail=True, viewer=request.user)
-        payload["source_compatible"] = shared is not None or _source_compatible(enhancement, bill)
+        payload["source_compatible"] = enhancement == shared or _source_compatible(enhancement, bill)
         payload["stale"] = not payload["source_compatible"]
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
@@ -299,7 +342,7 @@ class BillEnhancementRetryView(PrivateEnhancementMixin, APIView):
             )
         except EnhancementServiceError as exc:
             return _service_error(exc)
-        return Response(
-            enhancement_payload(result.enhancement, detail=True, viewer=request.user),
-            status=status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK,
-        )
+        payload = enhancement_payload(result.enhancement, detail=True, viewer=request.user)
+        if result.enhancement.rerun_after:
+            payload["active_reader"] = _active_reader_payload(request.user, bill)
+        return Response(payload, status=status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK)

@@ -482,3 +482,18 @@ def test_cursor_detects_cache_slot_replacement_before_return():
 
     with patch("apps.accounts.recommendation_views.cache_call", side_effect=replace):
         assert api.get(PATH, {"cursor": first["next_cursor"]}).status_code == 409
+
+
+def test_dismissal_excludes_bill_across_filters_only_for_requesting_user():
+    api, reader = client()
+    other_api, other = client("other@example.com")
+    health = topic()
+    for user in (reader, other):
+        TrackedTopic.objects.create(user=user, topic=health)
+    candidate = bill(1, topics=(health,))
+    assert api.get(PATH).json()["count"] == 1
+    for _ in range(2):
+        assert api.post(f"{PATH}{candidate.pk}/dismiss/").status_code == 204
+    assert api.get(PATH).json()["count"] == 0
+    assert api.get(PATH, {"topic_id": health.pk}).json()["count"] == 0
+    assert other_api.get(PATH).json()["count"] == 1

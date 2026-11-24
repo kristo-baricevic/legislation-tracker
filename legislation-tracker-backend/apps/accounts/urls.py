@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .recommendation_views import BillRecommendationView
+from .recommendation_views import BillRecommendationView, DismissRecommendationView
 from .representative_recommendation_views import RepresentativeRecommendationView
 from .views import (
     TrackedBillDetailView,
@@ -14,6 +14,8 @@ from .views import (
 )
 
 urlpatterns = [
+    path("recommendations/<int:pk>/dismiss/", DismissRecommendationView.as_view(relation="dismissed_bills")),
+    path("representative-recommendations/<int:pk>/dismiss/", DismissRecommendationView.as_view(relation="dismissed_representatives")),
     path(
         "recommendations/",
         BillRecommendationView.as_view(),

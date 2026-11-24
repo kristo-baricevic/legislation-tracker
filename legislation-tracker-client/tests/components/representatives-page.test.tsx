@@ -20,6 +20,21 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("RepresentativesPage", () => {
+  it("waits for tracking before showing the first representative card", async () => {
+    const { results: [rep] } = await getRepresentatives();
+    vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
+    let finish!: () => void;
+    vi.mocked(getMyTracking).mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({ is_staff: false, bills: [], topics: [], legislators: [{ id: 1, representative: rep, created_at: "" }] });
+    }));
+    render(<RepresentativesPage />);
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(screen.queryByRole("list", { name: "Representatives" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Loading representatives" })).toBeVisible();
+    await act(async () => finish());
+    expect(await screen.findByRole("button", { name: "Untrack Representative Example" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("status", { name: "Loading representatives" })).not.toBeInTheDocument();
+  });
   it("clears private tracking results on logout and ignores a late old-account response", async () => {
     const initial = await getRepresentatives();
     vi.mocked(getSession).mockResolvedValueOnce({ authenticated: true, user: { email: "reader@example.test" } });
@@ -53,17 +68,18 @@ describe("RepresentativesPage", () => {
     const directoryCalls = vi.mocked(getRepresentatives).mock.calls.length;
     const trackingCalls = vi.mocked(getMyTracking).mock.calls.length;
     await userEvent.click(a);
-    expect(a).toBeDisabled();
-    expect(b).toBeEnabled();
+    expect(a).toHaveAttribute("aria-disabled", "true");
+    expect(a).toHaveTextContent("+ Track");
+    expect(b).toHaveAttribute("aria-disabled", "false");
     expect(b).toHaveTextContent("+ Track");
     expect(b).toHaveAttribute("aria-busy", "false");
     await userEvent.click(b);
     await act(async () => first());
-    expect(a).toBeEnabled();
+    expect(a).toHaveAttribute("aria-disabled", "false");
     expect(a).toHaveTextContent("✓ Tracked");
-    expect(b).toBeDisabled();
+    expect(b).toHaveAttribute("aria-disabled", "true");
     await act(async () => second());
-    expect(b).toBeEnabled();
+    expect(b).toHaveAttribute("aria-disabled", "false");
     expect(b).toHaveTextContent("✓ Tracked");
     expect(screen.getByRole("button", { name: `Untrack ${rep.name}` })).toBe(a);
     expect(getRepresentatives).toHaveBeenCalledTimes(directoryCalls);
@@ -171,6 +187,25 @@ describe("RepresentativesPage", () => {
     expect(status).toHaveAccessibleName("Loading representatives");
     expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
   });
+  it("retries a failed tracking-filter refresh from the first loaded page", async () => {
+    const initial = await getRepresentatives();
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });
+    render(<RepresentativesPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Tracking All" }));
+    vi.mocked(getRepresentatives).mockResolvedValueOnce({ ...initial, next: "?page=2" })
+      .mockResolvedValueOnce({ ...initial, results: [{ ...initial.results[0], id: 9, first_name: "Second", name: "Second Example" }] });
+    await userEvent.click(screen.getByRole("option", { name: "Untracked" }));
+    await waitFor(() => expect(observerReady).toBe(true));
+    await act(async () => intersect());
+    await screen.findByRole("link", { name: "Second Example" });
+    vi.mocked(getRepresentatives).mockRejectedValueOnce(new Error("Refresh failed")).mockResolvedValueOnce({ ...initial, count: 0, results: [] });
+    await userEvent.click(screen.getByRole("button", { name: "Track Representative Example" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Retry loading representatives" }));
+    expect(await screen.findByText("No representatives found.")).toBeVisible();
+    expect(getRepresentatives).toHaveBeenLastCalledWith(expect.objectContaining({ tracking: "untracked", page: 1 }));
+  });
+
   it("filters the directory by tracking and refreshes after a tracking change", async () => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
     vi.mocked(getMyTracking).mockResolvedValue({ is_staff: false, legislators: [], bills: [], topics: [] });

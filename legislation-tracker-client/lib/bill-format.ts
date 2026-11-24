@@ -27,6 +27,13 @@ export function plainBillText(value: string) {
     .replace(/\s+/g, " ").trim();
 }
 
+export function latestActionLabel(status: string) {
+  const action = plainBillText(status);
+  if (!/^referred to\b/i.test(action)) return action;
+  // Committee names can contain commas. Split only at referral boilerplate.
+  return action.split(/,\s*(?:(?:and\s+)?in addition to\b|for (?:a period|consideration)\b)/i, 1)[0];
+}
+
 export function dateLabel(value: string | null) {
   if (!value) return "Not recorded";
   const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);

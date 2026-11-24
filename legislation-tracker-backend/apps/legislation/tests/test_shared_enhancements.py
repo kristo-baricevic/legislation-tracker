@@ -69,8 +69,9 @@ def test_pending_source_first_poll_reuses_xml_alignment(source_bill, enhancement
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("switch_model", [False, True])
 def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
-        enhancement_owner, enhancement_settings, source_bill):
+        enhancement_owner, enhancement_settings, source_bill, switch_model):
     from django.test import override_settings
     from apps.legislation.enhancements.source_packet import build_enhancement_preflight
     from .test_reader_financial_integrity import review
@@ -111,6 +112,63 @@ def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
         assert not reused.created
         assert reused.enhancement.pk == saved.pk
         assert BillEnhancementAttempt.objects.count() == 1
+
+        client.force_authenticate(enhancement_owner)
+        url = f"/api/bills/{source_bill.pk}/enhancements/"
+        estimate = client.get(url + "estimate/?rerun=1").data
+        assert estimate["can_enhance"] and estimate["rerun_after"] == saved.pk
+        body = {key: estimate[key] for key in ("source_fingerprint", "request_fingerprint", "credential_revision", "rerun_after")}
+        assert client.post(url, {**body, "request_fingerprint": confirmation["request_fingerprint"]}, format="json").status_code == 409
+        rerun = client.post(url, body, format="json")
+        assert rerun.status_code == 202 and rerun.data["id"] != saved.pk
+        assert rerun.data["active_reader"]["id"] == saved.pk
+        assert client.get(url + "latest/").data["id"] == rerun.data["id"]
+        assert client.post(url, body, format="json").data["id"] == rerun.data["id"]
+        assert BillEnhancementAttempt.objects.count() == 2
+        job = BillEnhancementAttempt.objects.get(enhancement_id=rerun.data["id"])
+        job.status = job.enhancement.status = "paused"
+        job.save()
+        job.enhancement.save()
+        latest = client.get(url + "latest/").data
+        assert (latest["id"], latest["active_reader"]["id"]) == (job.enhancement_id, saved.pk)
+        if switch_model:
+            with override_settings(LLM_READER_MODEL_CAPACITIES={"openai/alternate": {}}):
+                credential.selected_model = credential.validated_model = "alternate"
+                credential.save()
+                fresh = client.get(url + "estimate/").data
+                assert fresh["can_enhance"] and fresh["matching_enhancement"] is None
+                assert fresh["rerun_after"] == job.enhancement_id
+                created = client.post(url, {key: fresh[key] for key in body}, format="json")
+                assert created.status_code == 202 and created.data["requested_model"] == "alternate"
+            return
+        resume = client.get(url + "estimate/").data
+        assert resume["matching_enhancement"]["id"] == job.enhancement_id
+        resumed = client.post(url + f"{job.enhancement_id}/retry/", {key: resume[key] for key in body}, format="json")
+        assert resumed.status_code == 202 and resumed.data["id"] == job.enhancement_id
+        assert resumed.data["active_reader"]["id"] == saved.pk
+
+        from apps.legislation.models import BillEnhancementCallCache
+        reservation = BillEnhancementCallCache.objects.create(fingerprint="a" * 64)
+        continuation = job.enhancement.attempts.latest("sequence")
+        continuation.status = job.enhancement.status = "outcome_unknown"
+        continuation.citation_resolution_json = {"blocked_reservation": reservation.pk}
+        continuation.save()
+        job.enhancement.save()
+        client.force_authenticate(other)
+        _valid_credential(other)
+        assert client.get(url + "estimate/?rerun=1").data["unavailable_reason"] == "reconciliation_required"
+        blocked = client.post(url, {**body, "rerun_after": job.enhancement_id}, format="json")
+        assert blocked.status_code == 409 and blocked.data["error"] == "reconciliation_required"
+
+
+def test_reader_discovery_rejects_unsourced_arabic_word():
+    from jsonschema import ValidationError
+    from apps.legislation.enhancements.reader_discovery import resolve_discovery
+    from .test_reader_financial_integrity import review
+    sources, output = review()
+    output["financial_items"][0]["text"] = "Applies on or بعد?"
+    with pytest.raises(ValidationError, match="Arabic word"):
+        resolve_discovery(output, sources)
 
 
 @pytest.mark.django_db

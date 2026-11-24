@@ -1,10 +1,19 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
-import { subscribePersonalizedChanges } from "@/lib/api";
+import { createContext, useCallback, useContext, useLayoutEffect, useState, type ReactNode } from "react";
 import LoadingSpinner from "./LoadingSpinner";
 
 const DashboardLoadingContext = createContext<((id: string, loading: boolean | null) => void) | null>(null);
+
+const DashboardBusyContext = createContext(false);
+
+export function useDashboardCardLoading(id: string, loading: boolean) {
+  const dashboardBusy = useContext(DashboardBusyContext);
+  // Wait for card details during a dashboard load. A newly followed card
+  // can fill in its details without hiding rows the reader is already using.
+  const [openedDuringLoad] = useState(dashboardBusy);
+  useDashboardLoading(id, openedDuringLoad && loading);
+}
 
 export function useDashboardLoading(id: string, loading: boolean) {
   const report = useContext(DashboardLoadingContext);
@@ -15,9 +24,8 @@ export function useDashboardLoading(id: string, loading: boolean) {
   return report !== null;
 }
 
-export default function DashboardLoading({ children }: { children: ReactNode }) {
+export default function DashboardLoading({ children, loading = false }: { children: ReactNode; loading?: boolean }) {
   const [sections, setSections] = useState<Record<string, boolean>>({});
-  const [revealed, setRevealed] = useState(false);
   const report = useCallback((id: string, loading: boolean | null) => {
     setSections(previous => {
       if (previous[id] === loading || (loading === null && !(id in previous))) return previous;
@@ -27,16 +35,12 @@ export default function DashboardLoading({ children }: { children: ReactNode }) 
       return next;
     });
   }, []);
-  const pending = Object.values(sections).some(Boolean);
-  useEffect(() => {
-    if (Object.keys(sections).length && !pending) setRevealed(true);
-  }, [sections, pending]);
-  useEffect(() => subscribePersonalizedChanges(({ kind }) => {
-    if (kind === "session") setRevealed(false);
-  }), []);
+  const pending = loading || Object.values(sections).some(Boolean);
 
   return <DashboardLoadingContext.Provider value={report}>
-    <LoadingSpinner centered active={pending && !revealed} label="Loading dashboard…" />
-    <div hidden={pending && !revealed} aria-busy={pending}>{children}</div>
+    <LoadingSpinner centered active={pending} label="Loading dashboard…" />
+    <DashboardBusyContext.Provider value={pending}>
+      <div hidden={pending} aria-busy={pending}>{children}</div>
+    </DashboardBusyContext.Provider>
   </DashboardLoadingContext.Provider>;
 }

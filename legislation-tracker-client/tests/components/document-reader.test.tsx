@@ -44,3 +44,21 @@ it("shows an unavailable state for empty text", async () => {
   render(<DocumentReader documentId="511" />);
   expect(await screen.findByText("Text is not available for this version yet.")).toBeVisible();
 });
+
+it("hides extraction markers and leading labels while preserving references and searchable prose", async () => {
+  const text = "SEC. 2. Valuations\n[[QUOTED_BLOCK_START]]\n(B)\n(i) For purposes of clause (ii) of subparagraph (A), a fiduciary may rely on a valuation.\n(aa)(1) Preserve this text.\n(III) Preserve that text.\n.\n[[QUOTED_BLOCK_END]]";
+  vi.mocked(publicGet).mockImplementation(async path => path.endsWith("/text/") ? { text } : metadata);
+  const user = userEvent.setup();
+  render(<DocumentReader documentId="511" />);
+  const article = await screen.findByRole("article", { name: "Full bill text" });
+  expect([...article.querySelectorAll("p")].map(p => p.textContent)).toEqual([
+    "For purposes of clause (ii) of subparagraph (A), a fiduciary may rely on a valuation.",
+    "Preserve this text.", "Preserve that text.",
+  ]);
+  await user.type(screen.getByRole("searchbox"), "QUOTED_BLOCK");
+  expect(screen.getByRole("status")).toHaveTextContent("No matches");
+  await user.clear(screen.getByRole("searchbox"));
+  await user.type(screen.getByRole("searchbox"), "Preserve");
+  await user.click(screen.getByRole("button", { name: "Next match" }));
+  expect(article.querySelector('mark[data-current="true"]')?.parentElement).toHaveTextContent("Preserve that text.");
+});

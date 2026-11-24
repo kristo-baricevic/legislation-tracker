@@ -50,6 +50,7 @@ it("renders a complete tracked card without any detail requests", async () => {
   render(<TrackedLegislators items={[{...item, card: {...item.card!, top_topics: [{id: 9, name: "Education", count: 12}], research: {status: "succeeded", period: 2026, overview_ready: true}}}]} congress={119} />);
   expect(await screen.findByRole("link", {name: "Education"})).toBeVisible();
   expect(screen.getByText("Works on education.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Refresh research for Melanie Stansbury" })).toHaveTextContent("Refresh research");
   expect(getRepresentativeCard).not.toHaveBeenCalled();
   expect(getRepresentativeTopicActivity).not.toHaveBeenCalled();
   expect(getResearch).not.toHaveBeenCalled();
@@ -57,7 +58,7 @@ it("renders a complete tracked card without any detail requests", async () => {
 it("researches a representative and updates the card biography without a reload", async () => {
   vi.mocked(startResearch).mockResolvedValue({ id: "research-1", status: "queued", sections: {} });
   render(<TrackedLegislators items={[item]} congress={119} />);
-  const button = await screen.findByRole("button", { name: "Research Melanie Stansbury" });
+  const button = await screen.findByRole("button", { name: "Refresh research for Melanie Stansbury" });
   vi.mocked(getRepresentativeCard).mockResolvedValue({...item.card!, biography: {...item.card!.biography!, text: "New saved biography."}, research: {status: "succeeded", period: 2026, overview_ready: true}});
   await userEvent.click(button);
   expect(startResearch).toHaveBeenCalledWith(242, expect.any(Number), expect.any(AbortSignal), true);

@@ -1,4 +1,3 @@
-import DashboardLoading from "./components/DashboardLoading";
 import BillDeck from "./components/BillDeck";
 import styles from "./components/bill-deck.module.css";
 
@@ -8,7 +7,7 @@ export default function Home() {
       <main className="w-full font-sans text-slate-900 dark:text-green-300">
         <div className={styles.pageFrame}>
           <div className={styles.page}>
-            <DashboardLoading><BillDeck /></DashboardLoading>
+            <BillDeck />
           </div>
         </div>
       </main>

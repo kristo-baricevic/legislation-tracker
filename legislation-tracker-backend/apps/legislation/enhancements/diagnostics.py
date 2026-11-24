@@ -3,6 +3,7 @@
 from jsonschema import ValidationError
 
 MESSAGES = {
+    "unsupported_language_in_reader": "The explanation contains an Arabic word absent from the supplied bill text.",
     "reader_amount_conflict": "A financial amount or percentage does not match its cited source.",
     "reader_policy_wording": "A policy explanation contains drafting instructions, an incomplete sentence, or wording that needs simplification.",
     "provider_timeout": "The AI request timed out while waiting for a response. The provider may still have processed it; usage may have been charged.",

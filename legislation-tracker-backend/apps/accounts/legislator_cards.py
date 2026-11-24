@@ -51,7 +51,7 @@ def cards_for_representatives(ids, activities=None):
         return {}
     if activities is None:
         try:
-            catalog = representative_activity_catalog()
+            catalog = representative_activity_catalog(representative_ids=ids, wait_for_build=True)
             activities = {int(key): item["activity"] for key, item in catalog["representatives"].items()}
         except RecommendationError:
             activities = {}

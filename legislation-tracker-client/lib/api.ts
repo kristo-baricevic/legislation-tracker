@@ -259,12 +259,12 @@ export async function logout(): Promise<void> {
 
 export async function publicGet<T = unknown>(
   path: string,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; credentials?: "omit" },
 ): Promise<T> {
   const base = getApiBase();
   const res = await fetch(
     `${base}${path}`,
-    options?.signal ? { signal: options.signal } : undefined,
+    options,
   );
   if (!res.ok) {
     throw await responseError(res, `Request failed: ${res.status}`);
@@ -319,7 +319,7 @@ async function authRequest<T>(method: string, path: string, body: object | undef
     if (response.status === 401 || response.status === 403) markSessionLost();
     throw error;
   }
-  const value = method === "DELETE" ? undefined : await response.json();
+  const value = method === "DELETE" || response.status === 204 ? undefined : await response.json();
   assertPersonalizedScope(scope, request.signal);
   noteAuthenticatedResponse();
   return value as T;
@@ -822,13 +822,8 @@ export function getBillChanges(
   if (params?.afterCursor) search.set("after_cursor", params.afterCursor);
   if (params?.beforeCursor) search.set("before_cursor", params.beforeCursor);
   const query = search.toString();
-  return authGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`)
-    .catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 401) {
-        return publicGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`);
-      }
-      throw error;
-    });
+  // Signed-in requests default to unread changes. History uses the public stream.
+  return publicGet<BillChangesPage>(`/api/bills/${billId}/changes/${query ? `?${query}` : ""}`, { credentials: "omit" });
 }
 
 export function acknowledgeBillChanges(
@@ -1220,7 +1215,9 @@ export function getTrackingFeed(params?: { limit?: number }): Promise<TrackingFe
   return authGet<TrackingFeed>(`/api/tracking/feed/${q ? `?${q}` : ""}`);
 }
 
-async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
+type TrackingMutationOptions = PersonalizedRequestOptions & { source?: "recommendation" };
+
+export async function sessionMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: PersonalizedRequestOptions): Promise<T> {
   const initial = options.scope ?? capturePersonalizedScope();
   assertPersonalizedScope(initial, options.signal);
   const scope = { ...initial };
@@ -1239,7 +1236,7 @@ async function trackingMutation<T>(request: (options: PersonalizedRequestOptions
   try {
     const result = await request({ scope, signal: controller.signal });
     assertPersonalizedScope(scope, controller.signal);
-    announceTrackingChange();
+    // The caller decides which cached reads this successful write invalidates.
     return result;
   } finally {
     unsubscribe();
@@ -1247,32 +1244,39 @@ async function trackingMutation<T>(request: (options: PersonalizedRequestOptions
   }
 }
 
-export function trackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedBillItem> {
+async function trackingMutation<T>(request: (options: PersonalizedRequestOptions) => Promise<T>, options: TrackingMutationOptions): Promise<T> {
+  const scope = options.scope ?? capturePersonalizedScope();
+  const result = await sessionMutation(request, { ...options, scope });
+  if (scope.sessionGeneration === capturePersonalizedScope().sessionGeneration) announceTrackingChange(options.source);
+  return result;
+}
+
+export function trackBill(billId: number, options: TrackingMutationOptions = {}): Promise<TrackedBillItem> {
   return trackingMutation(request => authPost<TrackedBillItem>("/api/tracking/bills/", { bill: billId }, request), options);
 }
 
-export function untrackBill(billId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+export function untrackBill(billId: number, options: TrackingMutationOptions = {}): Promise<void> {
   return trackingMutation(request => authDelete(`/api/tracking/bills/${billId}/`, request), options);
 }
 
-export function trackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<TrackedTopicItem> {
+export function trackTopic(topicId: number, options: TrackingMutationOptions = {}): Promise<TrackedTopicItem> {
   return trackingMutation(request => authPost<TrackedTopicItem>("/api/tracking/topics/", { topic: topicId }, request), options);
 }
 
-export function untrackTopic(topicId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+export function untrackTopic(topicId: number, options: TrackingMutationOptions = {}): Promise<void> {
   return trackingMutation(request => authDelete(`/api/tracking/topics/${topicId}/`, request), options);
 }
 
 export function trackLegislator(
   representativeId: number,
-  options: PersonalizedRequestOptions = {},
+  options: TrackingMutationOptions = {},
 ): Promise<TrackedLegislatorItem> {
   return trackingMutation(request => authPost<TrackedLegislatorItem>("/api/tracking/legislators/", {
     representative: representativeId,
   }, request), options);
 }
 
-export function untrackLegislator(representativeId: number, options: PersonalizedRequestOptions = {}): Promise<void> {
+export function untrackLegislator(representativeId: number, options: TrackingMutationOptions = {}): Promise<void> {
   return trackingMutation(request => authDelete(`/api/tracking/legislators/${representativeId}/`, request), options);
 }
 
@@ -1376,6 +1380,7 @@ export function getPublicCapabilities(): Promise<PublicCapabilities> {
 }
 
 export interface EnhancementConfirmation {
+  rerun_after?: number;
   source_fingerprint: string;
   request_fingerprint: string;
   credential_revision: number;
@@ -1539,6 +1544,7 @@ export interface BillEnhancement {
 }
 
 export interface BillEnhancementEstimate {
+  rerun_after?: number;
   cost_status?: "free" | "unknown";
   estimator?: string;
   reader_coverage?: { total_count: number; selected_count: number; unavailable_count: number; batch_count: number; unavailable: { target_id: string; reason: string }[] } | null;
@@ -1574,10 +1580,10 @@ export interface BillEnhancementsPage {
 }
 
 export function getBillEnhancementEstimate(
-  billId: number,
+  billId: number, rerun = false,
 ): Promise<BillEnhancementEstimate> {
   return authGet<BillEnhancementEstimate>(
-    `/api/bills/${billId}/enhancements/estimate/`,
+    `/api/bills/${billId}/enhancements/estimate/${rerun ? "?rerun=1" : ""}`,
   );
 }
 

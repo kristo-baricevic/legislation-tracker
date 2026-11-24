@@ -217,6 +217,31 @@ describe("BillsPage", () => {
     expect(screen.getByRole("option", { name: "Saved filter: House" })).toBeVisible();
   });
 
+  it("keeps neighboring follow buttons usable during a save and background tracking refresh", async () => {
+    searchState.query = "session=119";
+    const api = await import("@/lib/api");
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.test" } });
+    const results = [1, 2].map(id => ({ id, jurisdiction: "federal", session: 119, bill_number: `HR ${id}`, title: `Bill ${id}`, status: "introduced", sponsor_name: null, introduced_at: null, last_action_at: null, topics: [] }));
+    vi.mocked(getBills).mockResolvedValue({ count: 2, next: null, previous: null, results });
+    let finish!: () => void;
+    vi.mocked(api.trackBill).mockImplementationOnce(async () => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      vi.mocked(api.subscribePersonalizedChanges).mock.calls[0][0]({kind: "tracking", scope: {sessionGeneration: 0, interestGeneration: 1}});
+      return {} as never;
+    });
+    render(<BillsPage />);
+    const [first, second] = await screen.findAllByRole("button", {name: "Follow"});
+    vi.mocked(getMyTracking).mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(first);
+    expect(first).toHaveTextContent(/^Follow$/);
+    expect(second).toBeEnabled();
+    await act(async () => finish());
+    expect(first).toHaveTextContent("Unfollow");
+    expect(screen.getByRole("button", {name: "Follow"})).toBe(second);
+    await userEvent.click(second);
+    expect(second).toHaveTextContent("Unfollow");
+  });
+
   it("lets signed-in readers follow and unfollow directly from a bill card", async () => {
     const api = await import("@/lib/api");
     vi.mocked(api.getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });

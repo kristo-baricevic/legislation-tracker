@@ -1,10 +1,10 @@
 "use client";
+import CardTooltip from "@/app/components/CardTooltip";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useState } from "react";
 
 import {
-  acknowledgeBillChanges,
   getBillChanges,
   type BillChangesPage,
   type BillDocumentItem,
@@ -44,8 +44,8 @@ function mergeEvents(
   );
   return [...byId.values()].sort(
     (left, right) =>
-      Date.parse(left.occurred_at) - Date.parse(right.occurred_at) ||
-      left.id - right.id,
+      Date.parse(right.occurred_at) - Date.parse(left.occurred_at) ||
+      right.id - left.id,
   );
 }
 
@@ -58,7 +58,9 @@ function readableChangeDetail(change: BillChangesPage["results"][number]): strin
   const beforeStatus = objectValue(change.before, "status");
   const afterStatus = objectValue(change.after, "status");
   if (typeof afterStatus === "string") {
-    return typeof beforeStatus === "string" ? `${beforeStatus} → ${afterStatus}` : `Status: ${afterStatus}`;
+    const previous = typeof beforeStatus === "string" ? beforeStatus.trim() : "";
+    if (!previous || afterStatus.trimStart().startsWith(previous)) return `Status: ${afterStatus}`;
+    return `${previous} → ${afterStatus}`;
   }
   const version = objectValue(change.after, "version_label");
   if (typeof version === "string") return `Version: ${version}`;
@@ -77,9 +79,12 @@ export default function BillChangeExperience({
   contracts: ContractComparisonIdentity[];
   documents: BillDocumentItem[];
 }) {
+  return <BillVersionComparison key={billId} billId={billId} documents={documents} initialPair={selectDocumentComparisonPair(documents)} />;
+}
+
+export function BillHistory({ billId }: { billId: number }) {
   const [changes, setChanges] = useState<BillChangesPage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [acknowledging, setAcknowledging] = useState(false);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   useEffect(() => {
@@ -88,7 +93,7 @@ export default function BillChangeExperience({
     setError(null);
     getBillChanges(billId)
       .then((page) => {
-        if (!cancelled) setChanges(page);
+        if (!cancelled) setChanges({ ...page, results: mergeEvents([], page.results) });
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -103,27 +108,6 @@ export default function BillChangeExperience({
       cancelled = true;
     };
   }, [billId]);
-
-  async function acknowledge() {
-    if (!changes?.page_end_cursor) return;
-    setAcknowledging(true);
-    setError(null);
-    try {
-      const result = await acknowledgeBillChanges(
-        billId,
-        changes.page_end_cursor,
-      );
-      setChanges((current) =>
-        current ? { ...current, unread_count: result.unread_count } : current,
-      );
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Could not acknowledge changes.",
-      );
-    } finally {
-      setAcknowledging(false);
-    }
-  }
 
   async function loadTimeline(direction: "older" | "newer") {
     if (!changes) return;
@@ -140,7 +124,7 @@ export default function BillChangeExperience({
           : { afterCursor: cursor },
       );
       setChanges((current) => {
-        if (!current) return page;
+        if (!current) return { ...page, results: mergeEvents([], page.results) };
         const completedInitialHistory =
           direction === "older" &&
           current.initial_window_truncated &&
@@ -178,28 +162,8 @@ export default function BillChangeExperience({
 
   return (
     <section className="mb-6 space-y-4 rounded-lg border border-slate-400/80 bg-white/80 p-4 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none">
-      <BillVersionComparison key={billId} billId={billId} documents={documents} initialPair={selectDocumentComparisonPair(documents)} />
-      <details className="border-t border-slate-300 pt-4 dark:border-green-900">
-      <summary className="cursor-pointer font-semibold">Bill history</summary>
+      <h2 className="font-semibold">Bill history</h2>
       <div className="mt-4 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        {changes?.personalized &&
-          changes.page_end_cursor &&
-          !changes.initial_window_truncated && (
-          <button
-            type="button"
-            onClick={acknowledge}
-            disabled={acknowledging}
-            className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
-          >
-            {acknowledging
-              ? "Saving…"
-              : changes.unread_count
-                ? `Mark ${changes.unread_count} as seen`
-                : "Changes seen"}
-          </button>
-        )}
-      </div>
       {error && (
         <p role="alert" className="text-sm text-red-700 dark:text-red-300">
           {error}
@@ -213,16 +177,30 @@ export default function BillChangeExperience({
       )}
       {changes &&
         (changes.results.length ? (
-          <ol className="divide-y divide-slate-300 dark:divide-green-900/70">
-            {changes.results.map((change) => (
-              <li key={change.id} className="py-3">
-                <p className="font-semibold">{change.summary}</p>
-                {readableChangeDetail(change) && <p className="mt-1 text-sm text-slate-800 dark:text-green-200">{readableChangeDetail(change)}</p>}
-                <p className="text-sm text-slate-600 dark:text-green-600">
-                  {new Date(change.occurred_at).toLocaleString()}
-                </p>
-              </li>
-            ))}
+          <ol aria-label="Bill actions" className="ml-1">
+            {changes.results.map((change) => {
+              const date = new Date(change.occurred_at);
+              const metadata = [
+                date.toLocaleString(),
+                change.type.replaceAll("_", " "),
+                readableChangeDetail(change),
+                change.document_id != null && `Document #${change.document_id}`,
+                change.contract_id != null && `Contract #${change.contract_id}`,
+              ].filter(Boolean).join("\n");
+              return (
+                <li key={change.id} className="relative pb-4 pl-5 last:pb-0 before:absolute before:top-2 before:-bottom-2 before:left-0 before:border-l before:border-slate-300 last:before:hidden dark:before:border-green-800">
+                  <span aria-hidden="true" className="absolute top-1.5 left-0 size-2 -translate-x-[3px] rounded-full bg-slate-500 dark:bg-green-400" />
+                  <CardTooltip text={metadata}>
+                    <span tabIndex={0} className="flex cursor-default flex-wrap items-baseline gap-x-3 rounded-sm focus-visible:outline-2">
+                      <span className="font-semibold">{change.summary}</span>
+                      <time dateTime={change.occurred_at} className="whitespace-nowrap text-sm text-slate-600 dark:text-green-500">
+                        {date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      </time>
+                    </span>
+                  </CardTooltip>
+                </li>
+              );
+            })}
           </ol>
         ) : (
           <p className="text-sm text-slate-600 dark:text-green-600">
@@ -255,7 +233,6 @@ export default function BillChangeExperience({
       )}
 
       </div>
-      </details>
     </section>
   );
 }

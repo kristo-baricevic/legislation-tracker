@@ -724,7 +724,10 @@ def _passage_evidence(positions, bills, topics, tags, uncertain, cross_chamber):
     }
 
 
-def representative_activity_catalog(*, captured_at=None, policy=None, refresh_before=0):
+def representative_activity_catalog(
+    *, captured_at=None, policy=None, refresh_before=0, representative_ids=None, wait_for_build=False
+):
+    requested = None if representative_ids is None else {str(pk) for pk in representative_ids}
     policy = policy or DEFAULT_POLICY
     now = timezone.now()
     capture = captured_at or now
@@ -733,6 +736,20 @@ def representative_activity_catalog(*, captured_at=None, policy=None, refresh_be
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
     key = f"representative-topic-activity:v4:{policy.version}:{day}:{activity_revision()}"
     cached = cache_call("get", key)
+    token = secrets.token_hex(16)
+    owns_gate = False
+    if cached is None and wait_for_build:
+        # Tracking and ranking load together on the dashboard. Join the first
+        # build briefly so a faster tracking query cannot starve the ranking row.
+        owns_gate = cache_call("add", key + ":gate", token, timeout=30)
+        if not owns_gate:
+            deadline = time.monotonic() + 5
+            while cached is None and time.monotonic() < deadline:
+                time.sleep(0.1)
+                cached = cache_call("get", key)
+            if cached is None:
+                raise RecommendationError()
+            now = timezone.now()
     if (
         cached
         and now.timestamp() + refresh_before < cached["expires_at"]
@@ -740,14 +757,16 @@ def representative_activity_catalog(*, captured_at=None, policy=None, refresh_be
     ):
         # Publish a manifest only after all member records have been stored.
         # Missing/evicted records must never become a partial ranking catalog.
-        members = cache_call("get_many", list(cached["members"].values()))
-        if all(member_key in members for member_key in cached["members"].values()):
+        keys = cached["members"]
+        if requested is not None:
+            keys = {pk: keys[pk] for pk in requested if pk in keys}
+        members = cache_call("get_many", list(keys.values())) if keys else {}
+        if all(member_key in members for member_key in keys.values()):
             return {**cached["metadata"], "representatives": {
                 rep_id: members[member_key]
-                for rep_id, member_key in cached["members"].items()
+                for rep_id, member_key in keys.items()
             }}
-    token = secrets.token_hex(16)
-    if not cache_call("add", key + ":gate", token, timeout=30):
+    if not owns_gate and not cache_call("add", key + ":gate", token, timeout=30):
         raise RecommendationError()
     deadline = time.monotonic() + 20
     try:
@@ -776,6 +795,9 @@ def representative_activity_catalog(*, captured_at=None, policy=None, refresh_be
             "members": {rep_id: f"{key}:{token}:member:{rep_id}" for rep_id in result["representatives"]},
         }
         cache_call("set", key, manifest, timeout=remaining)
+        if requested is not None:
+            records = result["representatives"]
+            return {**result, "representatives": {pk: records[pk] for pk in requested if pk in records}}
         return result
     except RecommendationError:
         raise
@@ -784,7 +806,9 @@ def representative_activity_catalog(*, captured_at=None, policy=None, refresh_be
 
 
 def representative_topic_activity(representative_id, *, captured_at=None, policy=None):
-    catalog = representative_activity_catalog(captured_at=captured_at, policy=policy)
+    catalog = representative_activity_catalog(
+        captured_at=captured_at, policy=policy, representative_ids=[representative_id]
+    )
     item = catalog["representatives"].get(str(representative_id))
     if item is None:
         raise Representative.DoesNotExist()

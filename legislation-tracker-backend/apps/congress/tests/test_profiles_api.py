@@ -265,6 +265,7 @@ def test_introduced_bills_use_sponsor_id_and_safe_public_source_projection():
         session=119,
         bill_number="HR 5",
         title="Introduced",
+        summary="This bill establishes a new program.",
         sponsor=representative,
     )
     response = APIClient().get(
@@ -273,6 +274,7 @@ def test_introduced_bills_use_sponsor_id_and_safe_public_source_projection():
     assert response.status_code == 200
     bill = response.json()["results"][0]
     assert bill["sponsor_id"] == representative.id
+    assert bill["card_summary"] == "This bill establishes a new program."
     assert bill["sponsor_bioguide_id"] == "I000100"
     assert (
         bill["congress_gov_url"]

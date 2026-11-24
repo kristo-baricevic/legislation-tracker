@@ -1,4 +1,5 @@
 import uuid
+from django.conf import settings
 from django.db import models, transaction
 
 
@@ -15,6 +16,7 @@ class RepresentativeCandidate(models.Model):
     candidate = models.ForeignKey(CandidateIdentity, on_delete=models.PROTECT)
     periods = models.JSONField(default=list)
     verified = models.BooleanField(default=False)
+    revoked = models.BooleanField(default=False, editable=False)
     evidence_url = models.URLField(max_length=2048, blank=True)
 
     class Meta:
@@ -25,9 +27,19 @@ class RepresentativeCandidate(models.Model):
         # never race with a worker publishing a snapshot under that identity.
         from apps.congress.models import Representative
         with transaction.atomic():
-            old = type(self).objects.filter(pk=self.pk).values("representative_id", "verified", "periods", "candidate_id", "evidence_url").first() if self.pk else None
+            old = type(self).objects.filter(pk=self.pk).values("representative_id", "verified", "periods", "candidate_id", "evidence_url", "revoked").first() if self.pk else None
             affected = {self.representative_id, old["representative_id"] if old else self.representative_id}
             list(Representative.objects.select_for_update().filter(pk__in=affected).order_by("pk"))
+            fields = kwargs.get("update_fields")
+            if fields is None or {"verified", "evidence_url"}.intersection(fields):
+                verified = self.verified if fields is None or "verified" in fields else old["verified"]
+                evidence = self.evidence_url if fields is None or "evidence_url" in fields else old["evidence_url"]
+                if verified and evidence:
+                    self.revoked = False
+                elif old and old["verified"] and old["evidence_url"]:
+                    self.revoked = True
+                if fields is not None:
+                    kwargs["update_fields"] = set(fields) | {"revoked"}
             super().save(*args, **kwargs)
             if old is None or old != {k: getattr(self, k) for k in old}:
                 snapshots = FinanceSnapshot.objects.filter(representative_id__in=affected)
@@ -152,3 +164,16 @@ class OutsideSpendingRevision(models.Model):
     representative = models.OneToOneField("congress.Representative", primary_key=True, on_delete=models.CASCADE)
     generation = models.PositiveBigIntegerField(default=0)
     epoch = models.UUIDField(default=uuid.uuid4)
+
+
+class ConfirmedCandidate(models.Model):
+    """A reader's explicit identity decision for one FEC reporting cycle."""
+    representative = models.ForeignKey("congress.Representative", on_delete=models.CASCADE)
+    period = models.PositiveSmallIntegerField()
+    candidate = models.ForeignKey(CandidateIdentity, on_delete=models.PROTECT)
+    review_run = models.OneToOneField("research.ResearchRun", on_delete=models.PROTECT)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    confirmed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["representative", "period"], name="confirmed_candidate_per_cycle")]

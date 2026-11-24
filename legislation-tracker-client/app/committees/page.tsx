@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { committeeRequest, type Committee, type CommitteeBill } from "@/lib/committees";
 import { getTopics, type TopicItem } from "@/lib/api";
 import RepresentativeAvatarBadge from "@/app/components/RepresentativeAvatarBadge";
-import BillCard from "@/app/components/BillCard";
-import DashboardBillReader from "@/app/components/DashboardBillReader";
+import DashboardBillCard, { useDashboardBillTracking } from "@/app/components/DashboardBillCard";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import styles from "./committees.module.css";
 
@@ -38,7 +37,7 @@ function More({loading,error,more,load,retry,label}:{loading:boolean;error:boole
 }
 
 const roles:Record<string,string>={chair:"Chair",vice_chair:"Vice Chair",ranking_member:"Ranking Member"};
-function CommitteeSection({committee,congress,topic}:{committee:Committee;congress:number;topic:string}) {
+function CommitteeSection({committee,congress,topic,controls}:{committee:Committee;congress:number;topic:string;controls:ReturnType<typeof useDashboardBillTracking>}) {
   const ref=useRef<HTMLElement>(null);
   const [visible,setVisible]=useState(false);
   useEffect(()=>{
@@ -58,7 +57,7 @@ function CommitteeSection({committee,congress,topic}:{committee:Committee;congre
     </div>
     <h3 className={styles.rowTitle}>Bills introduced</h3>
     <div className={styles.bills} role="region" aria-label={`${committee.name} bills introduced`} tabIndex={0}>
-      {bills.items.map(bill=><div className={styles.bill} key={bill.id}><DashboardBillReader bill={bill}>{(summary,action,feedback,current)=><BillCard bill={current} summary={summary} footer={action} feedback={feedback}/>}</DashboardBillReader></div>)}
+      {bills.items.map(bill=><div className={styles.bill} key={bill.id}><DashboardBillCard bill={bill} controls={controls}/></div>)}
       {!bills.loading&&!bills.error&&!bills.items.length&&<p>No bills found.</p>}
       <More {...bills} label="bills"/>
     </div>
@@ -66,9 +65,11 @@ function CommitteeSection({committee,congress,topic}:{committee:Committee;congre
 }
 
 function Directory({query,topic}:{query:string;topic:string}) {
+  const controls = useDashboardBillTracking();
   const data=usePages<Committee>(`/api/committees/${query?`?${query}`:""}`);
   return <div className={styles.directory}>
-    {!data.items.length&&data.loading ? <LoadingSpinner active label="Loading committees…"/> : data.items.map(committee=><CommitteeSection key={committee.id} committee={committee} congress={data.congress!} topic={topic}/>)}
+    {controls.followError && <p role="alert">{controls.followError}</p>}
+    {!data.items.length&&data.loading ? <LoadingSpinner active label="Loading committees…"/> : data.items.map(committee=><CommitteeSection key={committee.id} committee={committee} controls={controls} congress={data.congress!} topic={topic}/>)}
     {!data.loading&&!data.error&&!data.items.length&&<p>No committees found.</p>}
     <More {...data} label="committees"/>
   </div>;

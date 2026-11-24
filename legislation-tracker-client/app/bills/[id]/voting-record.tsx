@@ -14,6 +14,7 @@ interface VotingRecordProps {
   selectedVote: VoteDetailItem | null;
   loadingVoteId: number | null;
   error: string | null;
+  onCollapse?: () => void;
   onSelect: (voteId: number) => void;
   page: number;
   hasNext: boolean;
@@ -114,6 +115,7 @@ export function VotingRecord({
   loadingVoteId,
   error,
   onSelect,
+  onCollapse,
   page,
   hasNext,
   onPrevious,
@@ -194,11 +196,12 @@ export function VotingRecord({
               </div>
               <button
                 type="button"
-                onClick={() => onSelect(vote.id)}
+                aria-expanded={onCollapse && selectedVote?.id === vote.id}
+                onClick={onCollapse && selectedVote?.id === vote.id ? onCollapse : () => onSelect(vote.id)}
                 disabled={loadingVoteId === vote.id}
                 className="cursor-pointer border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-950/40"
               >
-                <span aria-busy={loadingVoteId === vote.id}>View voting record</span>
+                <span aria-busy={loadingVoteId === vote.id}>{onCollapse && selectedVote?.id === vote.id ? "Hide voting record" : "View voting record"}</span>
               </button>
             </li>
           ))}

@@ -135,7 +135,7 @@ describe("FinancialLedger", () => {
     for (const label of ["Appropriation", "Authorization", "Transfer", "Rescission", "Reduction", "Set-aside", "Limitation"]) {
       expect(screen.getAllByText(label).some((element) => element.tagName === "P")).toBe(true);
     }
-    expect(screen.getByText(/not a CBO cost estimate/i)).toBeVisible();
+    expect(screen.queryByText(/CBO cost estimate/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/grand total|total spending/i)).not.toBeInTheDocument();
     expect(screen.getAllByText("The program").length).toBe(7);
   });
@@ -220,10 +220,11 @@ describe("FinancialLedger", () => {
     expect(screen.getByRole("status")).toHaveTextContent("2 matching provisions");
   });
 
-  it("explains missing records and disables filters when nothing has been extracted", async () => {
+  it("shows only the empty-state message when nothing has been extracted", async () => {
     vi.mocked(getFinancialItems).mockResolvedValue({ count: 0, results: [], next: null, previous: null });
     render(<FinancialLedger contractId={12} totalCount={0} />);
-    expect(await screen.findByText(/No financial provisions have been extracted/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Apply money filters" })).toBeDisabled();
+    expect(await screen.findByText("No financial provisions were found in this bill.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Apply money filters" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 of 0/)).not.toBeInTheDocument();
   });
 });

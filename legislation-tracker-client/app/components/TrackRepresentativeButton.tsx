@@ -14,8 +14,10 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
-    const unsubscribe = subscribePersonalizedChanges(() => {
-      setState("loading"); setError(""); setRevision(value => value + 1);
+    const unsubscribe = subscribePersonalizedChanges(({ kind }) => {
+      if (kind === "session") setState("loading");
+      setError("");
+      setRevision(value => value + 1);
     });
     return () => { mounted.current = false; unsubscribe(); };
   }, []);
@@ -23,7 +25,6 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
     const controller = new AbortController();
     const scope = capturePersonalizedScope();
     const options = { scope, signal: controller.signal };
-    setState("loading");
     void (async () => {
       try {
         const session = await getSession(options);
@@ -46,7 +47,7 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
       await (wasTracked ? untrackLegislator : trackLegislator)(representativeId, { scope });
       if (mounted.current && capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setState(wasTracked ? "untracked" : "tracked");
     } catch {
-      if (mounted.current && isPersonalizedScopeCurrent(scope)) setError("Could not update tracking. Try again.");
+      if (mounted.current && capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setError("Could not update tracking. Try again.");
     } finally {
       pending.current = false;
       if (mounted.current) setSaving(false);
@@ -57,7 +58,7 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
   if (state === "anonymous") return <Link href="/login" className={buttonClass}>Log in to track</Link>;
   if (state === "error") return <button className={buttonClass} onClick={() => setRevision(value => value + 1)}>Retry tracking</button>;
   return <div>
-    <button className={buttonClass} aria-label={state === "loading" ? "Loading tracking" : state === "tracked" ? "Untrack representative" : "Track representative"} aria-pressed={state === "tracked"} aria-busy={state === "loading" || saving} disabled={saving || state === "loading"} onClick={() => void toggle()}>{saving ? "Saving…" : state === "loading" ? "Track" : state === "tracked" ? "Untrack" : "Track"}</button>
+    <button className={buttonClass} aria-label={state === "loading" ? "Loading tracking" : state === "tracked" ? "Untrack representative" : "Track representative"} aria-pressed={state === "tracked"} aria-busy={state === "loading" || saving} aria-disabled={saving || state === "loading"} disabled={state === "loading"} onClick={() => void toggle()}>{state === "tracked" ? "Untrack" : "Track"}</button>
     {error && <p role="alert" className="mt-2 text-sm">{error}</p>}
   </div>;
 }
