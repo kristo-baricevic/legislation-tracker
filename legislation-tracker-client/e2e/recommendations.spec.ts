@@ -156,7 +156,7 @@ for (const width of [390, 1280]) {
 }
 
 for (const width of [390, 1280]) {
-  for (const surface of ["dashboard bills", "dashboard representatives", "dashboard followed bills", "bills", "representatives"] as const) {
+  for (const surface of ["dashboard bills", "dashboard representatives", "dashboard followed bills", "bills", "representatives", "committees"] as const) {
     test(`follow and unfollow keep scroll and neighboring cards stable on ${surface} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 600 });
       await fixtures(page);
@@ -170,7 +170,8 @@ for (const width of [390, 1280]) {
         chamber: "house", is_current: true, bioguide_id: "",
       }));
       const card = { top_topics: [], biography: { text: "Representative biography" } };
-      const target = dashboard ? 1 : 24;
+      const committees = surface === "committees";
+      const target = dashboard ? 1 : committees ? 2 : 24;
       const collection = surface === "dashboard followed bills";
       let tracked = collection;
       let release!: () => void;
@@ -194,6 +195,8 @@ for (const width of [390, 1280]) {
           topics: [], is_staff: false,
         } });
         if (path === "/api/topics/") return route.fulfill({ json: [] });
+        if (path === "/api/committees/") return route.fulfill({ json: { congress: 119, next: null, results: [{ id: 1, name: "Finance", chamber: "senate", members: [] }] } });
+        if (path === "/api/committees/1/introduced-bills/") return route.fulfill({ json: { next: null, results: items.slice(0, 6) } });
         if (path.includes("saved-search")) return route.fulfill({ json: { count: 0, results: [] } });
         if (path === "/api/bills/" || path === "/api/representatives/") return route.fulfill({ json: {
           count: items.length, previous: null, next: null, results: path === "/api/bills/" ? items : members,
@@ -206,8 +209,9 @@ for (const width of [390, 1280]) {
         } });
         return route.fallback();
       });
-      await page.goto(dashboard ? "/" : people ? "/representatives" : "/bills?session=119");
+      await page.goto(dashboard ? "/" : committees ? "/committees" : people ? "/representatives" : "/bills?session=119");
       const row = dashboard ? page.getByRole("region", { name: collection ? "Followed bills" : people ? "Recommended representatives" : "Recommended bills" })
+        : committees ? page.getByRole("region", { name: "Finance bills introduced" })
         : people ? page.getByRole("list", { name: "Representatives", exact: true }) : page.getByRole("region", { name: "Bill results" });
       const buttons = row.locator("button[aria-pressed]");
       const button = buttons.nth(target - 1);

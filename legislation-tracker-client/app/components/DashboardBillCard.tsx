@@ -76,14 +76,14 @@ export function useDashboardBillTracking(onSessionChange?: () => void) {
 export default function DashboardBillCard({ bill, controls, onOpen, accentTopicId, sponsorState }: {
   bill: BillListItem;
   controls: ReturnType<typeof useDashboardBillTracking>;
-  onOpen: (bill: BillListItem) => void;
+  onOpen?: (bill: BillListItem) => void;
   accentTopicId?: number;
   sponsorState?: string;
 }) {
   const { tracking, signedIn, ready, error, followed, pending, toggleFollow } = controls;
   return <DashboardBillReader bill={bill}>{(summary, enhance, feedback, currentBill) =>
     <BillCard bill={currentBill} summary={summary} feedback={feedback} accentTopicId={accentTopicId}
-      sponsorState={sponsorState} onOpen={() => onOpen(currentBill)}
+      sponsorState={sponsorState} onOpen={onOpen && (() => onOpen(currentBill))}
       footer={signedIn && tracking ? <div className="bill-card-actions"><button disabled={pending.has(currentBill.id)} aria-pressed={followed.has(currentBill.id)} onClick={() => void toggleFollow(currentBill)}>{pending.has(currentBill.id) ? "Saving…" : followed.has(currentBill.id) ? "Unfollow" : "Follow"}</button>{enhance}</div> : error ? <span>Following unavailable</span> : !ready ? <button disabled aria-busy="true" aria-label="Loading follow status">Follow</button> : <Link href="/login">Log in to follow</Link>} />}
   </DashboardBillReader>;
 }
