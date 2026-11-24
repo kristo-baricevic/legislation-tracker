@@ -84,6 +84,23 @@ def test_bill_detail_exposes_complete_summary_provenance():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("query", ["", "rural"])
+def test_activity_sort_uses_action_dates_before_pagination(query):
+    bills = [
+        Bill.objects.create(jurisdiction="federal", session=119, title="Rural grants",
+                            bill_number=f"HR {i}", last_action_at=date, last_activity_sequence=i)
+        for i, date in enumerate(["2026-11-20T00:00:00Z", "2025-02-10T00:00:00Z", None], 1)
+    ]
+    client = APIClient()
+    for sort, expected in [("recent_activity", bills), ("oldest_activity", [bills[1], bills[0], bills[2]])]:
+        for page, bill in enumerate(expected, 1):
+            response = client.get("/api/bills/", {"session": 119, "q": query, "sort": sort,
+                                                   "page_size": 1, "page": page})
+            assert response.status_code == 200
+            assert [row["id"] for row in response.json()["results"]] == [bill.id]
+
+
+@pytest.mark.django_db
 def test_bill_search_uses_safe_highlight_segments_and_recent_activity_sorting():
     early = Bill.objects.create(
         jurisdiction="federal",

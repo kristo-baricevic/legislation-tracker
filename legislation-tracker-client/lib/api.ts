@@ -464,7 +464,7 @@ export interface GetBillsParams {
   topic?: string;
   topic_id?: number;
   q?: string;
-  sort?: "recent_activity" | "relevance";
+  sort?: "recent_activity" | "oldest_activity" | "relevance";
 }
 
 export function parseTopicIdFromSearchParam(

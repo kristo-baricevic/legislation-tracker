@@ -324,6 +324,18 @@ describe("BillsPage", () => {
     expect(screen.getByRole("button", { name: "Save this search" })).toBeVisible();
   });
 
+  it("switches between oldest and recent activity for Congress 119 without a text query", async () => {
+    searchState.query = "session=119";
+    render(<BillsPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Sort Recent activity" }));
+    expect(screen.queryByRole("option", { name: "Relevance" })).toBeNull();
+    await userEvent.click(screen.getByRole("option", { name: "Oldest activity" }));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort: "oldest_activity" })));
+    await userEvent.click(screen.getByRole("button", { name: "Sort Oldest activity" }));
+    await userEvent.click(screen.getByRole("option", { name: "Recent activity" }));
+    await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ session: 119, sort: "recent_activity" })));
+  });
+
   it("initializes the Congress filter from API metadata", async () => {
     searchState.query = "";
     render(<BillsPage />);

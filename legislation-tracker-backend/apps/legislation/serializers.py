@@ -20,7 +20,7 @@ class BillListQuerySerializer(PaginatedQuerySerializer):
     topic_id = serializers.IntegerField(required=False, min_value=1)
     q = serializers.CharField(required=False, allow_blank=False, trim_whitespace=True)
     sort = serializers.ChoiceField(
-        choices=("recent_activity", "relevance"),
+        choices=("recent_activity", "oldest_activity", "relevance"),
         required=False,
     )
     page_size = serializers.IntegerField(required=False, min_value=1, max_value=100)
