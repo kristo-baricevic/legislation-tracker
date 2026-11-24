@@ -90,7 +90,7 @@ it("opens factual sections by ID, loads votes lazily, and suppresses unsafe sour
   expect(within(dialog).queryByText("Elections")).not.toBeInTheDocument();
   expect(within(dialog).queryByText("Bioguide ID: S000033")).not.toBeInTheDocument();
   expect(within(dialog).queryByText("Stored voting coverage and service-window checks")).not.toBeInTheDocument();
-  expect(within(dialog).getByRole("button", { name: "Research First Member" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Refresh research for First Member" })).toBeInTheDocument();
   expect(await within(dialog).findByText("A factual Wikipedia excerpt.")).toBeInTheDocument();
   expect(await within(dialog).findByText(bill.card_summary)).toBeVisible();
   expect(within(dialog).getByRole("region", { name: "Bills introduced" })).toBeInTheDocument();
