@@ -13,8 +13,9 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
   const [revision, setRevision] = useState(0);
   const action = useRef<AbortController | null>(null);
   const active = card?.research?.status === "queued" || card?.research?.status === "running";
-  const hasResearch = Boolean(card?.biography || card?.research?.status === "succeeded");
+  const hasResearch = Boolean(card?.research?.overview_ready || card?.biography || card?.research?.status === "succeeded");
   const idleLabel = hasResearch ? "Refresh research" : "Research";
+  const researching = busy || (active && !error);
   useEffect(() => () => action.current?.abort(), []);
   useEffect(() => {
     if (!active && !revision) return;
@@ -49,5 +50,5 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
     finally { if (!controller.signal.aborted) setBusy(false); }
   }
   if (card?.research?.status === "needs_review") return <RepresentativeResearch representativeId={id} cardName={name} initialPeriod={String(card.research.period)} />;
-  return <div className={styles.cardControls}><CardTooltip text="Find and save a biography, photo, donations and outside spending."><button type="button" className={styles.researchButton} aria-label={hasResearch ? `Refresh research for ${name}` : `Research ${name}`} disabled={busy} onClick={() => void research()}>{busy ? "Starting…" : error ? "Retry research" : active ? card?.research?.overview_ready ? "Researched" : card?.research?.status === "queued" ? "Queued…" : "Researching…" : idleLabel}</button></CardTooltip></div>;
+  return <div className={styles.cardControls}><CardTooltip text="Find and save a biography, photo, donations and outside spending."><button type="button" className={styles.researchButton} aria-label={researching ? `Researching ${name}` : hasResearch ? `Refresh research for ${name}` : `Research ${name}`} disabled={busy || Boolean(active && card?.research?.overview_ready && !error)} onClick={() => void research()}>{researching ? "Researching…" : error ? "Retry research" : idleLabel}</button></CardTooltip></div>;
 }

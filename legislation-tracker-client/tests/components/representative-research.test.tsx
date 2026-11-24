@@ -14,7 +14,7 @@ it.each(["panel", "card"])("submits research again while saved status is running
   if (view === "panel") render(<RepresentativeResearch representativeId={484} cardName="Example" />);
   else render(<RepresentativeCardResearch id={484} name="Example" card={{ biography: null, portrait: null, latest_bill: null, research: { period: 2026, status: "running", overview_ready: false } }} onCard={() => {}} />);
   await screen.findByText("Researching…");
-  await userEvent.click(screen.getByRole("button", { name: "Research Example" }));
+  await userEvent.click(screen.getByRole("button", { name: "Researching Example" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Research Example" })).toHaveTextContent("Retry research"));
   expect(screen.getByRole("button", { name: "Research Example" })).toBeEnabled();
 });
@@ -175,12 +175,12 @@ it("appends outside spending on scroll without removing existing rows or showing
   expect(screen.getByRole("link", { name: "First group" })).toBeVisible();
 });
 
-it("finishes the research button when the overview is ready without stopping background polling", async () => {
+it("keeps showing research in progress when the overview is ready and prevents duplicate requests during collection", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...empty, status: "running", run: { id: "run", status: "running", sections: {} }, finance_progress: { overview_ready: true, collecting: true, pages_loaded: 3, streams_completed: 1, streams_total: 7, official_totals: [] } })));
   render(<RepresentativeResearch representativeId={1} cardName="Bruce Westerman" />);
-  const button = await screen.findByRole("button", { name: "Research Bruce Westerman" });
-  await waitFor(() => expect(button).toHaveTextContent("Researched"));
-  expect(button).toBeEnabled();
+  const button = await screen.findByRole("button", { name: "Researching Bruce Westerman" });
+  expect(button).toHaveTextContent("Researching…");
+  expect(button).toBeDisabled();
   await userEvent.click(button);
   expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
 });
@@ -303,11 +303,10 @@ it.each([undefined, "Bruce Westerman"])("submits queued research to the idempote
     return Response.json(init?.method === "POST" ? run : { ...empty, status: "queued", run });
   }));
   render(<RepresentativeResearch representativeId={12} cardName={cardName} />);
-  const label = await screen.findByText("Queued…");
+  const label = await screen.findByText("Researching…");
   expect(label).toBeEnabled();
   await userEvent.click(label);
   expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(true);
-  expect(screen.queryByText("Researching…")).not.toBeInTheDocument();
   expect(screen.queryByText("Finding campaign records…")).not.toBeInTheDocument();
 });
 

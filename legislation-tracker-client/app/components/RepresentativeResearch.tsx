@@ -53,7 +53,11 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   const active = data?.status === "queued" || data?.status === "running";
   const overviewReady = data?.finance_progress?.overview_ready === true;
   const overviewPending = active && !overviewReady && !error;
-  const progressLabel = busy ? "Starting…" : data?.status === "queued" ? "Queued…" : "Researching…";
+  const researching = busy || (active && !error);
+  const hasResearch = Boolean(overviewReady || data?.biography || data?.snapshot || data?.status === "succeeded");
+  const readyLabel = hasResearch ? "Refresh research" : "Research";
+  const researchLabel = researching ? "Researching…" : readyLabel;
+  const refreshPending = active && overviewReady && !error;
   const displayedPeriod = busy && data ? data.period : period;
   useEffect(() => () => action.current?.abort(), []);
   useEffect(() => {
@@ -99,7 +103,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     actionFailed.current = false;
     setBusy(true); setError("");
     try {
-      const run = await startResearch(representativeId, period, controller.signal, Boolean(data?.biography || data?.snapshot));
+      const run = await startResearch(representativeId, period, controller.signal, hasResearch);
       if (controller.signal.aborted) return;
       initiatedRun.current = run.id;
       setData(old => ({ ...(old ?? { biography: null, portrait: null, snapshot: null }), period, status: run.status, run }));
@@ -144,7 +148,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
         window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: representativeId }));
       }} /> : null;
   if (cardName) return <div className={styles.cardControls}>
-    {review || <CardTooltip text={overviewReady && active ? "Overview ready. Detailed donations continue updating in the background." : active ? "Collecting biography, photo and campaign overview." : "Find and save a biography, photo, donations and outside spending."}><button type="button" className={styles.researchButton} aria-label={`Research ${cardName}`} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : error ? "Retry research" : overviewReady && active ? "Researched" : data?.snapshot ? "Refresh research" : "Research"}</button></CardTooltip>}
+    {review || <CardTooltip text={overviewReady && active ? "Overview ready. Detailed donations continue updating in the background." : active ? "Collecting biography, photo and campaign overview." : "Find and save a biography, photo, donations and outside spending."}><button type="button" className={styles.researchButton} aria-label={researching ? `Researching ${cardName}` : hasResearch ? `Refresh research for ${cardName}` : `Research ${cardName}`} disabled={busy || refreshPending} onClick={() => void research()}>{error && !busy ? "Retry research" : researchLabel}</button></CardTooltip>}
     {error && <p role="alert">{error}</p>}
     {data?.run?.sections?.biography?.status === "not_available" && <p role="status">No biography found.</p>}
     {data?.status === "failed" && !error && <p role="alert">Research failed. Try again.</p>}
@@ -169,7 +173,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   return <section className={styles.panel} aria-label="Representative research">
     {review}
     <div className={styles.controls}>
-      <button type="button" className={styles.primary} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : overviewReady && active ? "Researched" : data?.biography || data?.snapshot ? "Refresh research" : "Research"}</button>
+      <button type="button" className={styles.primary} disabled={busy || refreshPending} onClick={() => void research()}>{researchLabel}</button>
       {compact && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "Hide research" : "View research"}</button>}
       {!compact && <label>Reporting period <Dropdown aria-label="Reporting period" value={availablePeriods.includes(period) ? period : ""} disabled={busy || !availablePeriods.length} onChange={e => void selectPeriod(Number(e.target.value))}>{!availablePeriods.includes(period) && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</Dropdown></label>}
     </div>
