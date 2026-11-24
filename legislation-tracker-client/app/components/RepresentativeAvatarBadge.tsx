@@ -8,7 +8,7 @@ import { getRepresentative, getApiBase } from "@/lib/api";
 import styles from "./recommendations.module.css";
 import { representativeInitials } from "@/lib/representative-name";
 
-export default function RepresentativeAvatarBadge({ id, name, notes, representative, congress, party }: { id: number; name: string; notes: string[]; representative?: { image_url?: string | null; bioguide_id: string; party?: string }; congress?: number; party?: string | null }) {
+export default function RepresentativeAvatarBadge({ id, name, notes, representative, congress, party, linkToPage = false }: { id: number; name: string; notes: string[]; representative?: { image_url?: string | null; bioguide_id: string; party?: string }; congress?: number; party?: string | null; linkToPage?: boolean }) {
   const [loadedParty, setLoadedParty] = React.useState({id, party: ""});
   const rawParty = (party ?? representative?.party ?? (loadedParty.id === id ? loadedParty.party : "")).trim().toLowerCase();
   const partyGroup = ["d", "democrat", "democratic"].includes(rawParty) ? "democrat" : ["r", "republican"].includes(rawParty) ? "republican" : ["i", "id", "ind", "independent"].includes(rawParty) ? "independent" : undefined;
@@ -28,7 +28,7 @@ export default function RepresentativeAvatarBadge({ id, name, notes, representat
     }).catch(() => {});
     return () => { active = false; };
   }, [id, representative?.image_url, representative?.bioguide_id, version]);
-  return <CardTooltip text={[name, ...(partyGroup ? [partyGroup === "democrat" ? "Democrat" : partyGroup === "republican" ? "Republican" : "Independent"] : []), ...notes].join("\n")}><Link data-party={partyGroup} className={styles.representativeAvatar} href={`/representatives/${id}${congress ? `?congress=${congress}` : ""}`} aria-label={name} aria-description={notes.join(". ")} onClick={event => { if (congress && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && profiles?.open({ representativeId: id, congress })) event.preventDefault(); }}>
+  return <CardTooltip text={[name, ...(partyGroup ? [partyGroup === "democrat" ? "Democrat" : partyGroup === "republican" ? "Republican" : "Independent"] : []), ...notes].join("\n")}><Link data-party={partyGroup} className={styles.representativeAvatar} href={`/representatives/${id}${congress ? `?congress=${congress}` : ""}`} aria-label={name} aria-description={notes.join(". ")} onClick={event => { if (!linkToPage && congress && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && profiles?.open({ representativeId: id, congress })) event.preventDefault(); }}>
     {photo && photo !== failed ? <img src={photo} alt={name} loading="lazy" onError={() => setFailed(photo)} /> : <span aria-hidden="true">{representativeInitials(name)}</span>}
   </Link></CardTooltip>;
 }

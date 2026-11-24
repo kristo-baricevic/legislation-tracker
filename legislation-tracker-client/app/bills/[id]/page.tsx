@@ -30,7 +30,7 @@ import { stageFor } from "@/lib/bill-stage";
 import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
 import BillChangeExperience from "./bill-change-experience";
 import { VotingRecord } from "./voting-record";
-import LegislatorName from "../../components/LegislatorName";
+import RepresentativeAvatarBadge from "../../components/RepresentativeAvatarBadge";
 import { ReaderTabsProvider, ReaderTabBar, ReaderTabPanel } from "./reader-tabs";
 import { isLegalNlpV21ContractSummary } from "@/lib/contracts";
 
@@ -343,11 +343,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
           </DocumentReader>
           {processing && <p role="status" className="mb-4 text-sm text-slate-600 dark:text-green-500">Preparing this bill’s analysis. This page updates automatically.{refreshError ? " Could not check progress; retrying automatically." : ""}</p>}
           <ReaderTabPanel tab="votes">
-          <dl className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt className="text-sm text-slate-600 dark:text-green-500">Jurisdiction</dt>
-              <dd>{bill.jurisdiction}</dd>
-            </div>
+          <dl className="mb-6 flex items-center gap-x-5 overflow-x-auto whitespace-nowrap py-1 text-sm [&>div]:flex [&>div]:shrink-0 [&>div]:items-center [&>div]:gap-2">
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Session</dt>
               <dd>{bill.session}</dd>
@@ -358,7 +354,11 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             </div>
             <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Sponsor</dt>
-              <dd><LegislatorName id={bill.sponsor ?? null} name={bill.sponsor_name ?? "—"} congress={bill.session} /></dd>
+              <dd>{bill.sponsor ? (
+                <RepresentativeAvatarBadge id={bill.sponsor} name={bill.sponsor_name || "Sponsor"} congress={bill.session}
+                  representative={bill.sponsor_bioguide_id ? { bioguide_id: bill.sponsor_bioguide_id } : undefined}
+                  notes={[]} linkToPage />
+              ) : (bill.sponsor_name || "—")}</dd>
             </div>
             {bill.introduced_at && (
               <div>
@@ -366,9 +366,9 @@ function BillDetailInner({ routeId }: { routeId: string }) {
                 <dd>{bill.introduced_at}</dd>
               </div>
             )}
-            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="sm:col-span-2 lg:col-span-4">
+            {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div>
               <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
-              <dd className="mt-1 leading-6">{bill.status}</dd>
+              <dd>{bill.status}</dd>
             </div>}
           </dl>
           <LoadingSpinner active={voteHistoryLoading && votes === null} label="Loading vote history…" />
