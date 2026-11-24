@@ -192,11 +192,14 @@ The client expects the API at **http://localhost:8000** by default. To change th
 
 ### Optional user-owned AI enhancements
 
-The feature is federal-only, private to the signed-in user, and disabled by
+The feature is federal-only, available to signed-in users, and disabled by
 default. Users save and validate their own provider key under `/settings`, then
 explicitly confirm a bounded request from an eligible bill page. Results include
 server-owned cited-source text and paginated private history; they never modify
 the deterministic contract or trigger automatically during ingestion.
+
+See the [bill enhancement pipeline](docs/bill-enhancement/README.md) for request
+planning, provider dispatch, source-first preflight reuse, and recovery.
 
 Enabling the feature requires a dedicated Fernet key ring, the Django API,
 Celery worker and Beat processes, secure production transport, and explicit
