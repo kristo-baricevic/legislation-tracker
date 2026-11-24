@@ -109,14 +109,16 @@ export default function BillVersionComparison({ billId, documents, initialPair }
     }
     setOpen(!open);
   }
-  return <div className="space-y-4">
-    <div className="flex items-center justify-between gap-3">
-      <h3 className="font-semibold">Compare versions</h3>
+  return <div className="mb-6 space-y-4">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3 className="font-semibold">Compare versions</h3>
+        {documents.length < 2 && <p className="mt-1 text-sm">A comparison will be available when at least two bill text versions are available.</p>}
+      </div>
       <button className={button} disabled={documents.length < 2} aria-expanded={open} onClick={toggleComparison}>
         {open ? "Close comparison" : "Compare versions"}
       </button>
     </div>
-    {documents.length < 2 && <p className="text-sm">A comparison will be available when at least two bill text versions are available.</p>}
     {open && <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {(["Before", "After"] as const).map(label => <label key={label} className="space-y-2 text-sm font-semibold">
