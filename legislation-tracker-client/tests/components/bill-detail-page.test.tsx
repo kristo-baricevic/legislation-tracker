@@ -149,7 +149,7 @@ describe("BillDetailPage", () => {
     expect(screen.queryByRole("link", { name: "Congress.gov" })).not.toBeInTheDocument();
   });
 
-  it("shows a short stage and the complete latest action separately", async () => {
+  it("shows the stage and primary committee referral separately", async () => {
     const value = await getBill(10);
     const action = "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of provisions within their respective jurisdictions.";
     vi.mocked(getBill).mockResolvedValue({ ...value, status: action, sponsor: 7, sponsor_name: "Roger Marshall", sponsor_bioguide_id: "M000001" });
@@ -157,7 +157,7 @@ describe("BillDetailPage", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Votes & sponsor" }));
     expect(screen.getAllByText("In committee").some(node => !node.closest("[hidden]"))).toBe(true);
     expect(screen.getByText("Latest action")).toBeVisible();
-    expect(screen.getByText(action)).toBeVisible();
+    expect(screen.getByText("Latest action").nextElementSibling?.textContent).toBe("Referred to the Committee on Education and Workforce");
     expect(screen.queryByText("Jurisdiction")).not.toBeInTheDocument();
     const sponsor = screen.getByRole("link", { name: "Roger Marshall" });
     expect(sponsor).toHaveAttribute("href", "/representatives/7?congress=119");

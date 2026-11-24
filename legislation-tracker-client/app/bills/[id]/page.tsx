@@ -26,6 +26,7 @@ import { isUnhelpfulOfficialTitle } from "@/lib/reader-guide";
 import { ContractSection } from "./contract-section";
 import { DocumentReader } from "./document-reader";
 import BillEnhancementPanel from "./bill-enhancement-panel";
+import { latestActionLabel } from "@/lib/bill-format";
 import { stageFor } from "@/lib/bill-stage";
 import { AiGlossaryProvider, BillAnalysisBoundary } from "./ai-glossary-context";
 import BillChangeExperience, { BillHistory } from "./bill-change-experience";
@@ -368,7 +369,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
             )}
             {stageFor(bill.status) && stageFor(bill.status)!.label.toLowerCase() !== bill.status.toLowerCase() && <div className="min-w-56 flex-1">
               <dt className="text-sm text-slate-600 dark:text-green-500">Latest action</dt>
-              <dd>{bill.status}</dd>
+              <dd>{latestActionLabel(bill.status)}</dd>
             </div>}
           </dl>
           <LoadingSpinner active={voteHistoryLoading && votes === null} label="Loading vote history…" />
