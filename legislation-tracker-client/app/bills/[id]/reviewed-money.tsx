@@ -26,7 +26,7 @@ export function ReviewedMoney({ result }: { result: ReaderEnhancementResult }) {
         </select></label>}
       </div>
       <StableResults page={`${action}:${year}:${current}`} label="Enhanced financial provisions">
-      {!rows.length && <p>No financial provisions match these filters.</p>}
+      {!rows.length && <p>{all.length === 0 ? "No financial provisions were found in this bill." : "No financial provisions match these filters."}</p>}
       <ol className="divide-y divide-slate-200">{rows.slice((current - 1) * 10, current * 10).map((item, index) => <li key={`${current}-${index}`} className="grid gap-3 py-5 md:grid-cols-[12rem_minmax(0,1fr)]">
         <div><span className="text-sm font-semibold text-slate-600">{item.label}</span><p className="mt-2 font-semibold">{item.amount_display}</p></div>
         <p className="leading-7">{item.text}<Evidence number={(current - 1) * 10 + index + 1} sources={item.cited_sources} documentId={result.identity.document_id} /></p>
