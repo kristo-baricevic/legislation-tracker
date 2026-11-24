@@ -10,6 +10,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from apps.accounts.llm_views import (
     LLMSettingsValidateView,
     LLMSettingsView,
+    LLMSelectionView,
+    LLMModelsView,
     PublicCapabilitiesView,
 )
 from apps.accounts.throttles import LoginThrottle, RefreshThrottle
@@ -32,6 +34,7 @@ from apps.legislation.comparison_views import (
 )
 from apps.legislation.enhancements.views import (
     BillEnhancementDetailView,
+    BillEnhancementDiagnosticView,
     BillEnhancementEstimateView,
     BillEnhancementLatestView,
     BillEnhancementListCreateView,
@@ -97,6 +100,10 @@ urlpatterns = [
         name="session_logout",
     ),
     path("api/capabilities/", PublicCapabilitiesView.as_view(), name="capabilities"),
+    path("api/settings/llm/selection/", LLMSelectionView.as_view()),
+    path("api/settings/llm/models/", LLMModelsView.as_view()),
+    path("api/settings/llm/credentials/<str:provider>/", LLMSettingsView.as_view()),
+    path("api/settings/llm/credentials/<str:provider>/validate/", LLMSettingsValidateView.as_view()),
     path("api/settings/llm/", LLMSettingsView.as_view(), name="llm-settings"),
     path(
         "api/settings/llm/validate/",
@@ -155,6 +162,8 @@ urlpatterns = [
         BillEnhancementListCreateView.as_view(),
         name="bill-enhancement-list",
     ),
+    path("api/bills/<int:bill_id>/enhancements/diagnostics/<int:step_id>/",
+         BillEnhancementDiagnosticView.as_view(), name="bill-enhancement-diagnostic"),
     path("api/tracking/", include("apps.accounts.urls")),
     path("api/", include(router.urls)),
 ]

@@ -140,16 +140,18 @@ def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_c
                     continue
                 if not isinstance(error, ProviderError):
                     raise
-                if (code == 'provider_output_limit' and len(group) == 1
+                from .reader_sizing import reasoning_starved, recover_output_limit
+                call_usage = getattr(error, "call_usage", error.usage)
+                starved = reasoning_starved(call_usage)
+                if (code == 'provider_output_limit' and (len(group) == 1 or starved)
                         and key not in output_allowances and (durable or calls + len(pending_groups) < maximum_calls)):
-                    from .reader_sizing import recover_output_limit
-                    recovered = recover_output_limit(request)
+                    recovered = recover_output_limit(request, usage=call_usage)
                     if recovered:
                         output_allowances[key] = recovered[0].request_envelope['max_output_tokens']
                         pending_groups.insert(0, group)
                         total = replace(total, usage=combine_usage(total.usage, error.usage))
                         continue
-                if (error.validation_code == 'provider_output_limit' and len(group) > 1
+                if (error.validation_code == 'provider_output_limit' and not starved and len(group) > 1
                         and (durable or calls + len(pending_groups) + 3 <= maximum_calls)):
                     # Preserve whole items and their evidence. The extra call
                     # merges the two child summaries; never exceed confirmation.

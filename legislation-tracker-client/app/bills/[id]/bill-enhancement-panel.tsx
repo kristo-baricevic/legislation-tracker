@@ -133,6 +133,9 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
 
 
 function EnhancementUnavailable({ reason }: { reason: string | null }) {
+  if (reason === "concrete_model_required") {
+    return <p>Select a specific free model in <Link href="/settings" className="underline">Settings</Link> and validate it before enhancing this bill.</p>;
+  }
   if (reason === "unsupported_jurisdiction") {
     return (
       <p className="mt-4 text-sm text-slate-700 dark:text-green-500">

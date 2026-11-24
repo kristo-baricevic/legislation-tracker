@@ -87,9 +87,23 @@ describe("LLM settings", () => {
     expect(await screen.findByText("Valid")).toBeVisible();
   });
 
+  it("can select a saved provider after its previous model leaves the catalog", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getLLMSettings).mockResolvedValue({...configured, saved_credentials: [
+      {provider: "openrouter", selected_model: "retired-model", key_suffix: "9876", revision: 3},
+    ]});
+    render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", {name: "Provider"}), "openrouter");
+    expect(screen.getByText(/ending in 9876/)).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Save model"}));
+    expect(updateLLMSettings).toHaveBeenCalledWith({provider: "openrouter", requested_model: "openrouter/free"});
+    expect(validateLLMCredential).not.toHaveBeenCalled();
+  });
+
   it("marks the free route and requires its own key before switching", async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Provider" }), "openrouter");
     const select = await screen.findByRole("combobox", { name: "Model" });
     await user.selectOptions(select, screen.getByRole("option", {name: /openrouter\/free.*Free/i}));
     expect(screen.getByRole("button", {name: "Save model"})).toBeDisabled();

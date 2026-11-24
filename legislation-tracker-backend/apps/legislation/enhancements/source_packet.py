@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from django.conf import settings
-from .model_selection import target as planning_target
+from .model_selection import target as planning_target, reasoning_effort
 
 from apps.legislation.models import BillDocument
 
@@ -83,7 +83,7 @@ def _request_envelope(
     return {
         "provider": planning_target()[0],
         "requested_model": planning_target()[1],
-        "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        "reasoning_effort": reasoning_effort(),
         "prompt_version": PROMPT_VERSION,
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
         "source_packet_version": SOURCE_PACKET_VERSION,
@@ -209,7 +209,7 @@ def needs_large_document_review(text):
 def build_document_preflight(document, *, reuse_result=None):
     bill = document.bill
     text = document.extracted_text or document.raw_text or ""
-    if not reuse_result and needs_large_document_review(text):
+    if not reuse_result and (needs_large_document_review(text) or settings.LLM_READER_OWNED_TOKEN_TARGET):
         from .xml_sections import stored_xml_sections
         sections = stored_xml_sections(document, text)
         from .reader_batches import build_reader_preflight
@@ -277,7 +277,7 @@ def build_document_preflight(document, *, reuse_result=None):
     preflight = EnhancementPreflight(
         provider=planning_target()[0],
         requested_model=planning_target()[1],
-        reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        reasoning_effort=reasoning_effort(),
         prompt_version=PROMPT_VERSION,
         output_schema_version=OUTPUT_SCHEMA_VERSION,
         source_packet_version=SOURCE_PACKET_VERSION,

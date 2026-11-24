@@ -9,18 +9,18 @@ from .model_selection import target
 
 def capacity(provider=None, model=None):
     provider, model = (provider, model) if provider and model else target()
-    configured = getattr(settings, 'LLM_READER_MODEL_CAPACITIES', {}).get(f'{provider}/{model}', {})
-    output = min(settings.LLM_READER_MAX_OUTPUT_TOKENS, int(configured.get('output_tokens', settings.LLM_READER_MAX_OUTPUT_TOKENS)))
-    return {'output_tokens': output,
-        'context_tokens': int(configured.get('context_tokens', settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS + output + 1024)),
-        'visible_fraction': min(.9, max(.1, float(configured.get('visible_fraction', .5))))}
+    from .model_capabilities import resolve_capabilities
+    limits = resolve_capabilities(provider, model)
+    return {'output_tokens': limits.output_tokens, 'context_tokens': limits.context_tokens,
+            'visible_fraction': limits.visible_fraction}
 
 
 def fits(envelope, *, provider=None, model=None):
     from .source_packet import canonical_json_bytes, _within_limits
     encoded = canonical_json_bytes(envelope)
-    limits = capacity(provider, model)
-    output = envelope.get('max_output_tokens', settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS)
-    # Reserve space for adapter message wrappers outside the JSON envelope.
-    return (_within_limits(encoded) and output <= limits['output_tokens']
-        and len(encoded) + output + 1024 <= limits['context_tokens'])
+    from .model_capabilities import resolve_capabilities
+    from .token_budget import plan_request
+    pair = (provider, model) if provider and model else target()
+    limits = resolve_capabilities(*pair)
+    budget = plan_request(envelope, limits)
+    return _within_limits(encoded) and budget.max_output_tokens <= limits.output_tokens and budget.context_margin >= 0

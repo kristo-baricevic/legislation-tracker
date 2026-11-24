@@ -175,7 +175,9 @@ def test_shared_result_needs_no_key_and_hides_payer_history(enhancement_owner, e
         confirmation = _confirmation(source_bill, credential)
         first = create_enhancement_attempt(user=enhancement_owner, bill=source_bill, confirmed=confirmation)
         saved = first.enhancement
-        saved.status = "succeeded"; saved.result_json = {"schema_version": "1.1", "overview": []}
+        saved.status = "succeeded"
+        saved.result_json = {"schema_version": saved.output_schema_version, "overview": [], "key_impacts": [],
+                             "obligations": [], "funding_and_timing": [], "uncertain_language": [], "glossary": []}
         saved.save()
         second = create_enhancement_attempt(user=other, bill=source_bill, confirmed=confirmation)
         response = client.get(f"/api/bills/{source_bill.pk}/enhancements/latest/")

@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 import pytest
+from apps.legislation.enhancements.service import confirmation_fingerprint
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.utils import timezone
@@ -76,7 +77,7 @@ def _confirmation(bill, credential):
     preflight = build_enhancement_preflight(bill)
     return {
         "source_fingerprint": preflight.source_fingerprint,
-        "request_fingerprint": preflight.request_fingerprint,
+        "request_fingerprint": confirmation_fingerprint(preflight, credential),
         "credential_revision": credential.revision,
     }
 
@@ -107,7 +108,10 @@ def test_create_is_idempotent_for_active_and_successful_requests(
         assert BillEnhancementAttempt.objects.count() == 1
 
         first.enhancement.status = first.enhancement.Status.SUCCEEDED
-        first.enhancement.save(update_fields=["status"])
+        first.enhancement.result_json = {"schema_version": first.enhancement.output_schema_version,
+            "overview": [], "key_impacts": [], "obligations": [], "funding_and_timing": [],
+            "uncertain_language": [], "glossary": []}
+        first.enhancement.save(update_fields=["status", "result_json"])
         third = create_enhancement_attempt(
             user=enhancement_owner,
             bill=source_bill,

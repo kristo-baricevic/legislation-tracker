@@ -2,6 +2,26 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from apps.legislation.enhancements.reader_targets import snapshot_targets
+from django.test import override_settings
+
+
+def test_s4387_reasoning_starvation_preserves_batch_and_uses_approved_headroom():
+    from apps.legislation.enhancements.reader_sizing import recover_output_limit
+    from apps.legislation.enhancements.types import EnhancementPreflight
+    from apps.legislation.enhancements.providers.base import ProviderUsage
+    targets = [{'target_id': str(i), 'kind': 'definition', 'original_text': 'A health condition.',
+                'evidence_ranges': [[0, 19]]} for i in range(2)]
+    sources = [{'source_ref': 'src_0001', 'quoted_text': 'A health condition.', 'start_char': 0,
+                'end_char': 19, 'reader_targets': targets}]
+    p = EnhancementPreflight('openrouter', 'model:free', 'low', 'test', '1.4', 'test', 'hash', 'hash', {}, sources,
+        {'source_packet': {'sources': [], 'target_citations': []}, 'max_output_tokens': 8000}, b'', 0, False)
+    with override_settings(LLM_READER_MAX_OUTPUT_TOKENS=24000):
+        children = recover_output_limit(p, usage=ProviderUsage(output_tokens=8000, reasoning_tokens=7981))
+        assert len(children) == 1
+        assert children[0].source_snapshot == sources
+        assert children[0].request_envelope['max_output_tokens'] == 24000
+        # Repeated starvation is terminal for this model and batch.
+        assert recover_output_limit(children[0], usage=ProviderUsage(output_tokens=24000, reasoning_tokens=23900)) == ()
 
 
 def test_small_items_have_smaller_output_estimates_than_complex_items():

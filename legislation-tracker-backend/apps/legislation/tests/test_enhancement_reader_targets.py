@@ -38,6 +38,15 @@ def test_target_validator_preserves_supported_identity_and_does_not_mutate_input
     assert output == original
 
 
+@pytest.mark.parametrize("text", [".", "...", "! ?", "   ."])
+def test_s4387_punctuation_response_is_not_a_valid_explanation(text):
+    # Live bill 15778 returned seven period-only explanations with valid citations.
+    target, source, output = packet()
+    output["explanations"][0]["text"] = text
+    with pytest.raises(ValidationError):
+        validate_reader_explanations(output, [target], [source])
+
+
 @pytest.mark.parametrize("mutation", ["unknown", "duplicate", "missing", "wrong_quote", "other_target"])
 def test_target_validator_rejects_unsupported_replacements(mutation):
     target, source, output = packet()

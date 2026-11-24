@@ -1,7 +1,7 @@
 from dataclasses import asdict
 
 from django.conf import settings
-from .model_selection import target as planning_target
+from .model_selection import target as planning_target, reasoning_effort
 
 from collections import Counter
 
@@ -13,7 +13,7 @@ from .types import EnhancementPreflight
 
 
 def build_source_first_preflight(document, text, *, reuse_result=None):
-    from .source_packet import PreflightUnavailable
+    from .source_packet import PreflightUnavailable, _text_hash
 
     if not text.strip():
         raise PreflightUnavailable("Source text unavailable")
@@ -25,7 +25,7 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
             graph,
             {
                 "model": planning_target()[1],
-                "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+                "reasoning_effort": reasoning_effort(),
                 "output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS,
                 "per_call_input": min(
                     settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
@@ -49,14 +49,14 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
     identity = {
         "plan": plan.fingerprint,
         "provider": planning_target()[0],
-        "reasoning_effort": settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        "reasoning_effort": reasoning_effort(),
         "output_limit": min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS),
     }
     envelope = {"source_first_plan": identity, "budget": budget}
     return EnhancementPreflight(
         provider=planning_target()[0],
         requested_model=plan.model,
-        reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        reasoning_effort=reasoning_effort(),
         prompt_version=PROMPT_VERSION,
         output_schema_version=VERSION,
         source_packet_version=VERSION,
@@ -64,6 +64,7 @@ def build_source_first_preflight(document, text, *, reuse_result=None):
         request_fingerprint=digest(identity),
         source_manifest={
             "document_id": document.pk,
+            "document_content_hash": _text_hash(text),
             "document_version_label": document.version_label,
             "source_kind": "pinned_passages",
             "budget": budget,

@@ -83,7 +83,7 @@ def test_empty_summary_is_not_saved_as_reusable_success(source_bill, enhancement
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize('crash', [False, True])
+@pytest.mark.parametrize('crash', [False, True, 'legacy_cache'])
 def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
         source_bill, enhancement_owner, enhancement_settings, crash):
     install_reader(source_bill)
@@ -98,13 +98,13 @@ def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
             calls = 0
             def enhance_bill(self, **kwargs):
                 self.calls += 1
-                if crash:
+                if crash is True:
                     raise KeyboardInterrupt('simulate process death after dispatch')
                 return ProviderResult({'schema_version': '1.4', 'summary': [{'text': 'Requires a report.',
                     'source_quotes': [{'source_ref': p.source_snapshot[0]['source_ref'], 'quote_id': 'p0001'}]}], 'explanations': []}, ProviderUsage(10, 5, 15), 'response', 'test')
         real = Provider()
         wrapper = DurableReaderProvider(real, a, 'run', 2)
-        if crash:
+        if crash is True:
             with pytest.raises(KeyboardInterrupt):
                 wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             with pytest.raises(ProviderError) as error:
@@ -115,11 +115,17 @@ def test_reader_step_persists_success_and_never_blindly_replays_a_dispatch(
             first = wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             saved = a.steps.get()
             assert saved.status == 'validated' and saved.result_json == first.output
+            if crash == 'legacy_cache':
+                from apps.legislation.enhancements.reader_cache import call_identity
+                from apps.legislation.models import BillEnhancementCallCache
+                old_key, _ = call_identity(p, execution_version=2)
+                BillEnhancementCallCache.objects.update(fingerprint=old_key)
+                a.steps.all().delete()  # A new run has no old step reservation.
             second = wrapper.enhance_bill(api_key='test', request=p, timeout_seconds=1)
             assert second.output == first.output and second.usage.total_tokens == 0
             assert second.resolved_model == first.resolved_model
             from apps.legislation.enhancements.source_first_worker import step_usage
-            assert step_usage(a.pk).total_tokens == 15
+            assert step_usage(a.pk).total_tokens == (0 if crash == 'legacy_cache' else 15)
         assert real.calls == 1
 
 

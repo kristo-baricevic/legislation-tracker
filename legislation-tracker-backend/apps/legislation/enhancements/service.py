@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+from dataclasses import asdict, dataclass
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.accounts.llm_credentials import llm_feature_available
-from apps.accounts.models import LLMCredential
+from apps.accounts.models import LLMCredential, selected_credentials
 from apps.legislation.models import Bill, BillEnhancement, BillEnhancementAttempt
 
 from .dispatch import request_enhancement_dispatch
@@ -23,6 +24,7 @@ USER_RETRYABLE_FAILURES = {
     # Invalid output remains unpublished and terminal for automatic workers,
     # but the user can explicitly confirm a new paid attempt.
     "invalid_output",
+    "preflight_changed",
     "credential_changed",
     "credential_disabled",
     "encryption_error",
@@ -62,11 +64,37 @@ def credential_is_current(credential: LLMCredential | None) -> bool:
     )
 
 
+def attempt_credential_failure(attempt):
+    credential = attempt.credential
+    enhancement = attempt.enhancement
+    if (
+        credential is None
+        or credential.user_id != enhancement.user_id
+        or credential.revision != attempt.credential_revision
+        or credential.provider != enhancement.provider
+    ):
+        return "credential_changed"
+    if not credential.enabled:
+        return "credential_disabled"
+    if not (
+        credential.validation_status == LLMCredential.ValidationStatus.VALID
+        and credential.validated_revision == credential.revision
+        and credential.validated_provider == credential.provider
+        and (credential.validated_model == enhancement.requested_model
+             or attempt.execution_config.get("model") == enhancement.requested_model)
+    ):
+        return "credential_changed"
+    return None
+
+
 def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
     if attempt is None:
         return False
-    if attempt.status == BillEnhancementAttempt.Status.SUCCEEDED and attempt.enhancement.output_schema_version == "2.0-source-first":
-        return attempt.enhancement.result_completeness == "partial"
+    if attempt.status == BillEnhancementAttempt.Status.SUCCEEDED:
+        from .shared import _reader_result_valid
+        saved = attempt.enhancement
+        return (saved.result_completeness == "partial" and saved.output_schema_version == "2.0-source-first"
+                or saved.result_json is not None and not _reader_result_valid(saved))
     if attempt.status in (BillEnhancementAttempt.Status.OUTCOME_UNKNOWN, BillEnhancementAttempt.Status.PAUSED):
         return True
     if attempt.status != BillEnhancementAttempt.Status.FAILED:
@@ -92,17 +120,34 @@ def reusable_publication(enhancement, credential):
     return None
 
 
+def execution_config(provider, model, credential):
+    from .model_capabilities import resolve_capabilities
+    from .provider_registry import adapter_for
+    limits = resolve_capabilities(provider, model)
+    return {"provider": provider, "model": model, "credential_id": credential.pk, "revision": credential.revision,
+            "adapter": adapter_for(provider), "capabilities": asdict(limits), "capability_fingerprint": limits.fingerprint}
+
+
+def confirmation_fingerprint(preflight, credential):
+    config = execution_config(preflight.provider, preflight.requested_model, credential)
+    identity = f"{preflight.request_fingerprint}:{credential.pk}:{credential.revision}:{config['adapter']}:{config['capability_fingerprint']}"
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
 def _validate_confirmation(preflight, credential, confirmed) -> None:
+    if (preflight.provider, preflight.requested_model) == ("openrouter", "openrouter/free"):
+        raise EnhancementServiceError("concrete_model_required")
     if confirmed.get("source_fingerprint") != preflight.source_fingerprint:
-        raise EnhancementServiceError("preflight_changed")
-    if confirmed.get("request_fingerprint") != preflight.request_fingerprint:
         raise EnhancementServiceError("preflight_changed")
     if confirmed.get("credential_revision") != credential.revision:
         raise EnhancementServiceError("credential_changed")
+    if confirmed.get("request_fingerprint") != confirmation_fingerprint(preflight, credential):
+        raise EnhancementServiceError("preflight_changed")
 
 
 def _locked_credential(user) -> LLMCredential:
-    credential = LLMCredential.objects.select_for_update().filter(user=user).first()
+    type(user).objects.select_for_update().get(pk=user.pk)
+    credential = selected_credentials(user).select_for_update().first()
     if credential is None:
         raise EnhancementServiceError("credential_not_configured")
     if not credential.enabled:
@@ -127,6 +172,7 @@ def _build_locked_preflight(bill_id: int, credential):
 
 
 def _new_enhancement(*, user, bill, preflight) -> BillEnhancement:
+    from .provider_registry import adapter_for
     return BillEnhancement.objects.create(
         user=user,
         bill=bill,
@@ -138,7 +184,7 @@ def _new_enhancement(*, user, bill, preflight) -> BillEnhancement:
         source_packet_version=preflight.source_packet_version,
         source_fingerprint=preflight.source_fingerprint,
         request_fingerprint=preflight.request_fingerprint,
-        source_manifest_json=preflight.source_manifest,
+        source_manifest_json={**preflight.source_manifest, "adapter": adapter_for(preflight.provider)},
         source_snapshot_json=preflight.source_snapshot,
     )
 
@@ -148,6 +194,7 @@ def _create_attempt(*, enhancement, credential, estimated_input_tokens, sequence
         enhancement=enhancement,
         sequence=sequence,
         approved_request_fingerprint=approved_request_fingerprint,
+        execution_config=execution_config(enhancement.provider, enhancement.requested_model, credential),
         reused_result_json=reused_result,
         credential=credential,
         credential_revision=credential.revision,
@@ -191,7 +238,6 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
                 in {
                     BillEnhancement.Status.PENDING,
                     BillEnhancement.Status.RUNNING,
-                    BillEnhancement.Status.SUCCEEDED,
                 }
                 and latest is not None
             ):

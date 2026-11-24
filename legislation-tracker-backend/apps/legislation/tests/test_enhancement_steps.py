@@ -1,5 +1,6 @@
 # ruff: noqa: F401, F811
 import pytest
+from apps.legislation.enhancements.service import confirmation_fingerprint
 from django.test import override_settings
 
 from apps.legislation.enhancements.providers.base import (
@@ -248,7 +249,7 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
             enhancement_id=enhancement.pk,
             confirmed={
                 "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": preflight.request_fingerprint,
+                "request_fingerprint": confirmation_fingerprint(preflight, first.credential),
                 "credential_revision": first.credential_revision,
             },
         ).attempt

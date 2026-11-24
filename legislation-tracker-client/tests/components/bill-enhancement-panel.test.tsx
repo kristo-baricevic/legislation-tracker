@@ -216,7 +216,7 @@ describe("BillEnhancementPanel", () => {
     const top = screen.getByTestId("top-controls");
     await userEvent.click(await within(top).findByRole("button", { name: "Enhance" }));
     expect(within(top).queryByRole("button", { name: "Original" })).not.toBeInTheDocument();
-    const dialog = await screen.findByRole("dialog", { name: "Confirm AI enhancement" });
+    const dialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     expect(dialog.tagName).toBe("DIALOG");
     expect(top).not.toContainElement(dialog);
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -321,7 +321,7 @@ describe("BillEnhancementPanel", () => {
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
     await user.click(await screen.findByRole("button", { name: "Enhance" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Confirm AI enhancement" });
+    const dialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     expect(dialog).toHaveTextContent("600 estimated input tokens");
     expect(dialog).toHaveTextContent("4,000 maximum output tokens");
     expect(dialog).toHaveTextContent(/provider may charge your account/i);
@@ -348,7 +348,7 @@ describe("BillEnhancementPanel", () => {
     });
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
     await user.click(await screen.findByRole("button", { name: "Enhance" }));
-    const dialog = await screen.findByRole("dialog", { name: "Confirm AI enhancement" });
+    const dialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     expect(dialog).toHaveTextContent("All 24 eligible definitions in 6 glossary batches");
     expect(dialog).toHaveTextContent("123,000 estimated input tokens");
     expect(dialog).toHaveTextContent("32,000 maximum output tokens");
@@ -378,11 +378,11 @@ describe("BillEnhancementPanel", () => {
     await user.click(await screen.findByRole("button", { name: "Confirm and enhance" }));
 
     await waitFor(() => expect(getBillEnhancementEstimate).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole("dialog", { name: "Confirm AI enhancement" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Confirm enhancement" })).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(/review the refreshed estimate/i);
 
     await user.click(screen.getByRole("button", { name: "Enhance" }));
-    const refreshedDialog = await screen.findByRole("dialog", { name: "Confirm AI enhancement" });
+    const refreshedDialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     expect(refreshedDialog).toHaveTextContent("700 estimated input tokens");
     expect(refreshedDialog).toHaveTextContent("Credential revision 3");
   });
@@ -466,7 +466,7 @@ describe("BillEnhancementPanel", () => {
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(paused);
     render(<BillEnhancementPanel billId={10} jurisdiction="federal" />);
     await userEvent.click(await screen.findByRole("button", { name: "Continue" }));
-    expect(await screen.findByRole("dialog", { name: "Confirm AI enhancement" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "Confirm enhancement" })).toBeVisible();
     expect(retryBillEnhancement).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -489,7 +489,7 @@ describe("BillEnhancementPanel", () => {
     expect(screen.queryByText("The request ended as failed.")).not.toBeInTheDocument();
     expect(screen.queryByText(attempt.failure_detail.message)).not.toBeInTheDocument();
     await userEvent.click(within(controls).getByRole("button", { name: "Retry AI enhancement" }));
-    const dialog = await screen.findByRole("dialog", { name: "Confirm AI enhancement" });
+    const dialog = await screen.findByRole("dialog", { name: "Confirm enhancement" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(createBillEnhancement).not.toHaveBeenCalled();
     await userEvent.click(screen.getByText("Attempt history"));

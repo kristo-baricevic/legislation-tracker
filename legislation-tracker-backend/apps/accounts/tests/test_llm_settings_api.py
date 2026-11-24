@@ -21,6 +21,7 @@ def clear_throttle_cache():
 @pytest.fixture
 def llm_settings():
     return override_settings(
+        LLM_MULTI_PROVIDER_WRITES_ENABLED=True,
         LLM_ENHANCEMENTS_ENABLED=True,
         LLM_CREDENTIAL_ENCRYPTION_KEYS=f"primary:{FERNET_KEY}",
         LLM_CREDENTIAL_ACTIVE_KEY_ID="primary",
@@ -55,7 +56,7 @@ def test_model_selection_persists_and_never_sends_old_key_to_another_provider(au
     url = "/api/settings/llm/"
     with llm_settings:
         catalog = authenticated_client.get(url).json()["models"]
-        assert {"provider": "openrouter", "model": "openrouter/free", "free": True} in catalog
+        assert {"provider": "openrouter", "model": "openrouter/free", "free": False} in catalog  # no current price snapshot
         authenticated_client.put(url, {"api_key": "original-secret"}, format="json")
         selection = {"provider": "openrouter", "requested_model": "openrouter/free"}
         authenticated_client.put(url, {"enabled": False}, format="json")
@@ -107,6 +108,7 @@ def test_get_unconfigured_settings_is_redacted_and_does_not_call_provider(
     assert response.status_code == 200
     payload = response.json()
     assert payload.pop("models")
+    assert payload.pop("saved_credentials") == []
     assert payload == {
         "feature_available": True,
         "configured": False,

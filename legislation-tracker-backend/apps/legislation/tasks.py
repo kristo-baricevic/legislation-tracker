@@ -1359,35 +1359,27 @@ def _require_quota_revalidation(attempt):
 
 
 def _worker_preflight(attempt, cached_preflight=None):
-    from .enhancements.model_selection import credential_target, planning_for, selectable
+    from .enhancements.model_selection import planning_for, selectable
     if not llm_feature_available():
         return None, None, "feature_disabled"
-    pair = credential_target(attempt.credential)
-    if attempt.credential and (not selectable(pair) or pair != (attempt.enhancement.provider, attempt.enhancement.requested_model)):
+    pair = (attempt.enhancement.provider, attempt.enhancement.requested_model)
+    if attempt.credential and not selectable(pair):
         return None, None, "credential_changed"
+    if attempt.execution_config:
+        from .enhancements.model_capabilities import resolve_capabilities
+        if attempt.execution_config["capability_fingerprint"] != resolve_capabilities(*pair).fingerprint:
+            return None, None, "preflight_changed"
     with planning_for(pair):
         return _selected_worker_preflight(attempt, cached_preflight)
 
 
 def _selected_worker_preflight(attempt, cached_preflight=None):
+    from .enhancements.service import attempt_credential_failure
+    failure = attempt_credential_failure(attempt)
+    if failure:
+        return None, None, failure
     credential = attempt.credential
     enhancement = attempt.enhancement
-    if (
-        credential is None
-        or credential.user_id != enhancement.user_id
-        or credential.revision != attempt.credential_revision
-        or credential.provider != enhancement.provider
-    ):
-        return None, None, "credential_changed"
-    if not credential.enabled:
-        return None, None, "credential_disabled"
-    if not (
-        credential.validation_status == LLMCredential.ValidationStatus.VALID
-        and credential.validated_revision == credential.revision
-        and credential.validated_provider == credential.provider
-        and credential.validated_model == enhancement.requested_model
-    ):
-        return None, None, "credential_changed"
     try:
         if cached_preflight is not None and cached_preflight.worker_guard:
             from .enhancements.reader_batches import reader_input_guard
@@ -1443,7 +1435,9 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
         )
 
     try:
-        provider = get_provider(attempt.enhancement.provider)
+        adapter = attempt.execution_config.get("adapter", "existing")
+        provider = (get_provider(attempt.enhancement.provider) if adapter == "existing"
+                    else get_provider(attempt.enhancement.provider, adapter=adapter))
         if preflight.output_schema_version == "1.4":
             from .enhancements.reader_batches import execute_reader_batches
             from .enhancements.reader_steps import DurableReaderProvider, ReaderDeliveryComplete, ReaderBudgetPaused
@@ -1697,9 +1691,22 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
 
 
 @shared_task(autoretry_for=())
+def refresh_enhancement_models():
+    if settings.LLM_ENHANCEMENTS_ENABLED:
+        from .enhancements.openrouter_catalog import refresh_catalog
+        return len(refresh_catalog())
+    return 0
+
+
+@shared_task(autoretry_for=())
 def recover_stale_bill_enhancement_attempts():
     """Expired provider calls are ambiguous and are never returned to pending."""
+    from .models import BillEnhancementDiagnostic
     now = timezone.now()
+    expired = list(BillEnhancementDiagnostic.objects.filter(expires_at__lte=now)
+                   .order_by("expires_at").values_list("pk", flat=True)[:500])
+    if expired:
+        BillEnhancementDiagnostic.objects.filter(pk__in=expired, expires_at__lte=now).delete()
     ids = list(
         BillEnhancementAttempt.objects.filter(
             status=BillEnhancementAttempt.Status.RUNNING,

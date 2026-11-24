@@ -31,7 +31,7 @@ if [[ "$E2E_DATABASE_URL" != sqlite:* ]]; then
 fi
 "$E2E_VENV/bin/python" scripts/seed-e2e-legislative-intelligence.py
 
-"$E2E_VENV/bin/celery" -A config worker --loglevel=warning --pool=solo --concurrency=1 \
+"$E2E_VENV/bin/celery" -A config worker --loglevel=warning --pool=solo --concurrency=1 --queues=celery,enhancements \
   --without-gossip --without-mingle --without-heartbeat &
 E2E_WORKER_PID=$!
 

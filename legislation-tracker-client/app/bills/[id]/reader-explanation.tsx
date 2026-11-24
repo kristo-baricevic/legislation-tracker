@@ -70,6 +70,9 @@ export function ReaderSummary({ children }: { children: ReactNode }) {
   // Older saved prose may contain clipped sentences. Never present those as
   // the brief while a corrected, source-bound analysis is being refreshed.
   if (result?.summary.some(item => !/[.!?]$/.test(item.text.trim()))) return <>{children}</>;
+  const sourceFirst = enhancement?.result?.schema_version === "2.0-source-first" ? enhancement.result : null;
+  if (sourceFirst?.synopsis.status === "complete" && sourceFirst.synopsis.text)
+    return <p>{sourceFirst.synopsis.text}</p>;
   if (legacy?.overview.length && identity?.documentId != null) return <div className="mt-4 space-y-3">
     {legacy.overview.map((item, index) => <p key={index} className="w-full text-base leading-7">{item.text}<Evidence number={index + 1} sources={item.cited_sources} documentId={identity.documentId!} /></p>)}
   </div>;

@@ -1331,6 +1331,7 @@ export function triggerTopicBackfill(params: {
 }
 
 export interface LLMSettings {
+  saved_credentials?: {provider: string; selected_model: string; key_suffix: string; revision: number}[];
   models: {provider: string; model: string; free: boolean}[];
   feature_available: boolean;
   configured: boolean;
@@ -1350,16 +1351,20 @@ export function getLLMSettings(): Promise<LLMSettings> {
 
 export function updateLLMSettings(
   values: { api_key?: string; enabled?: boolean; provider?: string; requested_model?: string },
+  scopedProvider?: string,
 ): Promise<LLMSettings> {
-  return authPut<LLMSettings>("/api/settings/llm/", values);
+  const path = scopedProvider ? `credentials/${encodeURIComponent(scopedProvider)}/` : "";
+  return authPut<LLMSettings>(`/api/settings/llm/${path}`, values);
 }
 
-export function validateLLMCredential(): Promise<LLMSettings> {
-  return authPost<LLMSettings>("/api/settings/llm/validate/");
+export function validateLLMCredential(provider?: string): Promise<LLMSettings> {
+  const path = provider ? `credentials/${encodeURIComponent(provider)}/` : "";
+  return authPost<LLMSettings>(`/api/settings/llm/${path}validate/`);
 }
 
-export function deleteLLMSettings(): Promise<void> {
-  return authDelete("/api/settings/llm/");
+export function deleteLLMSettings(provider?: string): Promise<void> {
+  const path = provider ? `credentials/${encodeURIComponent(provider)}/` : "";
+  return authDelete(`/api/settings/llm/${path}`);
 }
 
 export interface PublicCapabilities {
@@ -1534,6 +1539,8 @@ export interface BillEnhancement {
 }
 
 export interface BillEnhancementEstimate {
+  cost_status?: "free" | "unknown";
+  estimator?: string;
   reader_coverage?: { total_count: number; selected_count: number; unavailable_count: number; batch_count: number; unavailable: { target_id: string; reason: string }[] } | null;
   feature_available: boolean;
   can_enhance: boolean;

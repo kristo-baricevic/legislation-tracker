@@ -21,7 +21,7 @@ from .llm_credentials import (
     llm_feature_available,
 )
 from .llm_serializers import LLMCredentialUpdateSerializer
-from .models import LLMCredential
+from .models import LLMCredential, LLMPreference, selected_credentials
 
 
 class PrivateNoStoreMixin:
@@ -63,7 +63,8 @@ def _effective_validation_status(credential: LLMCredential | None) -> str:
     return LLMCredential.ValidationStatus.UNVERIFIED
 
 
-def _settings_payload(credential: LLMCredential | None) -> dict:
+def _settings_payload(credential: LLMCredential | None, user=None) -> dict:
+    owner = user if user is not None else credential.user if credential else None
     return {
         "feature_available": llm_feature_available(),
         "configured": credential is not None,
@@ -76,20 +77,69 @@ def _settings_payload(credential: LLMCredential | None) -> dict:
         "validated_at": credential.validated_at if credential else None,
         "requested_model": credential_target(credential)[1],
         "models": catalog(),
+        "saved_credentials": list(LLMCredential.objects.filter(user=owner).values(
+            "provider", "selected_model", "key_suffix", "revision"
+        )),
     }
+
+
+def _credential(user, provider):
+    if provider is None:
+        return selected_credentials(user).first()
+    return LLMCredential.objects.filter(user=user, provider=provider).first()
+
+
+class LLMSelectionView(PrivateNoStoreMixin, APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        credential = selected_credentials(request.user).first()
+        if credential is None:
+            return Response({"provider": None, "model": None})
+        provider, model = credential_target(credential)
+        return Response({"provider": provider, "model": model})
+
+    def put(self, request):
+        provider, model = request.data.get("provider"), request.data.get("model")
+        if not llm_feature_available():
+            return Response({"error": "feature_unavailable"}, status=503)
+        if not selectable((provider, model)):
+            return Response({"error": "unsupported_model"}, status=400)
+        with transaction.atomic():
+            type(request.user).objects.select_for_update().get(pk=request.user.pk)
+            credential = LLMCredential.objects.select_for_update().filter(user=request.user, provider=provider).first()
+            if credential is None:
+                return Response({"error": "credential_not_configured"}, status=400)
+            credential.selected_model = model
+            credential.save(update_fields=["selected_model"])
+            LLMPreference.objects.update_or_create(user=request.user, defaults={"active_credential": credential})
+        return Response({"provider": provider, "model": model})
+
+
+class LLMModelsView(PrivateNoStoreMixin, APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        provider = request.query_params.get("provider")
+        return Response({"models": [item for item in catalog() if not provider or item["provider"] == provider]})
 
 
 @method_decorator(sensitive_post_parameters("api_key"), name="dispatch")
 class LLMSettingsView(PrivateNoStoreMixin, APIView):
     permission_classes = (IsAuthenticated,)
 
-    def _credential(self, request):
-        return LLMCredential.objects.filter(user=request.user).first()
+    def get(self, request, provider=None):
+        credential = _credential(request.user, provider)
+        payload = _settings_payload(credential, request.user)
+        if provider:
+            choices = [item for item in catalog() if item["provider"] == provider]
+            if not choices:
+                return Response(status=404)
+            if credential is None:
+                payload.update(provider=provider, requested_model=choices[0]["model"])
+        return Response(payload)
 
-    def get(self, request):
-        return Response(_settings_payload(self._credential(request)))
-
-    def put(self, request):
+    def put(self, request, provider=None):
         serializer = LLMCredentialUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
@@ -106,19 +156,22 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
 
         with transaction.atomic():
             type(request.user).objects.select_for_update().get(pk=request.user.pk)
-            credential = (
-                LLMCredential.objects.select_for_update()
-                .filter(user=request.user)
-                .first()
-            )
-            provider = values.get(
+            active = selected_credentials(request.user).first()
+            if provider and values.get("provider", provider) != provider:
+                return Response({"error": "provider_mismatch"}, status=400)
+            scoped = provider is not None
+            provider = provider or values.get(
                 "provider",
-                _configured_provider() if api_key is not None else credential_target(credential)[0],
+                _configured_provider() if api_key is not None else credential_target(active)[0],
             )
             # Older clients submitted only an OpenAI key. Never attach it to
             # whichever third-party provider another settings tab just saved.
-            if api_key is not None and "provider" not in values and credential and provider != credential.provider:
+            if not scoped and api_key is not None and "provider" not in values and active and provider != active.provider:
                 return Response({"error": "credential_changed"}, status=status.HTTP_409_CONFLICT)
+            credential = LLMCredential.objects.select_for_update().filter(user=request.user, provider=provider).first()
+            if (api_key and credential is None and not settings.LLM_MULTI_PROVIDER_WRITES_ENABLED
+                    and LLMCredential.objects.filter(user=request.user).exists()):
+                return Response({"error": "multi_provider_rollout_pending"}, status=409)
             model = values.get("requested_model", credential_target(credential)[1])
             if not selectable((provider, model)) and values != {"enabled": False}:
                 return Response(
@@ -130,30 +183,18 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                     {"api_key": ["An API key is required."]},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if (
-                credential is not None
-                and provider != credential.provider
-                and api_key is None
-            ):
-                return Response(
-                    {"api_key": ["Replacing the provider requires the API key."]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if credential and model != credential_target(credential)[1] and api_key is None:
-                try:
-                    api_key = decrypt_credential(credential)
-                except CredentialDecryptionError:
-                    return Response({"error": "credential_unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             if api_key is not None:
                 credential = LLMCredential.objects.create_for_key(
                     user=request.user,
                     provider=provider,
                     api_key=api_key,
+                    activate_initial=not scoped,
                     enabled=(
                         requested_enabled if requested_enabled is not None else
-                        credential.enabled if credential is not None else True
+                        active.enabled if not scoped and active is not None else True
                     ),
                 )
+            if credential.selected_model != model:
                 credential.selected_model = model
                 credential.save(update_fields=["selected_model"])
             if (
@@ -163,10 +204,17 @@ class LLMSettingsView(PrivateNoStoreMixin, APIView):
                 credential.enabled = requested_enabled
                 credential.save(update_fields=["enabled", "updated_at"])
 
+            if not scoped:
+                LLMPreference.objects.update_or_create(user=request.user, defaults={"active_credential": credential})
+
         return Response(_settings_payload(credential))
 
-    def delete(self, request):
-        LLMCredential.objects.filter(user=request.user).delete()
+    def delete(self, request, provider=None):
+        with transaction.atomic():
+            type(request.user).objects.select_for_update().get(pk=request.user.pk)
+            credential = _credential(request.user, provider)
+            if credential:
+                credential.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -174,14 +222,14 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
     permission_classes = (IsAuthenticated,)
     throttle_classes = (LLMValidationThrottle,)
 
-    def post(self, request):
+    def post(self, request, provider=None):
         if not llm_feature_available():
             return Response(
                 {"error": "feature_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        credential = LLMCredential.objects.filter(user=request.user).first()
+        credential = _credential(request.user, provider)
         if credential is None:
             return Response(
                 {"error": "credential_not_configured"},
@@ -192,6 +240,9 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
                 {"error": "provider_changed"},
                 status=status.HTTP_409_CONFLICT,
             )
+
+        if credential_target(credential) == ("openrouter", "openrouter/free"):
+            return Response({"error": "concrete_model_required"}, status=400)
 
         snapshot = {
             "pk": credential.pk,

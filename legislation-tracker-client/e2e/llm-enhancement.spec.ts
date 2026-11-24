@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 const API_BASE = process.env.E2E_API_URL ?? "http://127.0.0.1:18000";
 const sourceFirst = process.env.LLM_SOURCE_FIRST_ENABLED === "True";
 
-test("a user saves a key and completes a durable enhancement through the live API", async ({
+for (const billNumber of (sourceFirst ? ["HR SOURCE E2E"] : ["HR SOURCE E2E", "HR READER E2E"])) {
+test(`a user saves a key and reads a durable enhancement for ${billNumber}`, async ({
   page,
   request,
 }) => {
@@ -51,13 +52,11 @@ test("a user saves a key and completes a durable enhancement through the live AP
   );
 
   const response = await request.get(
-    `${API_BASE}/api/bills/?bill_number=${encodeURIComponent("HR SOURCE E2E")}`,
+    `${API_BASE}/api/bills/?bill_number=${encodeURIComponent(billNumber)}`,
   );
   expect(response.status()).toBe(200);
   const body = (await response.json()) as { results: Array<{ id: number; bill_number: string }> };
-  // This fixture has no reader contract: the fake provider exercises legacy or
-  // source-first output, not the separate schema-1.4 reader adapter.
-  const bill = body.results.find(item => item.bill_number === "HR SOURCE E2E");
+  const bill = body.results.find(item => item.bill_number === billNumber);
   expect(bill).toBeDefined();
   const billId = bill!.id;
 
@@ -67,40 +66,45 @@ test("a user saves a key and completes a durable enhancement through the live AP
   });
   expect(sessionResponse.status()).toBe(200);
   await page.context().addCookies((await request.storageState()).cookies);
+  const reader = billNumber === "HR READER E2E";
+  async function captureView(state: string) {
+    if (!reader) return;
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({width, height: 880});
+      await page.screenshot({fullPage: true, path: test.info().outputPath(`simulated-reader-${state}-${width}.png`)});
+    }
+    await page.setViewportSize({width: 1280, height: 880});
+  }
+  if (reader) {
+    await page.goto("/settings");
+    await expect(page.getByLabel("Provider", {exact: true})).toBeVisible();
+    await captureView("settings");
+  }
   await page.goto(`/bills/${billId}`);
-  await page.getByRole("button", { name: "Enhance with AI" }).click();
-  const confirmation = page.getByRole("dialog", { name: "Confirm AI enhancement" });
+  await expect(page.getByRole("button", { name: "Enhance", exact: true })).toBeEnabled();
+  await captureView("original");
+  await page.getByRole("button", { name: "Enhance", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Confirm enhancement" });
   await expect(confirmation).toContainText("estimated input tokens");
   await expect(confirmation).toContainText("provider may charge your account");
+  await captureView("estimate");
   if (sourceFirst) await expect(confirmation).toContainText(/Up to \d+ calls/);
   await page.getByRole("button", { name: "Confirm and enhance" }).click();
 
-  await expect(page.getByRole("status").filter({ hasText: /confirmed request/ })).toContainText(/pending|running/);
-  await page.getByText("View saved analysis", { exact: true }).click();
-  if (sourceFirst) {
-    await expect(page.getByText("The Secretary must award $100 in grants to rural hospitals.", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-    await page.getByText("Source text", { exact: true }).first().click();
-    await expect(page.getByRole("link", { name: "Read source" }).first()).toHaveAttribute("href", /\/documents\/\d+/);
-    const latest = await request.get(`${API_BASE}/api/bills/${billId}/enhancements/latest/`, { headers });
-    expect(latest.status()).toBe(200);
-    const persisted = await latest.json();
-    expect(persisted.result.schema_version).toBe("2.0-source-first");
-    expect(persisted.published_attempt_id).toBeTruthy();
-    expect(persisted.result.quality.semantic_review_status).toBe("unreviewed");
-    await page.reload();
-    await page.getByText("View saved analysis", { exact: true }).click();
-    await expect(page.getByText("The Secretary must award $100 in grants to rural hospitals.", { exact: true }).first()).toBeVisible();
-    return;
-  }
-  await expect(
-    page.getByText("The bill directs the Secretary to award grants to rural hospitals."),
-  ).toBeVisible({ timeout: 15_000 });
-  const overviewItem = page.getByRole("listitem").filter({
-    hasText: "The bill directs the Secretary to award grants to rural hospitals.",
-  });
-  await expect(overviewItem.getByText("Cited source", { exact: true })).toBeHidden();
-  await overviewItem.getByText("Read bill text", { exact: true }).click();
-  await expect(overviewItem.getByText("Cited source", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Queued…|Enhancing…|Enhanced/ }).first()).toBeVisible();
+  const enhanced = page.getByRole("button", { name: "Enhanced", exact: true });
+  await expect(enhanced).toBeEnabled({ timeout: 25_000 });
+  await enhanced.click();
+  await expect(enhanced).toHaveAttribute("aria-pressed", "true");
+  const summary = reader ? "Rural hospitals would receive $100 in grants." : sourceFirst
+    ? "The Secretary must award $100 in grants to rural hospitals."
+    : "The bill directs the Secretary to award grants to rural hospitals.";
+  await expect(page.getByRole("paragraph").filter({hasText: summary}).first()).toBeVisible();
+  await page.getByRole("button", { name: "Original", exact: true }).click();
+  await expect(enhanced).toHaveAttribute("aria-pressed", "false");
+  await page.reload();
+  await enhanced.click();
+  await expect(page.getByRole("paragraph").filter({hasText: summary}).first()).toBeVisible();
 
   const historyResponse = await request.get(
     `${API_BASE}/api/bills/${billId}/enhancements/`,
@@ -119,18 +123,27 @@ test("a user saves a key and completes a durable enhancement through the live AP
     { headers },
   );
   expect(detailResponse.status()).toBe(200);
-  expect(await detailResponse.json()).toEqual(
-    expect.objectContaining({
-      status: "succeeded",
-      result: expect.objectContaining({
-        overview: expect.arrayContaining([
-          expect.objectContaining({
-            cited_sources: expect.arrayContaining([
-              expect.objectContaining({ source_ref: "src_0001" }),
-            ]),
-          }),
-        ]),
-      }),
-    }),
-  );
+  const result = (await detailResponse.json()).result;
+  if (reader) {
+    expect(result.schema_version).toBe("1.4");
+    expect(result.source_review.financial_items[0].amount_display).toBe("$100");
+    await page.getByRole("tab", {name: "Money"}).click();
+    await expect(page.getByRole("tabpanel").filter({hasText: "$100"})).toBeVisible();
+    await captureView("money");
+    const citation = page.getByRole("tabpanel").getByRole("button", {name: /Source 1/}).first();
+    await citation.focus();
+    await page.keyboard.press("Enter");
+    const evidence = page.getByRole("dialog", {name: /Source 1/});
+    await expect(evidence.getByRole("link", {name: "Read bill text"})).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(citation).toBeFocused();
+  } else if (sourceFirst) {
+    expect(result.schema_version).toBe("2.0-source-first");
+    expect(result.quality.semantic_review_status).toBe("unreviewed");
+  } else {
+    expect(result.overview[0].cited_sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({source_ref: "src_0001"}),
+    ]));
+  }
 });
+}

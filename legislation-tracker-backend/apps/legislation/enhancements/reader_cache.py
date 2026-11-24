@@ -20,7 +20,7 @@ def remap(value, references):
     return value
 
 
-def call_identity(request):
+def call_identity(request, *, execution_version=3, adapter="existing"):
     references = {}
     envelope = copy.deepcopy(request.request_envelope)
     sources = copy.deepcopy(request.source_snapshot)
@@ -32,7 +32,11 @@ def call_identity(request):
             source.pop('start_char', None)
             source.pop('end_char', None)
         envelope, sources = remap(envelope, references), remap(sources, references)
-    key = {'validator_version': VALIDATOR_VERSION, 'execution_version': 2, 'envelope': envelope,
+    # Failed reservations from the old constrained prose decoder must not block
+    # dispatch of the corrected transport.
+    key = {'validator_version': VALIDATOR_VERSION, 'execution_version': execution_version, 'envelope': envelope,
            'sources': sources, 'model': request.requested_model,
            'provider': request.provider, 'reasoning': request.reasoning_effort}
+    if adapter != "existing":
+        key["adapter"] = adapter
     return hashlib.sha256(canonical_json_bytes(key)).hexdigest(), references

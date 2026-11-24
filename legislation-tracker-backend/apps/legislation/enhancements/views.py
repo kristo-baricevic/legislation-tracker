@@ -11,7 +11,7 @@ from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from apps.accounts.llm_credentials import llm_feature_available
-from apps.accounts.models import LLMCredential
+from apps.accounts.models import selected_credentials
 from apps.legislation.models import Bill, BillEnhancement, BillEnhancementAttempt
 
 from .prompts import TRUNCATED_COVERAGE_NOTICE
@@ -20,12 +20,13 @@ from .service import (
     EnhancementServiceError,
     create_enhancement_attempt,
     credential_is_current,
+    confirmation_fingerprint,
     retry_enhancement_attempt,
     reusable_publication,
 )
 from .source_packet import PreflightUnavailable, build_enhancement_preflight
 from .shared import shared_enhancement, source_compatible
-from .model_selection import credential_target, planning_for
+from .model_selection import credential_target, planning_for, reasoning_effort
 
 
 class PrivateEnhancementMixin:
@@ -74,7 +75,7 @@ def _is_stale(enhancement, bill) -> bool:
         and enhancement.prompt_version == READER_PROMPT_VERSION
         and enhancement.provider == settings.LLM_ENHANCEMENT_PROVIDER
         and enhancement.requested_model == settings.LLM_ENHANCEMENT_MODEL
-        and enhancement.reasoning_effort == settings.LLM_ENHANCEMENT_REASONING_EFFORT
+        and enhancement.reasoning_effort == reasoning_effort()
         and enhancement.source_manifest_json.get("execution_settings") == reader_execution_settings()
     )
 
@@ -110,9 +111,11 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             return Response({**base, "unavailable_reason": "feature_unavailable"})
         if str(bill.jurisdiction or "").strip().lower() != "federal":
             return Response({**base, "unavailable_reason": "unsupported_jurisdiction"})
-        credential = LLMCredential.objects.filter(user=request.user).first()
+        credential = selected_credentials(request.user).first()
         base["credential_revision"] = credential.revision if credential else None
         base["requested_model"] = credential_target(credential)[1]
+        if credential_target(credential) == ("openrouter", "openrouter/free"):
+            return Response({**base, "unavailable_reason": "concrete_model_required"})
         if not credential_is_current(credential):
             if credential is None:
                 reason = "credential_not_configured"
@@ -139,9 +142,14 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
         if reused:
             with planning_for(credential_target(credential)):
                 preflight = build_enhancement_preflight(bill, reuse_result=reused)
+        from .model_capabilities import resolve_capabilities
+        from .openrouter_catalog import zero_price
+        capabilities = resolve_capabilities(preflight.provider, preflight.requested_model)
         return Response(
             {
                 **base,
+                "cost_status": "free" if capabilities.pricing and zero_price(capabilities.pricing) else "unknown",
+                "estimator": "Conservative UTF-8 byte estimate",
                 "can_enhance": True,
                 "provider": preflight.provider,
                 "requested_model": preflight.requested_model,
@@ -150,7 +158,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "output_schema_version": preflight.output_schema_version,
                 "source_packet_version": preflight.source_packet_version,
                 "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": preflight.request_fingerprint,
+                "request_fingerprint": confirmation_fingerprint(preflight, credential),
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": max(
@@ -242,6 +250,15 @@ class BillEnhancementDetailView(PrivateEnhancementMixin, APIView):
         payload["source_compatible"] = _source_compatible(enhancement, bill)
         payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(payload)
+
+
+class BillEnhancementDiagnosticView(PrivateEnhancementMixin, APIView):
+    def get(self, request, bill_id, step_id):
+        from django.utils import timezone
+        from apps.legislation.models import BillEnhancementDiagnostic
+        artifact = get_object_or_404(BillEnhancementDiagnostic, owner=request.user, step_id=step_id,
+                                     step__attempt__enhancement__bill_id=bill_id, expires_at__gt=timezone.now())
+        return Response(artifact.payload)
 
 
 class BillEnhancementRetryView(PrivateEnhancementMixin, APIView):

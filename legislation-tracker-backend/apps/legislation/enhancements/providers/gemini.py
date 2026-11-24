@@ -352,6 +352,9 @@ class GeminiEnhancementProvider:
             if isinstance(fallback, str):
                 output_text = fallback
 
+        from ..private_diagnostics import capture_visible
+        capture_visible([{"instructions": instructions, "input": input_payload}], wire_schema,
+                        output_text, finish_reason_str, response_id, resolved_model, api_key)
         return harness.parse_json_output(
             output_text,
             usage=usage,

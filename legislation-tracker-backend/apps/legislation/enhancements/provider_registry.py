@@ -34,7 +34,16 @@ def provider_is_registered(name: str) -> bool:
     return _provider_class(name) is not None
 
 
-def get_provider(name: str):
+def adapter_for(provider):
+    return settings.LLM_OPENROUTER_ADAPTER if provider == "openrouter" else "existing"
+
+
+def get_provider(name: str, *, adapter="existing"):
+    if name == "openrouter" and adapter == "langchain":
+        from .providers.langchain_adapter import LangChainOpenRouterProvider
+        return LangChainOpenRouterProvider()
+    if adapter != "existing":
+        raise ValueError("Unsupported enhancement adapter")
     provider_class = _provider_class(name)
     if provider_class is None:
         raise ValueError("Configured LLM enhancement provider is unavailable")

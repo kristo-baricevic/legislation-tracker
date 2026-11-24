@@ -3,7 +3,7 @@ import copy
 import hashlib
 import re
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 from .diagnostics import output_error
 from .reader_citations import citation_passages
@@ -252,7 +252,16 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
                 'anyOf': [items, {'enum': list(retained_financial)}]}
         if 'policy_changes' in schema['properties']:
             schema['properties']['policy_changes']['items']['properties']['source_quotes'].pop('maxItems', None)
-    Draft202012Validator(schema).validate(output)
+    try:
+        Draft202012Validator(schema).validate(output)
+    except ValidationError as error:
+        path = list(error.absolute_path)
+        # Classify prose failures for the bounded correction pass, just like
+        # validate_policy_copy below. Shape and citation errors stay strict.
+        if (len(path) == 3 and path[0] == 'policy_changes' and path[2] == 'text'
+                and error.validator in {'pattern', 'minLength', 'maxLength'}):
+            raise output_error('reader_policy_wording', path) from error
+        raise
     financial_citations = {f"{q['source_ref']}:{q['quote_id']}"
         for item in output['financial_items'] for q in item['source_quotes']}
     if any(value == 'financial' and key not in financial_citations

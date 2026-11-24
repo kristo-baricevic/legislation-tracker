@@ -161,6 +161,10 @@ LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
 )
 # Entire reader plan is confirmed before any calls; never silently truncate it.
 LLM_READER_MAX_OUTPUT_TOKENS = env.int("LLM_READER_MAX_OUTPUT_TOKENS", default=24000)
+LLM_READER_OWNED_TOKEN_TARGET = env.int("LLM_READER_OWNED_TOKEN_TARGET", default=0)
+LLM_DIAGNOSTIC_RETENTION_DAYS = env.int("LLM_DIAGNOSTIC_RETENTION_DAYS", default=0)
+LLM_MULTI_PROVIDER_WRITES_ENABLED = env.bool("LLM_MULTI_PROVIDER_WRITES_ENABLED", default=False)
+LLM_OPENROUTER_ADAPTER = env.str("LLM_OPENROUTER_ADAPTER", default="existing")
 LLM_READER_MODEL_CAPACITIES = env.json("LLM_READER_MODEL_CAPACITIES", default={})
 # Zero derives a finite, confirmable budget from the complete source inventory.
 # A positive value remains an explicit operator spending ceiling.

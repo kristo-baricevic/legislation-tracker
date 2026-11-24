@@ -298,6 +298,9 @@ class AnthropicEnhancementProvider:
             if not isinstance(output_text, str):
                 output_text = "" if output_text is None else str(output_text)
 
+        from ..private_diagnostics import capture_visible
+        capture_visible([{"instructions": instructions, "input": input_payload}], schema,
+                        output_text, stop_reason, response_id, resolved_model, api_key)
         return harness.parse_json_output(
             output_text,
             usage=usage,

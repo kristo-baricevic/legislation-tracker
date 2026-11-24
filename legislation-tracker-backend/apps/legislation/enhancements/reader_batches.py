@@ -6,7 +6,7 @@ from dataclasses import replace
 from functools import lru_cache
 
 from django.conf import settings
-from .model_selection import target as planning_target
+from .model_selection import target as planning_target, reasoning_effort
 from jsonschema import ValidationError
 
 from .reader_targets import READER_VERSION, build_reader_targets, reader_contract, snapshot_targets, validate_reader_explanations
@@ -68,8 +68,9 @@ Do not claim the guide is exhaustive when the source packet is truncated.
 
 def reader_execution_settings():
     from .reader_cache import VALIDATOR_VERSION
-    return {"policy_grouping_version": 7, "reader_execution_version": 7,
+    return {"policy_grouping_version": 7, "reader_execution_version": 9,
             "model_capacities": getattr(settings, 'LLM_READER_MODEL_CAPACITIES', {}),
+            **({"owned_token_target": settings.LLM_READER_OWNED_TOKEN_TARGET} if settings.LLM_READER_OWNED_TOKEN_TARGET else {}),
             "validator_version": VALIDATOR_VERSION, **{name: getattr(settings, name) for name in (
         "LLM_READER_MAX_OUTPUT_TOKENS", "LLM_READER_MAX_CALLS",
         "LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS", "LLM_ENHANCEMENT_MAX_REQUEST_BYTES",
@@ -91,7 +92,7 @@ def reader_input_guard(bill):
             list(contract.evidence_spans.order_by('pk').values('field_path', 'start_char', 'end_char', 'quoted_text'))] if contract else None,
         'settings': reader_execution_settings(), 'prompt': READER_PROMPT_VERSION,
         'provider': planning_target()[0], 'model': planning_target()[1],
-        'reasoning': settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        'reasoning': reasoning_effort(),
         'source_first': settings.LLM_SOURCE_FIRST_ENABLED,
     })).hexdigest()
 
@@ -272,6 +273,13 @@ def build_reader_preflight(document, *, xml_sections=()):
     from .reader_discovery import discovery_sources, discovery_schema, INSTRUCTIONS as DISCOVERY_INSTRUCTIONS, POLICY_INSTRUCTIONS
     scans = ([{**s, "source_ref": f"src_{i:04d}"} for i, s in enumerate(xml_scans, next_ref)]
              if xml_sections else discovery_sources(text, next_ref))
+    if settings.LLM_READER_OWNED_TOKEN_TARGET:
+        from .reader_chunking import planned_sources
+        scans = planned_sources(document, text, next_ref, settings.LLM_READER_OWNED_TOKEN_TARGET, xml_sections)
+        missing = [s["source_ref"] for s in scans if s["omitted_dependency_ranges"]]
+        if missing:
+            raise PreflightUnavailable("Required legal context exceeds the selected model budget",
+                                       reason="request_too_large", coverage={"unresolved_source_refs": missing})
     if next_ref + len(scans) > 10000:
         raise PreflightUnavailable("Full review exceeds source capacity", reason="request_too_large")
     for source in scans:
@@ -290,8 +298,7 @@ def build_reader_preflight(document, *, xml_sections=()):
         # as uncitable prose caused duplicate rules with unrelated citations.
         # Oversized sections retain their own context, not neighboring sections.
         if source.get('section_context'):
-            if xml_sections:
-                wire.pop("section_context", None)
+            wire.pop("section_context", None)
             e['source_packet']['section_context'] = source['section_context']
         if not _within_limits(canonical_json_bytes(e)):
             raise PreflightUnavailable("Full-source review request exceeds limits", reason="request_too_large")
@@ -343,7 +350,7 @@ def build_reader_preflight(document, *, xml_sections=()):
         manifest["source_kind"] = "xml_full_review"
     p = EnhancementPreflight(
         provider=planning_target()[0], requested_model=planning_target()[1],
-        reasoning_effort=settings.LLM_ENHANCEMENT_REASONING_EFFORT,
+        reasoning_effort=reasoning_effort(),
         prompt_version=READER_PROMPT_VERSION, output_schema_version=READER_VERSION, source_packet_version=READER_PROMPT_VERSION,
         source_fingerprint=hashlib.sha256(canonical_json_bytes({"identity": identity, "sources": snapshot})).hexdigest(),
         request_fingerprint=hashlib.sha256(request_bytes).hexdigest(), source_manifest=manifest,
@@ -425,6 +432,7 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                     provider.enhance_bill(api_key=api_key, request=request,
                         timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS))
             except ProviderError as error:
+                error.call_usage = getattr(error, "call_usage", error.usage)
                 error.usage = combine_usage(combined.usage, error.usage)
                 raise
             combined = replace(combined, usage=combine_usage(combined.usage, response.usage),
@@ -501,7 +509,7 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                     request.request_envelope.get('source_review') and request.request_envelope.get('policy_retry')
                     and error.validation_code in {'reader_policy_wording', 'reader_coverage_incomplete', 'reader_amount_conflict', 'reader_target_invalid'})):
                 from .reader_sizing import split_reader_request, recover_output_limit
-                children = recover_output_limit(request) if error.validation_code == 'provider_output_limit' else split_reader_request(request)
+                children = recover_output_limit(request, usage=getattr(error, 'call_usage', error.usage)) if error.validation_code == 'provider_output_limit' else split_reader_request(request)
                 if children and (plan or calls + len(queue) + len(children) <= maximum_calls):
                     combined = replace(combined, usage=error.usage)
                     queue[0:0] = (plan.expand(node_key, index, children, reason=error.validation_code)

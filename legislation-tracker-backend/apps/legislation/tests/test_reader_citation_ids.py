@@ -1,4 +1,6 @@
 import copy
+import json
+from pathlib import Path
 
 import pytest
 from jsonschema import ValidationError
@@ -7,6 +9,19 @@ from jsonschema import Draft202012Validator
 from apps.legislation.enhancements.reader_citations import READER_ID_SCHEMA, citation_passages, resolve_reader_citations
 from apps.legislation.tests.test_enhancement_reader_targets import packet
 from apps.legislation.tests.test_enhancement_service import source_bill, enhancement_owner, enhancement_settings
+
+
+def test_s4387_real_response_cannot_publish_or_reuse_period_only_text():
+    from apps.legislation.enhancements.reader_citations import recover_reader_items
+    fixture = json.loads((Path(__file__).parent / 'fixtures/s4387_period_only_response.json').read_text())
+    target, source, output = fixture['target'], fixture['source'], fixture['output']
+    with pytest.raises(ValidationError):
+        resolve_reader_citations(output, [target], [source])
+    recovered = recover_reader_items(output, [target], [source])
+    item = recovered['explanations'][target['target_id']]
+    assert item['status'] == 'unresolved'
+    assert item['text'] is None
+    assert item['source_quotes'] == []
 
 
 def test_summary_rejects_internal_citation_ids_in_reader_prose():

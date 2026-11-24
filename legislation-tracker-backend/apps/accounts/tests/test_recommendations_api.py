@@ -115,9 +115,15 @@ def test_dashboard_rows_prefer_current_shared_summary_then_original():
     candidate.save()
     doc = BillDocument.objects.create(bill=candidate, version_label="Introduced", is_active_version=True, raw_text="Sample text")
     doc.refresh_from_db()
+    import hashlib
+    snapshot = {"source_ref": "src_0001", "quoted_text": "Sample text",
+                "text_sha256": hashlib.sha256(b"Sample text").hexdigest()}
     row = BillEnhancement.objects.create(bill=candidate, status="succeeded", output_schema_version="1.3",
+        source_snapshot_json=[snapshot],
         source_manifest_json={"document_id": doc.pk, "document_content_hash": doc.reader_text_hash},
-        result_json={"overview": [{"text": "Enhanced brief."}]}, result_completeness="complete")
+        result_json={"schema_version": "1.3", "overview": [{"text": "Enhanced brief.", "source_refs": ["src_0001"],
+                     "source_quotes": [{"source_ref": "src_0001", "quote": "Sample text"}]}],
+                     "key_impacts": [], "obligations": [], "funding_and_timing": [], "uncertain_language": [], "glossary": []}, result_completeness="complete")
     assert api.get(PATH).json()["results"][0]["bill"]["card_summary"] == "Enhanced brief."
     TrackedBill.objects.create(user=user, bill=candidate)
     assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Enhanced brief."
@@ -127,7 +133,7 @@ def test_dashboard_rows_prefer_current_shared_summary_then_original():
     assert card["enhancement_id"] == row.pk
     row.result_json = {"schema_version": "2.0-source-first", "synopsis": {"text": "Source-first brief."}}
     row.save()
-    assert api.get("/api/bills/").json()["results"][0]["card_summary"] == "Source-first brief."
+    assert api.get("/api/bills/").json()["results"][0]["card_summary"] == "Original brief."
     row.source_manifest_json = {"document_id": doc.pk, "document_content_hash": "outdated"}
     row.save()
     assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Original brief."

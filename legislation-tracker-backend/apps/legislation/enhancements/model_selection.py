@@ -16,10 +16,30 @@ def target():
     return _target.get() or default_target()
 
 
+def reasoning_effort():
+    """Keep default OpenRouter reasoning bounded and visible in estimates.
+
+    The legacy `none` meant provider default, not disabled. That left free
+    reasoning models consuming the complete output allowance without an answer.
+    Explicit configured efforts remain unchanged.
+    """
+    effort = settings.LLM_ENHANCEMENT_REASONING_EFFORT
+    return 'low' if target()[0] == 'openrouter' and effort == 'none' else effort
+
+
 def catalog():
     pairs = dict.fromkeys([default_target(), ("anthropic", "claude-haiku-5-5"),
                            ("gemini", "gemini-4-hydrogen"), ("openrouter", "openrouter/free")])
-    return [{"provider": p, "model": m, "free": (p, m) == ("openrouter", "openrouter/free")}
+    if default_target()[0] != "openai":
+        pairs[("openai", "gpt-6-luna")] = None
+    for pair in settings.LLM_READER_MODEL_CAPACITIES:
+        provider, separator, model = pair.partition("/")
+        if separator and model and provider in {"openai", "anthropic", "gemini"}:
+            pairs[(provider, model)] = None
+    from .openrouter_catalog import entries
+    metadata = entries()
+    pairs.update(dict.fromkeys(("openrouter", model) for model in metadata))
+    return [metadata[m] if p == "openrouter" and m in metadata else {"provider": p, "model": m, "free": False}
             for p, m in pairs]
 
 
@@ -36,8 +56,10 @@ def selectable(pair):
 
 @contextmanager
 def planning_for(pair):
+    from .openrouter_catalog import catalog_scope
     token = _target.set(pair)
     try:
-        yield
+        with catalog_scope():
+            yield
     finally:
         _target.reset(token)

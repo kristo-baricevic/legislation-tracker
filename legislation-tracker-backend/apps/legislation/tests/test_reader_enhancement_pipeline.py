@@ -120,7 +120,7 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(source_bill, enh
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "missing", "revoked", "changed", "yield", "policy_repair_yield", "policy_repair_period", "policy_repair_period_yield", "split_yield", "split_deep_yield", "summary_repair", "summary_repair_yield", "summary_bad"])
+@pytest.mark.parametrize("mode", ["success", "split", "policy_repair", "missing", "revoked", "changed", "yield", "policy_repair_yield", "policy_repair_period", "policy_repair_period_yield", "policy_repair_pattern", "policy_repair_pattern_yield", "split_yield", "split_deep_yield", "summary_repair", "summary_repair_yield", "summary_bad"])
 def test_reader_pipeline_publishes_only_complete_current_targets(
     source_bill, enhancement_owner, enhancement_settings, monkeypatch, mode
 ):
@@ -134,8 +134,9 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
                 pytest.fail('Grouping must not rewrite accepted explanations')
             if request.request_envelope.get('source_review'):
                 ref = request.source_snapshot[0]['source_ref']
+                bad_copy = '.' if 'period' in mode else ('Missing sentence ending' if 'pattern' in mode else 'Cite p0001 for the report.')
                 return ProviderResult({'financial_items': [], 'additional_changes': [], 'money_checks': {},
-                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': ('.' if 'period' in mode else 'Cite p0001 for the report.') if mode.startswith('policy_repair') and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
+                    'policy_changes': [{'title': 'Report on the program' if i == 0 else 'Report deadline', 'text': bad_copy if mode.startswith('policy_repair') and not request.request_envelope.get('policy_retry') else 'The government must publish a report within 90 days.',
                         'source_quotes': [{'source_ref': ref, 'quote_id': 'p0001'}]} for i in range(1)], 'policy_checks': {ref + ':p0001': 'explained'}},
                     ProviderUsage(10, 5, 15), 'review-response', 'test')
             targets = snapshot_targets(request.source_snapshot)
@@ -179,7 +180,7 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
                     break
     a.refresh_from_db()
     a.enhancement.refresh_from_db()
-    if mode in {"success", "split", "policy_repair", "yield", "policy_repair_yield", "policy_repair_period", "policy_repair_period_yield", "split_yield", "split_deep_yield", "summary_repair", "summary_repair_yield"}:
+    if mode.startswith('policy_repair') or mode in {"success", "split", "yield", "split_yield", "split_deep_yield", "summary_repair", "summary_repair_yield"}:
         assert outcome["status"] == "succeeded"
         expected_calls = 9 if mode == 'split_deep_yield' else 5 if mode.startswith('split') else 4 if mode.startswith(('policy_repair', 'summary_repair')) else 3
         assert len(requests) == expected_calls
