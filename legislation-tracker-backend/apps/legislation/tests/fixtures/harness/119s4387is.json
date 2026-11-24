@@ -1,0 +1,43 @@
+{
+  "document": 18636,
+  "bill": 15778,
+  "number": "S 4387",
+  "title": "Protect Moms From Domestic Violence Act",
+  "version": "Introduced in Senate",
+  "source": "https://www.congress.gov/119/bills/s4387/BILLS-119s4387is.xml",
+  "text_sha256": "fa5ae6df0c9fb3e164e9772e830e81c7b07483dba0e32aaba705928144c11e3b",
+  "xml_sha256": "e1ccfb376d9dfcc96c71064b2067b3d2b9117c9ec88a298d675f3475742bf903",
+  "chars": 7796,
+  "evidence": [
+    {
+      "label": "annual authorization, FY2027–2029",
+      "start": 5684,
+      "end": 5842,
+      "quote": "(e) Authorization of appropriations.—To carry out this section, there is authorized to be appropriated $15,000,000 for each of fiscal years 2027 through 2029."
+    },
+    {
+      "label": "reporting deadline and recurrence",
+      "start": 2579,
+      "end": 2877,
+      "quote": "(b) Report to Congress on best practices.—Not later than 3 years after the date of enactment of this Act, and every 3 years thereafter, the Secretary of Health and Services shall report to Congress on best practices for developing and implementing innovative approaches described in subsection (a)."
+    },
+    {
+      "label": "guidance deadline",
+      "start": 5860,
+      "end": 6097,
+      "quote": "Not later than 2 years after the date of enactment of this Act, the Secretary of Health and Human Services shall publish and disseminate to States, Indian Tribes, territories, health care providers, and managed care entities guidance on—"
+    },
+    {
+      "label": "Tribal eligibility",
+      "start": 3552,
+      "end": 3670,
+      "quote": "(4) a Tribal epidemiology center described in section 214 of the Indian Health Care Improvement Act (25 U.S.C. 1621m);"
+    },
+    {
+      "label": "grant priorities",
+      "start": 4404,
+      "end": 4563,
+      "quote": "(d) Priority in awarding grants.—In awarding grants under this section, the Secretary of Health and Human Services shall give priority to applicants proposing—"
+    }
+  ]
+}

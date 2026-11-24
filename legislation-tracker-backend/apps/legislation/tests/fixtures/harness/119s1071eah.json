@@ -1,0 +1,14 @@
+{
+  "document": 18343,
+  "bill": 15571,
+  "number": "S 1071",
+  "title": "National Defense Authorization Act for Fiscal Year 2026",
+  "version": "Engrossed Amendment House",
+  "source": "https://www.congress.gov/119/bills/s1071/BILLS-119s1071eah.xml",
+  "text_sha256": "7e9a1eb347efd5094b047ad8f797aba9e8c9e1929b43bf946520d19d48b89385",
+  "xml_sha256": "69702b764640a8bd86dbc23717cd3161b091668792d6b066a55a42d8e3a64299",
+  "chars": 3370908,
+  "inventory": "xml_inventory/s1071_eah.json",
+  "sample": "xml_inventory/s1071_eah_excerpt.xml",
+  "evidence": []
+}
