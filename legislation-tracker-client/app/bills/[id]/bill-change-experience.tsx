@@ -1,4 +1,5 @@
 "use client";
+import CardTooltip from "@/app/components/CardTooltip";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 import { useEffect, useState } from "react";
@@ -44,8 +45,8 @@ function mergeEvents(
   );
   return [...byId.values()].sort(
     (left, right) =>
-      Date.parse(left.occurred_at) - Date.parse(right.occurred_at) ||
-      left.id - right.id,
+      Date.parse(right.occurred_at) - Date.parse(left.occurred_at) ||
+      right.id - left.id,
   );
 }
 
@@ -88,7 +89,7 @@ export default function BillChangeExperience({
     setError(null);
     getBillChanges(billId)
       .then((page) => {
-        if (!cancelled) setChanges(page);
+        if (!cancelled) setChanges({ ...page, results: mergeEvents([], page.results) });
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -140,7 +141,7 @@ export default function BillChangeExperience({
           : { afterCursor: cursor },
       );
       setChanges((current) => {
-        if (!current) return page;
+        if (!current) return { ...page, results: mergeEvents([], page.results) };
         const completedInitialHistory =
           direction === "older" &&
           current.initial_window_truncated &&
@@ -213,16 +214,30 @@ export default function BillChangeExperience({
       )}
       {changes &&
         (changes.results.length ? (
-          <ol className="divide-y divide-slate-300 dark:divide-green-900/70">
-            {changes.results.map((change) => (
-              <li key={change.id} className="py-3">
-                <p className="font-semibold">{change.summary}</p>
-                {readableChangeDetail(change) && <p className="mt-1 text-sm text-slate-800 dark:text-green-200">{readableChangeDetail(change)}</p>}
-                <p className="text-sm text-slate-600 dark:text-green-600">
-                  {new Date(change.occurred_at).toLocaleString()}
-                </p>
-              </li>
-            ))}
+          <ol aria-label="Bill actions" className="ml-1">
+            {changes.results.map((change) => {
+              const date = new Date(change.occurred_at);
+              const metadata = [
+                date.toLocaleString(),
+                change.type.replaceAll("_", " "),
+                readableChangeDetail(change),
+                change.document_id != null && `Document #${change.document_id}`,
+                change.contract_id != null && `Contract #${change.contract_id}`,
+              ].filter(Boolean).join("\n");
+              return (
+                <li key={change.id} className="relative pb-4 pl-5 last:pb-0 before:absolute before:top-2 before:-bottom-2 before:left-0 before:border-l before:border-slate-300 last:before:hidden dark:before:border-green-800">
+                  <span aria-hidden="true" className="absolute top-1.5 left-0 size-2 -translate-x-[3px] rounded-full bg-slate-500 dark:bg-green-400" />
+                  <CardTooltip text={metadata}>
+                    <span tabIndex={0} className="flex cursor-help flex-wrap items-baseline gap-x-3 rounded-sm focus-visible:outline-2">
+                      <span className="font-semibold">{change.summary}</span>
+                      <time dateTime={change.occurred_at} className="whitespace-nowrap text-sm text-slate-600 dark:text-green-500">
+                        {date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      </time>
+                    </span>
+                  </CardTooltip>
+                </li>
+              );
+            })}
           </ol>
         ) : (
           <p className="text-sm text-slate-600 dark:text-green-600">

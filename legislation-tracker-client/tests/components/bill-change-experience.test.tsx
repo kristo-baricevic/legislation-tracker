@@ -45,7 +45,9 @@ describe("BillChangeExperience", () => {
     expect(screen.getByRole("button", { name: "Compare versions" }).compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(history);
     expect(await screen.findByText("Bill status changed")).toBeVisible();
-    expect(screen.getByText("Introduced → Reported")).toBeVisible();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    await user.hover(screen.getByText("Bill status changed"));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Introduced → Reported");
     expect(screen.queryByText(/\"status\"/)).not.toBeInTheDocument();
     expect(acknowledgeBillChanges).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Mark 1 as seen" }));
@@ -113,6 +115,7 @@ describe("BillChangeExperience", () => {
     await user.click(screen.getByText("Bill history"));
     await user.click(await screen.findByRole("button", { name: "Load older changes" }));
     expect(await screen.findByText("Old change")).toBeVisible();
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("New change");
     await user.click(screen.getByRole("button", { name: "Mark 3 as seen" }));
     expect(acknowledgeBillChanges).toHaveBeenCalledWith(10, "head");
     expect(await screen.findByRole("button", { name: "Mark 2 as seen" })).toBeVisible();
@@ -150,6 +153,7 @@ describe("BillChangeExperience", () => {
 
     expect(getBillChanges).toHaveBeenLastCalledWith(10, { afterCursor: "shown-cursor" });
     expect(await screen.findByText("Newer change")).toBeVisible();
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Newer change");
   });
 
   it("compares selected bill versions as readable before/after passages and closes", async () => {
