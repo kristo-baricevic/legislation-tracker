@@ -206,8 +206,9 @@ def test_source_first_reuse_rechecks_stored_xml_without_realigning(
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("rerun", [False, True])
 def test_partial_retry_promotes_without_regenerating_accepted_units(
-    enhancement_owner, enhancement_settings, source_bill, monkeypatch
+    enhancement_owner, enhancement_settings, source_bill, monkeypatch, rerun
 ):
     from apps.legislation.enhancements.service import (
         retry_allowed,
@@ -288,12 +289,31 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
         doc.save()
         first = _pending_attempt(enhancement_owner, source_bill)
         monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
+        if rerun:
+            from rest_framework.test import APIClient
+            client = APIClient()
+            client.force_authenticate(enhancement_owner)
+            url = f"/api/bills/{source_bill.pk}/enhancements/"
+            keys = ("source_fingerprint", "request_fingerprint", "credential_revision", "rerun_after")
+            phase[0] = 1
+            run_bill_enhancement_attempt(first.pk, first.dispatch_token)
+            published = first.enhancement_id
+            estimate = client.get(url + "estimate/?rerun=1").data
+            created = client.post(url, {k: estimate[k] for k in keys}, format="json")
+            assert created.status_code == 202
+            first = BillEnhancementAttempt.objects.get(enhancement_id=created.data["id"])
+            phase[0] = 0
         run_bill_enhancement_attempt(first.pk, first.dispatch_token)
         first.refresh_from_db()
         enhancement = first.enhancement
         assert enhancement.result_completeness == "partial"
         assert retry_allowed(first)
         prior = enhancement.result_json
+        if rerun:
+            latest = client.get(url + "latest/").data
+            assert (latest["id"], latest["active_reader"]["id"]) == (enhancement.pk, published)
+            estimate = client.get(url + "estimate/").data
+            assert estimate["matching_enhancement"]["id"] == enhancement.pk
         preflight = build_enhancement_preflight(source_bill, reuse_result=prior)
         second = retry_enhancement_attempt(
             user=enhancement_owner,
@@ -301,10 +321,14 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
             enhancement_id=enhancement.pk,
             confirmed={
                 "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": confirmation_fingerprint(preflight, first.credential),
+                "request_fingerprint": confirmation_fingerprint(preflight, first.credential, enhancement.rerun_after),
+                **({"rerun_after": published} if rerun else {}),
                 "credential_revision": first.credential_revision,
             },
         ).attempt
+        if rerun:
+            assert estimate["request_fingerprint"] == confirmation_fingerprint(preflight, first.credential, published)
+            assert second.reused_result_json == prior
         from apps.legislation.tasks import _worker_preflight
         prepared, _, failure = _worker_preflight(second)
         assert failure is None

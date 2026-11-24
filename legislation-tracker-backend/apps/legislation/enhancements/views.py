@@ -98,7 +98,7 @@ def _active_reader_payload(user, bill):
 def resumable_rerun(user, bill):
     latest = BillEnhancement.objects.filter(bill=bill).order_by("-pk").first()
     if (latest and latest.rerun_after and latest.user_id == user.pk
-            and latest.status in {"paused", "failed", "outcome_unknown"}
+            and latest.status not in {"pending", "running"}
             and retry_allowed(latest.attempts.order_by("-sequence").first()) and source_compatible(latest, bill)):
         return latest
     return None
@@ -158,7 +158,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
         ).order_by("-pk").first()
         preflight = None
         reuse_publication = "rerun_after" not in base
-        if paused and not rerun:
+        if paused and not rerun and (not continuation or paused.enhancement_id == continuation.pk):
             with planning_for(pair, owned_target=saved_owned_token_target(paused)):
                 try:
                     candidate = build_enhancement_preflight(bill, reuse_publication=reuse_publication)
@@ -173,15 +173,28 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                     preflight = build_enhancement_preflight(bill, reuse_publication=reuse_publication)
         except PreflightUnavailable as exc:
             return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
-        matching = continuation or (
-            BillEnhancement.objects.filter(
+        if continuation and (pair != (continuation.provider, continuation.requested_model)
+                or preflight.request_fingerprint != continuation.request_fingerprint):
+            # The estimate describes a different job. Confirm a new generation
+            # against the latest row rather than retrying the previous model.
+            if shared and shared.status == "succeeded":
+                base["rerun_after"] = continuation.pk
+                rerun = True
+            else:
+                base.pop("rerun_after")
+                try:
+                    with planning_for(pair):
+                        preflight = build_enhancement_preflight(bill)
+                except PreflightUnavailable as exc:
+                    return Response({**base, "unavailable_reason": exc.reason, "source_coverage": exc.coverage})
+            continuation = None
+        matching = continuation
+        if not rerun and matching is None:
+            matching = BillEnhancement.objects.filter(
                 user=request.user,
                 bill=bill,
                 request_fingerprint=preflight.request_fingerprint,
-            )
-            .order_by("-created_at")
-            .first()
-        )
+            ).order_by("-created_at").first()
         matching_payload = enhancement_payload(matching, detail=False) if matching else None
         latest = matching_payload.get("latest_attempt") if matching_payload else None
         if latest and latest["status"] == "outcome_unknown" and not latest["retry_allowed"]:

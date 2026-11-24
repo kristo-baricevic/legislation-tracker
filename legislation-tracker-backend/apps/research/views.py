@@ -160,14 +160,20 @@ class ConfirmCandidateView(APIView):
         choice = next((row for row in choices if row["candidate_id"] == request.data.get("candidate_id")), None)
         if not choice:
             return Response({"detail": "Choose one of the suggested FEC records."}, status=400)
+        if RepresentativeCandidate.objects.filter(representative=rep, candidate_id=choice["candidate_id"], revoked=True).exists():
+            return Response({"detail": "This mapping requires staff review."}, status=409)
         candidate, _ = CandidateIdentity.objects.update_or_create(fec_id=choice["candidate_id"],
             defaults={key: choice[key] for key in ("name", "state", "office")})
         mapping, created = RepresentativeCandidate.objects.get_or_create(representative=rep, candidate=candidate,
             defaults={"verified": True, "periods": [run.period], "evidence_url": f"https://www.fec.gov/data/candidate/{candidate.pk}/"})
         if not created:
             if not mapping.verified or not mapping.evidence_url:
-                return Response({"detail": "This mapping requires staff review."}, status=409)
-            if run.period not in mapping.periods:
+                # Fresh confirmation covers this election cycle only.
+                mapping.verified = True
+                mapping.periods = [run.period]
+                mapping.evidence_url = f"https://www.fec.gov/data/candidate/{candidate.pk}/?cycle={run.period}"
+                mapping.save(update_fields=["verified", "periods", "evidence_url"])
+            elif run.period not in mapping.periods:
                 mapping.periods = sorted({*mapping.periods, run.period})
                 mapping.save(update_fields=["periods"])
         ConfirmedCandidate.objects.update_or_create(representative=rep, period=run.period, defaults=dict(candidate=candidate,

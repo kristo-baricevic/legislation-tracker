@@ -350,7 +350,8 @@ def retry_enhancement_attempt(
                 preflight = build_enhancement_preflight(locked_bill, reuse_result=reused_result)
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
-        if enhancement.request_fingerprint != base_fingerprint:
+        if (enhancement.request_fingerprint != base_fingerprint
+                or (enhancement.provider, enhancement.requested_model) != (preflight.provider, preflight.requested_model)):
             raise EnhancementServiceError("preflight_changed")
 
         if latest is not None and latest.status in ACTIVE_STATUSES:

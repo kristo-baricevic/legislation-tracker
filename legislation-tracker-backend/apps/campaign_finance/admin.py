@@ -8,6 +8,10 @@ class RepresentativeCandidateAdmin(admin.ModelAdmin):
     list_filter = ["verified"]
     search_fields = ["representative__name", "candidate__fec_id"]
 
+    def save_model(self, request, obj, form, change):
+        obj.revoked = not (obj.verified and obj.evidence_url)
+        super().save_model(request, obj, form, change)
+
     def has_delete_permission(self, request, obj=None):
         # Revoke verification instead: preserve the audit trail and invalidate
         # snapshots through the model's locked save path.

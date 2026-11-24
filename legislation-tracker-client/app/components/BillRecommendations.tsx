@@ -1,5 +1,5 @@
 "use client";
-import { usePendingCards } from "./usePendingCards";
+import RecommendationFollowButton from "./RecommendationFollowButton";
 import { useDashboardLoading } from "./DashboardLoading";
 import DismissRecommendation from "./DismissRecommendation";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -64,7 +64,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
     return () => { live = false; };
   }, [state.scope]);
   React.useEffect(() => () => { onDismissBill?.(); }, [onDismissBill]);
-  const { pending, begin } = usePendingCards();
+
   const [error, setError] = React.useState<{ text: string; generation: string } | null>(null);
   const [completedPage, setCompletedPage] = React.useState<string | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
@@ -74,22 +74,11 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
     const scope = state.scope ?? capturePersonalizedScope();
     if (!isPersonalizedScopeCurrent(scope)) return;
 
-    const finish = begin(id);
-    if (!finish) return;
-    setError(null);
-    try {
-      const wasFollowed = followed.has(id);
-      await (wasFollowed ? untrackBill : trackBill)(id, { ...state.requestOptions(), scope, source: "recommendation" });
-      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFollowed(previous => {
-        const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
-      });
-    }
-    catch (error) {
-      const current = capturePersonalizedScope();
-      if (scope.sessionGeneration === current.sessionGeneration && !(error instanceof Error && error.name === "AbortError"))
-        setError({ text: "Your follow was not saved. Try again.", generation: `${current.sessionGeneration}:${current.interestGeneration}:${filterQuery}` });
-    }
-    finally { finish(); }
+    const wasFollowed = followed.has(id);
+    await (wasFollowed ? untrackBill : trackBill)(id, { ...state.requestOptions(), scope, source: "recommendation" });
+    if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFollowed(previous => {
+      const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
+    });
   }
   async function more() {
     const scope = state.scope, cursor = state.data?.next_cursor;
@@ -137,7 +126,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
           <ReasonBadges reasons={item.reasons} topic={item.bill.topics[0]} />
           {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <div className={styles.footer}><span>Last action<br /><time>{dateLabel(item.bill.last_action_at)}</time></span>
-            <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending.has(item.bill.id)} onClick={() => void follow(item.bill.id)}>{followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}</div>
+            <div className="bill-card-actions"><RecommendationFollowButton key={state.scope?.sessionGeneration} label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} followed={followed.has(item.bill.id)} onToggle={() => follow(item.bill.id)}>{followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</RecommendationFollowButton>{enhance}</div>
           </div>
           {feedback}
         </div>

@@ -69,8 +69,9 @@ def test_pending_source_first_poll_reuses_xml_alignment(source_bill, enhancement
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("switch_model", [False, True])
 def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
-        enhancement_owner, enhancement_settings, source_bill):
+        enhancement_owner, enhancement_settings, source_bill, switch_model):
     from django.test import override_settings
     from apps.legislation.enhancements.source_packet import build_enhancement_preflight
     from .test_reader_financial_integrity import review
@@ -130,6 +131,16 @@ def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
         job.enhancement.save()
         latest = client.get(url + "latest/").data
         assert (latest["id"], latest["active_reader"]["id"]) == (job.enhancement_id, saved.pk)
+        if switch_model:
+            with override_settings(LLM_READER_MODEL_CAPACITIES={"openai/alternate": {}}):
+                credential.selected_model = credential.validated_model = "alternate"
+                credential.save()
+                fresh = client.get(url + "estimate/").data
+                assert fresh["can_enhance"] and fresh["matching_enhancement"] is None
+                assert fresh["rerun_after"] == job.enhancement_id
+                created = client.post(url, {key: fresh[key] for key in body}, format="json")
+                assert created.status_code == 202 and created.data["requested_model"] == "alternate"
+            return
         resume = client.get(url + "estimate/").data
         assert resume["matching_enhancement"]["id"] == job.enhancement_id
         resumed = client.post(url + f"{job.enhancement_id}/retry/", {key: resume[key] for key in body}, format="json")

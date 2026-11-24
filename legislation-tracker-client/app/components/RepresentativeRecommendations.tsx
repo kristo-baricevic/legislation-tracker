@@ -1,5 +1,5 @@
 "use client";
-import { usePendingCards } from "./usePendingCards";
+import RecommendationFollowButton from "./RecommendationFollowButton";
 import { useDashboardLoading } from "./DashboardLoading";
 import DismissRecommendation from "./DismissRecommendation";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
@@ -41,28 +41,16 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
     }).catch(() => {});
     return () => { live = false; };
   }, [state.scope]);
-  const { pending, begin } = usePendingCards();
+
   const [error, setError] = React.useState<{ text: string; session: number; interest: number } | null>(null);
   async function follow(id: number) {
     const scope = state.scope;
     if (!scope || !isPersonalizedScopeCurrent(scope)) return;
-    const finish = begin(id);
-    if (!finish) return;
-    restoreFocus.current = true;
-    setError(null);
-    try {
-      const wasFollowed = followed.has(id);
-      await (wasFollowed ? untrackLegislator : trackLegislator)(id, { ...state.requestOptions(), scope, source: "recommendation" });
-      if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFollowed(previous => {
-        const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
-      });
-    }
-    catch (error) {
-      const current = capturePersonalizedScope();
-      if (current.sessionGeneration === scope.sessionGeneration && !(error instanceof Error && error.name === "AbortError"))
-        setError({ text: "Your follow was not saved. Try again.", session: current.sessionGeneration, interest: current.interestGeneration });
-    }
-    finally { if (isPersonalizedScopeCurrent(scope)) restoreFocus.current = false; finish(); }
+    const wasFollowed = followed.has(id);
+    await (wasFollowed ? untrackLegislator : trackLegislator)(id, { ...state.requestOptions(), scope, source: "recommendation" });
+    if (capturePersonalizedScope().sessionGeneration === scope.sessionGeneration) setFollowed(previous => {
+      const next = new Set(previous); if (wasFollowed) next.delete(id); else next.add(id); return next;
+    });
   }
   const [completedPage, setCompletedPage] = React.useState<string | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
@@ -91,7 +79,7 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
     {visible.length && state.data ? <>
       <div className={cards.row} role="region" aria-label="Recommended representatives" tabIndex={0}>{visible.map(item => <LegislatorCard key={item.representative_id} representative={{ ...item.topic_activity_evidence.representative, id: item.representative_id, name: item.name, bioguide_id: item.bioguide_id }} facts={item.card} renderName={renderName} activity={item.topic_activity_evidence}
         headerAction={<DismissRecommendation kind="representative" id={item.representative_id} name={item.name} scope={state.scope} onDismiss={state.dismiss} />}
-        actions={<button className={styles.action} aria-label={`${followed.has(item.representative_id) ? "Unfollow" : "Follow"} representative ${item.name}`} aria-pressed={followed.has(item.representative_id)} aria-disabled={pending.has(item.representative_id)} onClick={() => void follow(item.representative_id)}>{followed.has(item.representative_id) ? "Unfollow" : "Follow"}</button>}>
+        actions={<RecommendationFollowButton key={state.scope?.sessionGeneration} label={`${followed.has(item.representative_id) ? "Unfollow" : "Follow"} representative ${item.name}`} followed={followed.has(item.representative_id)} onToggle={() => follow(item.representative_id)}>{followed.has(item.representative_id) ? "Unfollow" : "Follow"}</RecommendationFollowButton>}>
         <div className={cards.similarAvatars}>{item.reasons.filter(reason => reason.kind === "followed_representative_activity").map(reason => {
           const profile = followedProfiles.find(value => value.representative.id === reason.representative_id);
           return <RepresentativeAvatarBadge key={reason.representative_id} id={reason.representative_id} representative={profile ? {...profile.representative, image_url: profile.card?.portrait?.url ?? profile.representative.image_url} : {bioguide_id: ""}} name={reason.name.replace(/\s*\[[^\]]*\]\s*$/, "")} notes={["Similar to this representative in recorded topic activity"]} />;

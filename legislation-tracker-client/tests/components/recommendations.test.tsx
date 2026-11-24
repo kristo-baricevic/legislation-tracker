@@ -30,8 +30,9 @@ function mockRequests(response: () => Response | Promise<Response>) {
 }
 describe("recommendation rows", () => {
   it.each([
-    ["bill", true], ["bill", false], ["representative", true], ["representative", false],
-  ] as const)("isolates overlapping %s follows when the first save succeeds=%s", async (kind, succeeds) => {
+    ["bill", true, false], ["bill", false, false], ["bill", false, true],
+    ["representative", true, false], ["representative", false, false], ["representative", false, true],
+  ] as const)("isolates overlapping %s follows (success=%s, failure finishes first=%s)", async (kind, succeeds, failureFirst) => {
     const ids = [1, 2];
     const results = ids.map(id => kind === "bill"
       ? { ...page.results[0], bill: { ...bill, id, bill_number: `HR ${id}` } }
@@ -63,10 +64,14 @@ describe("recommendation rows", () => {
     expect(second).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(second);
     await waitFor(() => expect(finish.has(2)).toBe(true));
+    if (failureFirst) {
+      await act(async () => finish.get(1)!());
+      expect(await screen.findByRole("alert")).toHaveTextContent("Your follow was not saved.");
+    }
     await act(async () => finish.get(2)!());
     expect(second).toHaveTextContent("Unfollow");
     expect(first).toHaveTextContent(kind === "bill" ? /^Follow bill$/ : /^Follow$/);
-    await act(async () => finish.get(1)!());
+    if (!failureFirst) await act(async () => finish.get(1)!());
     if (succeeds) expect(first).toHaveTextContent("Unfollow");
     else expect(await screen.findByText("Your follow was not saved. Try again.")).toBeVisible();
     expect(second).toHaveTextContent("Unfollow");

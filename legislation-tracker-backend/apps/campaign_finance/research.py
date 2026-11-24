@@ -110,7 +110,10 @@ def process_finance(work):
         # A later staff correction takes precedence over fresh search results.
         from .models import ConfirmedCandidate
         reviewed = ConfirmedCandidate.objects.filter(representative=rep, period=run.period).values_list("candidate_id", flat=True).first()
-        if reviewed and matched == reviewed:
+        excluded = set(RepresentativeCandidate.objects.filter(representative=rep, revoked=True).values_list("candidate_id", flat=True))
+        if reviewed:
+            excluded.add(reviewed)
+        if matched in excluded:
             matched = None
         choices = []
         if not matched:
@@ -120,7 +123,7 @@ def process_finance(work):
                     filters["district"] = str(rep.district).zfill(2)
                 fallback = get_page("candidates/search/", {**filters, "q": surname})
                 rows = [*rows, *fallback["results"]]
-            choices = [choice for choice in review_choices(rep, rows) if choice["candidate_id"] != reviewed]
+            choices = [choice for choice in review_choices(rep, rows) if choice["candidate_id"] not in excluded]
     elif phase == "committees" and index < len(candidates):
         page = get_page(f"candidate/{candidates[index]}/committees/", {"cycle": run.period, "per_page": 100, "page": work.payload_json.get("committee_page", 1)})
     elif phase == "outside" and outside_scan:
@@ -154,6 +157,8 @@ def process_finance(work):
                     continue
                 candidate, _ = CandidateIdentity.objects.update_or_create(fec_id=fec_id, defaults={"name": normalize_person_name(item.get("name", ""))[:255], "office": item.get("office", ""), "state": item.get("state", "")})
                 mapping, created = RepresentativeCandidate.objects.get_or_create(representative=run.representative, candidate=candidate, defaults={"periods": [run.period], "verified": fec_id == matched, "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}"})
+                if mapping.revoked:
+                    continue
                 if not created and fec_id == matched and (not mapping.verified or not mapping.evidence_url):
                     # Fresh current-period proof does not verify historical periods.
                     mapping.periods = [run.period]

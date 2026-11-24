@@ -125,7 +125,8 @@ def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, fou
         assert run.sections["finance"]["reason"] == "candidate_not_found"
 
 @pytest.mark.django_db
-def test_fuzzy_discovery_requires_explicit_cycle_scoped_confirmation(monkeypatch):
+@pytest.mark.parametrize("legacy_suggestion", [None, "unreviewed", "revoked"])
+def test_fuzzy_discovery_requires_explicit_cycle_scoped_confirmation(monkeypatch, legacy_suggestion):
     from datetime import timedelta
     from django.utils import timezone
     from django.contrib.auth import get_user_model
@@ -163,9 +164,21 @@ def test_fuzzy_discovery_requires_explicit_cycle_scoped_confirmation(monkeypatch
     client = APIClient()
     url = f"/api/representatives/{rep.pk}/research-runs/{run.pk}/confirm-candidate/"
     choice = {"candidate_id": "H8IL04134"}
+    if legacy_suggestion:
+        from apps.campaign_finance.models import CandidateIdentity, RepresentativeCandidate
+        suggestion = CandidateIdentity.objects.create(fec_id=choice["candidate_id"], office="H", state="IL")
+        mapping = RepresentativeCandidate.objects.create(representative=rep, candidate=suggestion, periods=[2024, 2026],
+            evidence_url="https://www.fec.gov/data/candidate/H8IL04134/")
+        if legacy_suggestion == "revoked":
+            from django.contrib import admin
+            admin.site._registry[RepresentativeCandidate].save_model(None, mapping, None, True)
     assert client.post(url, choice).status_code in (401, 403)
     client.force_authenticate(user)
     assert client.post(url, {"candidate_id": "H6IL04153"}).status_code == 400
+    if legacy_suggestion == "revoked":
+        assert client.post(url, choice).status_code == 409
+        assert resolve_candidate(rep.pk, 2026).status == "needs_review"
+        return
     assert client.post(url, choice).status_code == 202
     assert resolve_candidate(rep.pk, 2026).candidate_ids == ["H8IL04134"]
     assert resolve_candidate(rep.pk, 2024).status == "not_found"
@@ -174,4 +187,6 @@ def test_fuzzy_discovery_requires_explicit_cycle_scoped_confirmation(monkeypatch
     mapping = RepresentativeCandidate.objects.get(representative=rep, candidate_id=choice["candidate_id"])
     mapping.verified = False
     mapping.save()
+    mapping.refresh_from_db()
+    assert mapping.revoked
     assert resolve_candidate(rep.pk, 2026).status == "needs_review"
