@@ -6,6 +6,8 @@ class User(AbstractUser):
     """Custom user with email as the primary identifier."""
 
     email = models.EmailField("email address", unique=True)
+    dismissed_bills = models.ManyToManyField("legislation.Bill", related_name="+", blank=True)
+    dismissed_representatives = models.ManyToManyField("congress.Representative", related_name="+", blank=True)
     # Remove username from required; we use email
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]  # username still exists but not for login

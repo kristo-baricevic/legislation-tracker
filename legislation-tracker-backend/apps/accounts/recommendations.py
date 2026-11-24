@@ -21,7 +21,7 @@ from django.db.models import (
 from apps.congress.models import BillCosponsor
 from apps.legislation.models import Bill, BillTopic
 
-from .models import TrackedBill, TrackedLegislator, TrackedTopic
+from .models import TrackedBill, TrackedLegislator, TrackedTopic, User
 from .recommendation_support import FALLBACK_TOPIC, USABLE_TOPIC
 
 ALGORITHM = "explicit-facets-mmr-v1"
@@ -40,6 +40,7 @@ class InterestProfile:
     sponsor_seeds: dict
     follow_count: int
     unsupported: list
+    dismissed: list
 
     @property
     def denominator(self):
@@ -75,9 +76,10 @@ def load_profile(user_id):
         .order_by("bill_id", "topic_id")
         .values("bill_id", "topic_id", "topic__name", "topic__slug", "confidence_score")
     )
+    dismissed = list(User.dismissed_bills.through.objects.filter(user_id=user_id).order_by("bill_id").values_list("bill_id", flat=True))
     signature = hashlib.sha256(
         json.dumps(
-            [topics, reps, seeds, edges], default=str, allow_nan=False, sort_keys=True
+            [topics, reps, seeds, edges, dismissed], default=str, allow_nan=False, sort_keys=True
         ).encode()
     ).hexdigest()
     affinities = {
@@ -107,6 +109,7 @@ def load_profile(user_id):
             if any(item["topic__slug"] == FALLBACK_TOPIC for item in topics)
             else []
         ),
+        dismissed,
     )
 
 
@@ -127,7 +130,7 @@ def candidate_query(profile):
     query = (
         Bill.objects.filter(jurisdiction__in=("federal", "state"), session__gt=0)
         .exclude(Q(title__regex=r"^\s*$") | Q(bill_number__regex=r"^\s*$"))
-        .exclude(pk__in=list(profile.seeds))
+        .exclude(pk__in=list(profile.seeds) + profile.dismissed)
         .annotate(
             recommendation_t=Case(
                 When(direct_topic, then=Value(100)),

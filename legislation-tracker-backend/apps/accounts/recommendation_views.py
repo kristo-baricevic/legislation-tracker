@@ -4,6 +4,7 @@ import secrets
 from datetime import timedelta
 
 from django.core import signing
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.response import Response
 
@@ -180,3 +181,12 @@ class BillRecommendationView(PrivateRecommendationView):
                 "results": add_card_summaries(snapshot["results"][offset:next_offset]),
             }
         )
+
+
+class DismissRecommendationView(PrivateRecommendationView):
+    relation = None
+
+    def post(self, request, pk):
+        dismissed = getattr(request.user, self.relation)
+        dismissed.add(get_object_or_404(dismissed.model, pk=pk))
+        return Response(status=204)

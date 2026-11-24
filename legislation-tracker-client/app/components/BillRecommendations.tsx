@@ -1,5 +1,6 @@
 "use client";
 import { useDashboardLoading } from "./DashboardLoading";
+import DismissRecommendation from "./DismissRecommendation";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React from "react";
 import Link from "next/link";
@@ -63,8 +64,8 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
   const [pending, setPending] = React.useState<{ id: number; generation: string } | null>(null);
   const [error, setError] = React.useState<{ text: string; generation: string } | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
-  const dashboardLoading = useDashboardLoading("bills", state.loading || paging !== null);
   const generation = state.scope ? `${state.scope.sessionGeneration}:${state.scope.interestGeneration}:${filterQuery}` : "";
+  const dashboardLoading = useDashboardLoading("bills", state.loading || (paging !== null && paging === generation));
   async function follow(id: number) {
     if (pending?.generation === generation) return;
     const scope = state.scope ?? capturePersonalizedScope();
@@ -109,7 +110,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
           <ReasonBadges reasons={item.reasons} />
           {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <div className={styles.footer}><span>Last action<br /><time>{dateLabel(item.bill.last_action_at)}</time></span>
-            <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending?.generation === generation} onClick={() => void follow(item.bill.id)}>{pending && pending.generation === generation && pending.id === item.bill.id ? "Saving…" : followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}</div>
+            <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending?.generation === generation} onClick={() => void follow(item.bill.id)}>{pending && pending.generation === generation && pending.id === item.bill.id ? "Saving…" : followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}<DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} /></div>
           </div>
           {feedback}
         </div>

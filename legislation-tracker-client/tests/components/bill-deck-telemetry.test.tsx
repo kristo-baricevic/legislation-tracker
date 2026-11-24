@@ -133,9 +133,9 @@ it("delays dashboard loading feedback and lets ready content appear immediately"
   let finish!: (value: Awaited<ReturnType<typeof getMyTracking>>) => void;
   vi.mocked(getMyTracking).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
   render(<BillDeck />);
-  expect(screen.queryByRole("status", { name: "Loading your followed bills" })).not.toBeInTheDocument();
-  expect(await screen.findByRole("status", { name: "Loading your followed bills" })).toBeVisible();
+  expect(screen.queryByRole("status", { name: "Loading dashboard" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: "Loading dashboard" })).toBeVisible();
   await act(async () => finish({ bills: [], topics: [], legislators: [], is_staff: false }));
   expect(screen.getByText("Your collection starts with a bill")).toBeVisible();
-  expect(screen.queryByRole("status", { name: "Loading your followed bills" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: "Loading dashboard" })).not.toBeInTheDocument();
 });

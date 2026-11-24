@@ -39,7 +39,7 @@ def vector_for(item):
     }
 
 
-def ranking(catalog, followed_topics, followed_reps, eligible_ids=None):
+def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismissed=()):
     records = catalog["representatives"]
     vectors = {int(key): vector_for(value) for key, value in records.items()}
     references = {
@@ -60,7 +60,7 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None):
     candidates = []
     for key, item in records.items():
         rep_id, member = int(key), item["activity"]["representative"]
-        if eligible_ids is not None and rep_id not in eligible_ids:
+        if rep_id in dismissed or (eligible_ids is not None and rep_id not in eligible_ids):
             continue
         vector = vectors[rep_id]
         matched_evidence = sum(
@@ -220,6 +220,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         filters = read_filters(request.query_params)
         filters.pop("sort", None)  # Bill sort does not reorder people.
         with read_snapshot():
+            dismissed = set(request.user.dismissed_representatives.values_list("pk", flat=True))
             topics = list(
                 TrackedTopic.objects.filter(user=request.user)
                 .order_by("topic_id")
@@ -235,7 +236,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
             for item in topics
             if item["topic__slug"] != FALLBACK_TOPIC
         }
-        fingerprint = hashlib.sha256(json.dumps([topics, reps, activity_revision(), activity_day().isoformat()], sort_keys=True).encode()).hexdigest()
+        fingerprint = hashlib.sha256(json.dumps([topics, reps, sorted(dismissed), activity_revision(), activity_day().isoformat()], sort_keys=True).encode()).hexdigest()
         key = f"representative-recommendations:v2:user:{request.user.pk}" + (":" + filter_key(filters) if filters else "")
         cached = cache_call("get", key)
         if cached and cached["fingerprint"] == fingerprint:
@@ -257,9 +258,9 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
                 matching = filter_bills(Bill.objects.all(), filters).order_by()
                 eligible = set(matching.values_list("sponsor_id", flat=True))
                 eligible.update(BillCosponsor.objects.filter(bill__in=matching, withdrawn_at__isnull=True).values_list("representative_id", flat=True))
-                results, empty = ranking(catalog, followed_topics, reps, eligible)
+                results, empty = ranking(catalog, followed_topics, reps, eligible, dismissed)
             else:
-                results, empty = ranking(catalog, followed_topics, reps)
+                results, empty = ranking(catalog, followed_topics, reps, dismissed=dismissed)
         response = Response(
             {
                 "algorithm": "explicit-representative-topics-mmr-v1",

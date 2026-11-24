@@ -29,6 +29,22 @@ function mockRequests(response: () => Response | Promise<Response>) {
   }));
 }
 describe("recommendation rows", () => {
+  it("removes a dismissed bill after the saved rankings reload", async () => {
+    let dismissed = false;
+    mockRequests(() => Response.json(dismissed ? empty : page));
+    const fetchRequest = fetch;
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      if (url.endsWith("/recommendations/1/dismiss/") && init?.method === "POST") {
+        dismissed = true;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return fetchRequest(url, init);
+    });
+    render(<BillRecommendations onOpenBill={() => true} />);
+    fireEvent.click(await screen.findByRole("button", {name: "Dismiss HR 1 from recommendations"}));
+    await waitFor(() => expect(screen.queryByRole("link", { name: bill.title })).not.toBeInTheDocument());
+    expect(dismissed).toBe(true);
+  });
   it("restarts an in-flight filter request after interests change", async () => {
     mockRequests(() => Response.json(page));
     const view = render(<BillRecommendations onOpenBill={() => true} filters={{q: "Before"}} />);

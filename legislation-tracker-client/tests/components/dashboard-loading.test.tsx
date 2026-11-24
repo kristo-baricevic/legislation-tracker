@@ -31,11 +31,15 @@ it("uses one spinner and reveals all rows only when the slowest section settles"
   expect(screen.getByText("Representatives to discover")).toBeVisible();
   act(() => vi.runOnlyPendingTimers());
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  rerender(<Dashboard followed={false} bills representatives={false} />);
-  expect(screen.getByText("Following")).toBeVisible();
-  expect(screen.getByText("Bills to discover")).toBeVisible();
-  act(() => vi.advanceTimersByTime(1000));
+  rerender(<Dashboard followed={false} bills representatives />);
+  act(() => vi.advanceTimersByTime(250));
+  expect(screen.getByRole("status")).toBeVisible();
+  rerender(<Dashboard followed={false} bills={false} representatives />);
+  expect(screen.getByText("Bills to discover")).not.toBeVisible();
+  expect(screen.getByRole("status")).toBeVisible();
+  rerender(<Dashboard followed={false} bills={false} representatives={false} />);
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(screen.getByText("Bills to discover")).toBeVisible();
 });
 
 it("does not flash a spinner when all rows finish quickly", () => {

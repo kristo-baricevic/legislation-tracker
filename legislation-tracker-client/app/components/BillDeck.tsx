@@ -1,6 +1,5 @@
 "use client";
-import { useDashboardLoading } from "./DashboardLoading";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
+import DashboardLoading from "./DashboardLoading";
 
 import Link from "next/link";
 import React from "react";
@@ -35,7 +34,6 @@ export default function BillDeck() {
   const closeBill = React.useCallback(() => setSelected(null), []);
   const controls = useDashboardBillTracking(closeBill);
   const { tracking, signedIn, ready, error, followError, currentCongress, isSuperuser } = controls;
-  const dashboardLoading = useDashboardLoading("followed", !ready);
   const recommendationOwnsBill = React.useRef(false);
   const dismissRecommendedBill = React.useCallback(() => {
     if (recommendationOwnsBill.current) { recommendationOwnsBill.current = false; setSelected(null); }
@@ -74,7 +72,7 @@ export default function BillDeck() {
     </div>
     <div className="min-h-6 text-sm text-red-700" aria-live="polite">{error && <span role="alert">{error} <button onClick={controls.retry}>Retry</button></span>}</div>
     {followError && <p role="alert">{followError}</p>}
-    {!dashboardLoading && <LoadingSpinner reserveSpace active={!ready} label="Loading your followed bills…" />}
+    <DashboardLoading loading={!ready}>
     {ready && !signedIn && !error && <div className={styles.empty}><h2>Start your collection</h2><p><Link href="/login">Log in</Link> to follow bills, or browse the <Link href="/bills">Bills page</Link>.</p></div>}
     {ready && !error && signedIn && !visible.length && <div className={styles.empty}><h2>{source.length ? "No bills match these filters" : "Your collection starts with a bill"}</h2><p>{source.length ? "Clear a filter to see more legislation." : <>Browse the <Link href="/bills">Bills page</Link> and follow a bill to keep it here.</>}</p>{!tracking?.topics.length && <p>Follow topics to organize your collection around your interests.</p>}</div>}
     {visible.length > 0 && <section className={styles.topicSection}>
@@ -87,6 +85,7 @@ export default function BillDeck() {
     </section>}
     {tracking && <TrackedLegislators items={tracking.legislators} congress={currentCongress} />}
     <RecommendationsPreview filters={{q: recommendationQuery, topic_id: topic, sponsor, state, status, sort}} renderName={currentCongress === null ? undefined : ({ id, name, chamber }) => <LegislatorName id={id} name={name} congress={currentCongress} chamber={chamber === "house" || chamber === "senate" ? chamber : undefined} />} onOpenBill={bill => { recommendationOwnsBill.current = true; setSelectedFromRecommendations(true); setSelected(bill); return true; }} onDismissBill={dismissRecommendedBill} />
+    </DashboardLoading>
     {ready && signedIn && isSuperuser && <IngestionTelemetryLive />}
     {selected && <BillDeckModal {...(selectedFromRecommendations ? { fallbackFocus: focusRecommendationFallback } : {})} bill={selected} onClose={() => { recommendationOwnsBill.current = false; setSelected(null); }} />}
   </div>;

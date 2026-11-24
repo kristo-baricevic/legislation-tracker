@@ -10,6 +10,12 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     return { data: null, dataKey: null, scope: null, loading: true, signedIn: false, error: "" };
   });
   const [revision, reload] = React.useReducer(value => value + 1, 0);
+  const collection = key.split(":")[0];
+  React.useEffect(() => {
+    const event = `dismissed-${collection}`;
+    window.addEventListener(event, reload);
+    return () => window.removeEventListener(event, reload);
+  }, [collection]);
   const controller = React.useRef<AbortController | null>(null);
   const current = React.useRef(state);
   const currentKey = React.useRef(key);

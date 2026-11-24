@@ -56,6 +56,8 @@ def test_representatives_use_explicit_topics_and_exclude_followed():
     assert response.status_code == 200
     results = response.json()["results"]
     assert [item["representative_id"] for item in results] == [rep.id]
+    assert api.post(f"{PATH}{rep.pk}/dismiss/").status_code == 204
+    assert api.get(PATH).json()["results"] == []
     assert results[0]["score"] == 0.4
     assert results[0]["reasons"][0]["kind"] == "followed_topic"
     evidence = results[0]["topic_activity_evidence"]

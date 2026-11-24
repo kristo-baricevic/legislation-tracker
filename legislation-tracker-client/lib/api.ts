@@ -319,7 +319,7 @@ async function authRequest<T>(method: string, path: string, body: object | undef
     if (response.status === 401 || response.status === 403) markSessionLost();
     throw error;
   }
-  const value = method === "DELETE" ? undefined : await response.json();
+  const value = method === "DELETE" || response.status === 204 ? undefined : await response.json();
   assertPersonalizedScope(scope, request.signal);
   noteAuthenticatedResponse();
   return value as T;
