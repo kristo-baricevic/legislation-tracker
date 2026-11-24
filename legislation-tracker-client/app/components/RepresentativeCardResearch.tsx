@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getRepresentativeCard, type TrackedLegislatorItem } from "@/lib/api";
 import { startResearch } from "@/lib/representative-research";
+import RepresentativeResearch from "./RepresentativeResearch";
 import CardTooltip from "./CardTooltip";
 import styles from "./representative-research.module.css";
 
@@ -47,5 +48,6 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
     } catch { if (!controller.signal.aborted) setError(true); }
     finally { if (!controller.signal.aborted) setBusy(false); }
   }
+  if (card?.research?.status === "needs_review") return <RepresentativeResearch representativeId={id} cardName={name} initialPeriod={String(card.research.period)} />;
   return <div className={styles.cardControls}><CardTooltip text="Find and save a biography, photo, donations and outside spending."><button type="button" className={styles.researchButton} aria-label={hasResearch ? `Refresh research for ${name}` : `Research ${name}`} disabled={busy} onClick={() => void research()}>{busy ? "Starting…" : error ? "Retry research" : active ? card?.research?.overview_ready ? "Researched" : card?.research?.status === "queued" ? "Queued…" : "Researching…" : idleLabel}</button></CardTooltip></div>;
 }

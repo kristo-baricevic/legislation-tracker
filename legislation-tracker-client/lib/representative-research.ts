@@ -2,7 +2,8 @@ import { authPost, getApiBase } from "./api";
 import { SpendingRevisionChanged } from "./spending-pages";
 
 export type ResearchSource = { url: string; attribution: string; license: string; fetched_at: string };
-export type ResearchRun = { id: string; status: string; sections: Record<string, { status: string; reason?: string }>; error?: string | null; retry_at?: string | null };
+export type FecChoice = { candidate_id: string; name: string; state: string; office: string; district: string };
+export type ResearchRun = { id: string; status: string; sections: Record<string, { status: string; reason?: string; representative_name?: string; candidates?: FecChoice[] }>; error?: string | null; retry_at?: string | null };
 export type FinanceProgress = { snapshot: string; collecting: boolean; overview_ready?: boolean; pages_loaded: number; streams_completed: number; streams_total: number; totals_loaded: number; official_totals: { committee?: string; source_url: string; records: Record<string, string | number | null>[] }[] };
 export type Research = { available_periods?: number[]; finance_progress?: FinanceProgress | null; status: string; period: number; run: ResearchRun | null; biography: { text: string; source: ResearchSource; kind?: string } | null; portrait: { url: string; source: ResearchSource } | null; snapshot: string | null };
 export type Contributors = { status: string; snapshot: string | null; period?: number; individuals_visible?: boolean; count: number; next_cursor: number | null; results: { id: number; contributor_id: number; name: string; type: string; amount: string; date: string | null; committee: string; source_url: string }[] };
@@ -36,3 +37,5 @@ export const getConnections = (id: number, period: number, cursor: number, signa
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
   return read<Connections>(id, `connections/?${query}`, signal);
 };
+
+export const confirmCandidate = (id: number, runId: string, candidate_id: string) => authPost<ResearchRun>(`/api/representatives/${id}/research-runs/${runId}/confirm-candidate/`, { candidate_id });

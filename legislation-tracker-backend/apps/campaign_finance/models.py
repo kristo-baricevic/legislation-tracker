@@ -1,4 +1,5 @@
 import uuid
+from django.conf import settings
 from django.db import models, transaction
 
 
@@ -152,3 +153,16 @@ class OutsideSpendingRevision(models.Model):
     representative = models.OneToOneField("congress.Representative", primary_key=True, on_delete=models.CASCADE)
     generation = models.PositiveBigIntegerField(default=0)
     epoch = models.UUIDField(default=uuid.uuid4)
+
+
+class ConfirmedCandidate(models.Model):
+    """A reader's explicit identity decision for one FEC reporting cycle."""
+    representative = models.ForeignKey("congress.Representative", on_delete=models.CASCADE)
+    period = models.PositiveSmallIntegerField()
+    candidate = models.ForeignKey(CandidateIdentity, on_delete=models.PROTECT)
+    review_run = models.OneToOneField("research.ResearchRun", on_delete=models.PROTECT)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    confirmed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["representative", "period"], name="confirmed_candidate_per_cycle")]

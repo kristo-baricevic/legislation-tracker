@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.congress.models import Representative
 from apps.research.models import ResearchRun
 from apps.research.tasks import fenced_work, continue_work, is_latest_run
-from .identity import resolve_candidate, candidate_search_name, verified_match
+from .identity import resolve_candidate, candidate_search_name, verified_match, surname_query, review_choices
 from apps.congress.names import normalize_person_name
 from .models import CandidateIdentity, RepresentativeCandidate, CampaignCommittee, CandidateCommittee, Contributor, ContributorIdentity, FinanceSnapshot, FinanceResearchCheckpoint, FinanceTransaction
 from .normalization import normalize_receipt, normalize_refund
@@ -101,7 +101,21 @@ def process_finance(work):
     outside_page_number = outside_scan.page if outside_scan else None
     if identity.status != "verified":
         # Recheck blocked discoveries using fresh provider evidence, not saved names.
-        page = get_page("candidates/search/", {"q": candidate_search_name(run.representative), "state": run.representative.state, "office": "S" if run.representative.chamber == "senate" else "H", "cycle": run.period, "per_page": 100})
+        rep = run.representative
+        filters = {"state": rep.state, "office": "S" if rep.chamber == "senate" else "H", "cycle": run.period, "per_page": 100}
+        page = get_page("candidates/search/", {**filters, "q": candidate_search_name(rep)})
+        rows = page["results"]
+        year = timezone.now().year
+        matched = verified_match(rep, rows, run.period, year + year % 2) if page["pagination"].get("pages", 1) <= 1 else None
+        choices = []
+        if not matched:
+            surname = surname_query(rep)
+            if surname and surname.casefold() != candidate_search_name(rep).casefold():
+                if rep.chamber == "house" and str(rep.district).isdigit():
+                    filters["district"] = str(rep.district).zfill(2)
+                fallback = get_page("candidates/search/", {**filters, "q": surname})
+                rows = [*rows, *fallback["results"]]
+            choices = review_choices(rep, rows)
     elif phase == "committees" and index < len(candidates):
         page = get_page(f"candidate/{candidates[index]}/committees/", {"cycle": run.period, "per_page": 100, "page": work.payload_json.get("committee_page", 1)})
     elif phase == "outside" and outside_scan:
@@ -127,10 +141,7 @@ def process_finance(work):
             run.sections = {**run.sections, "finance": {"status": "running"}}
             run.save(update_fields=["status", "sections"])
         if identity.status != "verified":
-            rows = (page or {}).get("results", [])
-            year = timezone.now().year
-            matched = verified_match(run.representative, rows, run.period, year + year % 2) if page and page["pagination"].get("pages", 1) <= 1 else None
-            for item in rows:
+            for item in page["results"] if matched else []:
                 fec_id = item.get("candidate_id", "")
                 if not re.fullmatch(r"[HS]\d[A-Z]{2}\d{5}", fec_id):
                     continue
@@ -157,7 +168,9 @@ def process_finance(work):
                 return {"status": "running"}
             run.sections["finance"] = {"status": "needs_review", "reason": "candidate_identity_requires_verification"}
             run.status, run.finished_at = "needs_review", timezone.now()
-            if page is not None and not rows:
+            if choices:
+                run.sections["finance"].update(candidates=choices, representative_name=rep.name)
+            elif not page["results"]:
                 run.sections["finance"] = {"status": "not_available", "reason": "candidate_not_found"}
                 run.status = "partial"
             run.save(update_fields=["sections", "status", "finished_at"])

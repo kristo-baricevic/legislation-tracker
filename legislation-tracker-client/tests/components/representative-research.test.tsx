@@ -422,3 +422,34 @@ it("reloads open connections when refreshed research publishes a new snapshot", 
   expect(await screen.findByText("Updated connections")).toBeVisible();
   expect(screen.queryByText("Older connections")).not.toBeInTheDocument();
 });
+
+
+it("leaves a fuzzy FEC match pending until the reader selects and confirms a record", async () => {
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value() { this.setAttribute("open", ""); } });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value() { this.removeAttribute("open"); } });
+  const pending = { id: "review", status: "needs_review", sections: { finance: {
+    status: "needs_review", representative_name: "Jesús García",
+    candidates: [{ name: "GARCIA, JESUS", candidate_id: "H8IL04134", office: "H", state: "IL", district: "04" }],
+  } } };
+  const posts: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.includes("csrf")) return Response.json({ csrf_token: "test" });
+    if (options?.method === "POST") {
+      expect(url).toContain("/research-runs/review/confirm-candidate/");
+      posts.push(String(options.body));
+      return Response.json({ id: "next", status: "queued", sections: {} });
+    }
+    return Response.json({ ...empty, run: pending, status: pending.status });
+  }));
+  render(<RepresentativeResearch representativeId={347} financeView />);
+  const review = await screen.findByRole("button", { name: "Review FEC match" });
+  await userEvent.click(review);
+  expect(await screen.findByRole("button", { name: "Confirm and collect records" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("radio", { name: "GARCIA, JESUS" }));
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(posts).toEqual([]);
+  await userEvent.click(review);
+  await userEvent.click(await screen.findByRole("radio", { name: "GARCIA, JESUS" }));
+  await userEvent.click(screen.getByRole("button", { name: "Confirm and collect records" }));
+  expect(posts.map(body => JSON.parse(body))).toEqual([{ candidate_id: "H8IL04134" }]);
+});

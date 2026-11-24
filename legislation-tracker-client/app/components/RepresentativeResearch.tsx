@@ -1,4 +1,5 @@
 "use client";
+import CandidateReview from "./CandidateReview";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
@@ -45,6 +46,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   const [showConnections, setShowConnections] = useState(false);
   const action = useRef<AbortController | null>(null);
   const actionFailed = useRef(false);
+  const initiatedRun = useRef<string | null>(null);
   useEffect(() => { onPortrait?.(data?.portrait ?? null); }, [data?.portrait, onPortrait]);
   useEffect(() => { if (data) onResearch?.(data); }, [data, onResearch]);
   const active = data?.status === "queued" || data?.status === "running";
@@ -71,7 +73,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
         if (controller.signal.aborted) return;
         const periods = result.available_periods ?? [];
         setAvailablePeriods(periods);
-        if (!cardName && periods.length && !periods.includes(period) && !["queued", "running"].includes(result.status)) {
+        if (!cardName && periods.length && !periods.includes(period) && !["queued", "running", "needs_review"].includes(result.status)) {
           setData(null);
           setPeriod(periods[0]);
           return;
@@ -98,6 +100,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     try {
       const run = await startResearch(representativeId, period, controller.signal, Boolean(data?.biography || data?.snapshot));
       if (controller.signal.aborted) return;
+      initiatedRun.current = run.id;
       setData(old => ({ ...(old ?? { biography: null, portrait: null, snapshot: null }), period, status: run.status, run }));
       setReload(n => n + 1);
       window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: representativeId }));
@@ -134,13 +137,19 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
       if (!controller.signal.aborted) setError(e instanceof ApiError && [401, 403].includes(e.status) ? "Sign in to collect this period's records." : "Could not load this period. Try again.");
     } finally { if (!controller.signal.aborted) setBusy(false); }
   }
+  const review = data?.run?.sections?.finance?.candidates?.length && data.status === "needs_review"
+    ? <CandidateReview key={data.run.id} initiallyOpen={initiatedRun.current === data.run.id} representativeId={representativeId} run={data.run} period={data.period} onConfirmed={run => {
+        setData({ ...data, status: run.status, run });
+        window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: representativeId }));
+      }} /> : null;
   if (cardName) return <div className={styles.cardControls}>
-    <CardTooltip text={overviewReady && active ? "Overview ready. Detailed donations continue updating in the background." : active ? "Collecting biography, photo and campaign overview." : "Find and save a biography, photo, donations and outside spending."}><button type="button" className={styles.researchButton} aria-label={`Research ${cardName}`} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : error ? "Retry research" : overviewReady && active ? "Researched" : data?.snapshot ? "Refresh research" : "Research"}</button></CardTooltip>
+    {review || <CardTooltip text={overviewReady && active ? "Overview ready. Detailed donations continue updating in the background." : active ? "Collecting biography, photo and campaign overview." : "Find and save a biography, photo, donations and outside spending."}><button type="button" className={styles.researchButton} aria-label={`Research ${cardName}`} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : error ? "Retry research" : overviewReady && active ? "Researched" : data?.snapshot ? "Refresh research" : "Research"}</button></CardTooltip>}
     {error && <p role="alert">{error}</p>}
     {data?.run?.sections?.biography?.status === "not_available" && <p role="status">No biography found.</p>}
     {data?.status === "failed" && !error && <p role="alert">Research failed. Try again.</p>}
   </div>;
   if (financeView) return <section className={`${styles.panel} ${styles.funding} ${modalView ? styles.modalFunding : ""}`} aria-label="Campaign funding">
+    {review}
     <div className={styles.fundingToolbar} aria-label="Funding controls">
       <div className={styles.recordTabs} aria-label="Funding type"><button aria-pressed={fundingView === "donations"} onClick={() => setFundingView("donations")}>Donations</button><button aria-pressed={fundingView === "outside"} onClick={() => setFundingView("outside")}>Outside spending</button></div>
       {fundingView === "donations" && <label>Period <select aria-label="Reporting period" disabled={busy || !availablePeriods.length} value={allYears ? "all" : availablePeriods.includes(period) ? period : ""} onChange={event => { const all = event.target.value === "all"; setAllYears(all); if (!all) void selectPeriod(Number(event.target.value)); }}>{!availablePeriods.includes(period) && !allYears && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}<option value="all">All years</option>{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</select></label>}
@@ -157,6 +166,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     </div>
   </section>;
   return <section className={styles.panel} aria-label="Representative research">
+    {review}
     <div className={styles.controls}>
       <button type="button" className={styles.primary} disabled={busy} onClick={() => void research()}>{busy || overviewPending ? progressLabel : overviewReady && active ? "Researched" : data?.biography || data?.snapshot ? "Refresh research" : "Research"}</button>
       {compact && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "Hide research" : "View research"}</button>}

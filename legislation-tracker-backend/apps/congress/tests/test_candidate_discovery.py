@@ -109,7 +109,7 @@ def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, fou
     work = run.work_item
     work.status = "processing"; work.dispatch_token = "lease"; work.lease_expires_at = timezone.now() + timedelta(minutes=5); work.save()
     def page(path, params):
-        assert params["q"] == "Ocasio-Cortez, Alexandria"
+        assert params["q"] in {"Ocasio-Cortez, Alexandria", "Ocasio-Cortez"}
         return {"results": [candidate()] if found else [], "pagination": {"pages": 1}}
     monkeypatch.setattr("apps.campaign_finance.research.get_page", page)
     process_finance(work)
@@ -123,3 +123,50 @@ def test_discovery_continues_verified_match_or_reports_no_match(monkeypatch, fou
     else:
         assert run.status == "partial"
         assert run.sections["finance"]["reason"] == "candidate_not_found"
+
+@pytest.mark.django_db
+def test_fuzzy_discovery_requires_explicit_cycle_scoped_confirmation(monkeypatch):
+    from datetime import timedelta
+    from django.utils import timezone
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+    from apps.congress.models import Representative
+    from apps.campaign_finance.identity import resolve_candidate
+    from apps.campaign_finance.models import FinanceSnapshot
+    from apps.campaign_finance.research import process_finance
+    from apps.research.services import request_research
+
+    rep = Representative.objects.create(name='García, Jesús G. “Chuy”', bioguide_id="G000586",
+        chamber="house", state="IL", district="4")
+    user = get_user_model().objects.create_user(username="reader")
+    run = request_research(rep.pk, 2026, user.pk)
+    work = run.work_item
+    work.status = "processing"
+    work.dispatch_token = "lease"
+    work.lease_expires_at = timezone.now() + timedelta(minutes=5)
+    work.save()
+    queries = []
+    def page(path, params):
+        assert path == "candidates/search/"
+        queries.append(params["q"])
+        rows = [] if params["q"] != "Garcia" else [
+            candidate(name="GARCIA, JESUS", candidate_id="H8IL04134", state="IL", district="04"),
+            candidate(name="GARCIA, PATTY", candidate_id="H6IL04153", state="IL", district="04")]
+        return {"results": rows, "pagination": {"pages": 1}}
+    monkeypatch.setattr("apps.campaign_finance.research.get_page", page)
+    process_finance(work)
+    run.refresh_from_db()
+    assert queries == [rep.name, "Garcia"]
+    assert [r["candidate_id"] for r in run.sections["finance"]["candidates"]] == ["H8IL04134"]
+    assert resolve_candidate(rep.pk, 2026).status == "not_found"
+    assert not FinanceSnapshot.objects.filter(run=run).exists()
+    client = APIClient()
+    url = f"/api/representatives/{rep.pk}/research-runs/{run.pk}/confirm-candidate/"
+    choice = {"candidate_id": "H8IL04134"}
+    assert client.post(url, choice).status_code in (401, 403)
+    client.force_authenticate(user)
+    assert client.post(url, {"candidate_id": "H6IL04153"}).status_code == 400
+    assert client.post(url, choice).status_code == 202
+    assert resolve_candidate(rep.pk, 2026).candidate_ids == ["H8IL04134"]
+    assert resolve_candidate(rep.pk, 2024).status == "not_found"
+    assert client.post(url, choice).status_code == 409
