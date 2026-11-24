@@ -28,7 +28,7 @@ export default function DismissRecommendation({ kind, id, name, scope }: {
     }
   }
   return <>
-    <button type="button" className={styles.action} disabled={saving} aria-label={`Dismiss ${name} from recommendations`} onClick={dismiss}>Dismiss</button>
+    <button type="button" className={styles.dismiss} title="Dismiss recommendation" disabled={saving} aria-label={`Dismiss ${name} from recommendations`} onClick={dismiss}><span aria-hidden="true">×</span></button>
     {failed && <span role="alert">Could not dismiss this recommendation. Try again.</span>}
   </>;
 }

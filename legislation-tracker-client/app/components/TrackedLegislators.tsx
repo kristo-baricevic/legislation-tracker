@@ -12,7 +12,7 @@ import CardTooltip from "./CardTooltip";
 import styles from "./tracked-legislators.module.css";
 import { representativeInitials } from "@/lib/representative-name";
 
-export function LegislatorCard({ representative: rep, facts, congress = null, renderName, children, activity, actions }: {
+export function LegislatorCard({ representative: rep, facts, congress = null, renderName, children, activity, actions, headerAction }: {
   representative: Pick<TrackedLegislatorItem["representative"], "id" | "name" | "bioguide_id" | "chamber" | "state"> & Partial<TrackedLegislatorItem["representative"]>;
   facts?: TrackedLegislatorItem["card"];
   congress?: number | null;
@@ -20,6 +20,7 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
   children?: React.ReactNode;
   activity?: RepresentativeTopicActivity;
   actions?: React.ReactNode;
+  headerAction?: React.ReactNode;
 }) {
   const [failedPhoto, setFailedPhoto] = React.useState("");
   const [loadedFacts, setLoadedFacts] = React.useState<TrackedLegislatorItem["card"]>();
@@ -54,6 +55,7 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
         <p>{[partyLabel, rep.state, rep.district ? `District ${rep.district}` : ""].filter(Boolean).join(" · ")}</p>
         <p>{rep.chamber === "senate" ? "Senate" : rep.chamber === "house" ? "House" : rep.chamber}</p>
       </div>
+      {headerAction}
     </header>
     {cardFacts?.biography?.text && <p className={styles.bio}>{cardFacts.biography.text}</p>}
     <div className={styles.cardBottom}>

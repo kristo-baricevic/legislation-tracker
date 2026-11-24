@@ -104,13 +104,13 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
     {state.data?.results.length ? <>
       <div className={styles.row} role="region" aria-label="Recommended bills" tabIndex={0}>{state.data.results.map(item => <DashboardBillReader key={item.bill.id} bill={item.bill}>{(summary, enhance, feedback, currentBill) => <article className={styles.card} data-enhanced={currentBill.enhancement_status === "succeeded"} key={item.bill.id} style={{ "--topic": topicColor(item.bill.topics[0]?.topic_id ?? 0) } as React.CSSProperties}>
         <div className={styles.bar} aria-hidden="true" /><div className={styles.body}>
-          <p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p>
+          <div className={styles.cardHeader}><p className={styles.meta}>{item.bill.topics[0]?.name && <span className={styles.topicName}>{item.bill.topics[0].name}</span>}{item.bill.bill_number} / {item.bill.session}</p><DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} /></div>
           <h3><a href={`/bills/${item.bill.id}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && onOpenBill(currentBill) !== false) event.preventDefault(); }}>{item.bill.title}</a></h3>
           {summary}
           <ReasonBadges reasons={item.reasons} />
           {stageFor(item.bill.status) ? <StageTrack stage={stageFor(item.bill.status)!} color={topicColor(item.bill.topics[0]?.topic_id ?? 0)} /> : <p className={styles.note}>{readable(item.bill.status || "Status unavailable")}</p>}
           <div className={styles.footer}><span>Last action<br /><time>{dateLabel(item.bill.last_action_at)}</time></span>
-            <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending?.generation === generation} onClick={() => void follow(item.bill.id)}>{pending && pending.generation === generation && pending.id === item.bill.id ? "Saving…" : followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}<DismissRecommendation kind="bill" id={item.bill.id} name={item.bill.bill_number} scope={state.scope} /></div>
+            <div className="bill-card-actions"><button className={styles.action} aria-label={`${followed.has(item.bill.id) ? "Unfollow" : "Follow"} bill ${item.bill.bill_number} / ${item.bill.session}`} aria-pressed={followed.has(item.bill.id)} aria-disabled={pending?.generation === generation} onClick={() => void follow(item.bill.id)}>{pending && pending.generation === generation && pending.id === item.bill.id ? "Saving…" : followed.has(item.bill.id) ? "Unfollow" : "Follow bill"}</button>{enhance}</div>
           </div>
           {feedback}
         </div>
