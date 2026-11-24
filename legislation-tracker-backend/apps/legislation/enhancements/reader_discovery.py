@@ -1,6 +1,7 @@
 """Full-source discovery, independent of the deterministic reader inventory."""
 import copy
 import hashlib
+import json
 import re
 
 from jsonschema import Draft202012Validator, ValidationError
@@ -219,6 +220,15 @@ def discovery_schema(sources):
 
 
 def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()):
+    # Source quotations and names can legitimately contain Arabic. Generated
+    # prose must not introduce an unrelated Arabic word into an English rule.
+    arabic_words = r"[\u0620-\u064a\u066e-\u06d3]+"
+    generated = set(re.findall(arabic_words, json.dumps(output, ensure_ascii=False)))
+    if generated:
+        source_words = set(re.findall(arabic_words, " ".join(s.get("quoted_text", "") for s in sources)))
+        if generated - source_words:
+            raise output_error("unsupported_language_in_reader", ["source_review"])
+
     # Split requests include adjacent passages for context. A finding belongs
     # to this request only when it cites at least one passage it owns.
     if any(s.get('review_quote_ids') is not None for s in sources):

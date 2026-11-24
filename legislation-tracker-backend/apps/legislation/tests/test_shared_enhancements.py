@@ -112,6 +112,29 @@ def test_large_html_result_is_visible_and_reused_without_an_nlp_contract(
         assert reused.enhancement.pk == saved.pk
         assert BillEnhancementAttempt.objects.count() == 1
 
+        client.force_authenticate(enhancement_owner)
+        url = f"/api/bills/{source_bill.pk}/enhancements/"
+        estimate = client.get(url + "estimate/?rerun=1").data
+        assert estimate["can_enhance"] and estimate["rerun_after"] == saved.pk
+        body = {key: estimate[key] for key in ("source_fingerprint", "request_fingerprint", "credential_revision", "rerun_after")}
+        assert client.post(url, {**body, "request_fingerprint": confirmation["request_fingerprint"]}, format="json").status_code == 409
+        rerun = client.post(url, body, format="json")
+        assert rerun.status_code == 202 and rerun.data["id"] != saved.pk
+        assert rerun.data["active_reader"]["id"] == saved.pk
+        assert client.get(url + "latest/").data["id"] == rerun.data["id"]
+        assert client.post(url, body, format="json").data["id"] == rerun.data["id"]
+        assert BillEnhancementAttempt.objects.count() == 2
+
+
+def test_reader_discovery_rejects_unsourced_arabic_word():
+    from jsonschema import ValidationError
+    from apps.legislation.enhancements.reader_discovery import resolve_discovery
+    from .test_reader_financial_integrity import review
+    sources, output = review()
+    output["financial_items"][0]["text"] = "Applies on or بعد?"
+    with pytest.raises(ValidationError, match="Arabic word"):
+        resolve_discovery(output, sources)
+
 
 @pytest.mark.django_db
 def test_old_success_with_wrong_money_cannot_bypass_new_validation(enhancement_owner, enhancement_settings, source_bill):

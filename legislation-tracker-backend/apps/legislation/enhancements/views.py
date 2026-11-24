@@ -104,7 +104,15 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             "requested_model": settings.LLM_ENHANCEMENT_MODEL,
         }
         shared = shared_enhancement(bill)
-        if shared is not None:
+        rerun = request.query_params.get("rerun") == "1" and shared and shared.status == "succeeded"
+        if rerun:
+            latest_row = BillEnhancement.objects.filter(bill=bill).order_by("-id").first()
+            active = BillEnhancement.objects.filter(bill=bill, status__in=["pending", "running"]).first()
+            if active:
+                return Response({**base, "unavailable_reason": "shared_enhancement_available",
+                    "matching_enhancement": enhancement_payload(active, detail=False, viewer=request.user)})
+            base["rerun_after"] = latest_row.pk
+        elif shared is not None:
             return Response({**base, "unavailable_reason": "shared_enhancement_available",
                              "matching_enhancement": enhancement_payload(shared, detail=False, viewer=request.user)})
         if not base["feature_available"]:
@@ -162,7 +170,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
             return Response({**base, "unavailable_reason": "reconciliation_required",
                              "matching_enhancement": matching_payload})
         reused = reusable_publication(matching, credential) if matching else None
-        if reused:
+        if reused and not rerun:
             with planning_for(credential_target(credential)):
                 preflight = build_enhancement_preflight(bill, reuse_result=reused)
         from .model_capabilities import resolve_capabilities
@@ -181,7 +189,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                 "output_schema_version": preflight.output_schema_version,
                 "source_packet_version": preflight.source_packet_version,
                 "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": confirmation_fingerprint(preflight, credential),
+                "request_fingerprint": confirmation_fingerprint(preflight, credential, base.get("rerun_after")),
                 "serialized_request_bytes": len(preflight.request_bytes),
                 "estimated_input_tokens": preflight.estimated_input_tokens,
                 "max_output_tokens": max(
@@ -200,7 +208,7 @@ class BillEnhancementEstimateView(PrivateEnhancementMixin, APIView):
                     TRUNCATED_COVERAGE_NOTICE if preflight.truncated else None
                 ),
                 "source_description": preflight.source_manifest.get("source_kind"),
-                "matching_enhancement": matching_payload,
+                "matching_enhancement": None if rerun else matching_payload,
             }
         )
 
@@ -234,8 +242,11 @@ class BillEnhancementListCreateView(PrivateEnhancementMixin, APIView):
             )
         except EnhancementServiceError as exc:
             return _service_error(exc)
+        payload = enhancement_payload(result.enhancement, detail=True, viewer=request.user)
+        if result.enhancement.rerun_after:
+            payload["active_reader"] = _active_reader_payload(request.user, bill)
         return Response(
-            enhancement_payload(result.enhancement, detail=True, viewer=request.user),
+            payload,
             status=status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK,
         )
 
@@ -244,7 +255,8 @@ class BillEnhancementLatestView(PrivateEnhancementMixin, APIView):
     def get(self, request, bill_id):
         bill = self.bill(bill_id)
         shared = shared_enhancement(bill)
-        enhancement = shared or (
+        active_rerun = BillEnhancement.objects.filter(bill=bill, rerun_after__isnull=False, status__in=["pending", "running"]).order_by("-pk").first()
+        enhancement = active_rerun or shared or (
             BillEnhancement.objects.filter(user=request.user, bill=bill)
             .prefetch_related(ATTEMPT_PREFETCH)
             .order_by("-created_at", "-id")

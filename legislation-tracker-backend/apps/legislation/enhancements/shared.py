@@ -74,7 +74,7 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
             source_first_inputs = _source_first_inputs(saved, document)
             if source_first_inputs is None:
                 return False
-    fingerprint = hashlib.sha256(f"bill-validation:projection-8:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
+    fingerprint = hashlib.sha256(f"bill-validation:projection-9:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()).hexdigest()
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
         return cached.result_json['valid']

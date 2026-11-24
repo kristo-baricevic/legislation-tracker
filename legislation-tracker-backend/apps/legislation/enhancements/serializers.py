@@ -14,6 +14,7 @@ from .citations import citation_spans
 class EnhancementConfirmationSerializer(serializers.Serializer):
     source_fingerprint = serializers.RegexField(r"^[a-f0-9]{64}$")
     request_fingerprint = serializers.RegexField(r"^[a-f0-9]{64}$")
+    rerun_after = serializers.IntegerField(min_value=1, required=False)
     credential_revision = serializers.IntegerField(min_value=1)
 
 

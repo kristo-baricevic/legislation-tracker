@@ -6,6 +6,7 @@ import type { BillEnhancementEstimate, EnhancementConfirmation } from "@/lib/api
 export function confirmationFromEstimate(estimate: BillEnhancementEstimate): EnhancementConfirmation | null {
   if (!estimate.source_fingerprint || !estimate.request_fingerprint || estimate.credential_revision == null) return null;
   return {
+    ...(estimate.rerun_after ? { rerun_after: estimate.rerun_after } : {}),
     source_fingerprint: estimate.source_fingerprint,
     request_fingerprint: estimate.request_fingerprint,
     credential_revision: estimate.credential_revision,

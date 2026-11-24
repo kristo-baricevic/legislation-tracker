@@ -296,14 +296,14 @@ export default function BillEnhancementPanel({
     };
   }, [billId, isFederal, sessionRevision]);
 
-  async function prepareEnhancement() {
+  async function prepareEnhancement(rerun = false) {
     if (preparing || confirming || submitting) return;
     const owner = generation.current;
     setPreparing(true);
     setError(null);
     setLiveFailure(false);
     try {
-      const nextEstimate = await getBillEnhancementEstimate(billId);
+      const nextEstimate = rerun ? await getBillEnhancementEstimate(billId, true) : await getBillEnhancementEstimate(billId);
       if (owner !== generation.current) return;
       setEstimate(nextEstimate);
       if (nextEstimate.unavailable_reason === "shared_enhancement_available" && nextEstimate.matching_enhancement) {
@@ -485,16 +485,17 @@ export default function BillEnhancementPanel({
   const activeReader = enhancement?.active_reader !== undefined ? enhancement.active_reader
     : enhancement?.status === "succeeded" && (enhancement.source_compatible ?? !enhancement.stale) ? enhancement : null;
   const hasSavedReader = Boolean(activeReader?.result);
+  const canRerun = hasSavedReader && enhancement?.status === "succeeded" && !retryable && !canStartNewIdentity;
   const failed = Boolean(enhancement && ["failed", "refused", "outcome_unknown"].includes(enhancement.status));
   return (
     <>
       <ControlsSlot targetId={controlsTargetId}>
         {hasSavedReader && <ReaderModeSwitch />}
-        {(!hasSavedReader || (!isActive && canPrepareEstimate)) && <button type="button"
-          aria-busy={preparing} disabled={preparing || Boolean(isActive) || !canPrepareEstimate}
-          onClick={() => void prepareEnhancement()}
+        {(!hasSavedReader || (!isActive && (canPrepareEstimate || canRerun))) && <button type="button"
+          aria-busy={preparing} disabled={preparing || Boolean(isActive) || !(canPrepareEstimate || canRerun)}
+          onClick={() => void prepareEnhancement(canRerun)}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 dark:bg-green-500 dark:text-black">
-          {preparing ? "Preparing AI estimate…" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
+          {preparing ? "Preparing AI estimate…" : canRerun ? "Re-run enhancement" : blockedByReconciliation ? "Check current model estimate" : enhancement?.status === "pending" ? "Queued…" : isActive ? "Enhancing…" : enhancement?.status === "paused" && !canStartNewIdentity ? "Continue" : retryable && !canStartNewIdentity ? "Retry AI enhancement" : hasSavedReader && canStartNewIdentity ? "Enhance current version" : "Enhance"}
         </button>}
         {!blockedByReconciliation && failed && liveFailure && !error && <p role="alert" className="mt-1 text-sm text-red-700">{enhancement?.status === "outcome_unknown" ? "Enhancement status unknown." : "Enhancement failed."}</p>}
         {blockedByReconciliation && (

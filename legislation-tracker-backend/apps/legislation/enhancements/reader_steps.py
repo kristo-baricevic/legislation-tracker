@@ -85,6 +85,12 @@ class DurableReaderProvider:
             if (request.provider, request.requested_model) == ('openrouter', 'openrouter/free') and current.pinned_model:
                 dispatch_request = replace(request, requested_model=current.pinned_model)
             fingerprint, _ = call_identity(dispatch_request, adapter=adapter)
+            rerun = self.attempt.enhancement.rerun_after
+            if rerun:
+                import hashlib
+                if BillEnhancementCallCache.objects.filter(fingerprint=fingerprint, status='dispatching').exists():
+                    raise unresolved_reservation(fingerprint)
+                fingerprint = hashlib.sha256(f"{fingerprint}:rerun:{self.attempt.enhancement_id}".encode()).hexdigest()
             # A restart may happen after the router resolved the first call but
             # before its work-node checkpoint. Reuse that exact reservation.
             prior_step = current.steps.filter(diagnostics__logical_fingerprint=logical_fingerprint).first()
@@ -96,7 +102,7 @@ class DurableReaderProvider:
                     fingerprint=legacy_key).first()
                 if legacy and legacy.status == 'dispatching':
                     raise unresolved_reservation(legacy_key)
-                if adapter == 'existing' and legacy and legacy.status == 'validated':
+                if not rerun and adapter == 'existing' and legacy and legacy.status == 'validated':
                     output = remap(legacy.result_json, {v: k for k, v in references.items()})
                     try:
                         _validate_response(output, request)

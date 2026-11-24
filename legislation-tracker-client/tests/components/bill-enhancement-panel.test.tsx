@@ -187,6 +187,18 @@ describe("BillEnhancementPanel", () => {
     expect(screen.queryByRole("dialog", { name: /Confirm AI/ })).not.toBeInTheDocument();
     expect(createBillEnhancement).not.toHaveBeenCalled();
   });
+  it("requires a fresh estimate and confirmation to re-run a published enhancement", async () => {
+    vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com" } });
+    vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());
+    vi.mocked(getBillEnhancementEstimate).mockResolvedValue({ ...estimate, rerun_after: 9 });
+    vi.mocked(createBillEnhancement).mockResolvedValue(enhancementPayload({ status: "pending" }));
+    render(<AiGlossaryProvider><BillEnhancementPanel billId={10} jurisdiction="federal" /></AiGlossaryProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: "Re-run enhancement" }));
+    expect(getBillEnhancementEstimate).toHaveBeenCalledWith(10, true);
+    expect(createBillEnhancement).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm and enhance" }));
+    expect(createBillEnhancement).toHaveBeenCalledWith(10, expect.objectContaining({ rerun_after: 9 }));
+  });
   it.each([false, true])("shows metadata only for superusers: %s", async (is_superuser) => {
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, user: { email: "reader@example.com", is_superuser } });
     vi.mocked(getLatestBillEnhancement).mockResolvedValue(enhancementPayload());

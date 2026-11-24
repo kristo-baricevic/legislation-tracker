@@ -148,9 +148,11 @@ def execution_config(provider, model, credential):
             "adapter": adapter_for(provider), "capabilities": asdict(limits), "capability_fingerprint": limits.fingerprint}
 
 
-def confirmation_fingerprint(preflight, credential):
+def confirmation_fingerprint(preflight, credential, rerun_after=None):
     config = execution_config(preflight.provider, preflight.requested_model, credential)
     identity = f"{preflight.request_fingerprint}:{credential.pk}:{credential.revision}:{config['adapter']}:{config['capability_fingerprint']}"
+    if rerun_after is not None:
+        identity += f":rerun:{rerun_after}"
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
@@ -161,7 +163,7 @@ def _validate_confirmation(preflight, credential, confirmed) -> None:
         raise EnhancementServiceError("preflight_changed")
     if confirmed.get("credential_revision") != credential.revision:
         raise EnhancementServiceError("credential_changed")
-    if confirmed.get("request_fingerprint") != confirmation_fingerprint(preflight, credential):
+    if confirmed.get("request_fingerprint") != confirmation_fingerprint(preflight, credential, confirmed.get("rerun_after")):
         raise EnhancementServiceError("preflight_changed")
 
 
@@ -191,10 +193,11 @@ def _build_locked_preflight(bill_id: int, credential, *, owned_target=None):
         raise EnhancementServiceError(exc.reason) from exc
 
 
-def _new_enhancement(*, user, bill, preflight) -> BillEnhancement:
+def _new_enhancement(*, user, bill, preflight, rerun_after=None) -> BillEnhancement:
     from .provider_registry import adapter_for
     return BillEnhancement.objects.create(
         user=user,
+        rerun_after=rerun_after,
         bill=bill,
         provider=preflight.provider,
         requested_model=preflight.requested_model,
@@ -234,7 +237,19 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
         # The bill lock serializes requests across users, not just one payer.
         locked_bill = Bill.objects.select_for_update().get(pk=bill.pk)
         shared = shared_enhancement(locked_bill)
-        if shared is not None:
+        rerun_after = confirmed.get("rerun_after")
+        if rerun_after is not None:
+            previous = BillEnhancement.objects.filter(bill=locked_bill).order_by("-id").first()
+            replay = BillEnhancement.objects.filter(bill=locked_bill, rerun_after=rerun_after).first()
+            if replay:
+                return AttemptCreation(replay, replay.attempts.latest("sequence"), False)
+            if not previous or previous.pk != rerun_after or not shared or shared.status != "succeeded":
+                raise EnhancementServiceError("preflight_changed")
+            if BillEnhancement.objects.filter(bill=locked_bill, status__in=ACTIVE_STATUSES).exists():
+                raise EnhancementServiceError("preflight_changed")
+            if previous.user_id == user.pk and reader_reconciliation_required(previous.attempts.order_by("-sequence").first()):
+                raise EnhancementServiceError("reconciliation_required")
+        elif shared is not None:
             latest = shared.attempts.order_by("-sequence").first()
             if latest is not None:
                 return AttemptCreation(shared, latest, False)
@@ -251,7 +266,7 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
             )
             .first()
         )
-        if enhancement is not None:
+        if rerun_after is None and enhancement is not None:
             latest = enhancement.attempts.order_by("-sequence").first()
             if (
                 enhancement.status
@@ -272,6 +287,7 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
                     user=user,
                     bill=locked_bill,
                     preflight=preflight,
+                    rerun_after=rerun_after,
                 )
                 attempt = _create_attempt(
                     enhancement=enhancement,
@@ -283,7 +299,7 @@ def create_enhancement_attempt(*, user, bill, confirmed) -> AttemptCreation:
             enhancement = BillEnhancement.objects.get(
                 user=user,
                 bill=locked_bill,
-                request_fingerprint=preflight.request_fingerprint,
+                request_fingerprint=preflight.request_fingerprint, rerun_after=rerun_after,
             )
             attempt = enhancement.attempts.order_by("-sequence").first()
             if attempt is None:

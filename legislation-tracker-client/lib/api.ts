@@ -1373,6 +1373,7 @@ export function getPublicCapabilities(): Promise<PublicCapabilities> {
 }
 
 export interface EnhancementConfirmation {
+  rerun_after?: number;
   source_fingerprint: string;
   request_fingerprint: string;
   credential_revision: number;
@@ -1536,6 +1537,7 @@ export interface BillEnhancement {
 }
 
 export interface BillEnhancementEstimate {
+  rerun_after?: number;
   cost_status?: "free" | "unknown";
   estimator?: string;
   reader_coverage?: { total_count: number; selected_count: number; unavailable_count: number; batch_count: number; unavailable: { target_id: string; reason: string }[] } | null;
@@ -1571,10 +1573,10 @@ export interface BillEnhancementsPage {
 }
 
 export function getBillEnhancementEstimate(
-  billId: number,
+  billId: number, rerun = false,
 ): Promise<BillEnhancementEstimate> {
   return authGet<BillEnhancementEstimate>(
-    `/api/bills/${billId}/enhancements/estimate/`,
+    `/api/bills/${billId}/enhancements/estimate/${rerun ? "?rerun=1" : ""}`,
   );
 }
 
