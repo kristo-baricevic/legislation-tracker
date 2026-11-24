@@ -38,25 +38,32 @@ export function DocumentReader({ documentId }: { documentId: string }) {
     return () => controller.abort();
   }, [documentId, retry]);
 
+  const readerText = useMemo(() => (data?.text ?? "")
+    .replace(/\[\[QUOTED_BLOCK_(?:START|END)\]\]/g, "")
+    .split("\n")
+    .map(line => line.trim().replace(/^(?:\((?:\d{1,3}|([a-z])\1{0,2}|[ivxlcdm]+)\)(?=\s|\(|$)\s*)+/i, "").trim())
+    .filter(line => line && !/^[.;,]+$/.test(line))
+    .join("\n"), [data]);
+
   const blocks = useMemo(() => {
     let offset = 0;
     const result = [];
-    for (const text of (data?.text ?? "").split("\n")) {
+    for (const text of readerText.split("\n")) {
       result.push({ text, start: offset });
       offset += text.length + 1;
     }
     return result;
-  }, [data]);
+  }, [readerText]);
   const matches = useMemo(() => {
-    if (!query.trim() || !data) return [];
+    if (!query.trim() || !readerText) return [];
     const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
     const found: number[] = [];
     let match;
-    while (found.length < 500 && (match = pattern.exec(data.text)) !== null) {
+    while (found.length < 500 && (match = pattern.exec(readerText)) !== null) {
       found.push(match.index);
     }
     return found;
-  }, [data, query]);
+  }, [readerText, query]);
   useEffect(() => {
     article.current?.querySelector('[data-current="true"]')?.scrollIntoView?.({ block: "center" });
   }, [selected, matches]);
@@ -78,7 +85,7 @@ export function DocumentReader({ documentId }: { documentId: string }) {
   function renderContent() {
     if (error) return <div className="mx-auto max-w-3xl p-6"><div role="alert">Could not load this bill text. It may not be available yet.</div><button className={control + " mt-4"} onClick={() => setRetry(retry + 1)}>Retry</button><Link className="ml-4 underline" href="/bills">Browse bills</Link></div>;
     if (!data) return null;
-    const { info, text } = data;
+    const { info } = data;
     return <main className="mx-auto max-w-4xl px-4 py-6 text-slate-900 dark:text-green-200 sm:px-8">
       <Link href={`/bills/${info.bill}`} className="text-sm font-semibold text-blue-900 underline dark:text-green-400">Back to bill summary</Link>
       <header className="my-6">
@@ -89,10 +96,9 @@ export function DocumentReader({ documentId }: { documentId: string }) {
           <h2 className="text-sm font-semibold">Purpose stated in the original bill</h2>
           <p className="mt-1 leading-relaxed">{info.source_purpose}</p>
         </section>}
-        <p className="mt-2 text-sm text-slate-600 dark:text-green-400">Full bill text, not a summary. Wording is preserved from the stored source.</p>
         {info.download_url && <a className="mt-3 inline-block text-sm font-semibold underline" href={/^https?:\/\//.test(info.download_url) ? info.download_url : getApiBase() + info.download_url}>Download original</a>}
       </header>
-      {text.trim() ? <>
+      {readerText ? <>
         <div className="sticky top-0 z-10 mb-6 flex flex-wrap items-end gap-3 border-y border-slate-300 bg-white p-3 dark:border-green-800 dark:bg-black">
           <label className="min-w-0 flex-1 text-sm">Find in bill text<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} className={control + " mt-1 block w-full bg-white dark:bg-black"} /></label>
           <button className={control} disabled={!matches.length} onClick={() => setSelected((selected + matches.length - 1) % matches.length)}>Previous match</button>
