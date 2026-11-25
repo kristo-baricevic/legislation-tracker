@@ -171,6 +171,7 @@ def add_card_summaries(rows):
         .only("id", "summary", "latest_contract_id")
     )
     originals = {}
+    plain_summaries = {}
     for contract in BillContract.objects.filter(
         pk__in=[b.latest_contract_id for b in bills if b.latest_contract_id]
     ).values(
@@ -181,8 +182,12 @@ def add_card_summaries(rows):
         "reader_copy__contract_hash",
         "reader_copy__brief__summary",
         "contract_json__orientation",
+        "contract_json__plain_summary",
         "document__source_purpose",
     ):
+        plain = contract["contract_json__plain_summary"]
+        if isinstance(plain, str):
+            plain_summaries[contract["id"]] = plain
         if contract["schema_version"] != "2.1-legal-nlp":
             continue
         summary = (
@@ -202,8 +207,10 @@ def add_card_summaries(rows):
     enhanced = _enhanced_cards({bill.pk: bill for bill in bills if bill.has_candidate})
     for bill in bills:
         card = targets[bill.pk]
-        summary = originals.get(bill.latest_contract_id) or strip_tags(
-            bill.summary or ""
+        summary = (
+            (originals.get(bill.latest_contract_id) or "").strip()
+            or strip_tags(bill.summary or "").strip()
+            or plain_summaries.get(bill.latest_contract_id, "")
         )
         saved = enhanced.get(bill.pk)
         if saved and saved.status == "succeeded":

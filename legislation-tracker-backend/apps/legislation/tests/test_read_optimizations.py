@@ -73,6 +73,30 @@ def test_bill_list_projects_card_summaries_without_loading_full_payloads(count):
     assert len(queries) <= 8  # Same bound for one card or a complete page.
 
 
+@pytest.mark.parametrize("official", [None, "   ", "<p>Official summary.</p>"])
+def test_bill_card_uses_legacy_plain_summary_as_last_fallback(official):
+    title = "A bill to designate a United States Postal Service facility."
+    bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="S 5770",
+        title=title,
+        summary=official,
+    )
+    bill.latest_contract = BillContract.objects.create(
+        bill=bill,
+        schema_version="1.1-deterministic",
+        contract_json={"plain_summary": title},
+        contract_hash="legacy",
+    )
+    bill.save(update_fields=["latest_contract"])
+    response = APIClient().get("/api/bills/")
+    assert response.status_code == 200
+    assert response.data["results"][0]["card_summary"] == (
+        "Official summary." if official and official.strip() else title
+    )
+
+
 def test_document_digest_changes_even_on_bulk_update():
     bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 89")
     doc = BillDocument.objects.create(
