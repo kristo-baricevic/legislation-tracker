@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 2
+CONTEXT_PLANNER_VERSION = 3
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -41,9 +41,16 @@ LEVELS = (
     "subitem",
 )
 REFERENCE = re.compile(
-    r"\b(?P<kind>section|subsection|paragraph|subparagraph|clause|subclause|item|subitem)s?\s+"
+    r"\b(?P<kind>section|subsection|paragraph|subparagraph|clause|subclause|item|subitem)(?P<plural>s)?\s+"
     r"(?P<label>\d+(?:\.\d+)*[A-Za-z]?(?:-[A-Za-z0-9]+)*|(?:\([A-Za-z0-9]+\))+)"
     r"(?P<suffix>(?:\([A-Za-z0-9]+\))*)",
+    re.I,
+)
+REFERENCE_MEMBER = re.compile(
+    r"(?:\d+(?:\.\d+)*[A-Za-z]?(?:-[A-Za-z0-9]+)*(?:\([A-Za-z0-9]+\))*|(?:\([A-Za-z0-9]+\))+)(?![A-Za-z0-9])"
+)
+REFERENCE_SEPARATOR = re.compile(
+    r"\s*(?:(?P<range>through\b|to\b|[-–—])\s*|(?:,\s*(?:(?:and|or)\s+)?|(?:and|or)\s+))",
     re.I,
 )
 SCOPE = re.compile(
@@ -87,6 +94,128 @@ def _label(value):
 
 def _normalize(value):
     return " ".join(value.casefold().split()).strip("‘’“”\"'` .;:")
+
+
+def _reference_parts(match):
+    if match["kind"].casefold() == "section":
+        return [match["label"], *re.findall(r"\([A-Za-z0-9]+\)", match["suffix"])]
+    return re.findall(r"\([A-Za-z0-9]+\)", match["label"] + match["suffix"])
+
+
+def _continued_reference(kind, value, previous):
+    """Retain a shared path in 'section 2(a)(1) through (3)' lists."""
+    member = REFERENCE.fullmatch(kind + " " + value)
+    parts, prior = _reference_parts(member), _reference_parts(previous)
+    if value.startswith("(") and len(parts) < len(prior):
+
+        def style(label):
+            token = label.strip("()")
+            return (
+                "number" if token.isdigit() else "upper" if token.isupper() else "lower"
+            )
+
+        # Match the abbreviated label to its legal level, not merely the
+        # last component: '2(a)(1)(A) and (b)' means '2(b)', not '2(a)(1)(B)'.
+        minimum = int(kind.casefold() == "section")
+        for depth in range(len(prior) - len(parts), minimum - 1, -1):
+            if all(
+                style(value) == style(prior[depth + offset])
+                for offset, value in enumerate(parts)
+            ):
+                member = REFERENCE.fullmatch(
+                    kind + " " + "".join(prior[:depth] + parts)
+                )
+                break
+    return member
+
+
+def _reference_group(match, raw):
+    """Parse a complete list/range before applying its shared qualification.
+
+    Each member retains its relation to the preceding member, so a successful
+    first lookup cannot hide an incomplete range. Unsupported range syntax is
+    kept as an unresolved obligation instead of being accepted as a singleton.
+    """
+    kind, cursor = match["kind"], match.end()
+    members, incomplete, compact_literals = [(False, match)], False, []
+    # Parenthesized/delimited dashes are handled below. A compact numeric
+    # plural ('sections 2-4') is a range as well, not just section '2-4'.
+    compact = re.fullmatch(r"(\d+)-(\d+)", match["label"])
+    if match["plural"] and compact and not match["suffix"]:
+        compact_literals.append(match)
+        members = [
+            (False, REFERENCE.fullmatch(kind + " " + compact[1])),
+            (True, REFERENCE.fullmatch(kind + " " + compact[2])),
+        ]
+    while True:
+        if inclusive := re.match(
+            r"(?:,\s*|\s+)(?:inclusive\b|\(inclusive\)),?", raw[cursor:], re.I
+        ):
+            cursor += inclusive.end()
+        separator = REFERENCE_SEPARATOR.match(raw, cursor)
+        if separator is None:
+            break
+        start = separator.end()
+        repeated = re.match(r"([A-Za-z]+)\s+", raw[start:])
+        if repeated and repeated[1].casefold().rstrip("s") == kind.casefold():
+            start += repeated.end()
+        value = REFERENCE_MEMBER.match(raw, start)
+        if value is None:
+            if separator["range"] and (
+                match["plural"]
+                or separator["range"].casefold() == "through"
+                or raw[start : start + 1] == "("
+            ):
+                incomplete = True
+                cursor = separator.end()
+            break
+        member = _continued_reference(kind, value[0], members[-1][1])
+        compact = re.fullmatch(r"(\d+)-(\d+)", value[0])
+        if compact:
+            compact_literals.append(REFERENCE.fullmatch(kind + " " + value[0]))
+            members.extend(
+                [
+                    (
+                        bool(separator["range"]),
+                        REFERENCE.fullmatch(kind + " " + compact[1]),
+                    ),
+                    (True, REFERENCE.fullmatch(kind + " " + compact[2])),
+                ]
+            )
+        else:
+            members.append((bool(separator["range"]), member))
+        cursor = value.end()
+    if re.match(r"\s+(?:et\s+seq\b|thru\b)", raw[cursor:], re.I):
+        incomplete = True
+    return members, cursor, incomplete, compact_literals
+
+
+def _label_ordinal(node):
+    """Comparable ordinal families; unknown enumerations stay unresolved."""
+    label = node.label.strip("()")
+    if node.tag in {"clause", "subclause"} and re.fullmatch(
+        r"(?=[ivxlcdm]+$)m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})",
+        label,
+        re.I,
+    ):
+        values = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+        total = largest = 0
+        for letter in reversed(label.casefold()):
+            value = values[letter]
+            total += -value if value < largest else value
+            largest = max(largest, value)
+        return ("roman",), total
+    if number := re.fullmatch(r"(.*?)(\d+)", label):
+        return ("number", number[1]), int(number[2])
+    if re.fullmatch(r"([a-z])\1*", label, re.I):
+        return ("letter", label.isupper()), (len(label) - 1) * 26 + ord(
+            label[0].lower()
+        ) - ord("a")
+    if suffix := re.fullmatch(r"(\d+(?:[.-]\d+)*)([A-Za-z])", label):
+        return ("suffix", suffix[1], suffix[2].isupper()), ord(suffix[2].lower()) - ord(
+            "a"
+        )
+    return None
 
 
 def _text_nodes(text, sections):
@@ -212,11 +341,17 @@ class DependencyIndex:
     def _direct(self, index):
         node = self.nodes[index]
         cursor, spans = node.start, []
-        for child in self.children[index]:
-            item = self.nodes[child]
-            if cursor < item.start:
-                spans.append((cursor, item.start))
-            cursor = max(cursor, item.end)
+        # Ingestion renders direct continuations before quoted blocks, even
+        # when their inline quoted-text children appear later in XML order.
+        # Subtract the union of immutable child intervals in text order; an
+        # already emitted parent prefix must never also belong to a child.
+        for start, end in sorted(
+            (self.nodes[child].start, self.nodes[child].end)
+            for child in self.children[index]
+        ):
+            if cursor < start:
+                spans.append((cursor, start))
+            cursor = max(cursor, end)
         if cursor < node.end:
             spans.append((cursor, node.end))
         return spans
@@ -275,13 +410,21 @@ class DependencyIndex:
             or scope in self.ancestors(index)
         )
 
-    def _path_target(self, index, labels):
+    def _path_target(self, index, labels, *, first_kind=None):
         current = [index]
-        for label in labels:
+        for depth, label in enumerate(labels):
             following = []
             for parent in current:
                 for child in self.children[parent]:
-                    if self.nodes[child].label.casefold() == label.casefold():
+                    if (
+                        self.nodes[child].label == label
+                        and self.quote_scope(child) == self.quote_scope(parent)
+                        and (
+                            depth
+                            or first_kind is None
+                            or self.nodes[child].tag == first_kind
+                        )
+                    ):
                         following.append(child)
             current = following
         return current
@@ -308,36 +451,56 @@ class DependencyIndex:
                 break
         return False
 
-    def _reference_targets(self, index, match, raw, *, after=None):
+    def _reference_targets(self, index, match, raw, *, after=None, before=None):
         kind, label = match["kind"].casefold(), match["label"]
         suffix = re.findall(r"\([A-Za-z0-9]+\)", match["suffix"])
         after = raw[match.end() : match.end() + 100] if after is None else after
-        qualified = re.match(
-            r"\s+of\s+(?!this\s+(?:Act|section|subsection|paragraph)\b)", after, re.I
+        before = raw[: match.start()] if before is None else before
+        # An unparsed annotation can carry an external qualification. Do not
+        # silently treat 'section 2 (as amended) of the Other Act' as local.
+        if after.lstrip().startswith("("):
+            return []
+        local = re.match(
+            r"\s+of\s+this\s+(Act|division|title|subtitle|chapter|subchapter|part|subpart|section|subsection|paragraph|subparagraph|clause|subclause)\b",
+            after,
+            re.I,
         )
-        if qualified:
+        if re.match(r"\s+of\s+", after, re.I) and not local:
             return []
         if (
             self._external_amendment(index)
-            and not re.match(
-                r"\s+of\s+this\s+(?:Act|section|subsection)\b", after, re.I
-            )
+            and not local
             and not re.search(
                 r"\b(?:added|amended|redesignated|transferred|inserted)\s+by\s*$",
-                raw[: match.start()],
+                before,
                 re.I,
             )
         ):
             return []
+        explicit_scope = None
+        if local and local[1].casefold() != "act":
+            level = local[1].casefold()
+            explicit_scope = self.scope(index, level)
+            if (
+                explicit_scope is None
+                or self.nodes[explicit_scope].tag != level
+                or (level in LEVELS and LEVELS.index(level) >= LEVELS.index(kind))
+            ):
+                return []
         if kind == "section":
             candidates = self.sections.get(
                 (self.quote_scope(index), label.casefold()), []
             )
+            if explicit_scope is not None:
+                candidates = [
+                    target
+                    for target in candidates
+                    if self._descendant(target, explicit_scope)
+                ]
             # Bare section numbers inside instructions amending another law
             # are not numbers in the current bill.
-            explicit_local = re.match(r"\s+of\s+this\s+Act\b", after, re.I)
             if (
-                not explicit_local
+                not local
                 and self.quote_scope(index) is None
                 and re.search(r"\b(?:amend\w*|striking|inserting)\b", raw, re.I)
             ):
@@ -349,16 +512,82 @@ class DependencyIndex:
         if not labels:
             return []
         rank = LEVELS.index(kind)
-        enclosing = next(
-            (
-                i
-                for i in (index, *self.ancestors(index))
-                if self.nodes[i].tag in LEVELS[:rank]
-                and self.quote_scope(i) == self.quote_scope(index)
-            ),
-            None,
+        enclosing = (
+            explicit_scope
+            if local
+            else next(
+                (
+                    i
+                    for i in (index, *self.ancestors(index))
+                    if self.nodes[i].tag in LEVELS[:rank]
+                    and self.quote_scope(i) == self.quote_scope(index)
+                ),
+                None,
+            )
         )
-        return self._path_target(enclosing, labels) if enclosing is not None else []
+        return (
+            self._path_target(enclosing, labels, first_kind=kind)
+            if enclosing is not None
+            else []
+        )
+
+    def _range_targets(self, first, last):
+        """Expand an interval only within the endpoints' verified legal scope.
+
+        The actual intervening provisions supply evidence (including inserted
+        labels such as section 2A). Their ordinal sequence must also be complete:
+        present (a) and (c) cannot prove the absence of a missing (b).
+        """
+        if len(first) != 1 or len(last) != 1:
+            return [], False
+        left, right = self.nodes[first[0]], self.nodes[last[0]]
+        if left.tag != right.tag or self.quote_scope(first[0]) != self.quote_scope(
+            last[0]
+        ):
+            return [], False
+        if left.tag == "section":
+            candidates = [
+                target
+                for (quote, _), targets in self.sections.items()
+                if quote == self.quote_scope(first[0])
+                for target in targets
+            ]
+        elif left.parent == right.parent:
+            candidates = [
+                target
+                for target in self.children[left.parent]
+                if self.nodes[target].tag == left.tag
+                and self.quote_scope(target) == self.quote_scope(first[0])
+            ]
+        else:
+            return [], False
+        start, end = _label_ordinal(left), _label_ordinal(right)
+        if (
+            start is None
+            or end is None
+            or start[0] != end[0]
+            or start[1] > end[1]
+            or left.start > right.start
+        ):
+            return [], False
+        targets = sorted(
+            (
+                target
+                for target in candidates
+                if left.start <= self.nodes[target].start <= right.start
+            ),
+            key=lambda target: self.nodes[target].start,
+        )
+        ordinals = [
+            ordinal[1]
+            for target in targets
+            if (ordinal := _label_ordinal(self.nodes[target])) is not None
+            and ordinal[0] == start[0]
+        ]
+        complete = len(ordinals) == end[1] - start[1] + 1 and all(
+            value == start[1] + offset for offset, value in enumerate(ordinals)
+        )
+        return targets, complete
 
     def _retain_incoming_reference(self, origin, target):
         # A reference can impose eligibility, a use restriction or a condition
@@ -419,7 +648,10 @@ class DependencyIndex:
                     target = self.by_identity[identity]
                     self.links[i].add(target)
                     self._retain_incoming_reference(i, target)
+            consumed = 0
             for match in REFERENCE.finditer(normalized):
+                if match.start() < consumed:
+                    continue
                 if (
                     node.tag == "section"
                     and match.start() == 0
@@ -427,31 +659,49 @@ class DependencyIndex:
                     and match["label"].casefold() == node.label.casefold()
                 ):
                     continue  # A rendered section heading is not a cross-reference.
-                # A plural reference shares its final qualification: resolve
-                # each member of "sections 2 and 3 of this Act", including
-                # lists of relative subsection/paragraph paths.
-                cursor, members = match.end(), [match]
-                while extra := re.match(
-                    r"\s*(?:,\s*(?:(?:and|or)\s+)?|(?:and|or)\s+)(\d+(?:\.\d+)*[A-Za-z]?(?:\([A-Za-z0-9]+\))*|(?:\([A-Za-z0-9]+\))+)(?![A-Za-z0-9])",
-                    normalized[cursor:],
-                ):
-                    synthetic = REFERENCE.match(match["kind"] + " " + extra[1])
-                    members.append(synthetic)
-                    cursor += extra.end()
+                # Lists and ranges share their final qualification. Keep an
+                # obligation for the entire expression if any member, scope,
+                # or intervening ordinal cannot be resolved unambiguously.
+                members, cursor, incomplete, compact_literals = _reference_group(
+                    match, normalized
+                )
+                consumed = cursor
                 after = normalized[cursor : cursor + 100]
-                targets = []
-                for member in members:
+                targets, previous = [], []
+                for is_range, member in members:
                     resolved = self._reference_targets(
                         i,
                         member,
-                        normalized if member is match else member[0],
+                        normalized,
                         after=after,
+                        before=normalized[: match.start()],
                     )
-                    if not resolved:
-                        self.unresolved[i].add(member[0])
+                    if len(resolved) != 1:
+                        resolved = []
+                        incomplete = True
                     targets.extend(resolved)
-                if not targets:
-                    self.unresolved[i].add(match[0])
+                    if is_range:
+                        expanded, complete = self._range_targets(previous, resolved)
+                        targets.extend(expanded)
+                        incomplete = incomplete or not complete
+                    previous = resolved
+                for literal in compact_literals:
+                    resolved = self._reference_targets(
+                        i,
+                        literal,
+                        normalized,
+                        after=after,
+                        before=normalized[: match.start()],
+                    )
+                    if resolved:
+                        # 'Sections 2-4' may also identify an actual section
+                        # labeled '2-4'. Preserve both available interpretations
+                        # and require review instead of silently selecting one.
+                        targets.extend(resolved)
+                        incomplete = True
+                if incomplete:
+                    self.unresolved[i].add(normalized[match.start() : cursor])
+                targets = list(dict.fromkeys(targets))
                 preceding = normalized[max(0, match.start() - 160) : match.start()]
                 amendment_identity = re.search(
                     r"\b(?:amendments?\s+(?:made|effected)|(?:law|provision)\s+amended|changes?\s+made)\s+by\s*$",

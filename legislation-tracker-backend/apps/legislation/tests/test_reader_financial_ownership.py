@@ -21,14 +21,19 @@ def test_recovered_financial_rows_receive_each_source_owners_dependencies(
     settings, separate_ranges
 ):
     plan, review = _financial_plan(settings)
-    first, second, dependency = plan.source_snapshot
+    first, second, dependency = [
+        s for s in plan.source_snapshot if s.get("discovery_source")
+    ]
+    target = next(
+        s["reader_targets"][0] for s in plan.source_snapshot if s.get("reader_targets")
+    )
     # One known financial provision spans two independently mapped sources.
     # Only the second source has outstanding dependency evidence.
     first.pop("deferred_context_source_refs")
     first.pop("deferred_context_quote_ids")
     second["deferred_context_source_refs"] = [dependency["source_ref"]]
     second["deferred_context_quote_ids"] = {dependency["source_ref"]: ["p0001"]}
-    first["reader_targets"][0]["evidence_ranges"] = (
+    target["evidence_ranges"] = (
         [
             (first["start_char"], first["end_char"]),
             (second["start_char"], second["end_char"]),
@@ -92,10 +97,13 @@ def test_mixed_size_recovered_owners_keep_independent_source_provenance(
     settings, deferred
 ):
     plan, review = _financial_plan(settings, long_source=True)
-    first, second, dependency = plan.source_snapshot
-    first["reader_targets"][0]["evidence_ranges"] = [
-        (first["start_char"], second["end_char"])
+    first, second, dependency = [
+        s for s in plan.source_snapshot if s.get("discovery_source")
     ]
+    target = next(
+        s["reader_targets"][0] for s in plan.source_snapshot if s.get("reader_targets")
+    )
+    target["evidence_ranges"] = [(first["start_char"], second["end_char"])]
     if deferred:
         # Both the long source and its short sibling enter the receipt base.
         second["deferred_context_source_refs"] = [dependency["source_ref"]]

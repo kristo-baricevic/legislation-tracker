@@ -20,7 +20,7 @@ from .diagnostics import (
     validation_diagnostic,
 )
 from .providers.base import ProviderError, ProviderResult, ProviderUsage
-from .reader_cache import call_identity, remap
+from .reader_cache import call_identity, legacy_dependency_identities, remap
 from .reader_citations import recover_reader_items, resolve_reader_citations
 from .reader_discovery import resolve_discovery
 from .reader_partial import PartialReviewReady, validated_components
@@ -45,6 +45,54 @@ def unresolved_reservation(fingerprint):
     error = ProviderError("outcome_unknown", outcome_unknown=True)
     error.citation_resolution["blocked_reservation"] = fingerprint
     return error
+
+
+def _document_reservation(current, request, dispatch_request):
+    """Carry a pre-version-13 charge across the dependency transport migration.
+
+    Old call hashes cannot reveal which prompt, schema or planner metadata was
+    used. Their durable steps still identify the immutable document and the
+    payer's requested/pinned model. Pause that document's dependency stage until
+    the old outcome is reconciled, just as retries of its original run do.
+    Current executions keep their per-call fences; independent current pages
+    must not be serialized merely because they belong to the same document.
+    """
+    document_hash = request.source_manifest.get("document_content_hash")
+    if not document_hash:
+        return None
+    models = {request.requested_model, dispatch_request.requested_model}
+    if request.provider == "openrouter" and any(
+        model.endswith(":free") for model in models
+    ):
+        models.add("openrouter/free")
+    steps = (
+        BillEnhancementStep.objects.filter(
+            stage="reader",
+            attempt__enhancement__bill_id=current.enhancement.bill_id,
+            attempt__enhancement__provider=request.provider,
+            attempt__enhancement__output_schema_version="1.4",
+            attempt__enhancement__source_manifest_json__document_content_hash=document_hash,
+        )
+        .filter(
+            Q(attempt__enhancement__requested_model__in=models)
+            | Q(attempt__pinned_model__in=models)
+        )
+        .filter(
+            Q(
+                attempt__enhancement__source_manifest_json__execution_settings__reader_execution_version__lt=13
+            )
+            | Q(
+                attempt__enhancement__source_manifest_json__execution_settings__reader_execution_version__isnull=True
+            )
+        )
+    )
+    return (
+        BillEnhancementCallCache.objects.filter(
+            status="dispatching", pk__in=steps.values("request_fingerprint")
+        )
+        .values_list("pk", flat=True)
+        .first()
+    )
 
 
 class ReaderDeliveryComplete(Exception):
@@ -131,20 +179,18 @@ class DurableReaderProvider:
                 )
             fingerprint, _ = call_identity(dispatch_request, adapter=adapter)
             if request.request_envelope.get("dependency_review"):
+                blocked = _document_reservation(current, request, dispatch_request)
+                if blocked:
+                    raise unresolved_reservation(blocked)
                 # Correcting the schema invalidates known failed calls, but an
                 # old ambiguous dispatch must still fence new paid requests.
                 # Check logical identities as well as keys to include pinned
                 # models and salted reruns from other attempts/users.
-                old_identities = {
-                    call_identity(
-                        candidate,
-                        execution_version=version,
-                        adapter=adapter,
-                        dependency_transport_version=1,
-                    )[0]
-                    for candidate in (request, dispatch_request)
-                    for version in (2, 3)
-                }
+                old_identities = legacy_dependency_identities(
+                    request,
+                    adapter=adapter,
+                    dispatched_model=dispatch_request.requested_model,
+                )
                 blocked = (
                     BillEnhancementCallCache.objects.filter(status="dispatching")
                     .filter(

@@ -689,7 +689,10 @@ def validate_source_review(review, sources):
     ):
         from .reader_reconciliation import validate_reconciliation
 
-        reconciled_retained = validate_reconciliation(review, scan_sources)
+        # Known financial targets belong to separate context sources in a real
+        # preflight. Reconciliation needs those targets to verify recovered
+        # source wording; factual ownership still comes from factual_map flags.
+        reconciled_retained = validate_reconciliation(review, sources)
         reconciled = True
     # Revalidate the stored prose shape and every server-resolved citation.
     for category in (

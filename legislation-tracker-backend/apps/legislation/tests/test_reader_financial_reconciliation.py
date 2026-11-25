@@ -23,17 +23,18 @@ from apps.legislation.enhancements.reader_discovery import (
 from apps.legislation.enhancements.reader_reconciliation import (
     reconcile_review,
     validate_dependency_review,
+    validate_reconciliation,
 )
 from apps.legislation.tests.test_reader_reconciliation import Provider, _fixture
 
 
-def _financial_plan(settings, *, long_source=False):
+def _financial_plan(settings, *, long_source=False, source_lines=300):
     plan, review = _fixture(settings, count=2)
     if long_source:
         owner = plan.source_snapshot[0]
         owner["quoted_text"] = "\n".join(
             f"Applicants in category {i} must pay the first fee instead of the second fee."
-            for i in range(300)
+            for i in range(source_lines)
         )
         position = 0
         for source in plan.source_snapshot:
@@ -56,7 +57,7 @@ def _financial_plan(settings, *, long_source=False):
         settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100_000
         settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 100_000
     owner = plan.source_snapshot[0]
-    owner["reader_targets"] = [
+    targets = [
         {
             "kind": "financial_item",
             "target_id": "financial-rule",
@@ -64,6 +65,19 @@ def _financial_plan(settings, *, long_source=False):
             "facts": {"item": {"financial_action": "fee"}},
         }
     ]
+    # Real preflight snapshots retain overlapping summary/target contexts and
+    # independently owned discovery sources. Known NLP targets belong to the
+    # target context, not to a discovery owner.
+    context = {
+        key: copy.deepcopy(owner[key])
+        for key in ("start_char", "end_char", "quoted_text", "text_sha256")
+    }
+    main_source = {**context, "source_ref": "src_9000"}
+    target_source = {
+        **context,
+        "source_ref": "src_9001",
+        "reader_targets": targets,
+    }
     original_records = {row["record_id"]: row for row in review["factual_records"]}
     review["factual_records"] = [
         original_records.get(
@@ -103,19 +117,19 @@ def _financial_plan(settings, *, long_source=False):
         "unresolved_reason": None,
         "source_quotes": copy.deepcopy(review["policy_changes"][0]["source_quotes"]),
     }
+    for quote in explanation["source_quotes"]:
+        quote["source_ref"] = target_source["source_ref"]
     return (
         replace(
             plan,
+            source_snapshot=[main_source, target_source, *plan.source_snapshot],
             source_manifest={
                 "budget": {"maximum_calls": 100, "dependency_call_reserve": 80}
             },
             request_envelope={
                 "instructions": "Summarize all validated findings.",
                 "source_packet": {
-                    "sources": [
-                        {"source_ref": source["source_ref"]}
-                        for source in plan.source_snapshot
-                    ]
+                    "sources": [{"source_ref": main_source["source_ref"]}]
                 },
                 "output_schema": copy.deepcopy(READER_ID_SCHEMA),
                 "max_output_tokens": 4000,
@@ -200,7 +214,8 @@ def test_execution_recovers_financial_inventory_before_reconciliation_and_summar
     )
     if long_source:
         assert len(final_text) > 1600
-        assert final_text == plan.source_snapshot[0]["quoted_text"]
+        owner = next(s for s in plan.source_snapshot if s.get("discovery_source"))
+        assert final_text == owner["quoted_text"]
         assert len(review["financial_items"][0]["source_quotes"]) > 24
         assert all(
             request.request_envelope["max_output_tokens"] <= 24_000
@@ -209,6 +224,59 @@ def test_execution_recovers_financial_inventory_before_reconciliation_and_summar
     else:
         assert "providing emergency care" in final_text
     validate_source_review(review, plan.source_snapshot)
+
+
+def test_final_validation_keeps_financial_targets_outside_discovery_sources(settings):
+    plan, review = _financial_plan(settings, long_source=True, source_lines=80)
+    assert all(
+        not source.get("reader_targets")
+        for source in plan.source_snapshot
+        if source.get("discovery_source")
+    )
+    retain_missing_financial_rules(review, plan.source_snapshot)
+    assert 1600 < len(review["financial_items"][0]["text"].encode()) < 8000
+    result, _, calls = reconcile_review(
+        plan, review, FinancialProvider(long_source=True), "", lambda: None, 100
+    )
+    assert calls > 0
+    assert validate_reconciliation(result, plan.source_snapshot) == {0}
+    validate_source_review(result, plan.source_snapshot)
+
+
+@pytest.mark.parametrize(
+    "tamper", ["extra_record", "duplicate_record", "context_citation"]
+)
+def test_full_snapshot_does_not_expand_discovery_record_or_citation_ownership(
+    settings, tamper
+):
+    plan, review = _financial_plan(settings, long_source=True, source_lines=80)
+    retain_missing_financial_rules(review, plan.source_snapshot)
+    result, _, _ = reconcile_review(
+        plan, review, FinancialProvider(long_source=True), "", lambda: None, 100
+    )
+    context = next(s for s in plan.source_snapshot if s.get("reader_targets"))
+    if tamper == "extra_record":
+        quote_id = next(
+            p["quote_id"] for p in citation_passages(context) if p["quote_id"]
+        )
+        result["factual_records"].append(
+            {
+                "record_id": f"{context['source_ref']}:{quote_id}",
+                "claims": [],
+                "definitions": [],
+                "references": [],
+            }
+        )
+    elif tamper == "duplicate_record":
+        result["factual_records"][-1] = copy.deepcopy(result["factual_records"][0])
+    else:
+        # The context contains identical quotation text, but it is not a
+        # discovery owner and cannot replace the original citation identity.
+        result["financial_items"][0]["source_quotes"][0]["source_ref"] = context[
+            "source_ref"
+        ]
+    with pytest.raises(ValidationError):
+        validate_source_review(result, plan.source_snapshot)
 
 
 def test_long_recovered_rule_does_not_allow_long_generated_rewrites(settings):

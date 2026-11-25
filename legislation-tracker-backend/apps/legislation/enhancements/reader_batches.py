@@ -85,7 +85,7 @@ def reader_execution_settings():
 
     return {
         "policy_grouping_version": 7,
-        "reader_execution_version": 12,
+        "reader_execution_version": 13,
         "model_capacities": getattr(settings, "LLM_READER_MODEL_CAPACITIES", {}),
         **(
             {"owned_token_target": owned_token_target()} if owned_token_target() else {}
