@@ -28,12 +28,12 @@ All four complete planning variants pass:
 
 | Owned target | Owned chunks | Map requests | Initial planned calls | Largest serialized request |
 | ---: | ---: | ---: | ---: | ---: |
-| Default (8,000-byte ownership target) | 914 | 2,367 | 2,368 | 25,492 bytes |
-| 1,000 | 4,433 | 4,433 | 4,434 | 17,044 bytes |
-| 2,000 | 2,421 | 2,446 | 2,447 | 18,293 bytes |
-| 4,000 | 1,421 | 2,373 | 2,374 | 20,834 bytes |
+| Default (8,000-byte ownership target) | 914 | 2,367 | 2,368 | 25,539 bytes |
+| 1,000 | 4,433 | 4,433 | 4,434 | 17,079 bytes |
+| 2,000 | 2,421 | 2,446 | 2,447 | 18,277 bytes |
+| 4,000 | 1,421 | 2,373 | 2,374 | 20,849 bytes |
 
-Initial planned calls include one summary slot. Dependency and recursive-summary reservations are additional ceilings, not claims that every reserved call will be used. No provider was called by these tests. After the review corrections, all four complete variants were rerun: actual preflight took **31.165 / 89.446 / 43.252 / 35.001 seconds** for the default / 1,000 / 2,000 / 4,000-byte targets. Preflight plus the coverage/budget assertions took 45.965 / 94.949 / 47.423 / 41.985 seconds. The four-case test process took 274.067 seconds and peaked at **1,134,460 KiB RSS (about 1.08 GiB)**. The structural counts and maximum request sizes above were unchanged. These timings are local observations, not a controlled performance comparison.
+Initial planned calls include one summary slot. Dependency and recursive-summary reservations are additional ceilings, not claims that every reserved call will be used. No provider was called by these tests. After the review corrections, all four complete variants were rerun: actual preflight took **31.406 / 88.106 / 40.937 / 33.304 seconds** for the default / 1,000 / 2,000 / 4,000-byte targets. Preflight plus the coverage/budget assertions took 42.668 / 93.349 / 45.355 / 39.715 seconds. The four-case test process took 265.779 seconds and peaked at **1,137,376 KiB RSS (about 1.085 GiB)**. The ownership and request counts are unchanged; the table records the corrected planner’s measured request sizes. These timings are local observations, not a controlled performance comparison.
 
 Both the local Compose API and production image now give the API worker 120 seconds to complete a request. This accommodates large-bill estimate/confirmation planning instead of relying on a short default worker timeout. Generation itself continues in the existing resumable background worker.
 
@@ -43,7 +43,7 @@ The pinned test also checks the source evidence governing sections 8805 and 8806
 
 ## Behavioral verification
 
-After all review corrections, the complete legislation backend suite completed **1,543 passed, 10 skipped, zero failures/errors**, with two passing subtests, in 165.10 seconds. Four skips were the full pinned S.1071 cases, which passed separately with the XML path supplied. The other six require PostgreSQL: two full-text/headline search tests and four concurrency/row-lock tests. Those six were not run in this SQLite environment. The four source-sized tests are additional to the 1,543 passing cases; repeated diagnostic runs are not counted as additional tests. Django system checks, the migration dry-run, Black, Ruff, and Git whitespace checks pass.
+After all review corrections, the complete legislation backend suite completed **1,651 passed, 10 skipped, zero failures/errors**, with two passing subtests, in 190.26 seconds. Four skips were the full pinned S.1071 cases, which passed separately with the XML path supplied. The other six require PostgreSQL: two full-text/headline search tests and four concurrency/row-lock tests. Those six were not run in this SQLite environment. The four source-sized tests are additional to the 1,651 passing cases; repeated diagnostic runs are not counted as additional tests. Django system checks, the migration dry-run, Black, Ruff, and Git whitespace checks pass.
 
 The staged worker tests use real temporary XML storage, database models, estimate and confirmation APIs, durable reservations, worker execution, cache validation, final synthesis, and publication. Only the upstream model is simulated; network generation is prohibited.
 
@@ -71,7 +71,16 @@ The corrections address all four findings:
 
 Financial ownership regressions cover contiguous and disjoint evidence ranges, mixed short/long source fragments, applicable conditions on a later owner, final publication validation, and zero-call replay of completed receipts. The complete source text is retained across these fragments. No provider limit was increased for the correction.
 
-The reader execution version is now 12, and the context planner version is 2. There are no schema migrations. The new cache version applies only to dependency transport; existing mapped facts keep their compatible cache identities.
+### Second review: production-shaped regressions
+
+[The next review](https://github.com/kristo-baricevic/legislation-tracker/pull/35#issuecomment-7177569022) found four remaining gaps. The earlier tests covered incoming single references, but not ranges or the renderer's child ordering. The financial fixtures put target metadata on discovery owners, unlike real preflight. The compatibility tests constructed old cache keys from the new envelope, rather than an authentic historical request. Those fixtures did not establish the behavior claimed for these paths.
+
+1. **Complete reference ranges.** The context planner expands ranges within the verified legal scope, including intervening provisions, and preserves an unresolved obligation if an endpoint, member, or scope is ambiguous or missing. The reported grant now receives the public-hospital, emergency-service, and 50% matching requirements at both 1,000-byte and default 8,000-byte ownership targets. Regressions also cover mixed lists/ranges, nested shorthand, inserted labels, Roman numerals, external-law qualifiers, and quoted-law scope. Nested shorthand preserves the referenced legal level and label case; a parenthesized “inclusive” cannot hide an external qualification.
+2. **Rendered ownership order.** Parent ownership subtracts child intervals in immutable rendered-text order, rather than XML traversal order. Tests use the actual ingestion renderer, XML boundaries, and source planner with a large quoted amendment followed by an inline quotation in its continuation. The resulting owners cover the source exactly without overlaps.
+3. **Financial provenance at publication.** Final reconciliation receives the complete source snapshot, including separate non-discovery target metadata. Discovery ownership and factual-record coverage checks remain restricted to discovery sources. The fixtures now match real preflight, and a 6,069-byte recovered row completes estimate, confirmation, worker execution, reconciliation, and publication. Extra non-discovery factual records, duplicate records, altered source text, and citations swapped to overlapping context remain invalid.
+4. **Authentic reservation migration.** A checked-in fixture captures requests and keys generated by the actual `563c64c` implementation, including its original prompt, financial schema, output allowance, and planned-source metadata. Known old wire identities are reconstructed for orphaned reservations; durable historical steps also fence unresolved dispatches for the same bill, document hash, provider, and requested or pinned model when planner metadata or source numbering changed. The document-level migration check applies only to executions before version 13, so independent current pages remain independent. Known failed or validated calls and unrelated documents/providers/models do not acquire an ambiguous-outcome fence. The actual adapter paths are tested with mocked SDK calls, including salted reruns and pinned models.
+
+The reader execution version is now **13**, and the context planner version is **3**, so new confirmations and freshness checks recognize these corrections. There are no schema migrations. The dependency transport version remains 2; the map cache identity format is unchanged.
 
 ## Verification boundary and rollout
 
