@@ -377,6 +377,72 @@ def test_card_search_advances_past_stale_result_to_older_success_before_running(
     assert rows[0]["bill"]["enhancement_id"] == active.pk
 
 
+@pytest.mark.parametrize("rejection", ["stale", "cached_invalid"])
+def test_unresolved_card_checks_rejected_history_in_batches(rejection):
+    from apps.accounts.dashboard_bill_cards import add_card_summaries
+    from apps.legislation.enhancements.shared import validation_key
+    from apps.legislation.models import BillProcessingCache
+
+    cards = []
+    for number in ("S 8", "S 9"):
+        bill = Bill.objects.create(
+            jurisdiction="federal", session=119, bill_number=number
+        )
+        doc = BillDocument.objects.create(
+            bill=bill, raw_text="Bill text", is_active_version=True
+        )
+        manifest = {
+            "document_id": doc.pk,
+            "document_content_hash": doc.reader_text_hash,
+        }
+        fields = dict(
+            bill=bill,
+            status="succeeded",
+            output_schema_version="1.3",
+            result_json={"summary": [{"text": number}]},
+            source_manifest_json=manifest,
+        )
+        saved = BillEnhancement.objects.create(**fields, source_fingerprint=number)
+        BillProcessingCache.objects.create(
+            pk=validation_key(saved),
+            kind="reader-validation",
+            result_json={"valid": True},
+        )
+        cards.append((bill, saved))
+
+    if rejection == "stale":
+        fields["source_manifest_json"] = {
+            **manifest,
+            "document_content_hash": "obsolete",
+        }
+    BillEnhancement.objects.bulk_create(
+        [
+            BillEnhancement(**fields, source_fingerprint=f"rejected-{i}")
+            for i in range(256)
+        ]
+    )
+    if rejection == "cached_invalid":
+        rejected = BillEnhancement.objects.filter(bill=bill).exclude(pk=saved.pk)
+        BillProcessingCache.objects.bulk_create(
+            [
+                BillProcessingCache(
+                    pk=validation_key(row),
+                    kind="reader-validation",
+                    result_json={"valid": False},
+                )
+                for row in rejected
+            ]
+        )
+    rows = [{"bill": {"id": bill.pk}} for bill, _ in cards]
+    with CaptureQueriesContext(connection) as queries:
+        add_card_summaries(rows)
+    assert [row["bill"]["enhancement_id"] for row in rows] == [
+        saved.pk for _, saved in cards
+    ]
+    print(f"{rejection}: {len(queries)} queries for 256 rejected results")
+    assert len(queries) <= 16
+
+
 def test_document_metadata_projection_avoids_transferring_stored_text():
     bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 88")
     text = "Bill provision " * 37000

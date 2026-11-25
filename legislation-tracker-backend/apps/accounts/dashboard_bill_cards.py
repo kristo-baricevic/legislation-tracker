@@ -19,44 +19,71 @@ from apps.legislation.models import (
     BillProcessingCache,
 )
 
+HISTORY_BATCH_SIZE = 64
 
-def _next_card_candidates(bill_ids, status, rejected):
-    # One ordered index probe per unresolved bill. Only fetch a preview for the
-    # winning ID of each probe, since previews can contain substantial text.
-    candidates = BillEnhancement.objects.filter(bill_id=OuterRef("pk"), status=status)
+
+def _card_candidate_batches(bill_ids, status, chosen, documents):
+    candidates = BillEnhancement.objects.filter(status=status)
     if status == "succeeded":
         candidates = candidates.filter(result_json__isnull=False).exclude(
             result_completeness="partial"
         )
-    if rejected:
-        older = Q()
-        for row in rejected:
-            older |= Q(bill_id=row.bill_id) & (
-                Q(created_at__lt=row.created_at)
-                | Q(created_at=row.created_at, pk__lt=row.pk)
-            )
-        candidates = candidates.filter(older)
-    next_id = candidates.order_by("-created_at", "-pk").values("pk")[:1]
-    ids = Bill.objects.filter(pk__in=bill_ids).values_list(Subquery(next_id), flat=True)
-    return (
-        BillEnhancement.objects.filter(
-            status=status, pk__in=[pk for pk in ids if pk is not None]
-        )
-        .only(
-            "bill_id",
-            "created_at",
-            "status",
-            "source_manifest_json",
-            "source_fingerprint",
-            "validation_digest",
-            "output_schema_version",
-        )
-        .annotate(
-            clauses=F("result_json__summary"),
-            overview=F("result_json__overview"),
-            synopsis=F("result_json__synopsis__text"),
-        )
+    previews = candidates.only(
+        "bill_id",
+        "created_at",
+        "status",
+        "source_manifest_json",
+        "source_fingerprint",
+        "validation_digest",
+        "output_schema_version",
+    ).annotate(
+        clauses=F("result_json__summary"),
+        overview=F("result_json__overview"),
+        synopsis=F("result_json__synopsis__text"),
     )
+
+    # The initial probe fetches just one preview per bill, regardless of history.
+    newest = candidates.filter(bill_id=OuterRef("pk")).order_by("-created_at", "-pk")
+    ids = Bill.objects.filter(pk__in=bill_ids).values_list(
+        Subquery(newest.values("pk")[:1]), flat=True
+    )
+    rows = list(previews.filter(pk__in=[pk for pk in ids if pk is not None]))
+    yield rows
+
+    # Only rejected bills enter the historical scan. Each cursor advances past
+    # the last preview examined for its bill, including ties on created_at.
+    cursors = {row.bill_id: row for row in rows}
+    while cursors:
+        older = Q()
+        for bill_id, cursor in cursors.items():
+            doc = documents.get(bill_id)
+            if bill_id in chosen or doc is None:
+                continue
+            older |= (
+                Q(bill_id=bill_id, source_manifest_json__document_id=doc.pk)
+                & (
+                    Q(source_manifest_json__document_content_hash=doc.reader_text_hash)
+                    | Q(output_schema_version="2.0-source-first")
+                )
+                & (
+                    Q(created_at__lt=cursor.created_at)
+                    | Q(created_at=cursor.created_at, pk__lt=cursor.pk)
+                )
+            )
+        if not older:
+            return
+        rows = list(
+            previews.filter(older).order_by("bill_id", "-created_at", "-pk")[
+                :HISTORY_BATCH_SIZE
+            ]
+        )
+        yield rows
+        if len(rows) < HISTORY_BATCH_SIZE:
+            return
+        # The page is grouped by bill, so all bills before the last are exhausted.
+        last = rows[-1]
+        cursors = {pk: cursor for pk, cursor in cursors.items() if pk > last.bill_id}
+        cursors[last.bill_id] = last
 
 
 def _enhanced_cards(bills):
@@ -90,12 +117,17 @@ def _enhanced_cards(bills):
         .annotate(json_version=F("contract_json__schema_version"))
         .in_bulk({b.latest_contract_id for b in bills.values() if b.latest_contract_id})
     )
+    documents_by_bill = {
+        bill_id: documents.get(pk) for bill_id, pk in identities.items()
+    }
     chosen = {}
     for status in ("succeeded", "running", "pending"):
         remaining = bills.keys() - chosen.keys()
-        rejected = []
-        while remaining:
-            rows = list(_next_card_candidates(remaining, status, rejected))
+        if not remaining:
+            break
+        for rows in _card_candidate_batches(
+            remaining, status, chosen, documents_by_bill
+        ):
             validity = dict(
                 BillProcessingCache.objects.filter(
                     pk__in=[
@@ -104,8 +136,10 @@ def _enhanced_cards(bills):
                 ).values_list("pk", "result_json__valid")
             )
             for row in rows:
+                if row.bill_id in chosen:
+                    continue
                 bill = bills[row.bill_id]
-                document = documents.get(identities[bill.pk])
+                document = documents_by_bill[bill.pk]
                 contract = contracts.get(bill.latest_contract_id)
                 inputs = None
                 if row.output_schema_version == "2.0-source-first":
@@ -121,8 +155,6 @@ def _enhanced_cards(bills):
                     if not valid:
                         continue
                 chosen[bill.pk] = row
-            rejected = [row for row in rows if row.bill_id not in chosen]
-            remaining = [row.bill_id for row in rejected]
     return chosen
 
 
