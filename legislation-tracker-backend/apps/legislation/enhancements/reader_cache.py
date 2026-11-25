@@ -24,7 +24,22 @@ def remap(value, references):
 def call_identity(request, *, execution_version=3, adapter="existing"):
     references = {}
     envelope = copy.deepcopy(request.request_envelope)
-    sources = copy.deepcopy(request.source_snapshot)
+    planning_fields = {
+        "context_source_refs",
+        "context_quote_ids",
+        "dependencies",
+        "omitted_dependency_ranges",
+    }
+    sources = [
+        copy.deepcopy(
+            {
+                key: value
+                for key, value in source.items()
+                if not envelope.get("source_review") or key not in planning_fields
+            }
+        )
+        for source in request.source_snapshot
+    ]
     if envelope.get("source_review"):
         references = {s["source_ref"]: f"src_{i:04d}" for i, s in enumerate(sources, 1)}
         # Keep all supplied context, instructions, schemas, existing changes,
@@ -32,6 +47,11 @@ def call_identity(request, *, execution_version=3, adapter="existing"):
         for source in [*sources, *envelope.get("source_packet", {}).get("sources", [])]:
             source.pop("start_char", None)
             source.pop("end_char", None)
+            # Whole-plan source/dependency offsets remain in its fingerprint.
+            # A reusable call is identified by the actual supplied context,
+            # selected quote IDs and planner version, not unrelated positions.
+            for key in planning_fields:
+                source.pop(key, None)
         envelope, sources = remap(envelope, references), remap(sources, references)
     # Failed reservations from the old constrained prose decoder must not block
     # dispatch of the corrected transport.

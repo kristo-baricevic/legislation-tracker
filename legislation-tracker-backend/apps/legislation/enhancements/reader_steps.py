@@ -27,6 +27,10 @@ from .reader_targets import snapshot_targets
 
 
 def _validate_response(output, request):
+    if request.request_envelope.get("dependency_review"):
+        from .reader_reconciliation import validate_dependency_review
+
+        return validate_dependency_review(output, request)
     if request.request_envelope.get("source_review"):
         return resolve_discovery(output, request.source_snapshot)
     targets = snapshot_targets(request.source_snapshot)
@@ -408,7 +412,9 @@ class DurableReaderProvider:
                     usage=response.usage,
                 )
             self._pin(request, response.resolved_model)
-            if not request.request_envelope.get("source_review"):
+            if not request.request_envelope.get(
+                "source_review"
+            ) and not request.request_envelope.get("dependency_review"):
                 response = replace(
                     response,
                     output=recover_reader_items(

@@ -62,7 +62,7 @@ def test_large_xml_without_contract_routes_to_complete_review(
     doc.extracted_text = section * 16
     doc.save()
     rows = [
-        (str(i), i * len(section), (i + 1) * len(section), f"Sec. {i+1}", "")
+        (str(i), i * len(section), (i + 1) * len(section), f"Sec. {i + 1}", "")
         for i in range(16)
     ]
     monkeypatch.setattr(
@@ -121,6 +121,100 @@ def test_large_section_context_is_bounded_and_every_source_byte_is_reviewed():
     assert "".join(s["quoted_text"] for s in sources) == text
     assert all(len(s.get("section_context", "").encode()) < 32000 for s in sources)
     assert all(s.get("section_context_complete") is False for s in sources)
+
+
+@pytest.mark.django_db
+def test_summary_pages_one_findings_large_condition_inventory_without_mutation(
+    source_bill, enhancement_settings, settings
+):
+    import copy
+    import hashlib
+    from dataclasses import replace
+
+    from apps.legislation.enhancements.providers.base import (
+        ProviderResult,
+        ProviderUsage,
+    )
+    from apps.legislation.enhancements.reader_capacity import fits
+    from apps.legislation.enhancements.reader_summary import summarize_review
+
+    install_reader(source_bill, count=0)
+    with enhancement_settings:
+        preflight = build_enhancement_preflight(source_bill)
+        sources = []
+        for index in range(220):
+            text = (
+                f"Condition {index}: qualifying hospitals must meet program requirements. "
+                + "Applicants must preserve supporting records. " * 14
+            )
+            sources.append(
+                {
+                    "source_ref": f"src_{index + 1:04d}",
+                    "quoted_text": text,
+                    "start_char": index * 1000,
+                    "end_char": index * 1000 + len(text),
+                    "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                }
+            )
+        preflight = replace(preflight, source_snapshot=sources)
+        review = {
+            "policy_changes": [
+                {
+                    "text": "Qualifying hospitals must meet the program requirements.",
+                    "source_quotes": [
+                        {
+                            "source_ref": source["source_ref"],
+                            "quote": source["quoted_text"],
+                        }
+                        for source in sources
+                    ],
+                }
+            ]
+        }
+        original = copy.deepcopy(review)
+        settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 20000
+        settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 20000
+        seen, dispatches = [], []
+
+        class Provider:
+            def enhance_bill(self, *, request, **kwargs):
+                assert fits(request.request_envelope)
+                packet = request.request_envelope["source_packet"]
+                dispatches.append(request.request_envelope)
+                for item in packet["validated_changes"]:
+                    if item.get("partial_evidence"):
+                        seen.extend(q["source_ref"] for q in item["source_quotes"])
+                first = packet["sources"][0]
+                return ProviderResult(
+                    {
+                        "schema_version": "1.4",
+                        "explanations": [],
+                        "summary": [
+                            {
+                                "text": "Qualifying hospitals must meet the program requirements.",
+                                "source_quotes": [
+                                    {
+                                        "source_ref": first["source_ref"],
+                                        "quote_id": first["citation_passages"][0][
+                                            "quote_id"
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    ProviderUsage(10, 5, 15),
+                    "offline",
+                    "offline",
+                )
+
+        result, calls = summarize_review(
+            preflight, review, Provider(), "offline", lambda: None, 40
+        )
+    assert review == original
+    assert calls == len(dispatches) > 2
+    assert seen == [source["source_ref"] for source in sources]
+    assert result.output["summary"]
 
 
 @pytest.mark.django_db

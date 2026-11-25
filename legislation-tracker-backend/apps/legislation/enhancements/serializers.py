@@ -93,6 +93,11 @@ def _expanded_result(enhancement: BillEnhancement):
     )
     rows = [(category, result.get(category, [])) for category in categories]
     if result.get("source_review"):
+        # Typed maps and reconciliation receipts are durable validation state,
+        # not reader copy. Keep them in the saved result without multiplying
+        # public dashboard payloads by the number of source/dependency pages.
+        result["source_review"].pop("factual_records", None)
+        result["source_review"].pop("dependency_review", None)
         drafts = result["source_review"].pop("policy_drafts", None)
         if drafts is not None:
             from types import SimpleNamespace

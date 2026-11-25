@@ -1,3 +1,5 @@
+import copy
+import hashlib
 from datetime import timedelta
 
 import pytest
@@ -19,8 +21,17 @@ from apps.legislation.models import Bill, BillDocument, BillEnhancementAttempt
 
 
 @pytest.fixture
-def enhancement_settings():
+def enhancement_settings(request, settings):
+    # Database IDs restart between tests, while LocMemCache normally survives.
+    # Isolate independent tests without disabling rate limits or clearing the
+    # cache between requests within a confirmation/recovery/reuse scenario.
+    caches = copy.deepcopy(settings.CACHES)
+    caches["default"]["KEY_PREFIX"] = (
+        "enhancement-test-"
+        + hashlib.sha256(request.node.nodeid.encode()).hexdigest()[:16]
+    )
     return override_settings(
+        CACHES=caches,
         LLM_ENHANCEMENTS_ENABLED=True,
         LLM_CREDENTIAL_ENCRYPTION_KEYS=f"primary:{FERNET_KEY}",
         LLM_CREDENTIAL_ACTIVE_KEY_ID="primary",

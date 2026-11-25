@@ -17,11 +17,13 @@ class _SizingRequest:
     estimated_input_tokens: int = 0
 
 
-def pack_source_review(source, envelope):
+def pack_source_review(source, envelope, *, context_sources=()):
     from .reader_capacity import capacity, fits
     from .source_packet import PreflightUnavailable
 
-    pending = [_SizingRequest([source], envelope)]
+    # The first source owns the review. Supporting sources are citeable but
+    # have no output obligations; every subdivision must retain them intact.
+    pending = [_SizingRequest([source, *context_sources], envelope)]
     packed = []
     while pending:
         request = pending.pop(0)
@@ -34,7 +36,11 @@ def pack_source_review(source, envelope):
         request.request_envelope["max_output_tokens"] = min(
             allowance, limits["output_tokens"]
         )
-        if not fits(request.request_envelope):
+        if not fits(
+            request.request_envelope,
+            provider=envelope.get("provider"),
+            model=envelope.get("requested_model"),
+        ):
             # Ownership splits do not remove legal context. Do not pretend they
             # can repair input overflow by silently throwing away conditions.
             raise PreflightUnavailable(
@@ -71,6 +77,13 @@ def source_output_allowance(sources, *, provider=None, model=None):
             # need a separate financial explanation and amount field.
             size = len(p["text"].encode())
             estimated += 100 + min(650, max(200, size))
+            if source.get("factual_map"):
+                from .reader_facts import MAX_FACT_RECORD_BYTES
+
+                # Typed facts retain all qualifications independently of the
+                # short prose. Include that extra output before packing, then
+                # split ownership if the model cannot return the whole map.
+                estimated += min(MAX_FACT_RECORD_BYTES, 800 + 3 * size)
         estimated += 700 * len(money_candidates([source]))
     return max(
         8000,
@@ -93,6 +106,10 @@ def select_review_units(request, quote_ids):
     selected[0]["review_quote_ids"] = list(quote_ids)
     envelope = copy.deepcopy(request.request_envelope)
     envelope["source_packet"]["review_quote_ids"] = list(quote_ids)
+    # Keep the wire ownership in agreement with the durable source snapshot.
+    # Dependencies use their own empty list and remain available for citations.
+    if envelope["source_packet"]["sources"]:
+        envelope["source_packet"]["sources"][0]["review_quote_ids"] = list(quote_ids)
     note = "\nReview only provisions introduced in review_quote_ids; all other passages are context. Cite a reviewed passage first for each item."
     if note not in envelope["instructions"]:
         envelope["instructions"] += note

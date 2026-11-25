@@ -79,11 +79,21 @@ conditions even when they share the same entry. All entries must be source-backe
 """
 
 
+def _supplied_passages(source):
+    """Keep global quote IDs while limiting context to what this call received."""
+    allowed = source.get("allowed_quote_ids")
+    return [
+        passage
+        for passage in citation_passages(source)
+        if allowed is None or passage["quote_id"] in allowed
+    ]
+
+
 def policy_passages(sources):
     return [
         f"{s['source_ref']}:{p['quote_id']}"
         for s in sources
-        for p in citation_passages(s)
+        for p in _supplied_passages(s)
         if p["quote_id"]
         and (
             s.get("review_quote_ids") is None or p["quote_id"] in s["review_quote_ids"]
@@ -235,7 +245,7 @@ def money_candidates(sources):
     return [
         f"{s['source_ref']}:{p['quote_id']}"
         for s in sources
-        for p in citation_passages(s)
+        for p in _supplied_passages(s)
         if p["quote_id"]
         and (
             s.get("review_quote_ids") is None or p["quote_id"] in s["review_quote_ids"]
@@ -248,10 +258,10 @@ def money_candidates(sources):
     ]
 
 
-def discovery_schema(sources):
+def discovery_schema(sources, *, aggregate=False):
     quote_variants = []
     for s in sources:
-        ids = [p["quote_id"] for p in citation_passages(s) if p["quote_id"]]
+        ids = [p["quote_id"] for p in _supplied_passages(s) if p["quote_id"]]
         if ids:
             quote_variants.append(
                 {
@@ -288,7 +298,7 @@ def discovery_schema(sources):
                 "type": "array",
                 "items": {"type": "integer", "minimum": 1700, "maximum": 9999},
             },
-            "source_quotes": quotes,
+            "source_quotes": copy.deepcopy(quotes),
         },
     }
     change = {
@@ -297,7 +307,7 @@ def discovery_schema(sources):
         "required": ["text", "source_quotes"],
         "properties": {
             "text": {"type": "string", "minLength": 1, "maxLength": 400},
-            "source_quotes": quotes,
+            "source_quotes": copy.deepcopy(quotes),
         },
     }
     candidates = money_candidates(sources)
@@ -337,7 +347,7 @@ def discovery_schema(sources):
                         "description": "One or two complete plain-English sentences, at most 65 words, ending with punctuation.",
                         "pattern": r"^(?:\S+\s+){0,64}\S*[.!?]$",
                     },
-                    "source_quotes": quotes,
+                    "source_quotes": copy.deepcopy(quotes),
                 },
             },
         }
@@ -351,10 +361,19 @@ def discovery_schema(sources):
                 for key in keys
             },
         }
+    if any(s.get("factual_map") for s in sources):
+        from .reader_facts import factual_records_schema
+
+        facts = factual_records_schema(sources, aggregate=aggregate)
+        schema["$defs"] = facts.pop("$defs")
+        schema["required"].append("factual_records")
+        schema["properties"]["factual_records"] = facts
     return schema
 
 
-def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()):
+def resolve_discovery(
+    output, sources, *, aggregate=False, retained_financial=(), reconciled=False
+):
     # Source quotations and names can legitimately contain Arabic. Generated
     # prose must not introduce an unrelated Arabic word into an English rule.
     arabic_words = r"[\u0620-\u064a\u066e-\u06d3]+"
@@ -362,7 +381,8 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
     if generated:
         source_words = set(
             re.findall(
-                arabic_words, " ".join(s.get("quoted_text", "") for s in sources)
+                arabic_words,
+                " ".join(p["text"] for s in sources for p in _supplied_passages(s)),
             )
         )
         if generated - source_words:
@@ -375,7 +395,7 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
         owned = {
             (s["source_ref"], p["quote_id"])
             for s in sources
-            for p in citation_passages(s)
+            for p in _supplied_passages(s)
             if p["quote_id"]
             and (
                 s.get("review_quote_ids") is None
@@ -405,7 +425,7 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
                     ]
                     kept.append(item)
             output[category] = kept
-    schema = discovery_schema(sources)
+    schema = discovery_schema(sources, aggregate=aggregate)
     if aggregate:
         schema["properties"]["financial_items"].pop("maxItems", None)
         if retained_financial:
@@ -419,6 +439,14 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
             schema["properties"]["policy_changes"]["items"]["properties"][
                 "source_quotes"
             ].pop("maxItems", None)
+        if reconciled:
+            # Receipts are checked by validate_source_review before this path.
+            # A rule with many independently reviewed conditions may retain
+            # more citations than any one bounded map or reconciliation page.
+            for category in ("financial_items", "additional_changes"):
+                items = schema["properties"][category]["items"]
+                generated = items.get("anyOf", [items])[0]
+                generated["properties"]["source_quotes"].pop("maxItems", None)
     try:
         Draft202012Validator(schema).validate(output)
     except ValidationError as error:
@@ -433,6 +461,27 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
         ):
             raise output_error("reader_policy_wording", path) from error
         raise
+    facts = None
+    if any(s.get("factual_map") for s in sources):
+        from .reader_facts import resolve_factual_records
+
+        facts = resolve_factual_records(
+            output["factual_records"], sources, aggregate=aggregate
+        )
+        for record in facts:
+            key = record["record_id"]
+            if output.get("policy_checks", {}).get(key) == "explained" and not any(
+                record[field] for field in ("claims", "definitions", "references")
+            ):
+                raise output_error(
+                    "reader_coverage_incomplete", ["source_review", "factual_records"]
+                )
+            if output["money_checks"].get(key) == "financial" and not any(
+                claim["money"] for claim in record["claims"]
+            ):
+                raise output_error(
+                    "reader_coverage_incomplete", ["source_review", "factual_records"]
+                )
     financial_citations = {
         f"{q['source_ref']}:{q['quote_id']}"
         for item in output["financial_items"]
@@ -461,7 +510,7 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
             validate_policy_copy(item)
     catalogs = {
         s["source_ref"]: {
-            p["quote_id"]: p["text"] for p in citation_passages(s) if p["quote_id"]
+            p["quote_id"]: p["text"] for p in _supplied_passages(s) if p["quote_id"]
         }
         for s in sources
     }
@@ -469,6 +518,8 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
 
     validate_financial_coverage(output, catalogs)
     resolved = copy.deepcopy(output)
+    if facts is not None:
+        resolved["factual_records"] = facts
     for category in ("financial_items", "additional_changes", "policy_changes"):
         for item in resolved.get(category, []):
             first = item["source_quotes"][0]
@@ -591,8 +642,22 @@ def validate_source_review(review, sources):
         fields |= {"policy_changes", "policy_checks"}
         if "policy_drafts" in review:
             fields.add("policy_drafts")
+    mapped = any(s.get("factual_map") for s in scan_sources)
+    if mapped:
+        fields.add("factual_records")
+        if "dependency_review" in review:
+            fields.add("dependency_review")
     if set(review) != fields:
         raise output_error("reader_target_invalid", ["source_review"])
+    reconciled = False
+    if mapped and (
+        "dependency_review" in review
+        or any(s.get("deferred_context_source_refs") for s in scan_sources)
+    ):
+        from .reader_reconciliation import validate_reconciliation
+
+        validate_reconciliation(review, scan_sources)
+        reconciled = True
     # Revalidate the stored prose shape and every server-resolved citation.
     for category in (
         "financial_items",
@@ -641,7 +706,7 @@ def validate_source_review(review, sources):
         {
             k: v
             for k, v in review.items()
-            if k not in {"reviewed_sources", "policy_drafts"}
+            if k not in {"reviewed_sources", "policy_drafts", "dependency_review"}
         }
     )
     for category in ("financial_items", "additional_changes", "policy_changes"):
@@ -663,6 +728,7 @@ def validate_source_review(review, sources):
         scan_sources,
         aggregate=True,
         retained_financial=[wire["financial_items"][i] for i in retained_indices],
+        reconciled=reconciled,
     )
     if set(review["money_checks"]) != set(money_candidates(scan_sources)):
         raise output_error(
