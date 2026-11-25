@@ -246,8 +246,9 @@ def test_enhanced_card_reads_are_batched(count):
 
 
 @pytest.mark.parametrize("other_result", ["stale", "partial"])
-def test_resolved_card_history_adds_no_queries_when_another_card_has_no_result(
+def test_resolved_card_history_is_never_loaded_when_another_card_has_no_result(
     other_result,
+    monkeypatch,
 ):
     from datetime import timedelta
 
@@ -296,14 +297,25 @@ def test_resolved_card_history_adds_no_queries_when_another_card_has_no_result(
         result_json=output,
     )
 
+    loaded = []
+    from_db = BillEnhancement.from_db
+
+    def record_load(*args):
+        row = from_db(*args)
+        loaded.append(row.pk)
+        return row
+
+    monkeypatch.setattr(BillEnhancement, "from_db", record_load)
+
     def read_cards():
+        loaded.clear()
         rows = [{"bill": {"id": bill.pk}} for bill in (first, second)]
         with CaptureQueriesContext(connection) as queries:
             add_card_summaries(rows)
         assert [
             (r["bill"]["card_summary"], r["bill"]["enhancement_id"]) for r in rows
         ] == [("Enhanced", current.pk), ("Original", None)]
-        return len(queries)
+        return len(queries), set(loaded)
 
     baseline = read_cards()
     BillEnhancement.objects.bulk_create(
@@ -324,6 +336,45 @@ def test_resolved_card_history_adds_no_queries_when_another_card_has_no_result(
         created_at=current.created_at - timedelta(days=1)
     )
     assert read_cards() == baseline
+
+
+def test_card_search_advances_past_stale_result_to_older_success_before_running():
+    from apps.accounts.dashboard_bill_cards import add_card_summaries
+    from apps.legislation.enhancements.shared import validation_key
+    from apps.legislation.models import BillProcessingCache
+
+    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="S 4")
+    doc = BillDocument.objects.create(
+        bill=bill, raw_text="Bill text", is_active_version=True
+    )
+    manifest = {"document_id": doc.pk, "document_content_hash": doc.reader_text_hash}
+
+    def candidate(status, fingerprint, source):
+        return BillEnhancement.objects.create(
+            bill=bill,
+            status=status,
+            source_fingerprint=fingerprint,
+            output_schema_version="1.3",
+            source_manifest_json=source,
+            result_json={"summary": [{"text": "Saved"}]},
+        )
+
+    saved = candidate("succeeded", "compatible", manifest)
+    BillProcessingCache.objects.create(
+        pk=validation_key(saved), kind="reader-validation", result_json={"valid": True}
+    )
+    stale = candidate(
+        "succeeded", "stale", {**manifest, "document_content_hash": "old"}
+    )
+    BillEnhancement.objects.filter(pk=stale.pk).update(created_at=saved.created_at)
+    active = candidate("running", "active", manifest)
+    candidate("pending", "pending", manifest)
+    rows = [{"bill": {"id": bill.pk}}]
+    add_card_summaries(rows)
+    assert rows[0]["bill"]["enhancement_id"] == saved.pk
+    saved.delete()
+    add_card_summaries(rows)
+    assert rows[0]["bill"]["enhancement_id"] == active.pk
 
 
 def test_document_metadata_projection_avoids_transferring_stored_text():

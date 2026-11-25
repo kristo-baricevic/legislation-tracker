@@ -415,6 +415,10 @@ class BillEnhancement(models.Model):
         ]
         indexes = [
             models.Index(fields=["user", "bill", "-created_at"]),
+            models.Index(
+                fields=["bill", "status", "-created_at", "-id"],
+                name="enh_bill_status_recent",
+            ),
             models.Index(fields=["bill", "request_fingerprint"]),
         ]
 
