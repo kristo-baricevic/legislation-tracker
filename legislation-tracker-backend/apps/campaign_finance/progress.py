@@ -5,7 +5,7 @@ from apps.research.models import ResearchRun
 
 def latest_preview(representative_id, period):
     run = ResearchRun.objects.filter(representative_id=representative_id, period=period).select_related("work_item").order_by("-created_at").first()
-    if not run or run.status not in {"queued", "running"} or (run.work_item and run.work_item.status == "dead"):
+    if not run or run.effective_status not in {"queued", "running"}:
         return None
     return FinanceSnapshot.objects.filter(run=run, invalidated=False, published_at__isnull=True).first()
 

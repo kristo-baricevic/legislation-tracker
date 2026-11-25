@@ -5,6 +5,15 @@ from django.db import models
 
 
 class ResearchRun(models.Model):
+    terminal_work_statuses = ("dead", "succeeded")
+
+    @property
+    def effective_status(self):
+        # A finished queue item cannot advance an unfinished research run.
+        if self.status in {"queued", "running"} and self.work_item and self.work_item.status in self.terminal_work_statuses:
+            return "failed"
+        return self.status
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     representative = models.ForeignKey("congress.Representative", on_delete=models.CASCADE)
     period = models.PositiveSmallIntegerField()
