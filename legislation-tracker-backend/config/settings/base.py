@@ -8,6 +8,8 @@ from pathlib import Path
 
 import environ
 
+from apps.ingestion.queues import DIRECT_TASK_QUEUES
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
@@ -97,6 +99,11 @@ CACHES = {
     }
 }
 
+CACHES["congress_coordination"] = {
+    **CACHES["default"],
+    "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 1},
+}
+
 # Celery
 CELERY_BROKER_URL = env("CELERY_BROKER_URL") or REDIS_URL
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
@@ -104,16 +111,19 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-from apps.ingestion.queues import DIRECT_TASK_QUEUES
 
 INGESTION_STAGE_IN_FLIGHT = max(1, env.int("INGESTION_STAGE_IN_FLIGHT", default=2))
 CELERY_TASK_ROUTES = {
     **{task: {"queue": queue} for task, queue in DIRECT_TASK_QUEUES.items()},
     "apps.legislation.tasks.schedule_similarity_for_bill": {"queue": "similarity"},
     "apps.legislation.tasks.recompute_similarity_batch": {"queue": "similarity"},
-    "apps.legislation.tasks.dispatch_bill_enhancement_attempts": {"queue": "enhancements"},
+    "apps.legislation.tasks.dispatch_bill_enhancement_attempts": {
+        "queue": "enhancements"
+    },
     "apps.legislation.tasks.run_bill_enhancement_attempt": {"queue": "enhancements"},
-    "apps.legislation.tasks.recover_stale_bill_enhancement_attempts": {"queue": "enhancements"},
+    "apps.legislation.tasks.recover_stale_bill_enhancement_attempts": {
+        "queue": "enhancements"
+    },
 }
 # A worker process can disappear after receiving a downstream document, vote,
 # or contract task. Acknowledge only after completion and return that delivery
@@ -163,7 +173,9 @@ LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = env.int(
 LLM_READER_MAX_OUTPUT_TOKENS = env.int("LLM_READER_MAX_OUTPUT_TOKENS", default=24000)
 LLM_READER_OWNED_TOKEN_TARGET = env.int("LLM_READER_OWNED_TOKEN_TARGET", default=0)
 LLM_DIAGNOSTIC_RETENTION_DAYS = env.int("LLM_DIAGNOSTIC_RETENTION_DAYS", default=0)
-LLM_MULTI_PROVIDER_WRITES_ENABLED = env.bool("LLM_MULTI_PROVIDER_WRITES_ENABLED", default=False)
+LLM_MULTI_PROVIDER_WRITES_ENABLED = env.bool(
+    "LLM_MULTI_PROVIDER_WRITES_ENABLED", default=False
+)
 LLM_OPENROUTER_EXCLUDED_MODELS = env.list("LLM_OPENROUTER_EXCLUDED_MODELS", default=[])
 LLM_OPENROUTER_ADAPTER = env.str("LLM_OPENROUTER_ADAPTER", default="existing")
 LLM_READER_MODEL_CAPACITIES = env.json("LLM_READER_MODEL_CAPACITIES", default={})

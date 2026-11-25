@@ -1,6 +1,8 @@
 from decimal import Decimal
+
 import pytest
 from django.contrib.auth import get_user_model
+
 from apps.congress.models import Representative
 
 pytestmark = pytest.mark.django_db
@@ -8,54 +10,107 @@ pytestmark = pytest.mark.django_db
 
 def test_fec_stream_uses_chunks_with_total_deadline(monkeypatch, settings):
     import json
+
     from apps.campaign_finance.fec_client import get_page
-    settings.FEC_API_KEY = 'fixture'
-    body = json.dumps({'results': [], 'pagination': {}, 'padding': 'x' * 100000}).encode()
+
+    settings.FEC_API_KEY = "fixture"
+    body = json.dumps(
+        {"results": [], "pagination": {}, "padding": "x" * 100000}
+    ).encode()
     chunks = []
+
     class Response:
         status_code = 200
-        headers = {'Content-Type': 'application/json'}
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
         def iter_content(self, size):
             for start in range(0, len(body), size):
                 chunks.append(size)
-                yield body[start:start + size]
+                yield body[start : start + size]
+
     class Session:
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def get(self, *args, **kwargs): return Response()
-    monkeypatch.setattr('apps.campaign_finance.fec_client.requests.Session', Session)
-    assert get_page('candidates/search/', {})['results'] == []
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def get(self, *args, **kwargs):
+            return Response()
+
+    monkeypatch.setattr("apps.campaign_finance.fec_client.requests.Session", Session)
+    assert get_page("candidates/search/", {})["results"] == []
     assert len(chunks) < 30
 
 
-def test_receipt_page_uses_batched_persistence_and_rolls_back_changed_rows(django_assert_max_num_queries):
-    from apps.research.services import request_research
-    from apps.campaign_finance.models import FinanceSnapshot, CampaignCommittee, FinanceResearchCheckpoint
+def test_receipt_page_uses_batched_persistence_and_rolls_back_changed_rows(
+    django_assert_max_num_queries,
+):
+    from apps.campaign_finance.models import (
+        CampaignCommittee,
+        FinanceResearchCheckpoint,
+        FinanceSnapshot,
+    )
     from apps.campaign_finance.research import persist_page
-    rep = Representative.objects.create(bioguide_id='BULK01', name='Test', chamber='house', state='NY')
-    run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username='bulk').pk)
+    from apps.research.services import request_research
+
+    rep = Representative.objects.create(
+        bioguide_id="BULK01", name="Test", chamber="house", state="NY"
+    )
+    run = request_research(
+        rep.pk, 2026, get_user_model().objects.create_user(username="bulk").pk
+    )
     snapshot = FinanceSnapshot.objects.create(run=run, representative=rep, period=2026)
-    committee = CampaignCommittee.objects.create(fec_id='C00000001', name='Campaign')
-    checkpoint = FinanceResearchCheckpoint.objects.create(snapshot=snapshot, committee=committee)
-    rows = [{'sub_id': str(i), 'committee_id': committee.pk, 'contributor_id': f'C{i:08}',
-        'contributor_name': f'PAC {i}', 'entity_type': 'PAC', 'line_number': '11C',
-        'contribution_receipt_amount': 150} for i in range(2, 102)]
+    committee = CampaignCommittee.objects.create(fec_id="C00000001", name="Campaign")
+    checkpoint = FinanceResearchCheckpoint.objects.create(
+        snapshot=snapshot, committee=committee
+    )
+    rows = [
+        {
+            "sub_id": str(i),
+            "committee_id": committee.pk,
+            "contributor_id": f"C{i:08}",
+            "contributor_name": f"PAC {i}",
+            "entity_type": "PAC",
+            "line_number": "11C",
+            "contribution_receipt_amount": 150,
+        }
+        for i in range(2, 102)
+    ]
     with django_assert_max_num_queries(15):
-        persist_page(checkpoint, {'results': rows, 'pagination': {'last_indexes': {'last_index': '101'}}})
+        persist_page(
+            checkpoint,
+            {"results": rows, "pagination": {"last_indexes": {"last_index": "101"}}},
+        )
     assert snapshot.transactions.count() == 100
-    changed = [dict(rows[0], sub_id='999'), dict(rows[-1], contribution_receipt_amount=500)]
-    with pytest.raises(ValueError, match='source_record_changed'):
-        persist_page(checkpoint, {'results': changed, 'pagination': {'last_indexes': {'last_index': '102'}}})
+    changed = [
+        dict(rows[0], sub_id="999"),
+        dict(rows[-1], contribution_receipt_amount=500),
+    ]
+    with pytest.raises(ValueError, match="source_record_changed"):
+        persist_page(
+            checkpoint,
+            {"results": changed, "pagination": {"last_indexes": {"last_index": "102"}}},
+        )
     assert snapshot.transactions.count() == 100
     checkpoint.refresh_from_db()
-    assert checkpoint.cursor == {'last_index': '101'}
+    assert checkpoint.cursor == {"last_index": "101"}
 
 
 def test_schedule_cursor_keeps_both_fields_and_rejects_foreign_parameters():
     from apps.campaign_finance.fec_client import receipt_parameters
-    params = receipt_parameters("C00000001", 2026, {"last_index": "123", "last_contribution_receipt_date": "2026-01-01"})
+
+    params = receipt_parameters(
+        "C00000001",
+        2026,
+        {"last_index": "123", "last_contribution_receipt_date": "2026-01-01"},
+    )
     assert params["last_index"] == "123"
     assert params["last_contribution_receipt_date"] == "2026-01-01"
     with pytest.raises(ValueError):
@@ -63,41 +118,91 @@ def test_schedule_cursor_keeps_both_fields_and_rejects_foreign_parameters():
 
 
 def test_page_replay_does_not_double_count_receipts():
-    from apps.research.services import request_research
-    from apps.campaign_finance.models import FinanceSnapshot, CampaignCommittee, FinanceResearchCheckpoint
+    from apps.campaign_finance.models import (
+        CampaignCommittee,
+        FinanceResearchCheckpoint,
+        FinanceSnapshot,
+    )
     from apps.campaign_finance.research import persist_page
-    rep = Representative.objects.create(bioguide_id="T000003", name="Test", chamber="house", state="NY")
+    from apps.research.services import request_research
+
+    rep = Representative.objects.create(
+        bioguide_id="T000003", name="Test", chamber="house", state="NY"
+    )
     user = get_user_model().objects.create_user(username="test")
     run = request_research(rep.pk, 2026, user.pk)
     snapshot = FinanceSnapshot.objects.create(run=run, representative=rep, period=2026)
     committee = CampaignCommittee.objects.create(fec_id="C00000001", name="Campaign")
-    checkpoint = FinanceResearchCheckpoint.objects.create(snapshot=snapshot, committee=committee)
-    page = {"results": [{"sub_id": "1", "committee_id": committee.pk, "contributor_id": "C00000002", "contributor_name": "Test PAC", "entity_type": "PAC", "line_number": "11C", "contribution_receipt_amount": 150}], "pagination": {"last_indexes": {"last_index": "1"}}}
+    checkpoint = FinanceResearchCheckpoint.objects.create(
+        snapshot=snapshot, committee=committee
+    )
+    page = {
+        "results": [
+            {
+                "sub_id": "1",
+                "committee_id": committee.pk,
+                "contributor_id": "C00000002",
+                "contributor_name": "Test PAC",
+                "entity_type": "PAC",
+                "line_number": "11C",
+                "contribution_receipt_amount": 150,
+            }
+        ],
+        "pagination": {"last_indexes": {"last_index": "1"}},
+    }
     persist_page(checkpoint, page)
     assert snapshot.transactions.get().amount == Decimal("150")
     with pytest.raises(ValueError, match="repeated_page"):
         persist_page(checkpoint, page)
     assert snapshot.transactions.count() == 1
-    changed = {"results": [{**page["results"][0], "contribution_receipt_amount": 200}], "pagination": {"last_indexes": {"last_index": "2"}}}
+    changed = {
+        "results": [{**page["results"][0], "contribution_receipt_amount": 200}],
+        "pagination": {"last_indexes": {"last_index": "2"}},
+    }
     with pytest.raises(ValueError, match="source_record_changed"):
         persist_page(checkpoint, changed)
     assert snapshot.transactions.get().amount == Decimal("150")
 
 
 @pytest.mark.parametrize("kind", ["contribution", "refund"])
-def test_finance_read_includes_individual_contributions_without_a_publication_flag(settings, kind):
-    from apps.campaign_finance.models import FinanceSnapshot, CampaignCommittee, Contributor, FinanceTransaction
-    from apps.research.services import request_research
+def test_finance_read_includes_individual_contributions_without_a_publication_flag(
+    settings, kind
+):
     from rest_framework.test import APIClient
+
+    from apps.campaign_finance.models import (
+        CampaignCommittee,
+        Contributor,
+        FinanceSnapshot,
+        FinanceTransaction,
+    )
+    from apps.research.services import request_research
+
     settings.FEC_INDIVIDUAL_PUBLICATION_ENABLED = False
-    rep = Representative.objects.create(bioguide_id="T000003", name="Test", chamber="house", state="NY")
-    run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username="test").pk)
-    snapshot = FinanceSnapshot.objects.create(run=run, representative=rep, period=2026, active=True)
+    rep = Representative.objects.create(
+        bioguide_id="T000003", name="Test", chamber="house", state="NY"
+    )
+    run = request_research(
+        rep.pk, 2026, get_user_model().objects.create_user(username="test").pk
+    )
+    snapshot = FinanceSnapshot.objects.create(
+        run=run, representative=rep, period=2026, active=True
+    )
     committee = CampaignCommittee.objects.create(fec_id="C00000001", name="Campaign")
     donor = Contributor.objects.create(name="Example individual", kind="individual")
     for number in range(21):
-        FinanceTransaction.objects.create(snapshot=snapshot, source_key=str(number), committee=committee, contributor=donor, amount=100, kind=kind, source_url="https://www.fec.gov/")
-    response = APIClient().get(f"/api/representatives/{rep.pk}/contributors/?period=2026&kind={kind}")
+        FinanceTransaction.objects.create(
+            snapshot=snapshot,
+            source_key=str(number),
+            committee=committee,
+            contributor=donor,
+            amount=100,
+            kind=kind,
+            source_url="https://www.fec.gov/",
+        )
+    response = APIClient().get(
+        f"/api/representatives/{rep.pk}/contributors/?period=2026&kind={kind}"
+    )
     assert response.status_code == 200
     assert response.data["count"] == 21
     assert response.data["next_cursor"] == 20
@@ -105,15 +210,35 @@ def test_finance_read_includes_individual_contributions_without_a_publication_fl
     assert response.data["results"][0]["name"] == "Example individual"
     assert response.data["results"][0]["type"] == "individual"
     assert response.data["results"][0]["amount"] == "100.00"
-    second = APIClient().get(f"/api/representatives/{rep.pk}/contributors/?period=2026&kind={kind}&cursor=20").data
+    second = (
+        APIClient()
+        .get(
+            f"/api/representatives/{rep.pk}/contributors/?period=2026&kind={kind}&cursor=20"
+        )
+        .data
+    )
     assert len(second["results"]) == 1
     assert second["next_cursor"] is None
-    assert second["results"][0]["id"] not in {row["id"] for row in response.data["results"]}
+    assert second["results"][0]["id"] not in {
+        row["id"] for row in response.data["results"]
+    }
 
 
 def test_refunds_are_separate_disbursements_not_negative_donations():
     from apps.campaign_finance.normalization import normalize_refund
-    result = normalize_refund({"sub_id": "12", "committee_id": "C00000001", "recipient_committee_id": "C00000002", "recipient_name": "Example PAC", "entity_type": "PAC", "line_number": "20C", "disbursement_amount": 25, "disbursement_date": "2026-02-01"})
+
+    result = normalize_refund(
+        {
+            "sub_id": "12",
+            "committee_id": "C00000001",
+            "recipient_committee_id": "C00000002",
+            "recipient_name": "Example PAC",
+            "entity_type": "PAC",
+            "line_number": "20C",
+            "disbursement_amount": 25,
+            "disbursement_date": "2026-02-01",
+        }
+    )
     assert result["kind"] == "refund"
     assert result["amount"] == Decimal("25")
     assert result["identity_key"] == "fec:C00000002"
@@ -122,18 +247,39 @@ def test_refunds_are_separate_disbursements_not_negative_donations():
 
 def test_nonrefund_disbursement_is_excluded():
     from apps.campaign_finance.normalization import normalize_refund
-    result = normalize_refund({"sub_id": "12", "committee_id": "C00000001", "recipient_name": "Vendor", "line_number": "17", "disbursement_amount": 25})
+
+    result = normalize_refund(
+        {
+            "sub_id": "12",
+            "committee_id": "C00000001",
+            "recipient_name": "Vendor",
+            "line_number": "17",
+            "disbursement_amount": 25,
+        }
+    )
     assert result["effective"] is False
 
 
 def test_published_snapshot_remains_readable_after_refresh_but_not_revocation():
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
     from apps.campaign_finance.models import FinanceSnapshot
     from apps.research.services import request_research
-    from rest_framework.test import APIClient
-    from django.utils import timezone
-    rep = Representative.objects.create(bioguide_id="T000006", name="Test", chamber="house", state="NY")
-    run = request_research(rep.pk, 2026, get_user_model().objects.create_user(username="test").pk)
-    saved = FinanceSnapshot.objects.create(run=run, representative=rep, period=2026, active=False, published_at=timezone.now())
+
+    rep = Representative.objects.create(
+        bioguide_id="T000006", name="Test", chamber="house", state="NY"
+    )
+    run = request_research(
+        rep.pk, 2026, get_user_model().objects.create_user(username="test").pk
+    )
+    saved = FinanceSnapshot.objects.create(
+        run=run,
+        representative=rep,
+        period=2026,
+        active=False,
+        published_at=timezone.now(),
+    )
     url = f"/api/representatives/{rep.pk}/contributors/?period=2026&snapshot={saved.pk}"
     assert APIClient().get(url).status_code == 200
     saved.invalidated = True

@@ -55,7 +55,9 @@ def create_saved_search(*, user, name: str, query_json: dict, normalized_hash: s
     with transaction.atomic():
         type(user).objects.select_for_update().get(pk=user.pk)
         if SavedBillSearch.objects.filter(user=user).count() >= MAX_SAVED_SEARCHES:
-            raise ValueError(f"A maximum of {MAX_SAVED_SEARCHES} saved searches is allowed.")
+            raise ValueError(
+                f"A maximum of {MAX_SAVED_SEARCHES} saved searches is allowed."
+            )
         try:
             return SavedBillSearch.objects.create(
                 user=user,
@@ -123,7 +125,9 @@ def count_saved_search_new_results(searches):
     return counts
 
 
-def issue_saved_search_watermark(*, user_id: int, search: SavedBillSearch, sequence: int, captured_at: datetime) -> str:
+def issue_saved_search_watermark(
+    *, user_id: int, search: SavedBillSearch, sequence: int, captured_at: datetime
+) -> str:
     return signing.dumps(
         {
             "v": WATERMARK_VERSION,
@@ -138,14 +142,18 @@ def issue_saved_search_watermark(*, user_id: int, search: SavedBillSearch, seque
     )
 
 
-def verify_saved_search_watermark(*, value: str, user_id: int, search: SavedBillSearch) -> SavedSearchWatermark:
+def verify_saved_search_watermark(
+    *, value: str, user_id: int, search: SavedBillSearch
+) -> SavedSearchWatermark:
     try:
         payload = signing.loads(value, salt=WATERMARK_SALT)
         if not isinstance(payload, dict) or payload.get("v") != WATERMARK_VERSION:
             raise ValueError("unsupported watermark")
         if payload.get("u") != user_id or payload.get("s") != search.id:
             raise ValueError("watermark does not belong to this saved search")
-        if payload.get("h") != search.normalized_hash or not isinstance(payload.get("q"), int):
+        if payload.get("h") != search.normalized_hash or not isinstance(
+            payload.get("q"), int
+        ):
             raise ValueError("watermark does not match the current query")
         captured_at = datetime.fromisoformat(payload["t"])
     except (KeyError, TypeError, ValueError, signing.BadSignature) as exc:
@@ -153,7 +161,9 @@ def verify_saved_search_watermark(*, value: str, user_id: int, search: SavedBill
     return SavedSearchWatermark(sequence=payload["q"], captured_at=captured_at)
 
 
-def saved_search_result_page(*, user, search: SavedBillSearch, page: int, page_size: int):
+def saved_search_result_page(
+    *, user, search: SavedBillSearch, page: int, page_size: int
+):
     """Read results and capture a clock-bound acknowledgement watermark."""
     with transaction.atomic():
         clock = BillActivityClock.objects.select_for_update().get(pk=1)
@@ -181,12 +191,18 @@ def open_saved_search(*, user, search: SavedBillSearch, watermark_value: str):
         search=search,
     )
     with transaction.atomic():
-        locked = SavedBillSearch.objects.select_for_update().get(pk=search.id, user=user)
+        locked = SavedBillSearch.objects.select_for_update().get(
+            pk=search.id, user=user
+        )
         prior_sequence = locked.last_opened_activity_sequence
         if prior_sequence is None or watermark.sequence > prior_sequence:
             locked.last_opened_activity_sequence = watermark.sequence
             locked.last_opened_at = watermark.captured_at
             locked.save(
-                update_fields=["last_opened_activity_sequence", "last_opened_at", "updated_at"]
+                update_fields=[
+                    "last_opened_activity_sequence",
+                    "last_opened_at",
+                    "updated_at",
+                ]
             )
     return locked, prior_sequence

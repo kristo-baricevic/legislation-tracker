@@ -54,7 +54,11 @@ def acknowledge_bill_changes(*, user, bill, cursor: ChangeCursor, acknowledged_a
 
 def unread_change_count(*, user, bill):
     state = BillViewState.objects.filter(user=user, bill=bill).first()
-    if not state or state.last_seen_change_created_at is None or state.last_seen_change_id is None:
+    if (
+        not state
+        or state.last_seen_change_created_at is None
+        or state.last_seen_change_id is None
+    ):
         return None
     cursor = ChangeCursor(
         version=1,

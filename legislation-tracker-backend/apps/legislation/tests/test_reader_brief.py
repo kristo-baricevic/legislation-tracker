@@ -310,8 +310,14 @@ def test_numbered_bill_purposes_preserve_all_goals_and_exact_evidence():
 (3) to identify and implement best practices in creating a workplace free from discrimination, including harassment;
 (4) to update and clarify certain employment nondiscrimination laws; and
 (5) to expand workers’ access to counsel and advocacy services to protect the legal and human rights of workers by preventing and reducing discrimination, including harassment, and responding to violations of worker’s rights."""
-    source = "SEC. 3. Purposes\n" + statement + "\nSEC. 4. Reports\nThe Secretary shall report annually."
-    brief = build_reader_brief(reader_claims(source), parse_federal_structure(source), source_text=source)
+    source = (
+        "SEC. 3. Purposes\n"
+        + statement
+        + "\nSEC. 4. Reports\nThe Secretary shall report annually."
+    )
+    brief = build_reader_brief(
+        reader_claims(source), parse_federal_structure(source), source_text=source
+    )
     assert brief.orientation.purpose_clause == (
         "This bill aims to prevent and reduce prohibited discrimination, including harassment, in employment; "
         "to prevent and reduce discriminatory, including harassing, conduct in the workplace; "
@@ -320,10 +326,14 @@ def test_numbered_bill_purposes_preserve_all_goals_and_exact_evidence():
         "to expand workers’ access to counsel and advocacy services to protect the legal and human rights of workers "
         "by preventing and reducing discrimination, including harassment, and responding to violations of worker’s rights."
     )
-    line = next(item for item in brief.line_items if item.id == brief.orientation.purpose_line_item_id)
+    line = next(
+        item
+        for item in brief.line_items
+        if item.id == brief.orientation.purpose_line_item_id
+    )
     span = line.evidence[0]
     assert span.text == statement
-    assert source[span.start_char:span.end_char] == statement
+    assert source[span.start_char : span.end_char] == statement
 
 
 def test_numbered_purposes_do_not_include_deleted_law_or_truncated_lists():
@@ -331,8 +341,13 @@ def test_numbered_purposes_do_not_include_deleted_law_or_truncated_lists():
         "[[QUOTED_BLOCK_START]]The purposes of this Act are—\n(1) to eliminate grants; and\n(2) to restrict access.[[QUOTED_BLOCK_END]]",
         "The purposes of this Act are—\n(1) to fund grants;\n(2) to restrict",
     ):
-        source = "SEC. 1. Amendment\nSection 2 is amended by striking the following:\n" + statement
-        brief = build_reader_brief(reader_claims(source), parse_federal_structure(source), source_text=source)
+        source = (
+            "SEC. 1. Amendment\nSection 2 is amended by striking the following:\n"
+            + statement
+        )
+        brief = build_reader_brief(
+            reader_claims(source), parse_federal_structure(source), source_text=source
+        )
         assert brief.orientation.purpose_clause is None
 
 

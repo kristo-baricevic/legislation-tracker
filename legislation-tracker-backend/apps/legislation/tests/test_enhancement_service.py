@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import pytest
-from apps.legislation.enhancements.service import confirmation_fingerprint
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.utils import timezone
@@ -10,6 +9,7 @@ from apps.accounts.models import LLMCredential
 from apps.accounts.tests.test_llm_credentials import FERNET_KEY
 from apps.legislation.enhancements.service import (
     EnhancementServiceError,
+    confirmation_fingerprint,
     create_enhancement_attempt,
     retry_allowed,
     retry_enhancement_attempt,
@@ -108,9 +108,15 @@ def test_create_is_idempotent_for_active_and_successful_requests(
         assert BillEnhancementAttempt.objects.count() == 1
 
         first.enhancement.status = first.enhancement.Status.SUCCEEDED
-        first.enhancement.result_json = {"schema_version": first.enhancement.output_schema_version,
-            "overview": [], "key_impacts": [], "obligations": [], "funding_and_timing": [],
-            "uncertain_language": [], "glossary": []}
+        first.enhancement.result_json = {
+            "schema_version": first.enhancement.output_schema_version,
+            "overview": [],
+            "key_impacts": [],
+            "obligations": [],
+            "funding_and_timing": [],
+            "uncertain_language": [],
+            "glossary": [],
+        }
         first.enhancement.save(update_fields=["status", "result_json"])
         third = create_enhancement_attempt(
             user=enhancement_owner,
@@ -188,7 +194,9 @@ def test_create_rejects_non_federal_bill_without_creating_an_attempt(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("failure_category", ["provider_rate_limited", "invalid_output"])
+@pytest.mark.parametrize(
+    "failure_category", ["provider_rate_limited", "invalid_output"]
+)
 def test_terminal_attempt_requires_explicit_eligible_retry(
     enhancement_owner,
     source_bill,

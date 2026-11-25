@@ -26,8 +26,8 @@ from django.utils import timezone
 
 from apps.accounts.recommendation_support import (
     USABLE_TOPIC,
-    activity_revision,
     RecommendationError,
+    activity_revision,
     bounded_json,
     cache_call,
     read_snapshot,
@@ -725,16 +725,25 @@ def _passage_evidence(positions, bills, topics, tags, uncertain, cross_chamber):
 
 
 def representative_activity_catalog(
-    *, captured_at=None, policy=None, refresh_before=0, representative_ids=None, wait_for_build=False
+    *,
+    captured_at=None,
+    policy=None,
+    refresh_before=0,
+    representative_ids=None,
+    wait_for_build=False,
 ):
-    requested = None if representative_ids is None else {str(pk) for pk in representative_ids}
+    requested = (
+        None if representative_ids is None else {str(pk) for pk in representative_ids}
+    )
     policy = policy or DEFAULT_POLICY
     now = timezone.now()
     capture = captured_at or now
     if capture > now or now.timestamp() - capture.timestamp() >= 300:
         raise RecommendationError()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = f"representative-topic-activity:v4:{policy.version}:{day}:{activity_revision()}"
+    key = (
+        f"representative-topic-activity:v4:{policy.version}:{day}:{activity_revision()}"
+    )
     cached = cache_call("get", key)
     token = secrets.token_hex(16)
     owns_gate = False
@@ -762,17 +771,26 @@ def representative_activity_catalog(
             keys = {pk: keys[pk] for pk in requested if pk in keys}
         members = cache_call("get_many", list(keys.values())) if keys else {}
         if all(member_key in members for member_key in keys.values()):
-            return {**cached["metadata"], "representatives": {
-                rep_id: members[member_key]
-                for rep_id, member_key in keys.items()
-            }}
+            return {
+                **cached["metadata"],
+                "representatives": {
+                    rep_id: members[member_key] for rep_id, member_key in keys.items()
+                },
+            }
     if not owns_gate and not cache_call("add", key + ":gate", token, timeout=30):
         raise RecommendationError()
     deadline = time.monotonic() + 20
     try:
         with read_snapshot():
             result = _build_catalog(capture, policy, deadline)
-        metadata = bounded_json({name: value for name, value in result.items() if name != "representatives"}, 16 * 1024 * 1024)
+        metadata = bounded_json(
+            {
+                name: value
+                for name, value in result.items()
+                if name != "representatives"
+            },
+            16 * 1024 * 1024,
+        )
         members = {}
         for rep_id, item in result["representatives"].items():
             _checkpoint(deadline)
@@ -792,12 +810,20 @@ def representative_activity_catalog(
             "captured_at": metadata["captured_at"],
             "expires_at": metadata["expires_at"],
             "metadata": metadata,
-            "members": {rep_id: f"{key}:{token}:member:{rep_id}" for rep_id in result["representatives"]},
+            "members": {
+                rep_id: f"{key}:{token}:member:{rep_id}"
+                for rep_id in result["representatives"]
+            },
         }
         cache_call("set", key, manifest, timeout=remaining)
         if requested is not None:
             records = result["representatives"]
-            return {**result, "representatives": {pk: records[pk] for pk in requested if pk in records}}
+            return {
+                **result,
+                "representatives": {
+                    pk: records[pk] for pk in requested if pk in records
+                },
+            }
         return result
     except RecommendationError:
         raise

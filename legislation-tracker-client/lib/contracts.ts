@@ -265,6 +265,7 @@ export interface LegalNlpReaderOrientation {
 }
 
 interface ContractSummaryBase {
+  plain_summary?: string | null;
   reader_brief?: { summary: string; money: string; source_id: string | null } | null;
   id: number;
   schema_version: string;
@@ -762,7 +763,8 @@ const CONTRACT_SUMMARY_KEYS = [
 
 function hasContractSummaryBase(value: Record<string, unknown>): boolean {
   return (
-    hasExactKeys(value, value.reader_brief === undefined ? CONTRACT_SUMMARY_KEYS : [...CONTRACT_SUMMARY_KEYS, "reader_brief"]) &&
+    hasExactKeys(value, [...CONTRACT_SUMMARY_KEYS, ...(value.reader_brief === undefined ? [] : ["reader_brief"]), ...(value.plain_summary === undefined ? [] : ["plain_summary"])]) &&
+    (value.plain_summary === undefined || isStringOrNull(value.plain_summary)) &&
     (value.reader_brief === undefined || value.reader_brief === null || (isRecord(value.reader_brief) && typeof value.reader_brief.summary === "string" && typeof value.reader_brief.money === "string" && isStringOrNull(value.reader_brief.source_id))) &&
     isPositiveInteger(value.id) &&
     isNonEmptyString(value.schema_version) &&

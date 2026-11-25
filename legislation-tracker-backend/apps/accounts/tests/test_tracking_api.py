@@ -57,11 +57,15 @@ def test_tracking_summary_requires_authentication():
 def test_tracking_summary_batches_bill_topics(django_assert_num_queries):
     user = make_user()
     client = authenticated_client(user)
-    topics = [Topic.objects.create(name=f"Fixture {i}", slug=f"fixture-{i}") for i in range(3)]
+    topics = [
+        Topic.objects.create(name=f"Fixture {i}", slug=f"fixture-{i}") for i in range(3)
+    ]
     for i in range(4):
         bill = make_bill(bill_number=f"HR {i + 1}")
         TrackedBill.objects.create(user=user, bill=bill)
-        BillTopic.objects.bulk_create([BillTopic(bill=bill, topic=topic) for topic in topics])
+        BillTopic.objects.bulk_create(
+            [BillTopic(bill=bill, topic=topic) for topic in topics]
+        )
 
     with django_assert_num_queries(5):
         response = client.get("/api/tracking/")
@@ -69,7 +73,9 @@ def test_tracking_summary_batches_bill_topics(django_assert_num_queries):
     bills = response.json()["bills"]
     assert len(bills) == 4
     for item in bills:
-        assert {edge["topic_id"] for edge in item["bill"]["topics"]} == {topic.pk for topic in topics}
+        assert {edge["topic_id"] for edge in item["bill"]["topics"]} == {
+            topic.pk for topic in topics
+        }
 
 
 @pytest.mark.django_db
@@ -356,3 +362,20 @@ def test_tracking_feed_includes_direct_topic_and_legislator_matches_for_current_
     }
     assert all(entry["change_type"] == "status_update" for entry in entries)
     assert all("created_at" in entry for entry in entries)
+
+
+@pytest.mark.django_db
+def test_membership_projection_reads_only_current_users_ids(django_assert_num_queries):
+    user = make_user()
+    bill = make_bill()
+    TrackedBill.objects.create(user=user, bill=bill)
+    other = make_user("other@example.com")
+    TrackedBill.objects.create(user=other, bill=make_bill(bill_number="S 101"))
+    client = authenticated_client(user)
+    with django_assert_num_queries(3):
+        response = client.get("/api/tracking/", {"view": "membership"})
+    assert response.json() == {
+        "bills": [{"bill": {"id": bill.pk}}],
+        "topics": [],
+        "legislators": [],
+    }

@@ -9,17 +9,17 @@ from django.utils import timezone
 from rest_framework.response import Response
 
 from .dashboard_bill_cards import add_card_summaries
+from .recommendation_filters import FILTER_NAMES, filter_bills, filter_key, read_filters
 from .recommendation_support import (
     PrivateRecommendationView,
-    activity_revision,
     RecommendationError,
+    activity_revision,
     bounded_json,
     cache_call,
     read_snapshot,
     strict_parameters,
 )
 from .recommendations import ALGORITHM, build_ranking, candidate_query, load_profile
-from .recommendation_filters import FILTER_NAMES, read_filters, filter_key, filter_bills
 
 CURSOR_SALT = "accounts.bill-recommendations.v1"
 SNAPSHOT_SECONDS = 300
@@ -27,7 +27,9 @@ SNAPSHOT_BYTES = 1024 * 1024
 
 
 def snapshot_key(user_id, filters=None):
-    return f"bill-recommendations:v1:user:{user_id}" + (":" + filter_key(filters) if filters else "")
+    return f"bill-recommendations:v1:user:{user_id}" + (
+        ":" + filter_key(filters) if filters else ""
+    )
 
 
 def decode_cursor(token, user_id):
@@ -89,14 +91,21 @@ class BillRecommendationView(PrivateRecommendationView):
             profile = load_profile(request.user.pk)
             revision = activity_revision() if not cursor else None
             cached = cache_call("get", key) if not cursor else None
-            reuse = bool(cached and cached.get("algorithm") == ALGORITHM
-                         and cached.get("activity_revision") == revision
-                         and cached["expires_at"] > now.timestamp()
-                         and cached["fingerprint"] == profile.fingerprint
-                         and cached["page_size"] == size)
+            reuse = bool(
+                cached
+                and cached.get("algorithm") == ALGORITHM
+                and cached.get("activity_revision") == revision
+                and cached["expires_at"] > now.timestamp()
+                and cached["fingerprint"] == profile.fingerprint
+                and cached["page_size"] == size
+            )
             if reuse:
                 ids = [item["bill"]["id"] for item in cached["results"][:size]]
-                reuse = set(filter_bills(candidate_query(profile), filters).filter(pk__in=ids).values_list("id", flat=True)) == set(ids)
+                reuse = set(
+                    filter_bills(candidate_query(profile), filters)
+                    .filter(pk__in=ids)
+                    .values_list("id", flat=True)
+                ) == set(ids)
             if cursor:
                 snapshot = cache_call("get", key)
                 if snapshot is None or snapshot["expires_at"] <= now.timestamp():
@@ -122,7 +131,11 @@ class BillRecommendationView(PrivateRecommendationView):
             elif reuse:
                 snapshot = cached
             else:
-                ranking = build_ranking(profile, filters) if filters else build_ranking(profile)
+                ranking = (
+                    build_ranking(profile, filters)
+                    if filters
+                    else build_ranking(profile)
+                )
                 snapshot = bounded_json(
                     {
                         **ranking,

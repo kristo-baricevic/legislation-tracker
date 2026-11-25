@@ -453,6 +453,7 @@ export interface BillFilterOptions {
 }
 
 export interface GetBillsParams {
+  signal?: AbortSignal;
   tracking?: "tracked" | "untracked";
   page?: number;
   session?: number;
@@ -491,7 +492,8 @@ export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   if (params?.sort) sp.set("sort", params.sort);
   const q = sp.toString();
   const path = `/api/bills/${q ? `?${q}` : ""}`;
-  return params?.tracking ? authGet<BillsPage>(path) : publicGet<BillsPage>(path);
+  const options = params?.signal ? { signal: params.signal } : undefined;
+  return params?.tracking ? authGet<BillsPage>(path, options) : publicGet<BillsPage>(path, options);
 }
 
 export async function getTopics(): Promise<TopicItem[]> {
@@ -1162,8 +1164,15 @@ export interface TrackingFeed {
   entries: TrackingFeedEntry[];
 }
 
-export function getMyTracking(options: PersonalizedRequestOptions = {}): Promise<TrackingSummary> {
-  return authGet<TrackingSummary>("/api/tracking/", options);
+export type TrackingMembership = {
+  bills: { bill: {id: number} }[];
+  legislators: { representative: {id: number} }[];
+  topics: { topic: {id: number} }[];
+};
+export function getMyTracking(options: PersonalizedRequestOptions & {membershipOnly: true}): Promise<TrackingMembership>;
+export function getMyTracking(options?: PersonalizedRequestOptions): Promise<TrackingSummary>;
+export function getMyTracking(options: PersonalizedRequestOptions & {membershipOnly?: boolean} = {}): Promise<TrackingMembership> {
+  return authGet<TrackingMembership>(options.membershipOnly ? "/api/tracking/?view=membership" : "/api/tracking/", options);
 }
 
 export interface SavedBillSearch {

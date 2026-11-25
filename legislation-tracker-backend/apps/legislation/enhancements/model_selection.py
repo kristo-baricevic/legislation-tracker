@@ -1,9 +1,9 @@
 """Account selection scoped to a single planning operation, never process-wide."""
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 
 from django.conf import settings
-
 
 _target = ContextVar("enhancement_target", default=None)
 _owned_target = ContextVar("enhancement_owned_token_target", default=None)
@@ -16,7 +16,9 @@ def owned_token_target():
 
 def saved_owned_token_target(attempt):
     saved = attempt.enhancement.source_manifest_json.get("execution_settings", {})
-    return attempt.execution_config.get("owned_token_target", saved.get("owned_token_target", 0))
+    return attempt.execution_config.get(
+        "owned_token_target", saved.get("owned_token_target", 0)
+    )
 
 
 def default_target():
@@ -35,12 +37,17 @@ def reasoning_effort():
     Explicit configured efforts remain unchanged.
     """
     effort = settings.LLM_ENHANCEMENT_REASONING_EFFORT
-    return 'low' if target()[0] == 'openrouter' and effort == 'none' else effort
+    return "low" if target()[0] == "openrouter" and effort == "none" else effort
 
 
 def catalog():
-    pairs = dict.fromkeys([default_target(), ("anthropic", "claude-haiku-5-5"),
-                           ("gemini", "gemini-4-hydrogen")])
+    pairs = dict.fromkeys(
+        [
+            default_target(),
+            ("anthropic", "claude-haiku-5-5"),
+            ("gemini", "gemini-4-hydrogen"),
+        ]
+    )
     if default_target()[0] != "openai":
         pairs[("openai", "gpt-6-luna")] = None
     for pair in settings.LLM_READER_MODEL_CAPACITIES:
@@ -48,6 +55,7 @@ def catalog():
         if separator and model and provider in {"openai", "anthropic", "gemini"}:
             pairs[(provider, model)] = None
     from .openrouter_catalog import entries
+
     metadata = entries()
     pairs.update(dict.fromkeys(("openrouter", model) for model in metadata))
     excluded = set(settings.LLM_OPENROUTER_EXCLUDED_MODELS) | {"openrouter/free"}
@@ -67,7 +75,8 @@ def credential_target(credential):
     if credential is None:
         return default_target()
     return credential.provider, credential.selected_model or (
-        default_target()[1] if credential.provider == default_target()[0] else "")
+        default_target()[1] if credential.provider == default_target()[0] else ""
+    )
 
 
 def selectable(pair):
@@ -77,6 +86,7 @@ def selectable(pair):
 @contextmanager
 def planning_for(pair, *, owned_target=None):
     from .openrouter_catalog import catalog_scope
+
     token = _target.set(pair)
     chunk_token = _owned_target.set(owned_target) if owned_target is not None else None
     try:

@@ -84,13 +84,17 @@ def _safe_subsection_starts(raw):
 
 
 def document_fingerprint(document_id, version, text_hash, xml_sections):
-    fingerprint = _hash(f"{document_id}\0{version}\0{NORMALIZATION_VERSION}\0{text_hash}")
+    fingerprint = _hash(
+        f"{document_id}\0{version}\0{NORMALIZATION_VERSION}\0{text_hash}"
+    )
     if xml_sections:
         return _hash(fingerprint + ":xml-sections-v1:" + json.dumps(xml_sections))
     return fingerprint
 
 
-def build_source_graph(document_id: str, version: str, text: str, *, xml_sections=()) -> SourceGraph:
+def build_source_graph(
+    document_id: str, version: str, text: str, *, xml_sections=()
+) -> SourceGraph:
     fingerprint = document_fingerprint(document_id, version, _hash(text), xml_sections)
     try:
         structure = parse_federal_structure(text)
@@ -143,7 +147,9 @@ def build_source_graph(document_id: str, version: str, text: str, *, xml_section
             if stop < end:
                 raw = text[stop:end]
                 pid = _hash(f"{fingerprint}:{stop}:{end}")
-                passages[pid] = Passage(pid, stop, end, raw, _hash(raw), "context", ("Between sections",))
+                passages[pid] = Passage(
+                    pid, stop, end, raw, _hash(raw), "context", ("Between sections",)
+                )
                 if raw.strip():
                     xml_gaps[end] = pid
             end = stop
@@ -191,9 +197,9 @@ def build_source_graph(document_id: str, version: str, text: str, *, xml_section
                     if re.search(r"\b(?:if|unless|provided that|only if)\b", raw, re.I)
                     else None
                 ),
-                inventory_kinds=("financial",)
-                if FINANCIAL.search(inventory_text)
-                else (),
+                inventory_kinds=(
+                    ("financial",) if FINANCIAL.search(inventory_text) else ()
+                ),
                 unresolved_dependencies=(
                     () if recognized else ("unrecognized_structure",)
                 ),
@@ -326,7 +332,9 @@ def build_source_graph(document_id: str, version: str, text: str, *, xml_section
 
 def audit_graph(graph: SourceGraph, text: str) -> list[str]:
     """Re-derive source ownership/context; catch omissions and corrupted snapshots."""
-    expected = build_source_graph(graph.document_id, graph.version, text, xml_sections=graph.xml_sections)
+    expected = build_source_graph(
+        graph.document_id, graph.version, text, xml_sections=graph.xml_sections
+    )
     errors = []
     if graph.document_fingerprint != expected.document_fingerprint:
         errors.append("document_identity")

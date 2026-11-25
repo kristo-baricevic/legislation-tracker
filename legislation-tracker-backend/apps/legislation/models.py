@@ -115,10 +115,50 @@ class BillDocument(models.Model):
     extracted_text = models.TextField(null=True, blank=True)
     # Database-maintained so bulk updates cannot leave lookup hashes stale.
     reader_text_hash = models.GeneratedField(
-        expression=models.functions.SHA256(models.functions.Coalesce(
-            models.functions.NullIf("extracted_text", models.Value("")), "raw_text", models.Value(""), output_field=models.TextField(),
-        )), output_field=models.CharField(max_length=64), db_persist=True,
+        expression=models.functions.SHA256(
+            models.functions.Coalesce(
+                models.functions.NullIf("extracted_text", models.Value("")),
+                "raw_text",
+                models.Value(""),
+                output_field=models.TextField(),
+            )
+        ),
+        output_field=models.CharField(max_length=64),
+        db_persist=True,
     )
+    stored_text_summary = models.TextField(null=True, editable=False)
+    summary_text_hash = models.CharField(
+        max_length=64, blank=True, default="", editable=False
+    )
+
+    def save(self, *args, **kwargs):
+        import hashlib
+
+        from .source_summary import document_summary
+
+        fields = kwargs.get("update_fields")
+        if fields is None or {"extracted_text", "raw_text"}.intersection(fields):
+            # With a partial write the other field may have changed in memory.
+            text_fields = ("extracted_text", "raw_text")
+            values = {key: getattr(self, key) for key in text_fields}
+            if fields and self.pk:
+                missing = [key for key in text_fields if key not in fields]
+                if missing:
+                    values.update(
+                        type(self).objects.filter(pk=self.pk).values(*missing).get()
+                    )
+            text = values["extracted_text"] or values["raw_text"] or ""
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            if self.summary_text_hash != digest:
+                self.stored_text_summary = document_summary(text)
+                self.summary_text_hash = digest
+            if fields:
+                kwargs["update_fields"] = set(fields) | {
+                    "stored_text_summary",
+                    "summary_text_hash",
+                }
+        super().save(*args, **kwargs)
+
     # Exact version-specific official purpose from the original document form.
     # Kept separate so existing text offsets and source hashes never shift.
     source_purpose = models.TextField(blank=True, default="")
@@ -320,10 +360,22 @@ class BillEnhancement(models.Model):
     )
     result_json = models.JSONField(null=True, blank=True)
     validation_digest = models.GeneratedField(
-        expression=models.functions.SHA256(models.functions.Concat(
-            models.functions.SHA256(models.functions.Coalesce(models.functions.Cast("result_json", models.TextField()), models.Value(""), output_field=models.TextField())),
-            models.functions.SHA256(models.functions.Cast("source_snapshot_json", models.TextField())),
-        )), output_field=models.CharField(max_length=64), db_persist=True,
+        expression=models.functions.SHA256(
+            models.functions.Concat(
+                models.functions.SHA256(
+                    models.functions.Coalesce(
+                        models.functions.Cast("result_json", models.TextField()),
+                        models.Value(""),
+                        output_field=models.TextField(),
+                    )
+                ),
+                models.functions.SHA256(
+                    models.functions.Cast("source_snapshot_json", models.TextField())
+                ),
+            )
+        ),
+        output_field=models.CharField(max_length=64),
+        db_persist=True,
     )
     rerun_after = models.PositiveBigIntegerField(null=True, blank=True)
     successful_attempt = models.OneToOneField(
@@ -334,8 +386,11 @@ class BillEnhancement(models.Model):
         related_name="promoted_enhancement",
     )
     published_attempt = models.OneToOneField(
-        "BillEnhancementAttempt", on_delete=models.SET_NULL, null=True,
-        blank=True, related_name="published_enhancement",
+        "BillEnhancementAttempt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="published_enhancement",
     )
     result_completeness = models.CharField(max_length=16, default="none")
     input_tokens = models.PositiveIntegerField(null=True, blank=True)
@@ -356,10 +411,14 @@ class BillEnhancement(models.Model):
             models.UniqueConstraint(
                 fields=["bill", "rerun_after"],
                 name="legislation_bill_rerun_uniq",
-            )
+            ),
         ]
         indexes = [
             models.Index(fields=["user", "bill", "-created_at"]),
+            models.Index(
+                fields=["bill", "status", "-created_at", "-id"],
+                name="enh_bill_status_recent",
+            ),
             models.Index(fields=["bill", "request_fingerprint"]),
         ]
 
@@ -390,7 +449,9 @@ class BillEnhancementAttempt(models.Model):
         related_name="enhancement_attempts",
     )
     credential_revision = models.PositiveIntegerField()
-    approved_request_fingerprint = models.CharField(max_length=64, default="", blank=True)
+    approved_request_fingerprint = models.CharField(
+        max_length=64, default="", blank=True
+    )
     execution_config = models.JSONField(default=dict, blank=True)
     reused_result_json = models.JSONField(null=True, blank=True)
     status = models.CharField(
@@ -442,21 +503,29 @@ class BillEnhancementAttempt(models.Model):
 
 class BillEnhancementWorkUnit(models.Model):
     """Durable reader plan; a split replaces its parent, not completed siblings."""
-    attempt = models.ForeignKey(BillEnhancementAttempt, on_delete=models.CASCADE, related_name='work_units')
+
+    attempt = models.ForeignKey(
+        BillEnhancementAttempt, on_delete=models.CASCADE, related_name="work_units"
+    )
     node_key = models.CharField(max_length=255)
-    parent_key = models.CharField(max_length=255, blank=True, default='')
+    parent_key = models.CharField(max_length=255, blank=True, default="")
     batch_index = models.PositiveIntegerField()
     request_json = models.JSONField()
-    status = models.CharField(max_length=16, default='pending')
+    status = models.CharField(max_length=16, default="pending")
     result_json = models.JSONField(null=True)
-    reason = models.CharField(max_length=100, blank=True, default='')
+    reason = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['attempt', 'node_key'], name='enhancement_work_node_uniq')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt", "node_key"], name="enhancement_work_node_uniq"
+            )
+        ]
 
 
 class BillProcessingCache(models.Model):
     """Versioned, content-addressed deterministic work; no credentials."""
+
     fingerprint = models.CharField(max_length=64, primary_key=True)
     kind = models.CharField(max_length=24)
     result_json = models.JSONField()
@@ -465,6 +534,7 @@ class BillProcessingCache(models.Model):
 
 class BillEnhancementDiagnostic(models.Model):
     """Private transport evidence, deleted with its owner or after expiry."""
+
     owner = models.ForeignKey("accounts.User", on_delete=models.CASCADE)
     step = models.OneToOneField("BillEnhancementStep", on_delete=models.CASCADE)
     expires_at = models.DateTimeField(db_index=True)
@@ -477,13 +547,16 @@ class BillEnhancementCallCache(models.Model):
     Dispatching reservations are deliberately never expired into paid retries:
     a crashed caller may have already incurred provider charges.
     """
+
     fingerprint = models.CharField(max_length=64, primary_key=True)
-    dispatch_identity = models.CharField(max_length=64, db_index=True, blank=True, default="")
-    status = models.CharField(max_length=24, default='dispatching')
+    dispatch_identity = models.CharField(
+        max_length=64, db_index=True, blank=True, default=""
+    )
+    status = models.CharField(max_length=24, default="dispatching")
     result_json = models.JSONField(null=True)
-    response_id = models.CharField(max_length=255, default='', blank=True)
-    resolved_model = models.CharField(max_length=255, default='', blank=True)
-    diagnostic_code = models.CharField(max_length=100, default='', blank=True)
+    response_id = models.CharField(max_length=255, default="", blank=True)
+    resolved_model = models.CharField(max_length=255, default="", blank=True)
+    diagnostic_code = models.CharField(max_length=100, default="", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -491,7 +564,9 @@ class BillEnhancementCallCache(models.Model):
 class BillEnhancementStep(models.Model):
     """Durable per-call authorization; dispatching after a crash is ambiguous."""
 
-    attempt = models.ForeignKey(BillEnhancementAttempt, on_delete=models.CASCADE, related_name="steps")
+    attempt = models.ForeignKey(
+        BillEnhancementAttempt, on_delete=models.CASCADE, related_name="steps"
+    )
     step_index = models.PositiveIntegerField()
     stage = models.CharField(max_length=16)
     request_fingerprint = models.CharField(max_length=64)
@@ -507,7 +582,11 @@ class BillEnhancementStep(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["attempt", "step_index"], name="enhancement_step_index_uniq")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt", "step_index"], name="enhancement_step_index_uniq"
+            )
+        ]
 
 
 class BillTopic(models.Model):
@@ -543,8 +622,12 @@ class BillTopic(models.Model):
 class BillSimilarityState(models.Model):
     """Reusable features and an atomic, keyset-paginated comparison checkpoint."""
 
-    bill = models.OneToOneField(Bill, on_delete=models.CASCADE, primary_key=True,
-        related_name="similarity_state")
+    bill = models.OneToOneField(
+        Bill,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="similarity_state",
+    )
     fingerprint = models.CharField(max_length=64)
     features = models.JSONField(default=dict)
     cursor = models.BigIntegerField(default=0)

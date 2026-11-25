@@ -44,7 +44,9 @@ class BillChangeTimelineView(APIView):
         query.is_valid(raise_exception=True)
         values = query.validated_data
         page_size = values.get("page_size", 20)
-        base = ChangeLog.objects.filter(bill=bill).select_related("document", "contract")
+        base = ChangeLog.objects.filter(bill=bill).select_related(
+            "document", "contract"
+        )
         after_cursor = None
         before_cursor = None
         stored_state = None
@@ -64,7 +66,9 @@ class BillChangeTimelineView(APIView):
                     allowed_directions=frozenset({"before"}),
                 )
             elif request.user.is_authenticated:
-                stored_state = BillViewState.objects.filter(user=request.user, bill=bill).first()
+                stored_state = BillViewState.objects.filter(
+                    user=request.user, bill=bill
+                ).first()
                 if (
                     stored_state
                     and stored_state.last_seen_change_created_at is not None
@@ -84,11 +88,19 @@ class BillChangeTimelineView(APIView):
         has_more_newer = False
         has_more_older = False
         if after_cursor is not None:
-            entries = list(base.filter(strictly_after(after_cursor)).order_by("created_at", "id")[: page_size + 1])
+            entries = list(
+                base.filter(strictly_after(after_cursor)).order_by("created_at", "id")[
+                    : page_size + 1
+                ]
+            )
             has_more_newer = len(entries) > page_size
             entries = entries[:page_size]
         elif before_cursor is not None:
-            entries = list(base.filter(strictly_before(before_cursor)).order_by("-created_at", "-id")[: page_size + 1])
+            entries = list(
+                base.filter(strictly_before(before_cursor)).order_by(
+                    "-created_at", "-id"
+                )[: page_size + 1]
+            )
             has_more_older = len(entries) > page_size
             entries = list(reversed(entries[:page_size]))
         else:
@@ -97,18 +109,21 @@ class BillChangeTimelineView(APIView):
             entries = list(reversed(entries[:page_size]))
 
         if entries:
-            has_more_older = has_more_older or base.filter(
-                strictly_before(
-                    ChangeCursor(
-                        version=1,
-                        bill_id=bill.id,
-                        direction="before",
-                        purpose="browse",
-                        created_at=entries[0].created_at,
-                        event_id=entries[0].id,
+            has_more_older = (
+                has_more_older
+                or base.filter(
+                    strictly_before(
+                        ChangeCursor(
+                            version=1,
+                            bill_id=bill.id,
+                            direction="before",
+                            purpose="browse",
+                            created_at=entries[0].created_at,
+                            event_id=entries[0].id,
+                        )
                     )
-                )
-            ).exists()
+                ).exists()
+            )
         # Keep the acknowledgement head in the same read as the rendered page.
         # A separate query could include an event committed during browsing.
         head = entries[-1] if entries else None
@@ -142,8 +157,16 @@ class BillChangeTimelineView(APIView):
                     for entry in entries
                 ],
                 "page_end_cursor": page_end_cursor,
-                "stream_head_cursor": _cursor_for_event(head, direction="head", purpose="stream_head") if head else None,
-                "older_cursor": _cursor_for_event(entries[0], direction="before", purpose="browse") if entries else None,
+                "stream_head_cursor": (
+                    _cursor_for_event(head, direction="head", purpose="stream_head")
+                    if head
+                    else None
+                ),
+                "older_cursor": (
+                    _cursor_for_event(entries[0], direction="before", purpose="browse")
+                    if entries
+                    else None
+                ),
                 "has_more_newer": has_more_newer,
                 "has_more_older": has_more_older,
                 "unread_count": unread_count,
@@ -160,7 +183,10 @@ class BillChangeAcknowledgeView(APIView):
         bill = get_object_or_404(Bill, pk=bill_id)
         cursor_value = request.data.get("cursor")
         if not isinstance(cursor_value, str):
-            return Response({"cursor": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"cursor": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             cursor = decode_change_cursor(
                 cursor_value,

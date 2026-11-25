@@ -63,10 +63,13 @@ def test_no_follows_is_private_cold_start():
 
 
 def test_initial_page_reuses_ranking_until_follow_change_or_expiry():
-    from apps.accounts.recommendations import build_ranking
     from apps.accounts.recommendation_views import snapshot_key
+    from apps.accounts.recommendations import build_ranking
+
     api, user = client()
-    with patch("apps.accounts.recommendation_views.build_ranking", wraps=build_ranking) as rank:
+    with patch(
+        "apps.accounts.recommendation_views.build_ranking", wraps=build_ranking
+    ) as rank:
         assert api.get(PATH).status_code == 200
         assert api.get(PATH).status_code == 200
         assert rank.call_count == 1
@@ -95,48 +98,99 @@ def test_database_failure_is_private_and_has_retry_hint():
 
 def test_new_activity_changes_a_warm_recommendation_card_without_waiting_for_expiry():
     from apps.changelog.models import BillActivityClock
+
     api, user = client()
     subject = topic()
     TrackedTopic.objects.create(user=user, topic=subject)
     candidate = bill(1234, topics=[subject])
     assert api.get(PATH).json()["results"][0]["bill"]["title"] == candidate.title
     Bill.objects.filter(pk=candidate.pk).update(title="Updated title")
-    BillActivityClock.objects.update_or_create(pk=1, defaults={"committed_sequence": 91234})
+    BillActivityClock.objects.update_or_create(
+        pk=1, defaults={"committed_sequence": 91234}
+    )
     assert api.get(PATH).json()["results"][0]["bill"]["title"] == "Updated title"
 
 
 def test_dashboard_rows_prefer_current_shared_summary_then_original():
     from apps.legislation.models import BillDocument, BillEnhancement
+
     api, user = client()
     tag = topic()
     TrackedTopic.objects.create(user=user, topic=tag)
     candidate = bill(199, topics=[tag])
     candidate.summary = "Original brief."
     candidate.save()
-    doc = BillDocument.objects.create(bill=candidate, version_label="Introduced", is_active_version=True, raw_text="Sample text")
+    doc = BillDocument.objects.create(
+        bill=candidate,
+        version_label="Introduced",
+        is_active_version=True,
+        raw_text="Sample text",
+    )
     doc.refresh_from_db()
     import hashlib
-    snapshot = {"source_ref": "src_0001", "quoted_text": "Sample text",
-                "text_sha256": hashlib.sha256(b"Sample text").hexdigest()}
-    row = BillEnhancement.objects.create(bill=candidate, status="succeeded", output_schema_version="1.3",
+
+    snapshot = {
+        "source_ref": "src_0001",
+        "quoted_text": "Sample text",
+        "text_sha256": hashlib.sha256(b"Sample text").hexdigest(),
+    }
+    row = BillEnhancement.objects.create(
+        bill=candidate,
+        status="succeeded",
+        output_schema_version="1.3",
         source_snapshot_json=[snapshot],
-        source_manifest_json={"document_id": doc.pk, "document_content_hash": doc.reader_text_hash},
-        result_json={"schema_version": "1.3", "overview": [{"text": "Enhanced brief.", "source_refs": ["src_0001"],
-                     "source_quotes": [{"source_ref": "src_0001", "quote": "Sample text"}]}],
-                     "key_impacts": [], "obligations": [], "funding_and_timing": [], "uncertain_language": [], "glossary": []}, result_completeness="complete")
-    assert api.get(PATH).json()["results"][0]["bill"]["card_summary"] == "Enhanced brief."
+        source_manifest_json={
+            "document_id": doc.pk,
+            "document_content_hash": doc.reader_text_hash,
+        },
+        result_json={
+            "schema_version": "1.3",
+            "overview": [
+                {
+                    "text": "Enhanced brief.",
+                    "source_refs": ["src_0001"],
+                    "source_quotes": [
+                        {"source_ref": "src_0001", "quote": "Sample text"}
+                    ],
+                }
+            ],
+            "key_impacts": [],
+            "obligations": [],
+            "funding_and_timing": [],
+            "uncertain_language": [],
+            "glossary": [],
+        },
+        result_completeness="complete",
+    )
+    assert (
+        api.get(PATH).json()["results"][0]["bill"]["card_summary"] == "Enhanced brief."
+    )
     TrackedBill.objects.create(user=user, bill=candidate)
-    assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Enhanced brief."
+    assert (
+        api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"]
+        == "Enhanced brief."
+    )
     card = api.get("/api/bills/").json()["results"][0]
     assert card["card_summary"] == "Enhanced brief."
     assert card["enhancement_status"] == "succeeded"
     assert card["enhancement_id"] == row.pk
-    row.result_json = {"schema_version": "2.0-source-first", "synopsis": {"text": "Source-first brief."}}
+    row.result_json = {
+        "schema_version": "2.0-source-first",
+        "synopsis": {"text": "Source-first brief."},
+    }
     row.save()
-    assert api.get("/api/bills/").json()["results"][0]["card_summary"] == "Original brief."
-    row.source_manifest_json = {"document_id": doc.pk, "document_content_hash": "outdated"}
+    assert (
+        api.get("/api/bills/").json()["results"][0]["card_summary"] == "Original brief."
+    )
+    row.source_manifest_json = {
+        "document_id": doc.pk,
+        "document_content_hash": "outdated",
+    }
     row.save()
-    assert api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"] == "Original brief."
+    assert (
+        api.get("/api/tracking/").json()["bills"][0]["bill"]["card_summary"]
+        == "Original brief."
+    )
     card = api.get("/api/bills/").json()["results"][0]
     assert card["card_summary"] == "Original brief."
     assert card["enhancement_status"] is None
@@ -380,6 +434,7 @@ def test_cold_start_sparse_and_no_match_states():
     # New corpus entries become visible after the five-minute result cache expires.
     assert api.get(PATH).json()["results"] == []
     from apps.accounts.recommendation_views import snapshot_key
+
     cache.delete(snapshot_key(user.pk))
     assert api.get(PATH).json()["results"][0]["bill"]["id"] == target.id
     TrackedTopic.objects.filter(user=user).delete()

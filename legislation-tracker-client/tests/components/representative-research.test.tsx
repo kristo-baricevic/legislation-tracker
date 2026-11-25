@@ -138,6 +138,17 @@ it.each([false, true])("keeps saved spending visible while retrying gaps (permis
   expect(saved).toBeInTheDocument();
 });
 
+it("loads all-years donation sizes once for the modal totals and chart", async () => {
+  const sizes = vi.fn(() => Response.json({ status: "available", total: "100", refunds: "0", results: [] }));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("by_size") ? sizes() : Response.json({
+    ...empty, status: "succeeded", snapshot: "published", available_periods: [2026],
+  })));
+  render(<RepresentativeResearch representativeId={1} initialPeriod="all" financeView modalView />);
+  expect(await screen.findByText("$100.00")).toBeVisible();
+  expect(screen.getByRole("region", { name: "Donations by size" })).toBeVisible();
+  expect(sizes).toHaveBeenCalledTimes(1);
+});
+
 it.each([false, true])("refreshes all-year totals after a published campaign is replaced (modal: %s)", async (modalView) => {
   let refreshed = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -451,4 +462,31 @@ it("leaves a fuzzy FEC match pending until the reader selects and confirms a rec
   await userEvent.click(await screen.findByRole("radio", { name: "GARCIA, JESUS" }));
   await userEvent.click(screen.getByRole("button", { name: "Confirm and collect records" }));
   expect(posts.map(body => JSON.parse(body))).toEqual([{ candidate_id: "H8IL04134" }]);
+});
+
+it("shares one poll across panels and stops when the last panel is hidden", async () => {
+  vi.useFakeTimers();
+  const fetch = vi.fn(async () => Response.json({ ...empty, status: "running" }));
+  vi.stubGlobal("fetch", fetch);
+  const panels = (first: boolean, second: boolean) => <>
+    <RepresentativeResearch representativeId={121} cardName="Header" visible={first} />
+    <RepresentativeResearch representativeId={121} cardName="Funding" visible={second} />
+  </>;
+  const view = render(panels(true, true));
+  try {
+    await act(() => vi.advanceTimersByTimeAsync(2500));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    view.rerender(panels(false, true));
+    await act(() => vi.advanceTimersByTimeAsync(2500));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    view.rerender(panels(false, false));
+    await act(() => vi.advanceTimersByTimeAsync(10000));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    view.rerender(panels(true, true));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(fetch).toHaveBeenCalledTimes(4);
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
 });

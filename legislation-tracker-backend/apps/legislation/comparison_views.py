@@ -8,8 +8,8 @@ from config.api import StrictQuerySerializer
 
 from .comparison import (
     compare_contracts,
-    compare_document_section,
     compare_document_passages,
+    compare_document_section,
     compare_document_sections,
 )
 from .models import Bill, BillContract, BillDocument
@@ -23,11 +23,18 @@ class ComparisonQuerySerializer(StrictQuerySerializer):
 
 class DocumentSectionQuerySerializer(ComparisonQuerySerializer):
     section_key = serializers.CharField(max_length=2048, required=False)
-    section_keys = serializers.ListField(child=serializers.CharField(max_length=2048), min_length=1, max_length=5, required=False)
+    section_keys = serializers.ListField(
+        child=serializers.CharField(max_length=2048),
+        min_length=1,
+        max_length=5,
+        required=False,
+    )
 
     def validate(self, attrs):
         if ("section_key" in attrs) == ("section_keys" in attrs):
-            raise serializers.ValidationError("Provide one section key or a page of section keys.")
+            raise serializers.ValidationError(
+                "Provide one section key or a page of section keys."
+            )
         return attrs
 
 
@@ -39,8 +46,12 @@ class BillContractComparisonView(APIView):
         query = ComparisonQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         bill = get_object_or_404(Bill, pk=bill_id)
-        before = get_object_or_404(BillContract, pk=query.validated_data["before"], bill=bill)
-        after = get_object_or_404(BillContract, pk=query.validated_data["after"], bill=bill)
+        before = get_object_or_404(
+            BillContract, pk=query.validated_data["before"], bill=bill
+        )
+        after = get_object_or_404(
+            BillContract, pk=query.validated_data["after"], bill=bill
+        )
         diff = compare_contracts(before=before, after=after)
         return Response(
             {
@@ -70,8 +81,12 @@ class BillDocumentComparisonView(APIView):
         query = ComparisonQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         bill = get_object_or_404(Bill, pk=bill_id)
-        before = get_object_or_404(BillDocument, pk=query.validated_data["before"], bill=bill)
-        after = get_object_or_404(BillDocument, pk=query.validated_data["after"], bill=bill)
+        before = get_object_or_404(
+            BillDocument, pk=query.validated_data["before"], bill=bill
+        )
+        after = get_object_or_404(
+            BillDocument, pk=query.validated_data["after"], bill=bill
+        )
         diff = compare_document_sections(before=before, after=after)
         return Response(
             {
@@ -103,12 +118,31 @@ class BillDocumentSectionComparisonView(APIView):
         query = DocumentSectionQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         bill = get_object_or_404(Bill, pk=bill_id)
-        before = get_object_or_404(BillDocument, pk=query.validated_data["before"], bill=bill)
-        after = get_object_or_404(BillDocument, pk=query.validated_data["after"], bill=bill)
+        before = get_object_or_404(
+            BillDocument, pk=query.validated_data["before"], bill=bill
+        )
+        after = get_object_or_404(
+            BillDocument, pk=query.validated_data["after"], bill=bill
+        )
         if "section_keys" in query.validated_data:
-            diffs = compare_document_passages(before=before, after=after, section_keys=query.validated_data["section_keys"])
-            return Response({"results": [{"section_key": diff.section_key, "operations": list(diff.operations),
-                                         "truncated": diff.truncated, "truncation_reasons": list(diff.truncation_reasons)} for diff in diffs]})
+            diffs = compare_document_passages(
+                before=before,
+                after=after,
+                section_keys=query.validated_data["section_keys"],
+            )
+            return Response(
+                {
+                    "results": [
+                        {
+                            "section_key": diff.section_key,
+                            "operations": list(diff.operations),
+                            "truncated": diff.truncated,
+                            "truncation_reasons": list(diff.truncation_reasons),
+                        }
+                        for diff in diffs
+                    ]
+                }
+            )
         diff = compare_document_section(
             before=before,
             after=after,

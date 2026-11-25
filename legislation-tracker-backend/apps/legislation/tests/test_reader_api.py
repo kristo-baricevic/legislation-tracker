@@ -542,6 +542,7 @@ def test_compact_bill_and_history_omit_full_summary_contract_and_evidence(
     assert compact_body["summary_preview"].startswith("A complete official explanation")
     assert compact_body["summary_has_more"] is True
     assert set(compact_body["latest_contract"]) == {
+        "plain_summary",
         "id",
         "schema_version",
         "contract_hash",
@@ -557,6 +558,7 @@ def test_compact_bill_and_history_omit_full_summary_contract_and_evidence(
     assert "evidence_spans" not in compact_body["latest_contract"]
 
     assert full.status_code == 200
+    assert len(compact.content) < len(full.content) // 5
     assert full.json()["summary"] == bill.summary
     assert full.json()["latest_contract"]["contract_json"]["line_items"]
     assert "summary_preview" not in full.json()

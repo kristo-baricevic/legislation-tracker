@@ -1,10 +1,12 @@
 import { getSession, type AuthSession } from "./api";
 import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges } from "./personalized-scope";
+import { refreshResearchPolls } from "./research-poll";
 import { useSyncExternalStore } from "react";
 
 // Tab memory only. Cache promises to coalesce concurrent readers; never retain failures.
 const entries = new Map<string, { promise: Promise<unknown>; value?: unknown }>();
 let flight: Promise<AuthSession | null> | undefined;
+let validUntil = 0;
 let revision: string | undefined;
 let trackingRevision: string | undefined;
 let researchRevision: string | undefined;
@@ -13,11 +15,13 @@ let repVersion = 0;
 const repListeners = new Set<() => void>();
 const subscribeRep = (fn: () => void) => { repListeners.add(fn); return () => { repListeners.delete(fn); }; };
 export function useDashboardRepVersion() { return useSyncExternalStore(subscribeRep, () => repVersion, () => 0); }
-function clear() { entries.clear(); flight = undefined; revision = trackingRevision = researchRevision = undefined; }
+function clear() { entries.clear(); flight = undefined; validUntil = 0; revision = trackingRevision = researchRevision = undefined; }
 function install() {
   if (installed || typeof window === "undefined") return;
   installed = true;
   subscribePersonalizedChanges(({ kind }) => {
+    if (validUntil) flight = undefined;
+    validUntil = 0;
     if (kind === "session") clear();
     else if (kind === "tracking") {
       // Follow state changes personalized collections, not representative facts.
@@ -27,16 +31,20 @@ function install() {
     }
   });
   window.addEventListener("representative-research-updated", event => {
+    flight = undefined;
+    validUntil = 0;
     const id = (event as CustomEvent<number>).detail;
     for (const key of entries.keys()) if (key.startsWith(`rep:${id}:`) || key === "tracking") entries.delete(key);
   });
 }
-export function dashboardSession() {
+export function dashboardSession(allowCached = false) {
   install();
   const scope = capturePersonalizedScope();
-  if (!flight) {
+  if (!flight || (validUntil && (!allowCached || Date.now() >= validUntil))) {
+    validUntil = 0;
     const pending = getSession({ scope }, true).then(session => {
       if (!isPersonalizedScopeCurrent(scope)) throw new DOMException("Session changed", "AbortError");
+      if (flight !== pending) return session;
       const next = session && JSON.stringify([session.user.email, session.dashboard_revision, session.current_congress]);
       if (!session) entries.clear();
       else {
@@ -47,6 +55,7 @@ export function dashboardSession() {
         }
         if (trackingRevision !== session.tracking_revision) entries.delete("tracking");
         if (researchRevision !== session.research_revision) {
+          if (researchRevision !== undefined) refreshResearchPolls();
           for (const key of entries.keys()) if (key.startsWith("rep:") && !key.endsWith(":activity")) entries.delete(key);
         }
         if (refreshReps) { repVersion++; repListeners.forEach(fn => fn()); }
@@ -54,9 +63,10 @@ export function dashboardSession() {
       trackingRevision = session?.tracking_revision;
       researchRevision = session?.research_revision;
       revision = next ?? undefined;
+      if (flight === pending && session) validUntil = Date.now() + 1500;
       return session;
     }).catch(error => { if (flight === pending) clear(); throw error; })
-      .finally(() => { if (flight === pending) flight = undefined; });
+      .finally(() => { if (flight === pending && !validUntil) flight = undefined; });
     flight = pending;
   }
   return flight;

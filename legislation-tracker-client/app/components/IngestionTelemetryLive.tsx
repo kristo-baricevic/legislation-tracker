@@ -1,4 +1,5 @@
 "use client";
+import LoadingSpinner from "./LoadingSpinner";
 import { SearchInput } from "./FilterControls";
 import React from "react";
 import { authGet, authPost } from "@/lib/api";
@@ -57,6 +58,11 @@ export default function IngestionTelemetryLive() {
     const epoch = React.useRef(0);
     React.useEffect(() => () => { epoch.current++; }, []);
     React.useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+    const validScope = Number.isInteger(Number(scope)) && Number(scope) >= 1 && Number(scope) <= 200;
+    function toggleExpanded() {
+        setExpanded(!expanded);
+        if (!expanded && !busy && validScope) void refresh();
+    }
     async function refresh() {
         const current = ++epoch.current;
         setBusy(true);
@@ -128,20 +134,22 @@ export default function IngestionTelemetryLive() {
     return <section aria-labelledby="live-telemetry-title" className={dashboard.dashboard}>
       <div className={dashboard.header}>
         <h2 id="live-telemetry-title">Legislation ingestion</h2>
-        <button type="button" className={dashboard.secondary} aria-expanded={expanded} aria-controls={contentId} aria-label={expanded ? "Collapse legislation ingestion" : "Expand legislation ingestion"} onClick={() => setExpanded(value => !value)}>{expanded ? "Collapse ▴" : "Expand ▾"}</button>
+        <button type="button" className={dashboard.secondary} aria-expanded={expanded} aria-controls={contentId} aria-label={expanded ? "Collapse legislation ingestion" : "Expand legislation ingestion"} onClick={toggleExpanded}>{expanded ? "Collapse ▴" : "Expand ▾"}</button>
       </div>
       <div id={contentId} hidden={!expanded}>
       <div className={dashboard.header}>
         <p>Bring bills from Congress.gov into the tracker.</p>
         <div className={dashboard.actions}>
           <label>Congress <SearchInput type="number" min="1" max="200" step="1" value={scope} disabled={busy} onChange={event => { epoch.current++; setScope(event.target.value); setTelemetry(null); setReadiness(null); setRequestKey(null); setAcceptedRunId(null); setNotice(""); }}/></label>
-          <button type="button" className={dashboard.secondary} disabled={busy} aria-busy={busy} onClick={() => void refresh()}>Refresh telemetry</button>
-          <button className={dashboard.primary} disabled={busy || !scope || !Number.isInteger(Number(scope)) || Number(scope) < 1 || Number(scope) > 200} onClick={() => void start()}>Start discovery and ingestion</button>
+          <button type="button" className={dashboard.secondary} disabled={busy || !validScope} aria-busy={busy} onClick={() => void refresh()}>Refresh telemetry</button>
+          <button className={dashboard.primary} disabled={busy || !validScope} onClick={() => void start()}>Start discovery and ingestion</button>
         </div>
       </div>
-      <div className={dashboard.snapshot}><span className={dashboard.badge}>{telemetry ? "Snapshot loaded" : "Not loaded"}</span><span>{telemetry ? `Updated ${date(telemetry.observed_at)}` : "Refresh to load counts. You can start ingestion without refreshing."}</span><span>Superuser access required</span></div>
       {error && <p role="alert" className={dashboard.alert}>{error}</p>}
       <p role="status" className={notice ? dashboard.notice : undefined}>{notice}</p>
+      {!telemetry && busy && <LoadingSpinner label="Loading ingestion data…" reserveSpace />}
+      {telemetry && <>
+      <div className={dashboard.snapshot}><span className={dashboard.badge}>Snapshot loaded</span><span>Updated {date(telemetry.observed_at)}</span><span>Superuser access required</span></div>
       <div className={dashboard.metrics}>
         <div><h3>Bills without analysis</h3><strong>{telemetry?.bills_without_analysis?.toLocaleString() ?? "—"}</strong></div>
         <div><h3>Processing</h3><strong>{telemetry ? count(["processing"]) : "—"}</strong><span>Work currently in progress</span></div>
@@ -152,7 +160,7 @@ export default function IngestionTelemetryLive() {
       {queued.length > 0 ? <ul aria-label="Queued background tasks" className="my-3 grid gap-2 sm:grid-cols-3">{queued.map(({kind, n}) =>
         <li key={kind} className="flex items-center justify-between gap-3 rounded-md border p-3"><span>{label(kind)}</span><b className="tabular-nums">{n.toLocaleString()}</b></li>)}</ul> : <p>{telemetry ? "No tasks queued." : "—"}</p>}
       <div className={dashboard.pipelineHeader}><div><h3>Current pipeline backlog</h3></div>{telemetry?.discovery_run && <span className={dashboard.badge}>Latest discovery: {label(telemetry.discovery_run.status)}</span>}</div>
-      {!telemetry ? <div className={dashboard.empty}>No pipeline snapshot loaded. Select Refresh telemetry to see current work.</div> : !stages.length ? <div className={dashboard.empty}>No work items in this snapshot.</div> :
+      {!stages.length ? <div className={dashboard.empty}>No work items in this snapshot.</div> :
         <div className={dashboard.tableScroll} role="region" aria-label="Pipeline counts" tabIndex={0}><table aria-label="Pipeline work items">
           <thead><tr><th scope="col">Stage</th>{["Queued", "Processing", "Blocked", "Failed", "Completed", ...otherStates.map(label)].map(name => <th scope="col" key={name}>{name}</th>)}</tr></thead>
           <tbody>{stages.map(kind => <tr key={kind}><th scope="row">{label(kind)}</th>{[["pending", "dispatched"], ["processing"], ["blocked"], ["dead"], ["succeeded"], ...otherStates.map(status => [status])].map((statuses, index) => <td key={statuses.join(",")} className={index === 3 && stageCount(kind, statuses) > 0 ? dashboard.failureCount : undefined}>{stageCount(kind, statuses).toLocaleString()}</td>)}</tr>)}</tbody>
@@ -174,6 +182,7 @@ export default function IngestionTelemetryLive() {
         <p>Refresh reads stored status; it does not scan Congress.gov or enqueue work. Retrying Start uses the same request key to avoid duplicate discovery.</p>
         <button className={dashboard.secondary} disabled={busy || !requestKey || !acceptedRunId || telemetry?.discovery_run?.id !== acceptedRunId || !["succeeded", "failed", "unknown"].includes(telemetry.discovery_run.status)} onClick={() => { setRequestKey(null); setAcceptedRunId(null); setNotice("New request prepared. Start explicitly when ready."); }}>Prepare a new discovery request</button>
       </details>
+      </>}
       </div>
     </section>;
 }

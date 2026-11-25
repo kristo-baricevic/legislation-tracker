@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.accounts.models import TrackedBill
@@ -85,12 +85,19 @@ def persist_ingestion_work(
         source_updated_at = timezone.make_aware(source_updated_at, UTC)
 
     with transaction.atomic():
-        existing = list(
+        if connection.vendor == "postgresql":
+            # Serialize even the first enqueue, when this key has no row to lock.
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                    [kind, dedupe_key],
+                )
+        latest = (
             IngestionWorkItem.objects.select_for_update()
             .filter(kind=kind, dedupe_key=dedupe_key)
             .order_by("-source_updated_at", "-id")
+            .first()
         )
-        latest = existing[0] if existing else None
         if latest is not None and latest.source_updated_at > source_updated_at:
             _replace_superseded_pending_work(
                 IngestionWorkItem.objects.filter(
@@ -104,10 +111,6 @@ def persist_ingestion_work(
             )
             return latest, False
 
-        exact = next(
-            (item for item in existing if item.source_updated_at == source_updated_at),
-            None,
-        )
         if revision_creates_work(
             latest.source_updated_at if latest else None, source_updated_at
         ):
@@ -124,7 +127,7 @@ def persist_ingestion_work(
                 },
             )
         else:
-            work_item = exact
+            work_item = latest
             created = False
 
         _replace_superseded_pending_work(

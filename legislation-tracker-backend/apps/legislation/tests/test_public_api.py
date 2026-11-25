@@ -28,20 +28,34 @@ POSTGRESQL_ONLY = pytest.mark.skipif(
 
 @pytest.mark.django_db
 def test_stage_status_filter_groups_actions_before_pagination_and_keeps_legacy_search():
-    for index, status in enumerate([
-        "Introduced in House", "Referred to the Committee on Education.",
-        "Passed House", "Received in the Senate and referred to the Committee on Finance.",
-        "Presented to President.", "Became Public Law No: 119-21.",
-        "Motion to reconsider laid on the table Agreed to without objection.",
-        "Failed to pass House", "",
-    ]):
-        Bill.objects.create(jurisdiction="federal", session=119,
-                            bill_number=f"HR {index + 1}", title="Test bill", status=status)
+    for index, status in enumerate(
+        [
+            "Introduced in House",
+            "Referred to the Committee on Education.",
+            "Passed House",
+            "Received in the Senate and referred to the Committee on Finance.",
+            "Presented to President.",
+            "Became Public Law No: 119-21.",
+            "Motion to reconsider laid on the table Agreed to without objection.",
+            "Failed to pass House",
+            "",
+        ]
+    ):
+        Bill.objects.create(
+            jurisdiction="federal",
+            session=119,
+            bill_number=f"HR {index + 1}",
+            title="Test bill",
+            status=status,
+        )
     client = APIClient()
     for stage, expected in [
-        ("introduced", {"HR 1"}), ("committee", {"HR 2"}),
-        ("first_chamber", {"HR 3", "HR 4"}), ("both_chambers", {"HR 5"}),
-        ("law", {"HR 6"}), ("other", {"HR 7", "HR 8", "HR 9"}),
+        ("introduced", {"HR 1"}),
+        ("committee", {"HR 2"}),
+        ("first_chamber", {"HR 3", "HR 4"}),
+        ("both_chambers", {"HR 5"}),
+        ("law", {"HR 6"}),
+        ("other", {"HR 7", "HR 8", "HR 9"}),
     ]:
         response = client.get("/api/bills/", {"status": f"stage:{stage}"})
         assert response.status_code == 200
@@ -49,9 +63,13 @@ def test_stage_status_filter_groups_actions_before_pagination_and_keeps_legacy_s
     legacy = client.get("/api/bills/", {"status": "Education"})
     assert [b["bill_number"] for b in legacy.json()["results"]] == ["HR 2"]
     for index in range(25):
-        Bill.objects.create(jurisdiction="federal", session=118,
-                            bill_number=f"S {index + 1}", title="Older law",
-                            status=f"Became Public Law No: 118-{index + 1}.")
+        Bill.objects.create(
+            jurisdiction="federal",
+            session=118,
+            bill_number=f"S {index + 1}",
+            title="Older law",
+            status=f"Became Public Law No: 118-{index + 1}.",
+        )
     second_page = client.get("/api/bills/", {"status": "stage:law", "page": 2}).json()
     assert second_page["count"] == 26
     assert len(second_page["results"]) == 6
@@ -87,15 +105,35 @@ def test_bill_detail_exposes_complete_summary_provenance():
 @pytest.mark.parametrize("query", ["", "rural"])
 def test_activity_sort_uses_action_dates_before_pagination(query):
     bills = [
-        Bill.objects.create(jurisdiction="federal", session=119, title="Rural grants",
-                            bill_number=f"HR {i}", last_action_at=date, last_activity_sequence=i)
-        for i, date in enumerate(["2026-11-20T00:00:00Z", "2025-02-10T00:00:00Z", None], 1)
+        Bill.objects.create(
+            jurisdiction="federal",
+            session=119,
+            title="Rural grants",
+            bill_number=f"HR {i}",
+            last_action_at=date,
+            last_activity_sequence=i,
+        )
+        for i, date in enumerate(
+            ["2026-11-20T00:00:00Z", "2025-02-10T00:00:00Z", None], 1
+        )
     ]
     client = APIClient()
-    for sort, expected in [("recent_activity", bills), ("oldest_activity", [bills[1], bills[0], bills[2]]), ("unsorted", bills)]:
+    for sort, expected in [
+        ("recent_activity", bills),
+        ("oldest_activity", [bills[1], bills[0], bills[2]]),
+        ("unsorted", bills),
+    ]:
         for page, bill in enumerate(expected, 1):
-            response = client.get("/api/bills/", {"session": 119, "q": query, "sort": sort,
-                                                   "page_size": 1, "page": page})
+            response = client.get(
+                "/api/bills/",
+                {
+                    "session": 119,
+                    "q": query,
+                    "sort": sort,
+                    "page_size": 1,
+                    "page": page,
+                },
+            )
             assert response.status_code == 200
             assert [row["id"] for row in response.json()["results"]] == [bill.id]
 
@@ -201,6 +239,23 @@ def test_postgres_search_keeps_unindexed_bills_visible_and_fetches_headlines_for
         segment["matched"]
         for segment in unindexed_page.json()["results"][0]["highlights"][0]["segments"]
     )
+    for captured in queries:
+        sql = captured["sql"].lower()
+        if sql.startswith("select count"):
+            assert "ts_rank" not in sql
+    for sort in ("unsorted", "recent_activity", "oldest_activity", "relevance"):
+        filtered = APIClient().get(
+            "/api/bills/",
+            {
+                "q": "nephrology clinic",
+                "bill_number": "891",
+                "session": 119,
+                "sort": sort,
+            },
+        )
+        assert filtered.status_code == 200
+        assert filtered.json()["count"] == 1
+        assert [item["id"] for item in filtered.json()["results"]] == [unindexed.pk]
     assert len(headline_queries) == 1
     assert (
         f'"legislation_billsearchchunk"."bill_id" IN ({indexed.id})'

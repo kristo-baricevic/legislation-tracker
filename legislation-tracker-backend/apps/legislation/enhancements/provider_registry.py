@@ -11,14 +11,20 @@ def _provider_class(name: str):
     normalized = (name or "").strip().lower()
     if normalized == "anthropic":
         from .providers.anthropic import AnthropicEnhancementProvider
+
         return AnthropicEnhancementProvider
     if normalized == "gemini":
         from .providers.gemini import GeminiEnhancementProvider
+
         return GeminiEnhancementProvider
     if normalized == "openrouter":
         from functools import partial
+
         from .providers.openai_compatible import OpenAICompatibleEnhancementProvider
-        return partial(OpenAICompatibleEnhancementProvider, base_url="https://openrouter.ai/api/v1")
+
+        return partial(
+            OpenAICompatibleEnhancementProvider, base_url="https://openrouter.ai/api/v1"
+        )
     if normalized == "e2e" and getattr(
         settings,
         "LLM_ENHANCEMENT_E2E_FAKE_PROVIDER_ENABLED",
@@ -41,6 +47,7 @@ def adapter_for(provider):
 def get_provider(name: str, *, adapter="existing"):
     if name == "openrouter" and adapter == "langchain":
         from .providers.langchain_adapter import LangChainOpenRouterProvider
+
         return LangChainOpenRouterProvider()
     if adapter != "existing":
         raise ValueError("Unsupported enhancement adapter")

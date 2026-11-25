@@ -135,6 +135,7 @@ class TrackedLegislatorSerializer(serializers.ModelSerializer):
         if "cards" in self.context:
             return self.context["cards"].get(obj.representative_id)
         from .legislator_cards import card_facts
+
         return card_facts(obj.representative)
 
     class Meta:

@@ -9,17 +9,19 @@ import styles from "./representative-research.module.css";
 const colors = ["#b6c8b0", "#638675", "#3f697d", "#a77850"];
 const dollars = (value: string) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(value));
 
-export default function DonationPie({ representativeId, period, snapshot, refreshToken, initialData }: { initialData?: DonationSizes; representativeId: number; period: number; snapshot: string; refreshToken: string }) {
-  const [data, setData] = useState<DonationSizes | null>(initialData ?? null);
+export default function DonationPie({ representativeId, period, snapshot, refreshToken, initialData, supplied }: { supplied?: DonationSizes | null; initialData?: DonationSizes; representativeId: number; period: number; snapshot: string; refreshToken: string }) {
+  const [loaded, setData] = useState<DonationSizes | null>(initialData ?? null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
+    if (supplied !== undefined) return;
     const controller = new AbortController();
     getDonationSizes(representativeId, period, snapshot, controller.signal).then(result => {
       if (!controller.signal.aborted) { setData(result); setError(false); }
     }).catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
-  }, [representativeId, period, snapshot, refreshToken, retry]);
+  }, [representativeId, period, snapshot, refreshToken, retry, supplied]);
+  const data = supplied === undefined ? loaded : supplied;
   const total = Number(data?.total ?? 0);
   let offset = 0;
   const slices = data?.results.map((row, i) => {

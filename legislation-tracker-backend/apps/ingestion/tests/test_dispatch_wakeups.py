@@ -1,20 +1,26 @@
+import pytest
+from celery import Task
 from django.core.cache import cache
+
 from apps.ingestion.tasks import dispatch_ingestion_work
 from apps.legislation.tasks import run_bill_enhancement_attempt
-from celery import Task
-import pytest
 
 
 def test_periodic_research_recovery_reaches_research_worker_not_bill_backlog():
     from config.celery import app
+
     cache.clear()
-    entry = app.conf.beat_schedule['dispatch-research-work']
+    entry = app.conf.beat_schedule["dispatch-research-work"]
     with app.connection_for_write() as connection:
-        normal, research = connection.SimpleQueue('celery'), connection.SimpleQueue('research')
+        normal, research = connection.SimpleQueue("celery"), connection.SimpleQueue(
+            "research"
+        )
         normal.clear()
         research.clear()
         try:
-            app.tasks[entry['task']].apply_async(kwargs=entry['kwargs'], **entry['options'])
+            app.tasks[entry["task"]].apply_async(
+                kwargs=entry["kwargs"], **entry["options"]
+            )
             assert research.qsize() == 1
             assert normal.qsize() == 0
         finally:
@@ -23,23 +29,33 @@ def test_periodic_research_recovery_reaches_research_worker_not_bill_backlog():
             cache.clear()
 
 
-@pytest.mark.parametrize('routing_queue', ['research', 'celery'])
-def test_fast_research_page_can_wake_next_dispatch_without_waiting_for_ingestion(routing_queue):
+@pytest.mark.parametrize("routing_queue", ["research", "celery"])
+def test_fast_research_page_can_wake_next_dispatch_without_waiting_for_ingestion(
+    routing_queue,
+):
     cache.clear()
     with dispatch_ingestion_work.app.connection_for_write() as connection:
         queue = connection.SimpleQueue(routing_queue)
         queue.clear()
         try:
-            dispatch_ingestion_work.apply_async(kwargs={'batch_size': 0}, queue=routing_queue)
+            dispatch_ingestion_work.apply_async(
+                kwargs={"batch_size": 0}, queue=routing_queue
+            )
             message = queue.get(block=False)
             message.ack()
-            dispatch_ingestion_work.push_request(delivery_info={'routing_key': routing_queue})
+            dispatch_ingestion_work.push_request(
+                delivery_info={"routing_key": routing_queue}
+            )
             try:
-                dispatch_ingestion_work.before_start('research-test', (), {'batch_size': 0})
+                dispatch_ingestion_work.before_start(
+                    "research-test", (), {"batch_size": 0}
+                )
             finally:
                 dispatch_ingestion_work.pop_request()
             for _ in range(100):
-                dispatch_ingestion_work.apply_async(kwargs={'batch_size': 0}, queue=routing_queue)
+                dispatch_ingestion_work.apply_async(
+                    kwargs={"batch_size": 0}, queue=routing_queue
+                )
             assert queue.qsize() == 1
         finally:
             queue.clear()
@@ -47,35 +63,55 @@ def test_fast_research_page_can_wake_next_dispatch_without_waiting_for_ingestion
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('status', ['succeeded', 'pending', 'dead'])
+@pytest.mark.parametrize("status", ["succeeded", "pending", "dead"])
 def test_completed_stage_refills_capacity_even_on_retry_or_failure(monkeypatch, status):
     from django.utils import timezone
+
     from apps.ingestion.models import IngestionWorkItem
     from apps.ingestion.tasks import process_ingestion_work_item
-    item = IngestionWorkItem.objects.create(kind='bill', dedupe_key='119-hr-1',
-        source_updated_at=timezone.now(), status=status)
+
+    item = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-1",
+        source_updated_at=timezone.now(),
+        status=status,
+    )
     wakes = []
-    monkeypatch.setattr(dispatch_ingestion_work, 'delay', lambda: wakes.append(True))
-    process_ingestion_work_item.after_return('SUCCESS', {}, 'test', (item.pk,), {}, None)
+    monkeypatch.setattr(dispatch_ingestion_work, "delay", lambda: wakes.append(True))
+    process_ingestion_work_item.after_return(
+        "SUCCESS", {}, "test", (item.pk,), {}, None
+    )
     assert wakes == [True]
 
 
 @pytest.mark.django_db
 def test_real_task_completion_refills_next_metadata_slot(monkeypatch):
     from django.utils import timezone
-    from apps.ingestion.models import IngestionWorkItem
+
     from apps.ingestion import tasks
+    from apps.ingestion.models import IngestionWorkItem
+
     for index in range(3):
-        IngestionWorkItem.objects.create(kind='bill', dedupe_key=str(index),
-            source_updated_at=timezone.now(), payload_json={})
-    monkeypatch.setattr(tasks.process_ingestion_work_item, 'apply_async', lambda **kwargs: None)
-    monkeypatch.setattr(tasks, '_process_durable_work', lambda item: {})
-    monkeypatch.setattr(dispatch_ingestion_work, 'delay', lambda: dispatch_ingestion_work())
+        IngestionWorkItem.objects.create(
+            kind="bill",
+            dedupe_key=str(index),
+            source_updated_at=timezone.now(),
+            payload_json={},
+        )
+    monkeypatch.setattr(
+        tasks.process_ingestion_work_item, "apply_async", lambda **kwargs: None
+    )
+    monkeypatch.setattr(tasks, "_process_durable_work", lambda item: {})
+    monkeypatch.setattr(
+        dispatch_ingestion_work, "delay", lambda: dispatch_ingestion_work()
+    )
     dispatch_ingestion_work()
-    first = IngestionWorkItem.objects.filter(status='dispatched').first()
-    result = tasks.process_ingestion_work_item.apply(args=(first.pk, first.dispatch_token))
-    assert result.get()['status'] == 'succeeded'
-    assert IngestionWorkItem.objects.filter(status='dispatched').count() == 2
+    first = IngestionWorkItem.objects.filter(status="dispatched").first()
+    result = tasks.process_ingestion_work_item.apply(
+        args=(first.pk, first.dispatch_token)
+    )
+    assert result.get()["status"] == "succeeded"
+    assert IngestionWorkItem.objects.filter(status="dispatched").count() == 2
 
 
 def test_burst_of_wakeups_publishes_one_message_per_queue():
@@ -88,7 +124,9 @@ def test_burst_of_wakeups_publishes_one_message_per_queue():
         try:
             for _ in range(100):
                 dispatch_ingestion_work.delay()
-            dispatch_ingestion_work.apply_async(kwargs={"batch_size": 0}, queue="research")
+            dispatch_ingestion_work.apply_async(
+                kwargs={"batch_size": 0}, queue="research"
+            )
             assert normal.qsize() == 1
             assert research.qsize() == 1
         finally:
@@ -119,14 +157,19 @@ def test_failed_wakeup_can_be_published_after_cooldown(monkeypatch):
         queue.clear()
         try:
             with monkeypatch.context() as scoped:
+
                 def fail(*args, **kwargs):
                     raise ConnectionError("broker unavailable")
+
                 scoped.setattr(Task, "apply_async", fail)
                 with pytest.raises(ConnectionError):
                     dispatch_ingestion_work.delay()
             dispatch_ingestion_work.delay()
             assert queue.qsize() == 0
-            cache.touch("dispatcher-wakeup:apps.ingestion.tasks.dispatch_ingestion_work:celery", timeout=-1)
+            cache.touch(
+                "dispatcher-wakeup:apps.ingestion.tasks.dispatch_ingestion_work:celery",
+                timeout=-1,
+            )
             dispatch_ingestion_work.delay()
             assert queue.qsize() == 1
         finally:

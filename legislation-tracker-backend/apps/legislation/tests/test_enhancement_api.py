@@ -1,14 +1,16 @@
 # ruff: noqa: F401, F811
 
 import pytest
-from apps.legislation.enhancements.service import confirmation_fingerprint
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.legislation.enhancements.service import create_enhancement_attempt
+from apps.legislation.enhancements.service import (
+    confirmation_fingerprint,
+    create_enhancement_attempt,
+)
 from apps.legislation.enhancements.source_packet import build_enhancement_preflight
 from apps.legislation.models import (
     Bill,
@@ -41,33 +43,82 @@ def _assert_private(response):
 def test_selected_model_survives_estimate_confirmation_and_worker_rebuild(
     enhancement_client, enhancement_settings, source_bill, monkeypatch
 ):
+    from apps.legislation.enhancements import openrouter_catalog
     from apps.legislation.enhancements.providers.base import CredentialCheck
     from apps.legislation.tasks import _worker_preflight
-    from apps.legislation.enhancements import openrouter_catalog
+
     model = "test/concrete:free"
-    monkeypatch.setattr(openrouter_catalog, "entries", lambda: {model: {
-        "provider": "openrouter", "model": model, "free": True, "context_tokens": 128000, "output_tokens": 24000}})
-    from apps.legislation.enhancements.providers.openai_compatible import OpenAICompatibleEnhancementProvider
+    monkeypatch.setattr(
+        openrouter_catalog,
+        "entries",
+        lambda: {
+            model: {
+                "provider": "openrouter",
+                "model": model,
+                "free": True,
+                "context_tokens": 128000,
+                "output_tokens": 24000,
+            }
+        },
+    )
+    from apps.legislation.enhancements.providers.openai_compatible import (
+        OpenAICompatibleEnhancementProvider,
+    )
 
     def validate(self, *, requested_model, api_key, timeout_seconds):
         assert (self.base_url, requested_model, api_key) == (
-            "https://openrouter.ai/api/v1", model, "router-test-key")
+            "https://openrouter.ai/api/v1",
+            model,
+            "router-test-key",
+        )
         return CredentialCheck(valid=True)
 
-    monkeypatch.setattr(OpenAICompatibleEnhancementProvider, "validate_credential", validate)
+    monkeypatch.setattr(
+        OpenAICompatibleEnhancementProvider, "validate_credential", validate
+    )
     with enhancement_settings:
         url = "/api/settings/llm/"
-        assert enhancement_client.put(url, {"provider": "openrouter", "requested_model": model,
-            "api_key": "router-test-key"}, format="json").status_code == 200
-        assert enhancement_client.post(url + "validate/").json()["validation_status"] == "valid"
+        assert (
+            enhancement_client.put(
+                url,
+                {
+                    "provider": "openrouter",
+                    "requested_model": model,
+                    "api_key": "router-test-key",
+                },
+                format="json",
+            ).status_code
+            == 200
+        )
+        assert (
+            enhancement_client.post(url + "validate/").json()["validation_status"]
+            == "valid"
+        )
         url = f"/api/bills/{source_bill.pk}/enhancements/"
         estimate = enhancement_client.get(url + "estimate/").json()
         assert estimate["requested_model"] == model and estimate["can_enhance"]
-        confirmed = {key: estimate[key] for key in ("source_fingerprint", "request_fingerprint", "credential_revision")}
+        confirmed = {
+            key: estimate[key]
+            for key in (
+                "source_fingerprint",
+                "request_fingerprint",
+                "credential_revision",
+            )
+        }
         assert enhancement_client.post(url, confirmed, format="json").status_code == 202
         plan, key, error = _worker_preflight(BillEnhancementAttempt.objects.get())
-        assert (error, plan.provider, plan.requested_model, key) == (None, "openrouter", model, "router-test-key")
-        assert confirmation_fingerprint(plan, BillEnhancementAttempt.objects.get().credential) == confirmed["request_fingerprint"]
+        assert (error, plan.provider, plan.requested_model, key) == (
+            None,
+            "openrouter",
+            model,
+            "router-test-key",
+        )
+        assert (
+            confirmation_fingerprint(
+                plan, BillEnhancementAttempt.objects.get().credential
+            )
+            == confirmed["request_fingerprint"]
+        )
 
 
 @pytest.mark.django_db
@@ -116,7 +167,9 @@ def test_estimate_reports_full_confirmation_and_credential_state(
     body = response.json()
     assert body["can_enhance"] is True
     assert body["source_fingerprint"] == preflight.source_fingerprint
-    assert body["request_fingerprint"] == confirmation_fingerprint(preflight, credential)
+    assert body["request_fingerprint"] == confirmation_fingerprint(
+        preflight, credential
+    )
     assert body["credential_revision"] == credential.revision
     assert body["estimated_input_tokens"] == preflight.estimated_input_tokens
     assert body["max_output_tokens"] == output_limit
@@ -126,16 +179,24 @@ def test_estimate_reports_full_confirmation_and_credential_state(
 
 @pytest.mark.django_db
 def test_source_first_estimate_uses_selected_models_output_limit(
-        enhancement_client, enhancement_owner, source_bill, enhancement_settings, settings):
+    enhancement_client, enhancement_owner, source_bill, enhancement_settings, settings
+):
     settings.LLM_SOURCE_FIRST_ENABLED = True
-    settings.LLM_READER_MODEL_CAPACITIES = {"openai/gpt-5.6-luna": {"output_tokens": 2048, "context_tokens": 128000}}
+    settings.LLM_READER_MODEL_CAPACITIES = {
+        "openai/gpt-5.6-luna": {"output_tokens": 2048, "context_tokens": 128000}
+    }
     with enhancement_settings:
         _valid_credential(enhancement_owner)
-        response = enhancement_client.get(f"/api/bills/{source_bill.pk}/enhancements/estimate/")
+        response = enhancement_client.get(
+            f"/api/bills/{source_bill.pk}/enhancements/estimate/"
+        )
     body = response.json()
     assert body["can_enhance"] and body["output_schema_version"] == "2.0-source-first"
     assert body["max_output_tokens"] == 2048
-    assert body["aggregate_budget"]["maximum_output"] == body["aggregate_budget"]["maximum_calls"] * 2048
+    assert (
+        body["aggregate_budget"]["maximum_output"]
+        == body["aggregate_budget"]["maximum_calls"] * 2048
+    )
 
 
 @pytest.mark.django_db
@@ -356,7 +417,12 @@ def test_detail_expands_only_server_owned_cited_source_text(
         created.enhancement.status = created.enhancement.Status.SUCCEEDED
         created.enhancement.successful_attempt = created.attempt
         created.enhancement.save(
-            update_fields=["result_json", "status", "successful_attempt", "output_schema_version"]
+            update_fields=[
+                "result_json",
+                "status",
+                "successful_attempt",
+                "output_schema_version",
+            ]
         )
         created.attempt.status = created.attempt.Status.SUCCEEDED
         created.attempt.provider_response_id = "private-provider-id"

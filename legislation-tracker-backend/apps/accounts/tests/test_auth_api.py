@@ -55,31 +55,61 @@ def test_session_reports_superuser_status_not_staff_status(superuser):
 
 @pytest.mark.django_db
 def test_dashboard_revisions_change_only_for_relevant_data():
-    from apps.changelog.models import BillActivityClock
     from apps.accounts.models import TrackedBill
-    from apps.legislation.models import Bill
+    from apps.changelog.models import BillActivityClock
     from apps.congress.models import Representative
+    from apps.legislation.models import Bill
     from apps.research.models import ResearchRun
+
     user = create_user()
     client = APIClient()
     client.force_authenticate(user)
+
     def read():
         res = client.get("/api/auth/session/current/?dashboard=1")
         assert res.status_code == 200
         return res.json()
+
     first = read()
     assert read() == first
-    BillActivityClock.objects.update_or_create(pk=1, defaults={"committed_sequence": 1337})
+    BillActivityClock.objects.update_or_create(
+        pk=1, defaults={"committed_sequence": 1337}
+    )
     changed = read()
     assert changed["dashboard_revision"] != first["dashboard_revision"]
     assert changed["tracking_revision"] == first["tracking_revision"]
-    rep = Representative.objects.create(bioguide_id="T000001", name="Test Member", state="NY")
-    bill = Bill.objects.create(bill_number="HR 1", session=119, jurisdiction="federal", sponsor=rep)
+    rep = Representative.objects.create(
+        bioguide_id="T000001", name="Test Member", state="NY"
+    )
+    bill = Bill.objects.create(
+        bill_number="HR 1", session=119, jurisdiction="federal", sponsor=rep
+    )
     TrackedBill.objects.create(user=user, bill=bill)
     assert read()["tracking_revision"] != changed["tracking_revision"]
-    assert client.get("/api/tracking/").json()["bills"][0]["bill"]["sponsor_state"] == "NY"
+    assert (
+        client.get("/api/tracking/").json()["bills"][0]["bill"]["sponsor_state"] == "NY"
+    )
     ResearchRun.objects.create(representative=rep, period=2026)
     assert read()["research_revision"] != changed["research_revision"]
+
+
+@pytest.mark.django_db
+def test_dashboard_clock_tracks_committed_bulk_changes_only():
+    from django.db import transaction
+
+    from apps.accounts.models import DashboardRevision
+    from apps.legislation.models import Bill, BillEnhancement
+
+    bill = Bill.objects.create(bill_number="S 9", jurisdiction="federal", session=119)
+    saved = BillEnhancement.objects.create(bill=bill)
+    before = DashboardRevision.objects.get(kind="reader").sequence
+    with transaction.atomic():
+        BillEnhancement.objects.filter(pk=saved.pk).update(status="running")
+        assert DashboardRevision.objects.get(kind="reader").sequence > before
+        transaction.set_rollback(True)
+    assert DashboardRevision.objects.get(kind="reader").sequence == before
+    BillEnhancement.objects.filter(pk=saved.pk).update(status="running")
+    assert DashboardRevision.objects.get(kind="reader").sequence > before
 
 
 def bootstrap_csrf(client):

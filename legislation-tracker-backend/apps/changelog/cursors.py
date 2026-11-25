@@ -75,7 +75,10 @@ def decode_change_cursor(
             raise ChangeCursorValidationError("Invalid change cursor identifiers.")
         if cursor.bill_id != expected_bill_id:
             raise ChangeCursorValidationError("Change cursor belongs to another bill.")
-        if cursor.purpose not in allowed_purposes or cursor.direction not in allowed_directions:
+        if (
+            cursor.purpose not in allowed_purposes
+            or cursor.direction not in allowed_directions
+        ):
             raise ChangeCursorValidationError("Change cursor cannot be used here.")
         return cursor
     except (KeyError, TypeError, ValueError, signing.BadSignature) as exc:

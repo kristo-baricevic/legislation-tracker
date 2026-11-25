@@ -1,4 +1,5 @@
 """Project official Congress XML sections onto existing, immutable citation text."""
+
 from hashlib import sha256
 from xml.parsers import expat
 
@@ -9,16 +10,21 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 
 from apps.ingestion.document_download import (
-    _BoundedTextLines, _direct_xml_child_text, _render_congress_xml_element,
-    _XML_STRUCTURAL_TAGS, _xml_tag, extract_text_from_xml_or_html, DocumentTextLimitExceeded,
+    _XML_STRUCTURAL_TAGS,
+    DocumentTextLimitExceeded,
+    _BoundedTextLines,
+    _direct_xml_child_text,
+    _render_congress_xml_element,
+    _xml_tag,
+    extract_text_from_xml_or_html,
 )
-
 
 XML_SECTION_VERSION = 1  # Bump when section alignment or rendering changes.
 
 
 def xml_boundaries(raw, text):
     root = ElementTree.fromstring(raw)
+
     def outer_bodies(node):
         tag = _xml_tag(node)
         if tag in {"toc", "table-of-contents", "quoted-block", "quoted-text"}:
@@ -42,9 +48,15 @@ def xml_boundaries(raw, text):
             # Congress sometimes wraps a table of contents in an undesignated
             # section. It is navigation, not an empty operative provision.
             children = list(e)
-            if (children and not (e.text or "").strip()
-                    and all(_xml_tag(child) in {"toc", "table-of-contents"}
-                            and not (child.tail or "").strip() for child in children)):
+            if (
+                children
+                and not (e.text or "").strip()
+                and all(
+                    _xml_tag(child) in {"toc", "table-of-contents"}
+                    and not (child.tail or "").strip()
+                    for child in children
+                )
+            ):
                 return
             elements.append(e)
             return  # Nested quoted and amended law belongs to its parent.
@@ -107,13 +119,18 @@ def xml_boundaries(raw, text):
             pos = offset
         marked = b"".join([*pieces, raw[pos:]])
         # Invoke exactly the same flat markup normalization used at ingestion.
-        annotated = extract_text_from_xml_or_html(marked, "text/html",
-            max_text_chars=len(text) + sum(len(t) for _, t in events) + 1)
+        annotated = extract_text_from_xml_or_html(
+            marked,
+            "text/html",
+            max_text_chars=len(text) + sum(len(t) for _, t in events) + 1,
+        )
         clean, offsets, length = [], {}, 0
         for line in annotated.split("\n"):
             if line.startswith(marker):
-                index, edge = line[len(marker):].split(":")
-                offsets[int(index), edge] = length + int(edge == "start" and bool(clean))
+                index, edge = line[len(marker) :].split(":")
+                offsets[int(index), edge] = length + int(
+                    edge == "start" and bool(clean)
+                )
             else:
                 length += len(line) + int(bool(clean))
                 clean.append(line)
@@ -130,17 +147,27 @@ def xml_boundaries(raw, text):
             raise ValueError("xml_section_identity")
         seen.add(identity)
         label = _direct_xml_child_text(e, "enum").rstrip(".")
-        rows.append((identity, left, right, f"Sec. {label}" if label else "Unnumbered section",
-                     _direct_xml_child_text(e, "header")))
+        rows.append(
+            (
+                identity,
+                left,
+                right,
+                f"Sec. {label}" if label else "Unnumbered section",
+                _direct_xml_child_text(e, "header"),
+            )
+        )
         previous = right
     return tuple(rows)
 
 
 def read_stored_xml(document):
     key = getattr(document, "object_storage_key", "") or ""
-    if not key or not (key.lower().endswith(".xml") or "xml" in (document.content_type or "").lower()):
+    if not key or not (
+        key.lower().endswith(".xml") or "xml" in (document.content_type or "").lower()
+    ):
         return None, None
     from .source_packet import PreflightUnavailable
+
     try:
         limit = settings.DOCUMENT_DOWNLOAD_MAX_BYTES
         if limit <= 0 or (document.file_size_bytes or 0) > limit:
@@ -154,21 +181,27 @@ def read_stored_xml(document):
             raise ValueError("xml_hash_mismatch")
         return raw, digest
     except (ValueError, KeyError, OSError, BotoCoreError, ClientError) as exc:
-        raise PreflightUnavailable("Stored XML could not be read or verified",
-                                   reason="source_unavailable") from exc
+        raise PreflightUnavailable(
+            "Stored XML could not be read or verified", reason="source_unavailable"
+        ) from exc
 
 
 def aligned_xml_sections(raw, text):
     if raw is None:
         return ()
     from .source_packet import PreflightUnavailable
+
     try:
         return xml_boundaries(raw, text)
     except (ValueError, KeyError, ElementTree.ParseError, DefusedXmlException) as exc:
-        raise PreflightUnavailable("Stored XML could not be aligned with the bill text",
-                                   reason="source_unavailable") from exc
+        raise PreflightUnavailable(
+            "Stored XML could not be aligned with the bill text",
+            reason="source_unavailable",
+        ) from exc
 
 
 def stored_xml_sections(document, text):
     raw, _ = read_stored_xml(document)
+    if raw is not None and text is None:
+        text = document.extracted_text or document.raw_text or ""
     return aligned_xml_sections(raw, text)

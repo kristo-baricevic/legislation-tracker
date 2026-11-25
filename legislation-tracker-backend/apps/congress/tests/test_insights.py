@@ -33,8 +33,12 @@ def test_representative_insight_uses_raw_counts_and_never_labels_partial_coverag
         vote_date=datetime(2026, 1, 2, tzinfo=UTC),
         result="Passed",
     )
-    VoteRecord.objects.create(vote=vote_one, representative=representative, position="yes")
-    VoteRecord.objects.create(vote=vote_two, representative=representative, position="not_voting")
+    VoteRecord.objects.create(
+        vote=vote_one, representative=representative, position="yes"
+    )
+    VoteRecord.objects.create(
+        vote=vote_two, representative=representative, position="not_voting"
+    )
 
     summary = representative_summary(representative=representative, congress=119)
 

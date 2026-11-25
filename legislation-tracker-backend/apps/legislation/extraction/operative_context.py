@@ -54,15 +54,16 @@ def _classify(section, span, parent=None):
     elif re.search(r"\bCongress finds\b", text, re.I):
         disposition = "discussion"
     elif re.search(
-        r'\b(?:it is (?:the )?sense of Congress|is the policy of the United States|'
-        r'no Federal funds are authorized|hereby designated as being categorically excluded|'
-        r'is encouraged to|shall\s*,[^.;]+,\s*be eligible for reimbursement)\b',
-        text, re.I,
+        r"\b(?:it is (?:the )?sense of Congress|is the policy of the United States|"
+        r"no Federal funds are authorized|hereby designated as being categorically excluded|"
+        r"is encouraged to|shall\s*,[^.;]+,\s*be eligible for reimbursement)\b",
+        text,
+        re.I,
     ):
         # These are meaningful source provisions, but not ordinary "shall do"
         # duties. Preserve their complete scope, including list children, rather
         # than discard them or turn encouragement into a binding requirement.
-        disposition = 'uncertain'
+        disposition = "uncertain"
     elif re.search(
         r"\b(?:exempt|waive)\b.*\b(?:fees?|surcharges?|penalt(?:y|ies))\b",
         action,
@@ -155,7 +156,8 @@ def parse_operative_clauses(source, sections):
                     re.search(r"\b(?:if|unless|provided that)\b", sentence.text, re.I)
                     or re.search(
                         r"\b(?:to|following activities)\s*[:—–-]$",
-                        sentence.text.rstrip(), re.I,
+                        sentence.text.rstrip(),
+                        re.I,
                     )
                 )
                 # The payment grammar already preserves the complete exemption
@@ -227,9 +229,14 @@ def parse_operative_clauses(source, sections):
         groups[start] = replace(
             root,
             disposition=(
-                "uncertain" if clause.disposition == "uncertain" or (previous and previous.disposition == "uncertain") else root.disposition
+                "uncertain"
+                if clause.disposition == "uncertain"
+                or (previous and previous.disposition == "uncertain")
+                else root.disposition
             ),
-            preserve_group=root.preserve_group or clause.preserve_group or bool(previous and previous.preserve_group),
+            preserve_group=root.preserve_group
+            or clause.preserve_group
+            or bool(previous and previous.preserve_group),
             context=(),
             evidence_context=(),
             sentence=None,

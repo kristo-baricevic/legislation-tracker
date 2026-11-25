@@ -28,7 +28,7 @@ function useResource<T>(load: (signal: AbortSignal) => Promise<T>) {
 }
 
 function IntroducedBills({ scope, onOpenBill }: { scope: ProfileScope; onOpenBill: (bill: BillListItem) => boolean }) {
-  const controls = useDashboardBillTracking();
+  const controls = useDashboardBillTracking({ membershipOnly: true });
   const [bills, setBills] = React.useState<BillListItem[]>([]);
   const [request, setRequest] = React.useState({ page: 1, attempt: 0 });
   const [hasNext, setHasNext] = React.useState(false);
@@ -97,7 +97,7 @@ export function VotingRecord({ scope, fullPage = false }: { scope: ProfileScope;
   </section>;
 }
 
-export default function LegislatorProfileModal({ scope, onClose, onOpenBill }: { scope: ProfileScope; onClose: () => void; onOpenBill: (bill: BillListItem) => boolean; renderActivity?: (scope: ProfileScope) => React.ReactNode }) {
+export default function LegislatorProfileModal({ visible = true, scope, onClose, onOpenBill }: { visible?: boolean; scope: ProfileScope; onClose: () => void; onOpenBill: (bill: BillListItem) => boolean; renderActivity?: (scope: ProfileScope) => React.ReactNode }) {
   const titleId = React.useId();
   const [research, setResearch] = React.useState<Research | null>(null);
   const [failedPortrait, setFailedPortrait] = React.useState("");
@@ -119,21 +119,22 @@ export default function LegislatorProfileModal({ scope, onClose, onOpenBill }: {
       <span className={styles.avatar}>{portrait && portrait.url !== failedPortrait ? <img src={portrait.url} alt={`${name} portrait`} onError={() => setFailedPortrait(portrait.url)} /> : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="4" /><path d="M4 22v-3a8 8 0 0 1 16 0v3" /></svg>}</span>
       <div className={styles.headerIdentity}><h2 id={titleId}><CardTooltip text="Open the full representative page"><a href={`${profileHref(scope)}&tab=${representativeTabKey(tab)}`}>{displayName}<span aria-hidden="true"> ↗</span></a></CardTooltip></h2>
       {data && <small>{data.identity.latest_affiliation.chamber === "house" ? "House" : data.identity.latest_affiliation.chamber === "senate" ? "Senate" : data.identity.latest_affiliation.chamber} · {data.identity.latest_affiliation.state} · {({ D: "Democrat", R: "Republican", I: "Independent" } as Record<string, string>)[data.identity.latest_affiliation.party] || data.identity.latest_affiliation.party}{data.identity.latest_affiliation.district ? ` · District ${data.identity.latest_affiliation.district}` : ""}</small>}</div>
-      <button autoFocus onClick={onClose} aria-label="Close legislator profile">✕</button>
+      {/* Set the native autofocus target before showModal() runs. */}
+      <button ref={button => { if (button) button.autofocus = true; }} onClick={onClose} aria-label="Close legislator profile">✕</button>
     </header>
     <LoadingSpinner active={profile.loading} label="Loading profile…" />
     {profile.error && <p role="alert">Could not load this profile. <button onClick={profile.retry}>Retry profile</button></p>}
     {research?.biography && <p className={styles.biography}>{research.biography.text}</p>}
     <div className={styles.profileTools}>
       <div className={styles.topics}>{topics.map(topic => <a key={topic.id} href={`/bills?topic_id=${topic.id}`}>{topic.name}</a>)}{activity.error && <button onClick={activity.retry}>Retry topics</button>}</div>
-      <RepresentativeResearch representativeId={scope.representativeId} cardName={name} onResearch={setResearch} />
+      <RepresentativeResearch visible={visible} representativeId={scope.representativeId} cardName={name} onResearch={setResearch} />
     </div>
     <div className={styles.tabs} role="tablist" aria-label="Representative information">{tabs.map((name, index) => <button key={name} id={`${titleId}-tab-${index}`} role="tab" aria-selected={tab === name} aria-controls={`${titleId}-panel-${index}`} tabIndex={tab === name ? 0 : -1} onClick={() => selectTab(name)} onKeyDown={event => {
       const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
       if (next !== null) { event.preventDefault(); selectTab(tabs[next]); document.getElementById(`${titleId}-tab-${next}`)?.focus(); }
     }}>{name}</button>)}</div>
     {tabs.map((name, index) => opened.includes(name) && <div key={name} role="tabpanel" className={name === "Campaign funding" ? styles.fundingPanel : undefined} id={`${titleId}-panel-${index}`} aria-labelledby={`${titleId}-tab-${index}`} hidden={tab !== name}>
-      {name === "Bills" ? <IntroducedBills scope={scope} onOpenBill={onOpenBill} /> : name === "Votes" ? <VotingRecord scope={scope} /> : <RepresentativeResearch representativeId={scope.representativeId} financeView modalView />}
+      {name === "Bills" ? <IntroducedBills scope={scope} onOpenBill={onOpenBill} /> : name === "Votes" ? <VotingRecord scope={scope} /> : <RepresentativeResearch visible={visible && tab === name} representativeId={scope.representativeId} financeView modalView />}
     </div>)}
   </StackDialog>;
 }

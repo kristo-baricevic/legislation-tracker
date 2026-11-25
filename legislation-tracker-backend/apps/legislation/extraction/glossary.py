@@ -64,6 +64,9 @@ def explain_definition(term, definition, definition_type):
     if re.search(r"\bmeaning (?:given|assigned|provided)\b", definition, re.I):
         return f"Unresolved legal reference. This bill defines “{term}” by reference to another law; its meaning has not been verified here. Open the legal definition for the citation."
     return PARAPHRASES.get(
-        (normalized(term.removeprefix("``").removesuffix("''")), normalized(definition)),
+        (
+            normalized(term.removeprefix("``").removesuffix("''")),
+            normalized(definition),
+        ),
         f"Legal definition: {definition.rstrip('.')}.",
     )

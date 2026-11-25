@@ -176,7 +176,14 @@ def test_older_committee_snapshot_cannot_overwrite_newer_persisted_roster(monkey
     house = replace(
         snapshot(
             chamber="house",
-            assignments=[assignment(bioguide_id=house_rep.bioguide_id, code="hsii00", name="Rules", chamber="house")],
+            assignments=[
+                assignment(
+                    bioguide_id=house_rep.bioguide_id,
+                    code="hsii00",
+                    name="Rules",
+                    chamber="house",
+                )
+            ],
         ),
         published_at=older_time,
         source_hash="older-house",
@@ -184,18 +191,32 @@ def test_older_committee_snapshot_cannot_overwrite_newer_persisted_roster(monkey
     senate = replace(
         snapshot(
             chamber="senate",
-            assignments=[assignment(bioguide_id=senate_rep.bioguide_id, code="ssfi00", name="Finance", chamber="senate")],
+            assignments=[
+                assignment(
+                    bioguide_id=senate_rep.bioguide_id,
+                    code="ssfi00",
+                    name="Finance",
+                    chamber="senate",
+                )
+            ],
         ),
         published_at=newer_time,
     )
     monkeypatch.setattr(committee_sync, "current_congress", lambda: 119)
-    monkeypatch.setattr(committee_sync, "fetch_house_committee_roster", lambda **_kwargs: house)
-    monkeypatch.setattr(committee_sync, "fetch_senate_committee_roster", lambda **_kwargs: senate)
+    monkeypatch.setattr(
+        committee_sync, "fetch_house_committee_roster", lambda **_kwargs: house
+    )
+    monkeypatch.setattr(
+        committee_sync, "fetch_senate_committee_roster", lambda **_kwargs: senate
+    )
 
     with pytest.raises(committee_sync.CommitteeSnapshotValidationError, match="older"):
         committee_sync.sync_committee_memberships()
 
-    assert CommitteeRosterSnapshot.objects.get(congress=119, chamber="house").source_hash == "newer-house"
+    assert (
+        CommitteeRosterSnapshot.objects.get(congress=119, chamber="house").source_hash
+        == "newer-house"
+    )
 
 
 @pytest.mark.django_db

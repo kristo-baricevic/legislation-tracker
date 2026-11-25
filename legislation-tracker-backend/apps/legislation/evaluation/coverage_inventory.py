@@ -187,13 +187,15 @@ def assess_inventory(inventory, output, sources, *, mapping=None):
         reports.append(
             {
                 "id": row["id"],
-                "status": "meaning_conflict"
-                if meaning_errors
-                else "missing_explanation"
-                if not linked
-                else "missing_amount"
-                if missing
-                else "needs_semantic_review",
+                "status": (
+                    "meaning_conflict"
+                    if meaning_errors
+                    else (
+                        "missing_explanation"
+                        if not linked
+                        else "missing_amount" if missing else "needs_semantic_review"
+                    )
+                ),
                 "output_paths": [path for path, _ in linked],
                 "missing_amounts": missing,
                 "semantic_verified": False,

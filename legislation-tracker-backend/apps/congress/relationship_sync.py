@@ -64,7 +64,9 @@ def _committee_code(*, chamber: str, raw_code: str) -> str:
     return f"{prefix}{normalized}"
 
 
-def _relationship_event(*, bill: Bill, change_type: str, added: set[str], removed: set[str]):
+def _relationship_event(
+    *, bill: Bill, change_type: str, added: set[str], removed: set[str]
+):
     if not added and not removed:
         return
     cap = 100
@@ -100,7 +102,9 @@ def sync_bill_relationships(*, bill_id: int) -> RelationshipSyncResult:
     cosponsors = {}
     missing_dependencies = set()
     for item in raw_cosponsors:
-        bioguide_id = str(item.get("bioguideId") or item.get("bioguide_id") or "").strip()
+        bioguide_id = str(
+            item.get("bioguideId") or item.get("bioguide_id") or ""
+        ).strip()
         if not bioguide_id:
             raise ValueError("Congress cosponsor is missing bioguideId")
         cosponsors[bioguide_id] = item
@@ -129,7 +133,9 @@ def sync_bill_relationships(*, bill_id: int) -> RelationshipSyncResult:
         chamber = str(item.get("chamber") or "").casefold()
         raw_code = item.get("systemCode") or item.get("system_code") or item.get("code")
         code = _committee_code(chamber=chamber, raw_code=raw_code)
-        normalized_committees[(code, str(item.get("relationshipType") or "referred"))] = (
+        normalized_committees[
+            (code, str(item.get("relationshipType") or "referred"))
+        ] = (
             item,
             chamber,
         )
@@ -143,7 +149,10 @@ def sync_bill_relationships(*, bill_id: int) -> RelationshipSyncResult:
             .filter(bill=bill)
         }
         existing_committees = {
-            (relationship.committee.system_code, relationship.relationship_type): relationship
+            (
+                relationship.committee.system_code,
+                relationship.relationship_type,
+            ): relationship
             for relationship in BillCommittee.objects.select_for_update()
             .select_related("committee")
             .filter(bill=bill)
@@ -155,7 +164,9 @@ def sync_bill_relationships(*, bill_id: int) -> RelationshipSyncResult:
                 representative=representative,
                 defaults={
                     "sponsorship_date": _parse_date(item.get("sponsorshipDate")),
-                    "is_original_cosponsor": bool(item.get("isOriginalCosponsor", False)),
+                    "is_original_cosponsor": bool(
+                        item.get("isOriginalCosponsor", False)
+                    ),
                     "withdrawn_at": _parse_datetime(item.get("withdrawnDate")),
                     "source_updated_at": _parse_datetime(item.get("updateDate")),
                 },
@@ -169,7 +180,9 @@ def sync_bill_relationships(*, bill_id: int) -> RelationshipSyncResult:
             committee, _ = Committee.objects.update_or_create(
                 system_code=code,
                 defaults={
-                    "name": str(item.get("name") or item.get("committeeName") or code)[:255],
+                    "name": str(item.get("name") or item.get("committeeName") or code)[
+                        :255
+                    ],
                     "chamber": chamber,
                     "committee_type": str(item.get("type") or "")[:32],
                     "website_url": str(item.get("url") or "")[:1024],
@@ -184,7 +197,9 @@ def sync_bill_relationships(*, bill_id: int) -> RelationshipSyncResult:
                 defaults={
                     "activity_name": str(item.get("activityName") or "")[:255],
                     "source_name": "congress",
-                    "source_code": str(item.get("systemCode") or item.get("code") or "")[:32],
+                    "source_code": str(
+                        item.get("systemCode") or item.get("code") or ""
+                    )[:32],
                     "source_updated_at": _parse_datetime(item.get("updateDate")),
                 },
             )

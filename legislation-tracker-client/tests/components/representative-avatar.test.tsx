@@ -19,7 +19,13 @@ it("shows Ryan Mackenzie's initials when a badge has no picture or its picture f
   const { rerender } = render(<RepresentativeAvatarBadge id={8} name={name} notes={[]} representative={{ bioguide_id: "" }} />);
   expect(screen.getByRole("link", { name })).toHaveTextContent("RM");
   rerender(<RepresentativeAvatarBadge id={8} name={name} notes={[]} representative={{ bioguide_id: "M000001" }} />);
-  fireEvent.error(await screen.findByRole("img", { name }));
+  const photo = await screen.findByRole("img", { name });
+  expect(screen.getByText("RM")).toBeVisible();
+  expect(photo).not.toBeVisible();
+  fireEvent.load(photo);
+  expect(photo).toBeVisible();
+  expect(screen.queryByText("RM")).toBeNull();
+  fireEvent.error(photo);
   expect(screen.getByRole("link", { name })).toHaveTextContent("RM");
 });
 

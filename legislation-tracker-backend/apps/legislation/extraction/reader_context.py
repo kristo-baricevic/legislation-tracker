@@ -5,7 +5,7 @@ Keep original spans. Never fill in cross-referenced law that is not in the sourc
 
 import re
 
-from .federal_clauses import _quoted_block_ranges, _parent_section
+from .federal_clauses import _parent_section, _quoted_block_ranges
 from .federal_structure import sentence_spans
 from .legal_rules import MODAL_RE
 from .types import ExtractedClaim, SourceSpan
@@ -105,9 +105,11 @@ def enrich_reader_claims(source, sections, claims):
                         {
                             "term": match.group(1),
                             "definition": definition,
-                            "definition_type": "includes"
-                            if match.group(2).lower() == "includes"
-                            else "means",
+                            "definition_type": (
+                                "includes"
+                                if match.group(2).lower() == "includes"
+                                else "means"
+                            ),
                         },
                         [SourceSpan(raw, start, start + len(raw))],
                         "reader.definition.v1",
@@ -135,14 +137,12 @@ def enrich_reader_claims(source, sections, claims):
         action = _clean(introduction.text[modal.end() :])
         if not actor or modal.group().lower() not in {"shall", "must", "may"}:
             continue
-        qualifying_list = bool(re.search(r'\b(?:that|which)$', action, re.I))
+        qualifying_list = bool(re.search(r"\b(?:that|which)$", action, re.I))
         if _is_choice(action, direct) or qualifying_list:
             # A choice is one obligation, not a required duty for every leaf.
             # Keep its exact source-backed grouping, including cardinality.
             start, end = direct[0].span.start_char, direct[-1].span.end_char
-            grouped_action = (
-                f"{action + (' ' if qualifying_list else ': ') if action else ''}{_clean(source[start:end])}"
-            )
+            grouped_action = f"{action + (' ' if qualifying_list else ': ') if action else ''}{_clean(source[start:end])}"
             if len(actor) + len(grouped_action) < 3900 and not any(
                 a < end and start < b for a, b in quoted_ranges
             ):
@@ -151,16 +151,22 @@ def enrich_reader_claims(source, sections, claims):
                         section,
                         "requirements",
                         {
-                            "modality": "permitted"
-                            if modal.group().lower() == "may"
-                            else "required",
+                            "modality": (
+                                "permitted"
+                                if modal.group().lower() == "may"
+                                else "required"
+                            ),
                             "actor": actor,
                             "action": grouped_action,
                             "object": None,
                             "conditions": [],
                         },
                         [introduction, SourceSpan(source[start:end], start, end)],
-                        "reader.list.qualification.v1" if qualifying_list else "reader.list.choice.v1",
+                        (
+                            "reader.list.qualification.v1"
+                            if qualifying_list
+                            else "reader.list.choice.v1"
+                        ),
                     )
                 )
                 replaced_ranges.append((introduction.start_char, introduction.end_char))
@@ -178,9 +184,11 @@ def enrich_reader_claims(source, sections, claims):
                     section,
                     "requirements",
                     {
-                        "modality": "permitted"
-                        if modal.group().lower() == "may"
-                        else "required",
+                        "modality": (
+                            "permitted"
+                            if modal.group().lower() == "may"
+                            else "required"
+                        ),
                         "actor": actor,
                         "action": lead,
                         "object": None,
@@ -263,9 +271,11 @@ def enrich_reader_claims(source, sections, claims):
                         node,
                         "requirements",
                         {
-                            "modality": "permitted"
-                            if optional or modal.group().lower() == "may"
-                            else "required",
+                            "modality": (
+                                "permitted"
+                                if optional or modal.group().lower() == "may"
+                                else "required"
+                            ),
                             "actor": actor,
                             "action": grouped,
                             "object": None,

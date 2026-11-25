@@ -619,3 +619,77 @@ def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(
             "source_order": 1,
         }
     ]
+
+
+def test_congress_429_defers_other_requests_using_the_same_key(monkeypatch):
+    from unittest.mock import Mock
+
+    from apps.ingestion.congress_cooldown import cooldown_key, defer_requests
+
+    client = Mock(
+        side_effect=[
+            Mock(ok=False, status_code=429, headers={"Retry-After": "3600"}),
+            Mock(ok=False, status_code=404),
+        ]
+    )
+    monkeypatch.setattr(congress_client.requests, "request", client)
+    monkeypatch.setattr(congress_client, "_get_api_key", lambda: "cooldown-test-a")
+    with pytest.raises(congress_client.CongressAPIError) as first:
+        congress_client._request("GET", "bill")
+    assert first.value.retry_after_seconds == 3600
+    defer_requests(cooldown_key("cooldown-test-a"), 5)
+    with pytest.raises(congress_client.CongressAPIError) as second:
+        congress_client._request("GET", "member")
+    assert second.value.retry_after_seconds > 3590
+    assert client.call_count == 1
+    monkeypatch.setattr(congress_client, "_get_api_key", lambda: "cooldown-test-b")
+    with pytest.raises(congress_client.CongressAPIError) as third:
+        congress_client._request("GET", "member")
+    assert third.value.status_code == 404
+
+
+@pytest.mark.parametrize("worker_thread", [False, True])
+def test_stalled_redis_defers_before_contacting_congress(
+    monkeypatch, settings, worker_thread
+):
+    import socket
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Timer
+    from unittest.mock import Mock
+
+    from config.settings.base import CACHES as production_caches
+
+    http = Mock(side_effect=AssertionError("Congress must wait for coordination"))
+    monkeypatch.setattr(congress_client.requests, "request", http)
+    monkeypatch.setattr(congress_client, "CONGRESS_API_TOTAL_TIMEOUT_SECONDS", 0.15)
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        settings.CACHES = {
+            **settings.CACHES,
+            "congress_coordination": {
+                **production_caches["congress_coordination"],
+                "LOCATION": f"redis://127.0.0.1:{server.getsockname()[1]}/0",
+            },
+        }
+        # TCP connects, but the server never sends a Redis reply. Release the
+        # socket independently so a regression fails instead of hanging pytest.
+        watchdog = Timer(4, server.close)
+        watchdog.start()
+        try:
+            started = time.monotonic()
+            with pytest.raises(congress_client.CongressAPIError) as failure:
+                if worker_thread:
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        pool.submit(congress_client._request, "GET", "bill").result()
+                else:
+                    congress_client._request("GET", "bill")
+            elapsed = time.monotonic() - started
+            assert elapsed < (
+                2.5 if worker_thread or not hasattr(signal, "setitimer") else 0.8
+            )
+            assert failure.value.status_code == 429
+            assert failure.value.retry_after_seconds == 5
+            http.assert_not_called()
+        finally:
+            watchdog.cancel()

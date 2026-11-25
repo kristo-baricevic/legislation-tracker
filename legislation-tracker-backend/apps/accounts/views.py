@@ -22,10 +22,10 @@ from apps.changelog.models import ChangeLog
 from apps.congress.models import Representative
 from apps.legislation.models import Bill, BillTopic, Topic
 from apps.legislation.serializers import BillListSerializer
-from .dashboard_bill_cards import add_card_summaries
 from apps.legislation.throttles import BillSearchThrottle
 
 from .authentication import enforce_csrf
+from .dashboard_bill_cards import add_card_summaries
 from .models import (
     SavedBillSearch,
     TrackedBill,
@@ -150,7 +150,10 @@ class SessionLoginView(APIView):
         response = Response(
             {
                 "authenticated": True,
-                "user": {"email": serializer.user.email, "is_superuser": serializer.user.is_superuser},
+                "user": {
+                    "email": serializer.user.email,
+                    "is_superuser": serializer.user.is_superuser,
+                },
             }
         )
         _set_token_cookies(
@@ -176,31 +179,57 @@ class SessionStatusView(APIView):
         dashboard = {}
         if request.query_params.get("dashboard") == "1":
             from hashlib import sha256
+
             from django.db.models import Count, Max
-            from .recommendation_support import activity_day, activity_revision
+
             from apps.congress.current import current_congress
-            from apps.research.models import ResearchRun, RepresentativeBiography, RepresentativePortrait
+
+            from .models import DashboardRevision
+            from .recommendation_support import activity_day, activity_revision
+
             activity = activity_revision()
-            from apps.legislation.models import BillEnhancement
-            reader_revision = BillEnhancement.objects.aggregate(last=Max("updated_at"))["last"]
-            follows = [model.objects.filter(user=request.user).aggregate(n=Count("id"), last=Max("id"))
-                       for model in (TrackedBill, TrackedTopic, TrackedLegislator)]
-            runs = ResearchRun.objects.aggregate(start=Max("created_at"), end=Max("finished_at"))
-            research = [*runs.values(), *(m.objects.order_by("-pk").values_list("pk", flat=True).first()
-                                         for m in (RepresentativeBiography, RepresentativePortrait))]
+            revisions = dict(DashboardRevision.objects.values_list("kind", "sequence"))
+            reader_revision = revisions.get("reader", 0)
+            research = revisions.get("research", 0)
+            follows = [
+                model.objects.filter(user=request.user).aggregate(
+                    n=Count("id"), last=Max("id")
+                )
+                for model in (TrackedBill, TrackedTopic, TrackedLegislator)
+            ]
+
             def stamp(*parts):
                 return sha256(repr(parts).encode()).hexdigest()[:24]
+
             # Activity elsewhere can affect discovery, but needn't invalidate
             # the user's collection unless it includes a followed legislator.
-            tracked_activity = (activity if follows[2]["n"] else
-                TrackedBill.objects.filter(user=request.user).aggregate(last=Max("bill__last_activity_sequence"))["last"])
-            dashboard = {"dashboard_revision": stamp(activity, follows, activity_day(), reader_revision),
-                         "tracking_revision": stamp(tracked_activity, follows, research if follows[2]["n"] else None, reader_revision),
-                         "research_revision": stamp(research), "current_congress": current_congress()}
+            tracked_activity = (
+                activity
+                if follows[2]["n"]
+                else TrackedBill.objects.filter(user=request.user).aggregate(
+                    last=Max("bill__last_activity_sequence")
+                )["last"]
+            )
+            dashboard = {
+                "dashboard_revision": stamp(
+                    activity, follows, activity_day(), reader_revision
+                ),
+                "tracking_revision": stamp(
+                    tracked_activity,
+                    follows,
+                    research if follows[2]["n"] else None,
+                    reader_revision,
+                ),
+                "research_revision": stamp(research),
+                "current_congress": current_congress(),
+            }
         return Response(
             {
                 "authenticated": True,
-                "user": {"email": request.user.email, "is_superuser": request.user.is_superuser},
+                "user": {
+                    "email": request.user.email,
+                    "is_superuser": request.user.is_superuser,
+                },
                 **dashboard,
             }
         )
@@ -316,7 +345,12 @@ class SavedBillSearchViewSet(viewsets.ModelViewSet):
         counts = count_saved_search_new_results(searches)
         for search in searches:
             search.new_result_count = counts[search.id]
-        return Response({"count": len(searches), "results": SavedBillSearchSerializer(searches, many=True).data})
+        return Response(
+            {
+                "count": len(searches),
+                "results": SavedBillSearchSerializer(searches, many=True).data,
+            }
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -330,7 +364,9 @@ class SavedBillSearchViewSet(viewsets.ModelViewSet):
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(SavedBillSearchSerializer(search).data, status=status.HTTP_201_CREATED)
+        return Response(
+            SavedBillSearchSerializer(search).data, status=status.HTTP_201_CREATED
+        )
 
     def _update(self, request, partial):
         search = self.get_object()
@@ -441,22 +477,61 @@ class TrackingSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        bills = TrackedBill.objects.filter(user=request.user).select_related(
-            "bill",
-            "bill__sponsor",
-        ).prefetch_related(
-            Prefetch("bill__bill_topics", queryset=BillTopic.objects.select_related("topic"))
+        if request.query_params.get("view") == "membership":
+
+            def ids(model, field, key):
+                return [
+                    {key: {"id": pk}}
+                    for pk in model.objects.filter(user=request.user).values_list(
+                        field, flat=True
+                    )
+                ]
+
+            return Response(
+                {
+                    "bills": ids(TrackedBill, "bill_id", "bill"),
+                    "topics": ids(TrackedTopic, "topic_id", "topic"),
+                    "legislators": ids(
+                        TrackedLegislator, "representative_id", "representative"
+                    ),
+                }
+            )
+        bills = (
+            TrackedBill.objects.filter(user=request.user)
+            .select_related(
+                "bill",
+                "bill__sponsor",
+            )
+            .prefetch_related(
+                Prefetch(
+                    "bill__bill_topics",
+                    queryset=BillTopic.objects.select_related("topic"),
+                )
+            )
         )
         topics = TrackedTopic.objects.filter(user=request.user).select_related("topic")
         from .legislator_cards import cards_for_representatives
-        legislators = list(TrackedLegislator.objects.filter(
-            user=request.user
-        ).select_related("representative"))
+
+        legislators = list(
+            TrackedLegislator.objects.filter(user=request.user).select_related(
+                "representative"
+            )
+        )
         return Response(
             {
-                "bills": add_card_summaries(TrackedBillSerializer(bills, many=True).data),
+                "bills": add_card_summaries(
+                    TrackedBillSerializer(bills, many=True).data
+                ),
                 "topics": TrackedTopicSerializer(topics, many=True).data,
-                "legislators": TrackedLegislatorSerializer(legislators, many=True, context={"cards": cards_for_representatives(item.representative_id for item in legislators)}).data,
+                "legislators": TrackedLegislatorSerializer(
+                    legislators,
+                    many=True,
+                    context={
+                        "cards": cards_for_representatives(
+                            item.representative_id for item in legislators
+                        )
+                    },
+                ).data,
                 "is_staff": request.user.is_staff,
             }
         )

@@ -6,10 +6,10 @@ Unsupported effects remain in the detailed reader, not guessed in the synopsis.
 
 import re
 
-from .operative_context import parse_operative_clauses
-from .federal_clauses import _quoted_block_ranges
-from .types import SourceSpan
 from .display_text import normalize_reader_fragment
+from .federal_clauses import _quoted_block_ranges
+from .operative_context import parse_operative_clauses
+from .types import SourceSpan
 
 
 def _sanctions_synopsis(section):
@@ -23,15 +23,21 @@ def _sanctions_synopsis(section):
     if not re.search(
         r"The President shall impose sanctions described in subsection \(b\) "
         r"with respect to any foreign person determined by the President to meet "
-        r"any of the following:", raw
+        r"any of the following:",
+        raw,
     ):
         return None
     # Require the operative mechanisms, not mentions in findings or a report.
     if not (
-        re.search(r"the President shall exercise all powers.*?to block and prohibit all transactions", raw, re.S)
+        re.search(
+            r"the President shall exercise all powers.*?to block and prohibit all transactions",
+            raw,
+            re.S,
+        )
         and "if such property and interests in property are in the United States" in raw
         and "inadmissible to the United States" in raw
-        and "ineligible for a visa or other documentation to enter the United States" in raw
+        and "ineligible for a visa or other documentation to enter the United States"
+        in raw
     ):
         return None
     scope = re.search(r"acts of terrorism affecting (the [A-Z][A-Za-z ]+)\.", raw)
@@ -40,18 +46,24 @@ def _sanctions_synopsis(section):
         text += f", including conduct affecting {scope[1]}"
     text += (
         ". The criteria also cover the specified leaders, supporters, and related entities."
-        if all(phrase in raw for phrase in (
-            "To be or have been a leader or official of",
-            "To have materially assisted, sponsored",
-            "To be owned or controlled by",
-        )) else "."
+        if all(
+            phrase in raw
+            for phrase in (
+                "To be or have been a leader or official of",
+                "To have materially assisted, sponsored",
+                "To be owned or controlled by",
+            )
+        )
+        else "."
     )
     text += (
         " Sanctions include blocking property subject to U.S. jurisdiction and "
         "restrictions on visas and entry into the United States."
     )
     if "Exceptions.—" in raw and "Waivers.—" in raw:
-        text += " The entry restrictions are subject to the bill’s exceptions and waivers."
+        text += (
+            " The entry restrictions are subject to the bill’s exceptions and waivers."
+        )
     return text
 
 
@@ -67,12 +79,23 @@ def _source_provision_synopsis(sections, source_text):
     for section in sections:
         if section.level != "section":
             continue
-        if re.search(r"short title|table of contents|findings|sense of congress", section.heading or "", re.I):
+        if re.search(
+            r"short title|table of contents|findings|sense of congress",
+            section.heading or "",
+            re.I,
+        ):
             continue
-        if any(section.span.start_char < end and start < section.span.end_char for start, end in quotes):
+        if any(
+            section.span.start_char < end and start < section.span.end_char
+            for start, end in quotes
+        ):
             continue
         body = normalize_reader_fragment(section.span.text.partition("\n")[2])
-        if not body or not body.endswith((".", "!", "?")) or not re.search(r"\b(?:shall|must|is amended|is repealed)\b", body):
+        if (
+            not body
+            or not body.endswith((".", "!", "?"))
+            or not re.search(r"\b(?:shall|must|is amended|is repealed)\b", body)
+        ):
             continue
         if len(body.split()) > 180 or words + len(body.split()) > 260:
             continue
@@ -91,6 +114,7 @@ def _source_provision_synopsis(sections, source_text):
 
 def structured_synopsis(sections, claims, source_text, clauses=None):
     from bisect import bisect_left
+
     sentences = []
     evidence = []
     owner = None
@@ -101,8 +125,10 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
         if clauses is not None
         else parse_operative_clauses(source_text, sections)
     )
-    asserted = sorted(((i, c) for i, c in enumerate(clauses) if c.asserted),
-                      key=lambda pair: pair[1].span.start_char)
+    asserted = sorted(
+        ((i, c) for i, c in enumerate(clauses) if c.asserted),
+        key=lambda pair: pair[1].span.start_char,
+    )
     starts = [c.span.start_char for _, c in asserted]
 
     def add(key, text, section, spans):
@@ -119,8 +145,11 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
             continue
         raw = section.span.text
         heading = section.heading or ""
-        selected = asserted[bisect_left(starts, section.span.start_char):
-                            bisect_left(starts, section.span.end_char)]
+        selected = asserted[
+            bisect_left(starts, section.span.start_char) : bisect_left(
+                starts, section.span.end_char
+            )
+        ]
         facts = [c for _, c in sorted(selected, key=lambda pair: pair[0])]
         heading_end = raw.find("\n")
         heading_span = (
@@ -135,11 +164,13 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
         # A repeal can contain a payment mandate even though the legacy
         # amendment classifier excludes its embedded "shall" from facts.
         # Match the complete rule: never infer retroactivity from a heading.
-        body = raw[heading_end + 1:] if heading_end >= 0 else ""
+        body = raw[heading_end + 1 :] if heading_end >= 0 else ""
         if (
             heading.casefold() == "sanctions"
-            and not any(section.span.start_char < end and start < section.span.end_char
-                        for start, end in excluded_quotes)
+            and not any(
+                section.span.start_char < end and start < section.span.end_char
+                for start, end in excluded_quotes
+            )
             and (sanctions := _sanctions_synopsis(section))
         ):
             add("sanctions", sanctions, section, [section.span])
@@ -151,15 +182,21 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
             r"this Act, including the names of any persons sanctioned by this Act\.",
             re.sub(r"\s+", " ", body).strip(),
         )
-        if (report and heading.casefold() == "report"
-                and not any(section.span.start_char < end and start < section.span.end_char
-                            for start, end in excluded_quotes)):
+        if (
+            report
+            and heading.casefold() == "report"
+            and not any(
+                section.span.start_char < end and start < section.span.end_char
+                for start, end in excluded_quotes
+            )
+        ):
             add(
                 "sanctions-report",
                 f"Requires the {report['actor']}, in consultation with the {report['consulted']}, "
                 f"to report to Congress within {report['days']} days of enactment and every "
                 f"{report['days']} days afterward on implementation and those sanctioned.",
-                section, [section.span],
+                section,
+                [section.span],
             )
         repeal = re.fullmatch(
             r"Section (?P<section>\d+) of Public Law (?P<law>\d+[–-]\d+) is repealed, and, "
@@ -174,9 +211,12 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
         )
         if (
             repeal
-            and heading.casefold() == "repealing prohibition on medicaid payments to certain entities"
-            and not any(section.span.start_char < end and start < section.span.end_char
-                        for start, end in excluded_quotes)
+            and heading.casefold()
+            == "repealing prohibition on medicaid payments to certain entities"
+            and not any(
+                section.span.start_char < end and start < section.span.end_char
+                for start, end in excluded_quotes
+            )
         ):
             add(
                 "repeal-payment-" + str(section.span.start_char),
@@ -185,7 +225,8 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
                 "Requires payment for Medicaid items and services those entities provided "
                 "under state plans or waivers between that law’s enactment and this bill’s "
                 "enactment, as though the prohibition had not been enacted.",
-                section, [section.span],
+                section,
+                [section.span],
             )
         residence = next(
             (
@@ -262,7 +303,8 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
             match = re.fullmatch(
                 r".*?\bshall award a grant to (?P<recipient>[^.;]+?) "
                 r"for (?P<purpose>[^.;]+)\.",
-                re.sub(r"\s+", " ", fact.span.text), re.I,
+                re.sub(r"\s+", " ", fact.span.text),
+                re.I,
             )
             if match:
                 add(
@@ -270,7 +312,8 @@ def structured_synopsis(sections, claims, source_text, clauses=None):
                     f"Requires grants to {match.group('recipient')} for "
                     f"{match.group('purpose')}. Eligibility and use of funds "
                     "are subject to the conditions below.",
-                    section, list(fact.evidence),
+                    section,
+                    list(fact.evidence),
                 )
 
     # Financial categories are already classified, with their original evidence.

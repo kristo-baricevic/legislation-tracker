@@ -23,7 +23,11 @@ def activity_day():
 
 def activity_revision():
     from apps.changelog.models import BillActivityClock
-    return BillActivityClock.objects.values_list("committed_sequence", flat=True).first() or 0
+
+    return (
+        BillActivityClock.objects.values_list("committed_sequence", flat=True).first()
+        or 0
+    )
 
 
 USABLE_TOPIC = ~Q(topic__slug=FALLBACK_TOPIC) & (

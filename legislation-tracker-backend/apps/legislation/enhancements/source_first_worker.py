@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from apps.legislation.models import BillEnhancementAttempt, BillEnhancementStep
@@ -28,7 +29,9 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
             or current.lease_expires_at <= timezone.now()
         ):
             raise ProviderError("outcome_unknown", outcome_unknown=True)
-        fresh, current_key, failure = worker_preflight(current, cached_preflight=preflight)
+        fresh, current_key, failure = worker_preflight(
+            current, cached_preflight=preflight
+        )
         if failure:
             raise ProviderError(failure)
         if fresh.request_fingerprint != preflight.request_fingerprint:
@@ -91,8 +94,11 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
 
     def invoke(call):
         request = replace(
-            preflight, request_envelope={"source_first_payload": call.payload,
-                                         "max_output_tokens": preflight.analysis_plan.output_tokens}
+            preflight,
+            request_envelope={
+                "source_first_payload": call.payload,
+                "max_output_tokens": preflight.analysis_plan.output_tokens,
+            },
         )
         method = getattr(
             provider,
@@ -108,21 +114,72 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
             timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
         )
 
-    result = run_analysis(preflight.analysis_plan, invoke, checkpoint)
+    def recover(call):
+        if attempt.sequence <= 1:
+            return None
+        # Only an explicitly authorized retry of this exact request can recover
+        # a completed response. The pipeline validates the output again.
+        return (
+            BillEnhancementStep.objects.filter(
+                attempt__enhancement_id=attempt.enhancement_id,
+                attempt__sequence__lt=attempt.sequence,
+                attempt__credential_id=attempt.credential_id,
+                attempt__credential_revision=attempt.credential_revision,
+                attempt__execution_config=attempt.execution_config,
+                attempt__status__in=("failed", "paused", "outcome_unknown"),
+                request_fingerprint=call.request_fingerprint,
+                stage=call.stage,
+                unit_ids=list(call.unit_ids),
+                status="succeeded",
+                result_json__isnull=False,
+            )
+            .filter(
+                ~Q(attempt__failure_category="invalid_output")
+                | Exists(
+                    BillEnhancementStep.objects.filter(
+                        attempt_id=OuterRef("attempt_id"),
+                        step_index__gt=OuterRef("step_index"),
+                    )
+                )
+            )
+            .filter(
+                Q(attempt__approved_request_fingerprint=preflight.request_fingerprint)
+                | Q(
+                    attempt__approved_request_fingerprint="",
+                    attempt__enhancement__request_fingerprint=preflight.request_fingerprint,
+                )
+            )
+            .order_by("-attempt__sequence", "-step_index")
+            .values_list("result_json", flat=True)
+            .first()
+        )
+
+    result = run_analysis(preflight.analysis_plan, invoke, checkpoint, recover=recover)
     check_current()
     return result
 
 
 def step_usage(attempt_id):
     from django.db.models import Count, Sum
-    fields = ('input_tokens', 'output_tokens', 'total_tokens')
-    aggregates = {'rows': Count('pk')}
+
+    fields = ("input_tokens", "output_tokens", "total_tokens")
+    aggregates = {"rows": Count("pk")}
     for field in fields:
-        aggregates[field + '_sum'] = Sum(field)
-        aggregates[field + '_known'] = Count(field)
-    totals = BillEnhancementStep.objects.filter(attempt_id=attempt_id).aggregate(**aggregates)
-    return ProviderUsage(*(None if totals[field + '_known'] != totals['rows']
-                           else totals[field + '_sum'] or 0 for field in fields))
+        aggregates[field + "_sum"] = Sum(field)
+        aggregates[field + "_known"] = Count(field)
+    totals = BillEnhancementStep.objects.filter(attempt_id=attempt_id).aggregate(
+        **aggregates
+    )
+    return ProviderUsage(
+        *(
+            (
+                None
+                if totals[field + "_known"] != totals["rows"]
+                else totals[field + "_sum"] or 0
+            )
+            for field in fields
+        )
+    )
 
 
 def should_promote(existing, candidate):

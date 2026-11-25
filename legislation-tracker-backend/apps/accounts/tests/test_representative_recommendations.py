@@ -19,10 +19,14 @@ PATH = "/api/tracking/representative-recommendations/"
 
 def test_reuses_representative_results_until_follows_change():
     from unittest.mock import patch
+
     from apps.accounts.representative_recommendation_views import ranking
+
     api, user = client()
     TrackedTopic.objects.create(user=user, topic=topic())
-    with patch("apps.accounts.representative_recommendation_views.ranking", wraps=ranking) as rank:
+    with patch(
+        "apps.accounts.representative_recommendation_views.ranking", wraps=ranking
+    ) as rank:
         assert api.get(PATH).status_code == 200
         assert api.get(PATH).status_code == 200
         assert rank.call_count == 1
@@ -115,8 +119,12 @@ def test_top_five_is_deterministic_unique_and_isolated():
     second = api.get(PATH).json()["results"]
     assert [item["representative_id"] for item in first] == [rep.id for rep in reps[:5]]
     assert api.get(PATH).json()["has_more"] is True
-    more = api.get(PATH, {"shown": ",".join(str(item["representative_id"]) for item in first)}).json()
-    assert [item["representative_id"] for item in more["results"]] == [rep.id for rep in reps[5:]]
+    more = api.get(
+        PATH, {"shown": ",".join(str(item["representative_id"]) for item in first)}
+    ).json()
+    assert [item["representative_id"] for item in more["results"]] == [
+        rep.id for rep in reps[5:]
+    ]
     assert more["has_more"] is False
     assert first == second
     assert len({item["representative_id"] for item in first}) == 5

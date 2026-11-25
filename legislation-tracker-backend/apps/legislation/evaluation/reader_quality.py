@@ -96,9 +96,9 @@ def ai_items(output):
             result.append(
                 {
                     **item,
-                    "category": "financial"
-                    if item.get("kind") == "funding"
-                    else category,
+                    "category": (
+                        "financial" if item.get("kind") == "funding" else category
+                    ),
                     "text": text,
                     **{
                         k: item[k]
@@ -171,26 +171,28 @@ def score_reader(
         for n in Counter(
             (
                 re.sub(r"\W+", " ", item["text"].casefold()).strip(),
-                json.dumps(
-                    {
-                        k: item[k]
-                        for k in (
-                            "financial_action",
-                            "amount",
-                            "amount_type",
-                            "currency",
-                            "fiscal_years",
-                            "direction",
-                            "purpose",
-                            "source_account",
-                            "destination_account",
-                        )
-                        if k in item
-                    },
-                    sort_keys=True,
-                )
-                if item.get("category") == "financial"
-                else "",
+                (
+                    json.dumps(
+                        {
+                            k: item[k]
+                            for k in (
+                                "financial_action",
+                                "amount",
+                                "amount_type",
+                                "currency",
+                                "fiscal_years",
+                                "direction",
+                                "purpose",
+                                "source_account",
+                                "destination_account",
+                            )
+                            if k in item
+                        },
+                        sort_keys=True,
+                    )
+                    if item.get("category") == "financial"
+                    else ""
+                ),
             )
             for item in items
         ).values()
@@ -287,26 +289,32 @@ def score_reader(
         "correctness": correctness,
         "dimensions": {
             "correctness": {
-                "status": "fail"
-                if correctness["failures"]
-                or forbidden
-                or invalid_citations
-                or invalid_nlp_evidence
-                or absence_claims
-                or inconsistent_synopsis
-                or "unfaithful_source_display" in failures
-                else "pass"
-                if correctness["evaluated"]
-                else "not_evaluated"
+                "status": (
+                    "fail"
+                    if correctness["failures"]
+                    or forbidden
+                    or invalid_citations
+                    or invalid_nlp_evidence
+                    or absence_claims
+                    or inconsistent_synopsis
+                    or "unfaithful_source_display" in failures
+                    else "pass" if correctness["evaluated"] else "not_evaluated"
+                )
             },
             "coverage": {
-                "status": "fail"
-                if missing or correctness["missing_fact_ids"] or not financial_count_ok
-                else "pass"
-                if facts
-                or correctness["expected_fact_count"]
-                or "expected_financial_count" in case
-                else "not_evaluated",
+                "status": (
+                    "fail"
+                    if missing
+                    or correctness["missing_fact_ids"]
+                    or not financial_count_ok
+                    else (
+                        "pass"
+                        if facts
+                        or correctness["expected_fact_count"]
+                        or "expected_financial_count" in case
+                        else "not_evaluated"
+                    )
+                ),
                 "fact_recall": correctness["fact_recall"],
             },
             "readability": {
@@ -314,13 +322,17 @@ def score_reader(
                 "scope": "heuristics_only",
             },
             "abstention": {
-                "status": "fail"
-                if correctness["missing_source_only_ids"]
-                or correctness["source_only_leak_indices"]
-                or "unfaithful_source_display" in failures
-                else "pass"
-                if correctness["expected_source_only_count"]
-                else "not_evaluated"
+                "status": (
+                    "fail"
+                    if correctness["missing_source_only_ids"]
+                    or correctness["source_only_leak_indices"]
+                    or "unfaithful_source_display" in failures
+                    else (
+                        "pass"
+                        if correctness["expected_source_only_count"]
+                        else "not_evaluated"
+                    )
+                )
             },
         },
         "metrics": {
@@ -337,9 +349,9 @@ def score_reader(
             ),
             "annotated_fact_count": required,
             "unsupported_absence_claim_count": absence_claims,
-            "required_fact_recall": (required - len(missing)) / required
-            if required
-            else None,
+            "required_fact_recall": (
+                (required - len(missing)) / required if required else None
+            ),
             "financial_count": financial_count,
             "fragment_count": fragments,
             "duplicate_count": duplicates,

@@ -28,7 +28,7 @@ export default function TrackRepresentativeButton({ representativeId }: { repres
     void (async () => {
       try {
         const session = await getSession(options);
-        const tracking = session ? await getMyTracking(options) : null;
+        const tracking = session ? await getMyTracking({...options, membershipOnly: true}) : null;
         if (controller.signal.aborted || !isPersonalizedScopeCurrent(scope)) return;
         setState(!session ? "anonymous" : tracking?.legislators.some(item => item.representative.id === representativeId) ? "tracked" : "untracked");
       } catch {

@@ -1,27 +1,64 @@
 """Persist FEC reporting cycles separately from downloaded campaign records."""
-from django.utils import timezone
+
 from django.core.cache import cache
-from .fec_client import get_page, FECError
+from django.utils import timezone
+
+from .fec_client import FECError, get_page
 from .models import CandidateIdentity, RepresentativeCandidate
+
+
+def saved_periods(rep):
+    mappings = RepresentativeCandidate.objects.filter(
+        representative=rep, verified=True, revoked=False
+    ).exclude(evidence_url="")
+    return {
+        period
+        for saved, rejected in mappings.values_list(
+            "candidate__reporting_periods", "rejected_periods"
+        )
+        for period in saved.get("periods", [])
+        if period not in rejected
+    }
 
 
 def discover_periods(rep, *, strict=False):
     year = timezone.now().year
     current = year + year % 2
     periods = set()
-    mappings = RepresentativeCandidate.objects.filter(representative=rep, verified=True).exclude(evidence_url="").select_related("candidate")
+    mappings = (
+        RepresentativeCandidate.objects.filter(representative=rep, verified=True)
+        .exclude(evidence_url="")
+        .select_related("candidate")
+    )
     for mapping in mappings:
         candidate = mapping.candidate
         saved = candidate.reporting_periods
         lock = f"fec-period-discovery:{candidate.pk}"
         if saved.get("checked_cycle") != current and cache.add(lock, True, timeout=60):
             try:
-                page = get_page("candidates/search/", {"candidate_id": candidate.pk, "per_page": 100})
-                rows = [row for row in page["results"] if row.get("candidate_id") == candidate.pk]
+                page = get_page(
+                    "candidates/search/",
+                    {"candidate_id": candidate.pk, "per_page": 100},
+                )
+                rows = [
+                    row
+                    for row in page["results"]
+                    if row.get("candidate_id") == candidate.pk
+                ]
                 if len(rows) == 1 and isinstance(rows[0].get("cycles"), list):
-                    cycles = sorted({cycle for cycle in rows[0]["cycles"] if type(cycle) is int and 1980 <= cycle <= current and cycle % 2 == 0})
+                    cycles = sorted(
+                        {
+                            cycle
+                            for cycle in rows[0]["cycles"]
+                            if type(cycle) is int
+                            and 1980 <= cycle <= current
+                            and cycle % 2 == 0
+                        }
+                    )
                     saved = {"checked_cycle": current, "periods": cycles}
-                    CandidateIdentity.objects.filter(pk=candidate.pk).update(reporting_periods=saved)
+                    CandidateIdentity.objects.filter(pk=candidate.pk).update(
+                        reporting_periods=saved
+                    )
                 elif strict:
                     raise FECError("invalid_fec_periods")
             except FECError:
@@ -30,5 +67,5 @@ def discover_periods(rep, *, strict=False):
                     raise
         if strict and saved.get("checked_cycle") != current:
             raise FECError("fec_period_discovery_pending", retry_after_seconds=60)
-        periods.update(saved.get("periods", []))
+        periods.update(set(saved.get("periods", [])) - set(mapping.rejected_periods))
     return sorted(periods, reverse=True)

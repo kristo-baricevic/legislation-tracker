@@ -33,7 +33,7 @@ export default function BillDeck() {
   const [selected, setSelected] = React.useState<BillListItem | null>(null);
   const [selectedFromRecommendations, setSelectedFromRecommendations] = React.useState(false);
   const closeBill = React.useCallback(() => setSelected(null), []);
-  const controls = useDashboardBillTracking(closeBill);
+  const controls = useDashboardBillTracking({ onSessionChange: closeBill });
   const { tracking, signedIn, ready, error, followError, currentCongress, isSuperuser } = controls;
   const recommendationOwnsBill = React.useRef(false);
   const dismissRecommendedBill = React.useCallback(() => {

@@ -1,6 +1,6 @@
-function renderExpanded() {
+async function renderExpanded() {
     const view = render(<IngestionTelemetryLive />);
-    fireEvent.click(screen.getByRole("button", { name: "Expand legislation ingestion" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Expand legislation ingestion" })); });
     return view;
 }
 import React from "react";
@@ -19,8 +19,8 @@ it("keeps source waits and scheduled retries out of queued tasks", async () => {
             {kind: "bill", status: "pending", count: 2},
         ], recent_work_states: [], discovery_run: null,
     });
-    renderExpanded();
-    await userEvent.setup().click(screen.getByRole("button", {name: "Refresh telemetry"}));
+    await renderExpanded();
+    expect(authGet).toHaveBeenCalledTimes(2);
     const queued = screen.getByRole("list", {name: "Queued background tasks"});
     expect(queued).toHaveTextContent("Bill metadata2");
     expect(queued).not.toHaveTextContent("Bill text versions");
@@ -29,6 +29,19 @@ it("keeps source waits and scheduled retries out of queued tasks", async () => {
     expect(within(table).getByRole("columnheader", {name: "Scheduled"})).toBeVisible();
     expect(within(table).getByRole("row", {name: /Bill text versions/})).toHaveTextContent("154");
 });
+it("shares the pending initial load when the tool is closed and reopened", async () => {
+    let finish!: (value: unknown) => void;
+    vi.mocked(authGet).mockImplementation(path => path.includes("source-readiness")
+        ? Promise.resolve({ available: false }) : new Promise(resolve => { finish = resolve; }));
+    await renderExpanded();
+    expect(screen.queryByText("No tasks queued.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse legislation ingestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand legislation ingestion" }));
+    expect(authGet).toHaveBeenCalledTimes(2);
+    await act(async () => finish({ observed_at: "2026-11-25T12:00:00Z", counts_by_kind_and_status: [], recent_work_states: [] }));
+    expect(screen.getByText("No tasks queued.")).toBeVisible();
+    expect(authPost).not.toHaveBeenCalled();
+});
 it("starts collapsed with no automatic requests", () => {
     render(<IngestionTelemetryLive />);
     expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
@@ -36,8 +49,8 @@ it("starts collapsed with no automatic requests", () => {
     expect(authGet).not.toHaveBeenCalled();
     expect(authPost).not.toHaveBeenCalled();
 });
-it("collapses the dashboard without losing its scope or triggering requests", async () => {
-    renderExpanded();
+it("refreshes the selected Congress on reopen and makes no requests on collapse", async () => {
+    await renderExpanded();
     const user = userEvent.setup();
     const congress = screen.getByRole("spinbutton", { name: "Congress" });
     await user.clear(congress);
@@ -46,16 +59,18 @@ it("collapses the dashboard without losing its scope or triggering requests", as
     expect(screen.getByRole("heading", { name: "Legislation ingestion" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Start discovery and ingestion" })).toBeNull();
     expect(screen.getByRole("button", { name: "Expand legislation ingestion" })).toHaveAttribute("aria-expanded", "false");
+    expect(authGet).toHaveBeenCalledTimes(2);
     await user.click(screen.getByRole("button", { name: "Expand legislation ingestion" }));
     expect(screen.getByRole("spinbutton", { name: "Congress" })).toHaveValue(118);
     expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeVisible();
-    expect(authGet).not.toHaveBeenCalled();
+    expect(authGet).toHaveBeenCalledTimes(4);
+    expect(authGet).toHaveBeenLastCalledWith("/api/ingestion/source-readiness/?jurisdiction=federal&congress=118");
     expect(authPost).not.toHaveBeenCalled();
 });
-it("makes no automatic requests, keeps unknown counts unavailable and never starts on refresh", async () => {
+it("allows retrying unavailable telemetry and starts ingestion only on explicit request", async () => {
     const user = userEvent.setup();
-    renderExpanded();
-    expect(authGet).not.toHaveBeenCalled();
+    await renderExpanded();
+    expect(authGet).toHaveBeenCalledTimes(2);
     expect(authPost).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
     vi.mocked(authGet).mockRejectedValue(new Error("offline"));
@@ -67,17 +82,17 @@ it("makes no automatic requests, keeps unknown counts unavailable and never star
     expect(authPost).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("status")).toHaveTextContent("direct-start");
 });
-it("starts discovery without first requesting telemetry", async () => {
+it("allows discovery after the automatic read fails", async () => {
     vi.mocked(authPost).mockResolvedValue({ run_id: "first-start", status: "pending" });
-    renderExpanded();
+    await renderExpanded();
     await userEvent.setup().click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
-    expect(authGet).not.toHaveBeenCalled();
+    expect(authGet).toHaveBeenCalledTimes(2);
     expect(authPost).toHaveBeenCalledWith("/api/ingestion/poll-congress/", expect.objectContaining({ congress: 119, jurisdiction: "federal", idempotency_key: expect.any(String) }));
     expect(screen.getByRole("status")).toHaveTextContent("first-start");
 });
 it("shows a compact pipeline table with diagnostics collapsed", async () => {
     vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-15T12:00:00Z", counts_by_kind_and_status: [{ kind: "bill_versions", status: "pending", count: 8 }, { kind: "bill_versions", status: "processing", count: 2 }], recent_work_states: [], discovery_run: null });
-    renderExpanded();
+    await renderExpanded();
     await userEvent.setup().click(screen.getByRole("button", { name: "Refresh telemetry" }));
     expect(screen.getByRole("table", { name: "Pipeline work items" })).toHaveTextContent("Bill text versions");
     expect(screen.getByRole("list", {name: "Queued background tasks"})).toHaveTextContent("Bill text versions8");
@@ -87,8 +102,7 @@ it("shows a compact pipeline table with diagnostics collapsed", async () => {
 it("expires ready counts locally without making another network request", async () => {
     vi.useFakeTimers();
     vi.mocked(authGet).mockImplementation(async (path) => path.includes("source-readiness") ? { available: true, missing_unqueued_metadata: 11, age_seconds: 299, complete: true } : { observed_at: "2026-10-09T18:00:00Z", counts_by_kind_and_status: [], stale_leases: 0, discovery_run: null, recent_work_states: [] });
-    renderExpanded();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh telemetry" })); });
+    await renderExpanded();
     expect(screen.getByText("11", { exact: true })).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(2000); });
     expect(screen.queryByText("11", { exact: true })).not.toBeInTheDocument();
@@ -100,7 +114,7 @@ it("distinguishes discovery from work status and reuses the start request key", 
     const user = userEvent.setup();
     vi.mocked(authGet).mockImplementation(async (path) => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null, reason: "Incomplete" } : { observed_at: "2026-10-09T18:00:00Z", last_discovery_completed_at: null, last_successful_work_item_at: "2026-10-09T17:00:00Z", counts_by_kind_and_status: [{ kind: "bill", status: "pending", count: 4 }], stale_leases: 0, discovery_run: null, recent_work_states: [] });
     vi.mocked(authPost).mockResolvedValue({ run_id: "run-1", status: "pending" });
-    renderExpanded();
+    await renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     const start = await screen.findByRole("button", { name: "Start discovery and ingestion" });
     expect(start).toBeEnabled();
@@ -116,7 +130,7 @@ it("requires the accepted run identity before preparing a new request", async ()
     let runId = "unrelated";
     vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-09T18:00:00Z", counts_by_kind_and_status: [], recent_work_states: [], discovery_run: { id: runId, status: "succeeded" } });
     vi.mocked(authPost).mockResolvedValue({ run_id: "accepted", status: "pending" });
-    renderExpanded();
+    await renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     await user.click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
@@ -131,7 +145,7 @@ it("ignores a start completion after unmount", async () => {
     vi.mocked(authGet).mockImplementation(async path => path.includes("source-readiness") ? { available: false, missing_unqueued_metadata: null } : { observed_at: "2026-10-09T18:00:00Z", counts_by_kind_and_status: [], recent_work_states: [], discovery_run: null });
     let resolve!: (value: unknown) => void;
     vi.mocked(authPost).mockImplementation(() => new Promise(done => { resolve = done; }));
-    const view = renderExpanded();
+    const view = await renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     await user.click(screen.getByRole("button", { name: "Start discovery and ingestion" }));
     view.unmount();
@@ -150,7 +164,7 @@ it("keeps incremental readiness separate from historical gaps and renders basis 
         discovery_basis: { cursor_at: "2026-10-09T18:00:00Z", from_date_time: "2026-10-09T17:55:00Z" },
         discovery_checked_completed_at: "2026-10-09T18:10:00Z",
     } : { observed_at: "2026-10-09T18:10:00Z", counts_by_kind_and_status: [], recent_work_states: [], discovery_run: null });
-    renderExpanded();
+    await renderExpanded();
     await user.click(screen.getByRole("button", { name: "Refresh telemetry" }));
     const ready = screen.getByRole("heading", { name: "Ready for incremental discovery" }).parentElement!;
     const gaps = screen.getByRole("heading", { name: "Missing unqueued metadata" }).parentElement!;

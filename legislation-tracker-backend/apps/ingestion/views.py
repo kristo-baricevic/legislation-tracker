@@ -10,13 +10,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.congress.current import current_congress
-from apps.ingestion.permissions import IsSuperuser
 from apps.ingestion.models import (
     BillTrackingRequest,
     IngestionTaskFailure,
     IngestionWorkItem,
     IngestionWorkStatus,
 )
+from apps.ingestion.permissions import IsSuperuser
 from apps.ingestion.serializers import ManualBillIngestionSerializer
 from apps.ingestion.tasks import (
     backfill_process_bill_versions_for_all_bills,

@@ -7,9 +7,7 @@ from django.db.migrations.executor import MigrationExecutor
 
 def _applied_apps():
     executor = MigrationExecutor(connection)
-    return executor.loader.project_state(
-        list(executor.loader.applied_migrations)
-    ).apps
+    return executor.loader.project_state(list(executor.loader.applied_migrations)).apps
 
 
 @pytest.mark.django_db(transaction=True)

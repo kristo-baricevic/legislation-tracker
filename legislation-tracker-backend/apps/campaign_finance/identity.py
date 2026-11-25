@@ -1,9 +1,11 @@
-from dataclasses import dataclass
 import re
 import unicodedata
+from dataclasses import dataclass
 from difflib import SequenceMatcher
-from .models import ConfirmedCandidate, RepresentativeCandidate
+
 from apps.congress.names import normalize_person_name
+
+from .models import ConfirmedCandidate, RepresentativeCandidate
 
 
 def candidate_search_name(rep):
@@ -25,12 +27,20 @@ def verified_match(rep, rows, period, current_period):
         fec_id = str(row.get("candidate_id", ""))
         if not re.fullmatch(r"[HS]\d[A-Z]{2}\d{5}", fec_id):
             continue
-        if name_parts(candidate_search_name(rep)) != name_parts(str(row.get("name", ""))):
+        if name_parts(candidate_search_name(rep)) != name_parts(
+            str(row.get("name", ""))
+        ):
             continue
-        office = "S" if rep.chamber == "senate" else "H" if rep.chamber == "house" else None
+        office = (
+            "S" if rep.chamber == "senate" else "H" if rep.chamber == "house" else None
+        )
         if not office or row.get("office") != office or row.get("state") != rep.state:
             continue
-        if office == "H" and (not str(rep.district).isdigit() or not str(row.get("district", "")).isdigit() or int(rep.district) != int(row["district"])):
+        if office == "H" and (
+            not str(rep.district).isdigit()
+            or not str(row.get("district", "")).isdigit()
+            or int(rep.district) != int(row["district"])
+        ):
             continue
         matches.append(fec_id)
     return matches[0] if len(set(matches)) == 1 else None
@@ -47,7 +57,11 @@ def split_name(name):
 
 def surname_query(rep):
     surname = rep.last_name or split_name(rep.name)[0]
-    return "".join(c for c in unicodedata.normalize("NFKD", surname) if not unicodedata.combining(c))
+    return "".join(
+        c
+        for c in unicodedata.normalize("NFKD", surname)
+        if not unicodedata.combining(c)
+    )
 
 
 def review_choices(rep, rows):
@@ -62,16 +76,33 @@ def review_choices(rep, rows):
         if row.get("office") != office or row.get("state") != rep.state:
             continue
         district = str(row.get("district") or "")
-        if office == "H" and (not district.isdigit() or not str(rep.district).isdigit() or int(district) != int(rep.district)):
+        if office == "H" and (
+            not district.isdigit()
+            or not str(rep.district).isdigit()
+            or int(district) != int(rep.district)
+        ):
             continue
         name = normalize_person_name(row.get("name"))
         family, first = split_name(name)
         if not surname or name_parts(family) != surname:
             continue
-        if not any(SequenceMatcher(None, a, b).ratio() >= 0.8 for a in given for b in name_parts(first) if min(len(a), len(b)) >= 2):
+        if not any(
+            SequenceMatcher(None, a, b).ratio() >= 0.8
+            for a in given
+            for b in name_parts(first)
+            if min(len(a), len(b)) >= 2
+        ):
             continue
-        choices[cid] = dict(candidate_id=cid, name=name[:255], state=rep.state, office=office, district=district)
-    return sorted(choices.values(), key=lambda choice: (choice["name"], choice["candidate_id"]))
+        choices[cid] = dict(
+            candidate_id=cid,
+            name=name[:255],
+            state=rep.state,
+            office=office,
+            district=district,
+        )
+    return sorted(
+        choices.values(), key=lambda choice: (choice["name"], choice["candidate_id"])
+    )
 
 
 @dataclass(frozen=True)
@@ -81,13 +112,44 @@ class IdentityResolution:
 
 
 def resolve_candidate(representative_id: int, period: int) -> IdentityResolution:
-    confirmed = ConfirmedCandidate.objects.filter(representative_id=representative_id, period=period).values_list("candidate_id", flat=True).first()
+    confirmed = (
+        ConfirmedCandidate.objects.filter(
+            representative_id=representative_id, period=period
+        )
+        .values_list("candidate_id", flat=True)
+        .first()
+    )
     # Confirmation identifies the reader's choice. Staff control its validity
     # through the same period-scoped mapping as an exact match.
-    rows = [row for row in RepresentativeCandidate.objects.filter(representative_id=representative_id).select_related("candidate") if period in row.periods or period in row.candidate.reporting_periods.get("periods", [])]
-    verified = sorted(row.candidate_id for row in rows if row.verified and row.evidence_url)
+    rows = [
+        row
+        for row in RepresentativeCandidate.objects.filter(
+            representative_id=representative_id
+        ).select_related("candidate")
+        if period not in row.rejected_periods
+        and (
+            period in row.periods
+            or period in row.candidate.reporting_periods.get("periods", [])
+        )
+    ]
+    verified = sorted(
+        row.candidate_id for row in rows if row.verified and row.evidence_url
+    )
     if confirmed in verified:
         return IdentityResolution("verified", [confirmed])
     if any(not row.verified or not row.evidence_url for row in rows):
         return IdentityResolution("needs_review", [])
     return IdentityResolution("verified" if verified else "not_found", verified)
+
+
+def excluded_candidates(representative_id, period):
+    mappings = RepresentativeCandidate.objects.filter(
+        representative_id=representative_id
+    )
+    return {
+        cid
+        for cid, revoked, rejected in mappings.values_list(
+            "candidate_id", "revoked", "rejected_periods"
+        )
+        if revoked or period in rejected
+    }

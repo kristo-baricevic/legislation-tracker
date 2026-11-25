@@ -55,12 +55,15 @@ from django.conf import settings
 import os
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings.test'
 django.setup()
-settings.CACHES = {{'default': {{'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': '{location}', 'KEY_PREFIX': '{cache_prefix}'}}}}
+from config.settings.base import CACHES as production_caches
+settings.CACHES = {{'congress_coordination': {{**production_caches["congress_coordination"], "LOCATION": "{location}", "KEY_PREFIX": "{cache_prefix}"}}, 'default': {{'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': '{location}', 'KEY_PREFIX': '{cache_prefix}'}}}}
 """
     writer = prefix + """
 from django.core.management import call_command
 from django.utils import timezone
 import apps.ingestion.management.commands.check_ingestion_readiness as command
+from apps.ingestion.congress_cooldown import defer_requests, cooldown_key
+defer_requests(cooldown_key("fixture"), 100)
 command.scan_inventory = lambda *args: {'complete': True, 'checked_completed_at': timezone.now().isoformat(), 'missing_unqueued_metadata': 3, 'pages_examined': 0}
 command.observe_discoverable = lambda *args, **kwargs: {'ready_to_start': None, 'incremental_discoverable_count_available': False}
 call_command('check_ingestion_readiness', congress=119)
@@ -71,8 +74,17 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.ingestion.telemetry_views import SourceReadinessView
 from django.core.cache import cache
 from apps.ingestion.source_inventory import snapshot_key
+from apps.ingestion.congress_cooldown import wait_for_slot, defer_requests, cooldown_key
+from time import monotonic
+key = cooldown_key("fixture")
+defer_requests(key, 2)
+assert 5 < wait_for_slot(key) <= 100
+other = cooldown_key("different")
+assert wait_for_slot(other) == 0
+started = monotonic()
+assert wait_for_slot(other) == 0 and monotonic() - started >= 0.25
 request = APIRequestFactory().get('/?congress=119')
-force_authenticate(request, user=SimpleNamespace(is_staff=True, is_authenticated=True))
+force_authenticate(request, user=SimpleNamespace(is_superuser=True, is_staff=True, is_authenticated=True))
 response = SourceReadinessView.as_view()(request)
 assert response.data['available']
 assert response.data['missing_unqueued_metadata'] == 3
@@ -90,11 +102,12 @@ print('Cross-process command snapshot and scan lock verified')
         )
         result = subprocess.run(
             ["rtk", "proxy", sys.executable, "-c", reader],
-            check=True,
+            check=False,
             env=env,
             capture_output=True,
             text=True,
         )
+        assert result.returncode == 0, result.stderr
         assert "verified" in result.stdout
     finally:
         server.delete(

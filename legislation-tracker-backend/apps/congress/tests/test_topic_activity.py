@@ -14,29 +14,47 @@ def test_background_refresh_keeps_current_catalog_readable_until_replacement():
     from datetime import timedelta
     from unittest.mock import patch
     from zoneinfo import ZoneInfo
+
     from django.utils import timezone
-    from apps.accounts.recommendation_support import activity_revision, RecommendationError
-    from apps.congress.topic_activity import DEFAULT_POLICY, representative_activity_catalog
+
+    from apps.accounts.recommendation_support import (
+        RecommendationError,
+        activity_revision,
+    )
     from apps.congress.tasks import warm_representative_activity
+    from apps.congress.topic_activity import (
+        DEFAULT_POLICY,
+        representative_activity_catalog,
+    )
 
     cache.clear()
     now = timezone.now().replace(hour=12, minute=0, second=0)
     later = now + timedelta(seconds=190)
-    old = {"captured_at": now.isoformat(), "expires_at": now.timestamp() + 300,
-           "representatives": {"1": {"value": "original"}}}
-    new = {"captured_at": later.isoformat(), "expires_at": later.timestamp() + 300,
-           "representatives": {"1": {"value": "refreshed"}}}
+    old = {
+        "captured_at": now.isoformat(),
+        "expires_at": now.timestamp() + 300,
+        "representatives": {"1": {"value": "original"}},
+    }
+    new = {
+        "captured_at": later.isoformat(),
+        "expires_at": later.timestamp() + 300,
+        "representatives": {"1": {"value": "refreshed"}},
+    }
     key = f"representative-topic-activity:v4:{DEFAULT_POLICY.version}:{now.astimezone(ZoneInfo('America/New_York')).date()}:{activity_revision()}"
-    with patch("apps.congress.topic_activity.timezone.now", return_value=now), patch(
-        "apps.congress.topic_activity._build_catalog", return_value=old
-    ) as build:
+    with (
+        patch("apps.congress.topic_activity.timezone.now", return_value=now),
+        patch("apps.congress.topic_activity._build_catalog", return_value=old) as build,
+    ):
         assert representative_activity_catalog() == old
         warm_representative_activity()
         assert build.call_count == 1
 
     cache.delete(key + ":gate")
     with patch("apps.congress.topic_activity.timezone.now", return_value=later):
-        with patch("apps.congress.topic_activity._build_catalog", side_effect=RecommendationError()):
+        with patch(
+            "apps.congress.topic_activity._build_catalog",
+            side_effect=RecommendationError(),
+        ):
             warm_representative_activity()
         assert representative_activity_catalog() == old
         cache.delete(key + ":gate")
@@ -46,7 +64,9 @@ def test_background_refresh_keeps_current_catalog_readable_until_replacement():
             assert representative_activity_catalog() == old
             return new
 
-        with patch("apps.congress.topic_activity._build_catalog", side_effect=rebuild) as build:
+        with patch(
+            "apps.congress.topic_activity._build_catalog", side_effect=rebuild
+        ) as build:
             warm_representative_activity()
             assert build.call_count == 1
         assert representative_activity_catalog() == new
@@ -54,6 +74,7 @@ def test_background_refresh_keeps_current_catalog_readable_until_replacement():
 
 def test_plain_name_member_evidence_includes_authoritative_party():
     from apps.congress.topic_activity import representative_topic_activity
+
     cache.clear()
     rep = representative()
     rep.name = "Jane Doe"
@@ -65,22 +86,32 @@ def test_plain_name_member_evidence_includes_authoritative_party():
 
 def test_targeted_read_publishes_full_catalog_and_only_fetches_requested_members():
     from unittest.mock import patch
-    from apps.congress.topic_activity import representative_activity_catalog, representative_topic_activity
+
+    from apps.congress.topic_activity import (
+        representative_activity_catalog,
+        representative_topic_activity,
+    )
 
     cache.clear()
     first, second = representative(), representative("B000002")
     subset = representative_activity_catalog(representative_ids=[first.pk])
     assert set(subset["representatives"]) == {str(first.pk)}
     with patch.object(cache, "get_many", wraps=cache.get_many) as fetch:
-        assert representative_topic_activity(second.pk)["representative"]["id"] == second.pk
+        assert (
+            representative_topic_activity(second.pk)["representative"]["id"]
+            == second.pk
+        )
         keys = fetch.call_args.args[0]
         assert len(keys) == 1 and keys[0].endswith(f":member:{second.pk}")
         cache.delete(keys[0])
-        assert representative_activity_catalog(representative_ids=[first.pk, -1]) == subset
+        assert (
+            representative_activity_catalog(representative_ids=[first.pk, -1]) == subset
+        )
 
 
 def test_dashboard_reader_joins_an_in_progress_catalog_build():
     from unittest.mock import patch
+
     from apps.congress.topic_activity import representative_activity_catalog
 
     cache.clear()
@@ -93,10 +124,13 @@ def test_dashboard_reader_joins_an_in_progress_catalog_build():
         calls.append(key)
         return None if len(calls) == 1 else real_get(key, *args, **kwargs)
 
-    with patch.object(cache, "get", side_effect=miss_then_publish), patch(
-        "apps.congress.topic_activity.time.sleep"
-    ) as wait:
-        result = representative_activity_catalog(representative_ids=[rep.pk], wait_for_build=True)
+    with (
+        patch.object(cache, "get", side_effect=miss_then_publish),
+        patch("apps.congress.topic_activity.time.sleep") as wait,
+    ):
+        result = representative_activity_catalog(
+            representative_ids=[rep.pk], wait_for_build=True
+        )
     wait.assert_called_once()
     assert calls[0] == calls[1]
     assert result == full
@@ -405,14 +439,23 @@ def test_catalog_busy_expiry_and_failure_do_not_publish_partial_data():
 
 def test_catalog_larger_than_single_cache_record_retains_all_members():
     from unittest.mock import patch
+
     from django.utils import timezone
+
     from apps.congress.topic_activity import representative_activity_catalog
 
     cache.clear()
     now = timezone.now()
-    catalog = {"captured_at": now.isoformat(), "expires_at": now.timestamp() + 300,
-               "representatives": {str(i): {"evidence": "x" * 100_000, "id": i} for i in range(180)}}
-    with patch("apps.congress.topic_activity._build_catalog", return_value=catalog) as build:
+    catalog = {
+        "captured_at": now.isoformat(),
+        "expires_at": now.timestamp() + 300,
+        "representatives": {
+            str(i): {"evidence": "x" * 100_000, "id": i} for i in range(180)
+        },
+    }
+    with patch(
+        "apps.congress.topic_activity._build_catalog", return_value=catalog
+    ) as build:
         assert representative_activity_catalog() == catalog
         assert representative_activity_catalog() == catalog
         assert build.call_count == 1
@@ -434,6 +477,7 @@ def test_catalog_recovers_after_cold_build_gate_is_released():
     capture = timezone.now()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
     from apps.accounts.recommendation_support import activity_revision
+
     key = f"representative-topic-activity:v4:{DEFAULT_POLICY.version}:{day}:{activity_revision()}"
     assert cache.add(key + ":gate", "synthetic-other-builder", timeout=30)
     with pytest.raises(RecommendationError):

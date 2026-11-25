@@ -92,7 +92,12 @@ _EVENT_KEYS = {
     "sponsor_update": {"sponsor"},
     "introduced_date_update": {"introduced_at"},
     "action_update": {"last_action_at"},
-    "new_version": {"document_id", "version_label", "content_hash", "is_active_version"},
+    "new_version": {
+        "document_id",
+        "version_label",
+        "content_hash",
+        "is_active_version",
+    },
     "contract_update": {"contract_id", "contract_hash", "schema_version"},
     "topic_update": {"topics", "contract_id"},
     "vote": {

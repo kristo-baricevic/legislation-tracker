@@ -147,7 +147,9 @@ def _attach_definition_refs(definitions, lines):
     for definition in definitions:
         term = definition.claim.fields.get("term")
         if isinstance(term, str) and (term := _normalized(term)):
-            patterns.append((definition.id, term, re.compile(rf"(?<!\w){re.escape(term)}(?!\w)")))
+            patterns.append(
+                (definition.id, term, re.compile(rf"(?<!\w){re.escape(term)}(?!\w)"))
+            )
     for line in lines:
         source = _normalized(" ".join(span.text for span in line.evidence))
         for identity, term, pattern in patterns:
@@ -296,16 +298,22 @@ def build_reader_brief(
     rendered_by_claim: dict[int, RenderedReaderClaim] = {}
     renderable_claims = []
     for claim in claims:
-        if not claim.rule_id.startswith(("financial.grant_source.", "coverage.source.")) and claim.category != "definitions" and any(
-            span.start_char < c.span.end_char
-            and c.span.start_char < span.end_char
-            and (
-                not c.preserve_group
-                or c.disposition == "uncertain"
-                or claim.category != "financial_items"
+        if (
+            not claim.rule_id.startswith(
+                ("financial.grant_source.", "coverage.source.")
             )
-            for c in uncertain
-            for span in claim.evidence
+            and claim.category != "definitions"
+            and any(
+                span.start_char < c.span.end_char
+                and c.span.start_char < span.end_char
+                and (
+                    not c.preserve_group
+                    or c.disposition == "uncertain"
+                    or claim.category != "financial_items"
+                )
+                for c in uncertain
+                for span in claim.evidence
+            )
         ):
             continue
         if claim.category not in _PREFIX_BY_CATEGORY:

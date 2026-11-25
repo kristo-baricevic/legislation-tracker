@@ -1,9 +1,11 @@
 """Queue only missing outside-spending aggregates; preserve saved donations."""
+
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from apps.congress.models import Representative
-from apps.campaign_finance.periods import discover_periods
+
 from apps.campaign_finance.outside_backfill import queue_outside_period
+from apps.campaign_finance.periods import discover_periods
+from apps.congress.models import Representative
 
 
 class Command(BaseCommand):
@@ -13,15 +15,21 @@ class Command(BaseCommand):
         targets = parser.add_mutually_exclusive_group(required=True)
         targets.add_argument("--representative-id", type=int)
         targets.add_argument("--all-researched", action="store_true")
-        parser.add_argument("--scope", choices=["all_years", "last_ten_years"], default="all_years")
+        parser.add_argument(
+            "--scope", choices=["all_years", "last_ten_years"], default="all_years"
+        )
 
     def handle(self, *args, **options):
-        reps = Representative.objects.filter(representativecandidate__verified=True,
-            representativecandidate__evidence_url__gt="").distinct()
+        reps = Representative.objects.filter(
+            representativecandidate__verified=True,
+            representativecandidate__evidence_url__gt="",
+        ).distinct()
         if options["representative_id"] is not None:
             reps = reps.filter(pk=options["representative_id"])
         if not reps.exists():
-            raise CommandError("No representatives with verified FEC identities matched.")
+            raise CommandError(
+                "No representatives with verified FEC identities matched."
+            )
         queued, failures = set(), []
         for rep in reps.iterator():
             try:
@@ -38,7 +46,13 @@ class Command(BaseCommand):
             except Exception as error:
                 # Do not log provider exceptions: URLs may contain credentials.
                 failures.append(rep.pk)
-                self.stderr.write(f"Representative {rep.pk}: {type(error).__name__}; retry this representative.")
-        self.stdout.write(f"{len(queued)} outside-spending jobs queued or already active. Saved donations unchanged.")
+                self.stderr.write(
+                    f"Representative {rep.pk}: {type(error).__name__}; retry this representative."
+                )
+        self.stdout.write(
+            f"{len(queued)} outside-spending jobs queued or already active. Saved donations unchanged."
+        )
         if failures:
-            raise CommandError(f"Could not queue all periods for representatives: {failures}")
+            raise CommandError(
+                f"Could not queue all periods for representatives: {failures}"
+            )

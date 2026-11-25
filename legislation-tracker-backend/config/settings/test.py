@@ -8,5 +8,6 @@ CACHES = {
         "LOCATION": "legislation-tracker-tests",
     }
 }
+CACHES["congress_coordination"] = CACHES["default"]
 CELERY_BROKER_URL = "memory://"
 CELERY_RESULT_BACKEND = "cache+memory://"

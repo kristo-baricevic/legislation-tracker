@@ -108,7 +108,7 @@ describe("BillsPage", () => {
 
   it("waits for login resolution before requesting a private bill filter", async () => {
     searchState.query = "session=119&tracking=tracked";
-    let resolveSession!: (value: any) => void;
+    let resolveSession!: (value: Awaited<ReturnType<typeof getSession>>) => void;
     vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
     render(<BillsPage />);
     await screen.findByRole("status", {name: "Loading bills"});
@@ -447,6 +447,21 @@ describe("BillsPage", () => {
     await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined, sort: "unsorted" })));
   });
 
+  it("removes a cleared filter from the URL and cancels its pending request", async () => {
+    searchState.query = "session=119";
+    window.history.replaceState(null, "", "/bills?session=119");
+    render(<BillsPage />);
+    const field = await screen.findByLabelText("Bill # (contains)");
+    vi.mocked(getBills).mockImplementationOnce(() => new Promise(() => {}));
+    await userEvent.type(field, "9");
+    const signal = vi.mocked(getBills).mock.lastCall?.[0]?.signal;
+    expect(new URLSearchParams(window.location.search).get("bill_number")).toBe("9");
+    await screen.findByRole("status", {name: "Loading bills"});
+    await userEvent.clear(field);
+    expect(signal?.aborted).toBe(true);
+    expect(window.location.search).toBe("?session=119");
+  });
+
   it("rehydrates every public filter when browser history changes", async () => {
     searchState.query = "session=118&id=5&bill_number=HR+5&jurisdiction=federal&status=Passed&sponsor=Smith&topic=health&q=clinics&sort=relevance&page=2";
     const { rerender } = render(<BillsPage />);
@@ -459,7 +474,7 @@ describe("BillsPage", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Session (Congress)")).toHaveValue("120");
-      expect(screen.getByLabelText("Bill ID")).toHaveValue("9");
+      expect(screen.queryByLabelText("Bill ID")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Bill # (contains)")).toHaveValue("S 9");
       expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("Filed");
       expect(screen.getByLabelText("Sponsor")).toHaveValue("Jones");

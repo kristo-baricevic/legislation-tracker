@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
-
-from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
-from .base import CredentialCheck, ProviderCapabilities, ProviderError, ProviderResult, ProviderUsage
 from . import harness
+from .base import (
+    CredentialCheck,
+    ProviderCapabilities,
+    ProviderError,
+    ProviderResult,
+    ProviderUsage,
+)
+from .session import delivery_client
 
 
 def _value(obj: Any, name: str, default=None):
@@ -33,7 +37,11 @@ def _mapped_error(error: Exception) -> ProviderError:
             "outcome_unknown",
             outcome_unknown=True,
             retry_allowed=True,
-            validation_code="provider_timeout" if "timeout" in class_name else "provider_connection_lost",
+            validation_code=(
+                "provider_timeout"
+                if "timeout" in class_name
+                else "provider_connection_lost"
+            ),
         )
     body = getattr(error, "body", None)
     error_code = getattr(error, "code", None)
@@ -100,6 +108,7 @@ class OpenAIEnhancementProvider:
             client_factory = OpenAI
         self._client_factory = client_factory
 
+    @delivery_client
     def _client(self, *, api_key: str, timeout_seconds: int):
         return self._client_factory(
             api_key=api_key,
@@ -283,10 +292,12 @@ class OpenAIEnhancementProvider:
         if _value(response, "status") != "completed":
             raise ProviderError(
                 "invalid_output",
-                validation_code="provider_output_limit"
-                if _value(_value(response, "incomplete_details"), "reason")
-                == "max_output_tokens"
-                else "provider_incomplete",
+                validation_code=(
+                    "provider_output_limit"
+                    if _value(_value(response, "incomplete_details"), "reason")
+                    == "max_output_tokens"
+                    else "provider_incomplete"
+                ),
                 usage=usage,
                 response_id=response_id,
                 resolved_model=resolved_model,
@@ -295,9 +306,12 @@ class OpenAIEnhancementProvider:
         # The SDK convenience property concatenates commentary and final text.
         # Only an explicitly marked final answer can disambiguate those phases;
         # never salvage an arbitrary JSON object from malformed model output.
-        final_messages = [item for item in (_value(response, "output", []) or [])
-                          if _value(item, "type") == "message"
-                          and _value(item, "phase") == "final_answer"]
+        final_messages = [
+            item
+            for item in (_value(response, "output", []) or [])
+            if _value(item, "type") == "message"
+            and _value(item, "phase") == "final_answer"
+        ]
         if final_messages:
             output_text = "".join(
                 _value(content, "text", "")
@@ -314,8 +328,16 @@ class OpenAIEnhancementProvider:
             and isinstance(_value(content, "text"), str)
         ]
         from ..private_diagnostics import capture_visible
-        capture_visible([{"instructions": instructions, "input": input_payload}], schema,
-                        output_text, _value(response, "status", ""), response_id, resolved_model, api_key)
+
+        capture_visible(
+            [{"instructions": instructions, "input": input_payload}],
+            schema,
+            output_text,
+            _value(response, "status", ""),
+            response_id,
+            resolved_model,
+            api_key,
+        )
         return harness.parse_json_output(
             output_text,
             usage=usage,

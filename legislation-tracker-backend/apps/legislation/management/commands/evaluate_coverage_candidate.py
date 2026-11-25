@@ -69,11 +69,11 @@ class Command(BaseCommand):
                     "model": request.requested_model,
                     "execute": options["execute"],
                     "provision_first": options["provision_first"],
-                    "batch_request_bytes": [
-                        len(req.request_bytes) for req, _ in batches
-                    ]
-                    if batches is not None
-                    else None,
+                    "batch_request_bytes": (
+                        [len(req.request_bytes) for req, _ in batches]
+                        if batches is not None
+                        else None
+                    ),
                 }
             )
         )
@@ -90,9 +90,11 @@ class Command(BaseCommand):
         if not key:
             raise CommandError("Configure evaluation key or pass --prompt-key")
         artifact = {
-            "pipeline": "provision-first-v1"
-            if options["provision_first"]
-            else "coverage-mapping-v2",
+            "pipeline": (
+                "provision-first-v1"
+                if options["provision_first"]
+                else "coverage-mapping-v2"
+            ),
             "case_id": identifier,
             "source_text_sha256": hashlib.sha256(text.encode()).hexdigest(),
             "source_snapshot": request.source_snapshot,

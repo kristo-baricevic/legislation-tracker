@@ -101,20 +101,44 @@ class E2EEnhancementProvider:
         # Keep the real broker/worker/poll path observable in Playwright.
         time.sleep(0.5)
         source_ref = request.source_snapshot[0]["source_ref"]
-        if getattr(request, "request_envelope", {}).get("output_schema_version") == "1.4":
+        if (
+            getattr(request, "request_envelope", {}).get("output_schema_version")
+            == "1.4"
+        ):
             quote = {"source_ref": source_ref, "quote_id": "p0001"}
             text = "Rural hospitals would receive $100 in grants."
             if request.request_envelope.get("source_review"):
                 key = f"{source_ref}:p0001"
-                output = {"financial_items": [{"label": "Hospital grants", "amount_display": "$100",
-                           "text": text, "fiscal_years": [], "source_quotes": [quote]}],
-                          "additional_changes": [], "money_checks": {key: "financial"},
-                          "policy_changes": [{"title": "Grants for rural hospitals", "text": text, "source_quotes": [quote]}],
-                          "policy_checks": {key: "explained"}}
+                output = {
+                    "financial_items": [
+                        {
+                            "label": "Hospital grants",
+                            "amount_display": "$100",
+                            "text": text,
+                            "fiscal_years": [],
+                            "source_quotes": [quote],
+                        }
+                    ],
+                    "additional_changes": [],
+                    "money_checks": {key: "financial"},
+                    "policy_changes": [
+                        {
+                            "title": "Grants for rural hospitals",
+                            "text": text,
+                            "source_quotes": [quote],
+                        }
+                    ],
+                    "policy_checks": {key: "explained"},
+                }
             else:
-                output = {"schema_version": "1.4", "summary": [{"text": text, "source_quotes": [quote]}],
-                          "explanations": []}
-            return ProviderResult(output, ProviderUsage(12, 8, 20), "e2e-reader-response", "e2e-model")
+                output = {
+                    "schema_version": "1.4",
+                    "summary": [{"text": text, "source_quotes": [quote]}],
+                    "explanations": [],
+                }
+            return ProviderResult(
+                output, ProviderUsage(12, 8, 20), "e2e-reader-response", "e2e-model"
+            )
         return ProviderResult(
             output={
                 "schema_version": OUTPUT_SCHEMA_VERSION,

@@ -1,4 +1,5 @@
 "use client";
+import AvatarPortrait from "../../components/AvatarPortrait";
 import { Dropdown } from "@/app/components/FilterControls";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
@@ -96,7 +97,6 @@ function RepresentativeDetailContent() {
   const valid = Number.isSafeInteger(representativeId) && representativeId > 0 && congress !== null && Number.isSafeInteger(congress) && congress > 0;
   const [research, setResearch] = useState<Research | null>(null);
   const [activity, setActivity] = useState<RepresentativeTopicActivity | null>(null);
-  const [failedPortrait, setFailedPortrait] = useState("");
   const [tabKey, setTabKey] = useUrlTab<keyof typeof representativeTabs>(representativeTabs, "bills");
   const tab = representativeTabs[tabKey];
   const [opened, setOpened] = useState(["Bills"]);
@@ -291,7 +291,7 @@ function RepresentativeDetailContent() {
     {error && <p role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!loading && representative && <>
       <header className={styles.header}>
-        <div className={styles.avatar}>{portrait && portrait !== failedPortrait ? <img src={portrait} alt={name} onError={() => setFailedPortrait(portrait)} /> : <span>{name.split(" ").map(part => part[0]).slice(0, 2).join("")}</span>}</div>
+        <div className={styles.avatar}><AvatarPortrait name={name} photo={portrait} /></div>
         <div><h1>{name}</h1><div className={styles.badges}><span>{({D:"Democrat",R:"Republican",I:"Independent"} as Record<string,string>)[representative.party] || representative.party}</span><span>{representative.state}{representative.district ? ` · District ${representative.district}` : ""}</span><span>{representative.chamber === "senate" ? "Senate" : "House"}</span></div></div>
         <div className={styles.actions}>
           <TrackRepresentativeButton key={representative.id} representativeId={representative.id} />
@@ -318,7 +318,7 @@ function RepresentativeDetailContent() {
           })}
         </>}
         {name === "Votes" && <><VoteSummary scope={scope} fullPage /><FullVotes scope={scope} /></>}
-        {name === "Campaign funding" && <RepresentativeResearch key={searchParams.get("period") ?? "current"} representativeId={representative.id} initialPeriod={searchParams.get("period")} financeView />}
+        {name === "Campaign funding" && <RepresentativeResearch visible={tab === name} key={searchParams.get("period") ?? "current"} representativeId={representative.id} initialPeriod={searchParams.get("period")} financeView />}
         {name === "Committees" && <section><h2>Committees</h2>{committees.length ? <ul className={styles.committees}>{committees.map(membership => <li key={`${membership.committee.id}-${membership.congress}`}><strong>{membership.committee.name}</strong><span>{membership.role.replaceAll("_", " ")}{!membership.is_current ? " · Former" : ""}</span></li>)}</ul> : <p className={styles.note}>No committee assignments available.</p>}{historyHasMore.committees && <div className={styles.pagination}><button disabled={historyLoading.committees} onClick={() => void loadMoreHistory("committees")}>Load more committees</button></div>}</section>}
       </div>)}
     </>}

@@ -9,6 +9,9 @@ let apiBase = utils.DEFAULT_API_BASE;
 let appBase = utils.DEFAULT_APP_BASE;
 let accessToken = "";
 let refreshToken = "";
+const authOriginKey = "legislation_tracker_auth_origin";
+let sessionVersion = 0;
+let refreshFlight = null;
 let topicCatalogBySlug = new Map();
 let matchedTopicNamesBySlug = new Map();
 let latestMatchData = null;
@@ -111,6 +114,7 @@ function updateAuthUi() {
 
 async function loadSettingsAndAuth() {
   const stored = await storageGet([
+    authOriginKey,
     utils.AUTH_TOKEN_KEY,
     utils.AUTH_REFRESH_KEY,
     utils.SETTINGS_API_BASE_KEY,
@@ -118,8 +122,12 @@ async function loadSettingsAndAuth() {
   ]);
   apiBase = utils.normalizeBaseUrl(stored[utils.SETTINGS_API_BASE_KEY], utils.DEFAULT_API_BASE);
   appBase = utils.normalizeBaseUrl(stored[utils.SETTINGS_APP_BASE_KEY], utils.DEFAULT_APP_BASE);
-  accessToken = stored[utils.AUTH_TOKEN_KEY] || "";
-  refreshToken = stored[utils.AUTH_REFRESH_KEY] || "";
+  if (stored[authOriginKey] === new URL(apiBase).origin) {
+    accessToken = stored[utils.AUTH_TOKEN_KEY] || "";
+    refreshToken = stored[utils.AUTH_REFRESH_KEY] || "";
+  } else if (stored[utils.AUTH_TOKEN_KEY] || stored[utils.AUTH_REFRESH_KEY]) {
+    await clearTokens();
+  }
   $settingsApiBase.value = apiBase;
   $settingsAppBase.value = appBase;
   updateLinks();
@@ -139,6 +147,12 @@ async function saveSettings(event) {
       throw new Error("Allow access to the API host to use this endpoint.");
     }
     await utils.checkApiHealth(nextApiBase);
+    if (new URL(nextApiBase).origin !== new URL(apiBase).origin) {
+      apiBase = nextApiBase;
+      await clearTokens();
+      latestMatchData = null;
+      $results.hidden = true;
+    }
     apiBase = nextApiBase;
     appBase = nextAppBase;
     topicCatalogBySlug = new Map();
@@ -159,6 +173,7 @@ async function saveTokens(access, refresh) {
   accessToken = access || "";
   refreshToken = refresh || "";
   await storageSet({
+    [authOriginKey]: new URL(apiBase).origin,
     [utils.AUTH_TOKEN_KEY]: accessToken,
     [utils.AUTH_REFRESH_KEY]: refreshToken,
   });
@@ -166,9 +181,11 @@ async function saveTokens(access, refresh) {
 }
 
 async function clearTokens() {
+  sessionVersion++;
+  refreshFlight = null;
   accessToken = "";
   refreshToken = "";
-  await storageRemove([utils.AUTH_TOKEN_KEY, utils.AUTH_REFRESH_KEY]);
+  await storageRemove([authOriginKey, utils.AUTH_TOKEN_KEY, utils.AUTH_REFRESH_KEY]);
   updateAuthUi();
 }
 
@@ -185,41 +202,45 @@ async function publicJson(path, init) {
   return parseJsonResponse(res);
 }
 
-async function refreshAccessToken() {
-  if (!refreshToken) return false;
+async function refreshAccessToken(base, version) {
+  if (!refreshToken || version !== sessionVersion) return false;
   const res = await fetch(
-    `${apiBase}/api/auth/token/refresh/`,
-    utils.buildJsonRequest("POST", { refresh: refreshToken }),
+    `${base}/api/auth/token/refresh/`,
+    { ...utils.buildJsonRequest("POST", { refresh: refreshToken }), redirect: "error" },
   );
-  if (!res.ok) {
-    await clearTokens();
+  const data = await res.json().catch(() => ({}));
+  if (version !== sessionVersion) return false;
+  if (!res.ok || !data.access) {
+    if (res.status === 401 || res.status === 403) await clearTokens();
     return false;
   }
-  const data = await res.json();
-  if (!data.access) {
-    await clearTokens();
-    return false;
-  }
-  await saveTokens(data.access, refreshToken);
-  return true;
+  await saveTokens(data.access, data.refresh || refreshToken);
+  return version === sessionVersion;
 }
 
-async function authJson(path, method, body, retried = false) {
-  if (!accessToken) {
-    throw new Error("Sign in before tracking items.");
+async function authJson(path, method, body) {
+  const base = apiBase;
+  const version = sessionVersion;
+  const token = accessToken;
+  if (!token) throw new Error("Sign in before tracking items.");
+
+  const request = (access) => fetch(`${base}${path}`, {
+    ...utils.buildJsonRequest(method, body, access), redirect: "error",
+  });
+  let res = await request(token);
+  if (res.status === 401 && version === sessionVersion) {
+    if (token === accessToken) {
+      if (!refreshFlight) {
+        const pending = refreshAccessToken(base, version).finally(() => {
+          if (refreshFlight === pending) refreshFlight = null;
+        });
+        refreshFlight = pending;
+      }
+      if (!(await refreshFlight)) throw new Error("Could not refresh your session.");
+    }
+    if (version === sessionVersion) res = await request(accessToken);
   }
-
-  const res = await fetch(
-    `${apiBase}${path}`,
-    utils.buildJsonRequest(method, body, accessToken),
-  );
-
-  if (res.status === 401 && !retried) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) return authJson(path, method, body, true);
-    throw new Error("Your session expired. Sign in again.");
-  }
-
+  if (version !== sessionVersion) throw new Error("Session changed. Try again.");
   return parseJsonResponse(res);
 }
 
@@ -330,10 +351,13 @@ async function handleLogin(event) {
   submitButton.disabled = true;
   submitButton.textContent = "Signing in...";
   try {
+    const version = ++sessionVersion;
+    refreshFlight = null;
     const data = await publicJson(
       "/api/auth/token/",
-      utils.buildJsonRequest("POST", { email, password }),
+      { ...utils.buildJsonRequest("POST", { email, password }), redirect: "error" },
     );
+    if (version !== sessionVersion) return;
     await saveTokens(data.access, data.refresh);
     $loginPassword.value = "";
     if (latestMatchData) showResults(latestMatchData);

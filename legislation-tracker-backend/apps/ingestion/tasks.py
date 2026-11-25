@@ -13,13 +13,12 @@ from html.parser import HTMLParser
 
 import requests
 from celery import shared_task
-from .dispatch_task import CoalescedDispatcherTask, RefillIngestionTask
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, When
+from django.db.models import Case, IntegerField, When
 from django.utils import timezone
 
-from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
+from apps.accounts.models import TrackedBill
 from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
 from apps.changelog.services import lock_bill_activity, record_bill_change
 from apps.congress.current import current_congress, current_congress_session
@@ -70,6 +69,8 @@ from apps.ingestion.work_queue import (
     persist_ingestion_work,
 )
 from apps.legislation.models import Bill, BillDocument, ProcessingStatus
+
+from .dispatch_task import CoalescedDispatcherTask, RefillIngestionTask
 
 logger = logging.getLogger(__name__)
 
@@ -421,6 +422,7 @@ def get_or_create_representative_from_sponsor(sponsor_blob):
         or raw_district is not None
     )
     from apps.congress.names import normalize_person_name
+
     name = normalize_person_name(name)
     rep, created = Representative.objects.get_or_create(
         bioguide_id=bioguide_id,
@@ -505,6 +507,7 @@ def _member_state_code(member):
 
 def _member_profile(summary, detail):
     from apps.congress.names import normalize_person_name
+
     member = dict(summary)
     member.update(detail or {})
     bioguide_id = member.get("bioguideId") or member.get("bioguide_id")
@@ -714,6 +717,7 @@ def sync_representatives(congress=None):
         ).update(is_current=False)
 
     from apps.congress.committee_sync import ensure_committee_rosters
+
     ensure_committee_rosters()
 
     return {
@@ -761,6 +765,7 @@ def sync_committee_memberships(self, congress=None):
 @shared_task
 def ensure_committee_roster_work():
     from apps.congress.committee_sync import ensure_committee_rosters
+
     work = ensure_committee_rosters()
     return {"work_item_id": work.pk if work else None}
 
@@ -1039,12 +1044,19 @@ def _retry_delay(attempt_count):
 def _http_throttle_delay(exc):
     """429 is a temporary source cooldown, not a broken document attempt."""
     from email.utils import parsedate_to_datetime
+
     from apps.campaign_finance.fec_client import FECError
-    if isinstance(exc, FECError) and exc.status_code == 429:
-        seconds = exc.retry_after_seconds if exc.retry_after_seconds is not None else 900
+    from apps.provider_requests import FailureKind, classify_failure
+
+    if classify_failure(exc) != FailureKind.COOLDOWN:
+        return None
+    if isinstance(exc, (CongressAPIError, FECError)):
+        seconds = (
+            exc.retry_after_seconds if exc.retry_after_seconds is not None else 900
+        )
         return timedelta(seconds=max(1, min(seconds, 365 * 86400)))
     response = getattr(exc, "response", None)
-    if not isinstance(exc, requests.HTTPError) or response is None or response.status_code != 429:
+    if not isinstance(exc, requests.HTTPError) or response is None:
         return None
     value = response.headers.get("Retry-After", "")
     try:
@@ -1082,6 +1094,7 @@ def dispatch_similarity_work():
 
 def _dispatch_ready_work(batch_size, *, similarity=False):
     from .queues import STAGE_QUEUES
+
     now = timezone.now()
     leased_items = []
     with transaction.atomic():
@@ -1091,16 +1104,31 @@ def _dispatch_ready_work(batch_size, *, similarity=False):
         IngestionWorkItem.objects.select_for_update().order_by("id").first()
         if similarity:
             lane = IngestionWorkItem.objects.filter(kind="similarity")
-            capacity = max(settings.SIMILARITY_WORK_CONCURRENCY - lane.filter(
-                status__in=["dispatched", "processing"]).count(), 0)
-            candidates = [] if not capacity else list(
-                lane.select_for_update(skip_locked=True).filter(status="pending", available_at__lte=now)
-                .order_by(Case(When(payload_json__has_key="step", then=0), default=1), "available_at", "id")[:capacity])
+            capacity = max(
+                settings.SIMILARITY_WORK_CONCURRENCY
+                - lane.filter(status__in=["dispatched", "processing"]).count(),
+                0,
+            )
+            candidates = (
+                []
+                if not capacity
+                else list(
+                    lane.select_for_update(skip_locked=True)
+                    .filter(status="pending", available_at__lte=now)
+                    .order_by(
+                        Case(When(payload_json__has_key="step", then=0), default=1),
+                        "available_at",
+                        "id",
+                    )[:capacity]
+                )
+            )
         else:
             candidates = []
             # Each lane owns its admission budget. A full metadata queue must
             # never prevent documents, votes or contracts from being dispatched.
-            for kind in sorted(STAGE_QUEUES, key=lambda k: WORK_KIND_DISPATCH_PRIORITY.get(k, 100)):
+            for kind in sorted(
+                STAGE_QUEUES, key=lambda k: WORK_KIND_DISPATCH_PRIORITY.get(k, 100)
+            ):
                 if kind in {"representative_research", "similarity"}:
                     continue
                 lane = IngestionWorkItem.objects.filter(kind=kind)
@@ -1117,20 +1145,34 @@ def _dispatch_ready_work(batch_size, *, similarity=False):
                         available_at__lte=now,
                     )
                     .order_by(_work_dispatch_priority(), "available_at", "id")[
-                        : capacity
+                        :capacity
                     ]
                 )
             research_in_flight = IngestionWorkItem.objects.filter(
                 kind="representative_research", status__in=["dispatched", "processing"]
             ).count()
             # Separate admission budget: research cannot occupy bill-processing slots.
-            research_capacity = max(settings.RESEARCH_WORK_CONCURRENCY - research_in_flight, 0)
+            research_capacity = max(
+                settings.RESEARCH_WORK_CONCURRENCY - research_in_flight, 0
+            )
             if research_capacity:
-                candidates.extend(IngestionWorkItem.objects.select_for_update(skip_locked=True).filter(
-                    kind="representative_research", status=IngestionWorkStatus.PENDING,
-                    available_at__lte=now,
-                ).order_by(Case(When(payload_json__finance_phase="receipts", then=1),
-                                default=0, output_field=IntegerField()), "available_at", "id")[:research_capacity])
+                candidates.extend(
+                    IngestionWorkItem.objects.select_for_update(skip_locked=True)
+                    .filter(
+                        kind="representative_research",
+                        status=IngestionWorkStatus.PENDING,
+                        available_at__lte=now,
+                    )
+                    .order_by(
+                        Case(
+                            When(payload_json__finance_phase="receipts", then=1),
+                            default=0,
+                            output_field=IntegerField(),
+                        ),
+                        "available_at",
+                        "id",
+                    )[:research_capacity]
+                )
         for work_item in candidates:
             work_item.status = IngestionWorkStatus.DISPATCHED
             work_item.lease_expires_at = now + WORK_LEASE_DURATION
@@ -1145,15 +1187,21 @@ def _dispatch_ready_work(batch_size, *, similarity=False):
                     "updated_at",
                 ]
             )
-            leased_items.append((work_item.id, work_item.dispatch_token, work_item.kind))
+            leased_items.append(
+                (work_item.id, work_item.dispatch_token, work_item.kind)
+            )
 
     dispatched = 0
     for work_item_id, dispatch_token, kind in leased_items:
         try:
-            limits = ({
-                "soft_time_limit": DOCUMENT_CONTRACT_SOFT_TIME_LIMIT_SECONDS,
-                "time_limit": DOCUMENT_CONTRACT_TIME_LIMIT_SECONDS,
-            } if kind == "document_contract" else {})
+            limits = (
+                {
+                    "soft_time_limit": DOCUMENT_CONTRACT_SOFT_TIME_LIMIT_SECONDS,
+                    "time_limit": DOCUMENT_CONTRACT_TIME_LIMIT_SECONDS,
+                }
+                if kind == "document_contract"
+                else {}
+            )
             result = process_ingestion_work_item.apply_async(
                 args=[work_item_id, dispatch_token],
                 queue=STAGE_QUEUES[kind],
@@ -1307,12 +1355,20 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                     ]
                 )
                 requeued = True
-            elif isinstance(exc, DocumentValidationError) or (
-                work_item.kind == "representative_research" and (
-                    isinstance(exc, ValueError) or getattr(exc, "status_code", None) in {400, 401, 403, 404, 422}
+            elif (
+                isinstance(exc, DocumentValidationError)
+                or (
+                    work_item.kind == "representative_research"
+                    and (
+                        isinstance(exc, ValueError)
+                        or getattr(exc, "status_code", None)
+                        in {400, 401, 403, 404, 422}
+                    )
                 )
-            ) or (
-                throttle_delay is None and work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
+                or (
+                    throttle_delay is None
+                    and work_item.attempt_count >= MAX_INGESTION_WORK_ATTEMPTS
+                )
             ):
                 work_item.status = IngestionWorkStatus.DEAD
                 work_item.lease_expires_at = None
@@ -1342,9 +1398,9 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
                 work_item.status = IngestionWorkStatus.PENDING
                 if throttle_delay is not None:
                     work_item.attempt_count = max(work_item.attempt_count - 1, 0)
-                work_item.available_at = timezone.now() + (throttle_delay or _retry_delay(
-                    work_item.attempt_count
-                ))
+                work_item.available_at = timezone.now() + (
+                    throttle_delay or _retry_delay(work_item.attempt_count)
+                )
                 work_item.lease_expires_at = None
                 work_item.dispatch_token = ""
                 work_item.last_error = error_message
@@ -1390,7 +1446,10 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         if (
             not work_item.lease_expires_at
             or work_item.lease_expires_at <= timezone.now()
-            or (isinstance(stage_result, dict) and stage_result.get("status") == "superseded")
+            or (
+                isinstance(stage_result, dict)
+                and stage_result.get("status") == "superseded"
+            )
         ):
             return {"work_item_id": work_item.id, "status": "superseded"}
         if work_item.payload_json != claimed_payload_json:
@@ -1420,22 +1479,34 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
             not requeued
             and work_item.kind == WORK_KIND_BILL_VERSIONS
             and isinstance(stage_result, dict)
-            and stage_result.get('versions') == 0
+            and stage_result.get("versions") == 0
         ):
             # Publication can lag metadata. Keep checking even when the bill's
             # metadata never changes; absence is not a failed download attempt.
             work_item.status = IngestionWorkStatus.PENDING
             work_item.attempt_count = max(work_item.attempt_count - 1, 0)
             work_item.available_at = timezone.now() + timedelta(
-                seconds=max(60, int(getattr(settings, 'BILL_TEXT_RECHECK_SECONDS', 3600)))
+                seconds=max(
+                    60, int(getattr(settings, "BILL_TEXT_RECHECK_SECONDS", 3600))
+                )
             )
             work_item.lease_expires_at = None
-            work_item.dispatch_token = ''
+            work_item.dispatch_token = ""
             work_item.completed_at = None
-            work_item.last_error = 'Awaiting a published bill text version.'
-            work_item.save(update_fields=['status', 'attempt_count', 'available_at',
-                'lease_expires_at', 'dispatch_token', 'completed_at', 'last_error', 'updated_at'])
-            return {'work_item_id': work_item_id, 'status': 'awaiting_source'}
+            work_item.last_error = "Awaiting a published bill text version."
+            work_item.save(
+                update_fields=[
+                    "status",
+                    "attempt_count",
+                    "available_at",
+                    "lease_expires_at",
+                    "dispatch_token",
+                    "completed_at",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+            return {"work_item_id": work_item_id, "status": "awaiting_source"}
         if not requeued:
             work_item.status = IngestionWorkStatus.SUCCEEDED
             work_item.lease_expires_at = None
@@ -1456,14 +1527,20 @@ def process_ingestion_work_item(self, work_item_id, dispatch_token=None):
         try:
             # Page continuations must not wait behind the bill ingestion queue.
             # The dispatcher still enforces the single research admission slot.
-            dispatch_ingestion_work.apply_async(kwargs={"batch_size": 0}, queue="research")
+            dispatch_ingestion_work.apply_async(
+                kwargs={"batch_size": 0}, queue="research"
+            )
         except Exception:
-            logger.exception("Could not wake research dispatcher; periodic dispatch will recover")
+            logger.exception(
+                "Could not wake research dispatcher; periodic dispatch will recover"
+            )
     elif work_item.kind == "similarity":
         try:
             dispatch_similarity_work.apply_async(queue="similarity")
         except Exception:
-            logger.exception("Could not wake similarity dispatcher; periodic dispatch will recover")
+            logger.exception(
+                "Could not wake similarity dispatcher; periodic dispatch will recover"
+            )
     elif requeued:
         try:
             dispatch_ingestion_work.delay()
@@ -1482,9 +1559,11 @@ def _process_durable_work(work_item):
     payload = work_item.payload_json
     if work_item.kind == "committee_roster":
         from apps.congress.committee_sync import sync_committee_memberships as sync
+
         return [result.__dict__ for result in sync(congress=payload["congress"])]
     if work_item.kind == "representative_research":
         from apps.research.tasks import process_research
+
         return process_research(work_item)
     if work_item.kind == WORK_KIND_BILL:
         bill_key_str = payload.get("bill_key")
@@ -1530,7 +1609,9 @@ def _process_durable_work(work_item):
             generation_reason=payload.get("generation_reason", "ingestion"),
         )
     if work_item.kind == legislation_tasks.WORK_KIND_SIMILARITY:
-        return legislation_tasks._schedule_similarity_for_bill_impl(payload["bill_id"], work_item=work_item)
+        return legislation_tasks._schedule_similarity_for_bill_impl(
+            payload["bill_id"], work_item=work_item
+        )
     if work_item.kind == legislation_tasks.WORK_KIND_SEARCH_INDEX:
         from apps.legislation.search_index import (
             latest_search_index_at,
@@ -1630,7 +1711,8 @@ def poll_tracked_bills():
     """
     direct_bill_ids = TrackedBill.objects.values_list("bill_id", flat=True)
     bills = (
-        Bill.objects.filter(id__in=direct_bill_ids).select_for_update()
+        Bill.objects.filter(id__in=direct_bill_ids)
+        .select_for_update()
         .only("id", "jurisdiction", "session", "bill_number")
         .order_by("id")
     )
@@ -1643,9 +1725,14 @@ def poll_tracked_bills():
             if not key:
                 continue
             if IngestionWorkItem.objects.filter(
-                kind=WORK_KIND_BILL, dedupe_key=key,
-                status__in=[IngestionWorkStatus.PENDING, IngestionWorkStatus.DISPATCHED,
-                            IngestionWorkStatus.PROCESSING, IngestionWorkStatus.BLOCKED],
+                kind=WORK_KIND_BILL,
+                dedupe_key=key,
+                status__in=[
+                    IngestionWorkStatus.PENDING,
+                    IngestionWorkStatus.DISPATCHED,
+                    IngestionWorkStatus.PROCESSING,
+                    IngestionWorkStatus.BLOCKED,
+                ],
             ).exists():
                 continue
             _, created = persist_ingestion_work(
@@ -2474,9 +2561,22 @@ def _process_bill_votes_impl(bill_id):
     congress = bill.session
     actions = bill_actions(congress, bill_type, num)
     from .passage_actions import extract_passage_actions
-    source_type = {"s": "senate-bill", "hr": "house-bill", "sres": "senate-resolution", "hres": "house-resolution", "sjres": "senate-joint-resolution", "hjres": "house-joint-resolution", "sconres": "senate-concurrent-resolution", "hconres": "house-concurrent-resolution"}.get(bill_type)
+
+    source_type = {
+        "s": "senate-bill",
+        "hr": "house-bill",
+        "sres": "senate-resolution",
+        "hres": "house-resolution",
+        "sjres": "senate-joint-resolution",
+        "hjres": "house-joint-resolution",
+        "sconres": "senate-concurrent-resolution",
+        "hconres": "house-concurrent-resolution",
+    }.get(bill_type)
     if source_type:
-        passage_actions = extract_passage_actions(actions, source_url=f"https://www.congress.gov/bill/{congress}th-congress/{source_type}/{num}/all-actions")
+        passage_actions = extract_passage_actions(
+            actions,
+            source_url=f"https://www.congress.gov/bill/{congress}th-congress/{source_type}/{num}/all-actions",
+        )
         if bill.passage_actions != passage_actions:
             Bill.objects.filter(pk=bill.id).update(passage_actions=passage_actions)
     votes_refs = []
@@ -2546,7 +2646,10 @@ def _download_document_impl(document_id):
     with downloaded:
         content_type = downloaded.content_type
         from .document_download import extract_document_purpose
-        source_purpose = extract_document_purpose(downloaded.file, content_type, doc.source_url)
+
+        source_purpose = extract_document_purpose(
+            downloaded.file, content_type, doc.source_url
+        )
         new_hash = downloaded.checksum
         unchanged = doc.content_hash == new_hash and bool(doc.object_storage_key)
         extracted = None

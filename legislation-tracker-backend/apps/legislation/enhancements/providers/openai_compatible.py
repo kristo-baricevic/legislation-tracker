@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-import json
 import asyncio
 import inspect
-from collections.abc import Callable
-from dataclasses import replace
+import json
 from typing import Any
-
-from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
-from .base import CredentialCheck, ProviderCapabilities, ProviderError, ProviderResult, ProviderUsage
 from . import harness
-
+from .base import (
+    CredentialCheck,
+    ProviderCapabilities,
+    ProviderError,
+    ProviderResult,
+    ProviderUsage,
+)
+from .session import delivery_client, in_provider_session, run_async
 
 _MODE_ALIASES = {
     "json_schema": "json_schema",
@@ -49,9 +51,9 @@ def _local_prose_patterns(schema):
     """
     if isinstance(schema, dict):
         result = {key: _local_prose_patterns(value) for key, value in schema.items()}
-        text = result.get('properties', {}).get('text')
+        text = result.get("properties", {}).get("text")
         if isinstance(text, dict):
-            text.pop('pattern', None)
+            text.pop("pattern", None)
         return result
     if isinstance(schema, list):
         return [_local_prose_patterns(value) for value in schema]
@@ -59,7 +61,10 @@ def _local_prose_patterns(schema):
 
 
 def _free_routing():
-    return {"max_price": {"prompt": 0, "completion": 0, "request": 0}, "require_parameters": True}
+    return {
+        "max_price": {"prompt": 0, "completion": 0, "request": 0},
+        "require_parameters": True,
+    }
 
 
 def _mapped_error(error: Exception) -> ProviderError:
@@ -130,12 +135,13 @@ def _complete(client, timeout_seconds, **kwargs):
                 return await asyncio.wait_for(result, timeout=timeout_seconds)
             return result  # synchronous test/client adapters
         finally:
-            close = getattr(client, 'close', None)
-            if close:
+            close = getattr(client, "close", None)
+            if close and not in_provider_session():
                 result = close()
                 if inspect.isawaitable(result):
                     await result
-    return asyncio.run(run())
+
+    return run_async(run())
 
 
 class OpenAICompatibleEnhancementProvider:
@@ -178,13 +184,7 @@ class OpenAICompatibleEnhancementProvider:
         capabilities=None,
         **kwargs,
     ):
-        factory = (
-            client_factory
-            or client
-            or openai_client
-            or http_client
-            or factory
-        )
+        factory = client_factory or client or openai_client or http_client or factory
         if factory is None:
             from openai import AsyncOpenAI
 
@@ -290,7 +290,11 @@ class OpenAICompatibleEnhancementProvider:
             if isinstance(val, bool):
                 return "json_schema" if val else "json_object"
         # supports_json_schema flags.
-        for key in ("supports_json_schema", "json_schema_supported", "can_use_json_schema"):
+        for key in (
+            "supports_json_schema",
+            "json_schema_supported",
+            "can_use_json_schema",
+        ):
             val = kwargs.get(key)
             if val is False:
                 return "json_object"
@@ -313,11 +317,25 @@ class OpenAICompatibleEnhancementProvider:
         # Check any _kw_ attributes set from kwargs.
         for attr in list(vars(self)):
             if attr.startswith("_kw_"):
-                key = attr[len("_kw_"):]
+                key = attr[len("_kw_") :]
                 val = getattr(self, attr)
-                if key in {"structured_output_mode", "structured_output", "output_mode", "response_format_mode", "mode"} and isinstance(val, str):
+                if key in {
+                    "structured_output_mode",
+                    "structured_output",
+                    "output_mode",
+                    "response_format_mode",
+                    "mode",
+                } and isinstance(val, str):
                     return self._normalize_mode(val)
-                if key in {"supports_json_schema", "json_schema_supported", "can_use_json_schema"} and val is False:
+                if (
+                    key
+                    in {
+                        "supports_json_schema",
+                        "json_schema_supported",
+                        "can_use_json_schema",
+                    }
+                    and val is False
+                ):
                     return "json_object"
         # Default.
         return "json_schema"
@@ -328,6 +346,7 @@ class OpenAICompatibleEnhancementProvider:
             return self._normalize_mode(val)
         return getattr(self, "_structured_output_mode_override", "json_schema")
 
+    @delivery_client
     def _client(self, *, api_key=None, timeout_seconds=None):
         key = api_key if api_key is not None else self.api_key
         timeout = timeout_seconds if timeout_seconds is not None else self.timeout
@@ -361,10 +380,18 @@ class OpenAICompatibleEnhancementProvider:
         timeout_seconds=None,
     ) -> CredentialCheck:
         model = self._model(requested_model=requested_model)
-        free_route = self.base_url.rstrip("/") == "https://openrouter.ai/api/v1" and model.endswith(":free")
-        options = {"extra_body": {"provider": _free_routing()}} if free_route else {"tools": []}
+        free_route = self.base_url.rstrip(
+            "/"
+        ) == "https://openrouter.ai/api/v1" and model.endswith(":free")
+        options = (
+            {"extra_body": {"provider": _free_routing()}}
+            if free_route
+            else {"tools": []}
+        )
         try:
-            response = self._send(api_key=api_key, timeout_seconds=timeout_seconds,
+            response = self._send(
+                api_key=api_key,
+                timeout_seconds=timeout_seconds,
                 model=model,
                 messages=[{"role": "user", "content": "Reply with OK."}],
                 max_tokens=16,
@@ -407,7 +434,9 @@ class OpenAICompatibleEnhancementProvider:
             result = harness.apply_derived_source_refs(result)
         return result
 
-    def repair_citations(self, *, api_key=None, request=None, payload=None, timeout_seconds=None):
+    def repair_citations(
+        self, *, api_key=None, request=None, payload=None, timeout_seconds=None
+    ):
         harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
             api_key=api_key,
@@ -419,7 +448,9 @@ class OpenAICompatibleEnhancementProvider:
             schema_name="citation_repair_v1",
         )
 
-    def _source_first(self, *, api_key=None, request=None, timeout_seconds=None, stage="generation"):
+    def _source_first(
+        self, *, api_key=None, request=None, timeout_seconds=None, stage="generation"
+    ):
         instructions, transport = harness.prepare_source_first(
             stage, request.request_envelope["source_first_payload"]
         )
@@ -476,7 +507,7 @@ class OpenAICompatibleEnhancementProvider:
         wire = harness.wire_schema(
             schema, unsupported_keywords=self.capabilities.unsupported_schema_keywords
         )
-        if getattr(request, 'provider', '') == 'openrouter':
+        if getattr(request, "provider", "") == "openrouter":
             wire = _local_prose_patterns(wire)
         messages = [
             {"role": "system", "content": instructions},
@@ -509,17 +540,19 @@ class OpenAICompatibleEnhancementProvider:
         elif mode == "json_object":
             kwargs["response_format"] = {"type": "json_object"}
 
-        if getattr(request, 'provider', '') == 'openrouter':
-            effort = getattr(request, 'reasoning_effort', 'none')
+        if getattr(request, "provider", "") == "openrouter":
+            effort = getattr(request, "reasoning_effort", "none")
             # An unspecified effort preserves the model's own reasoning default.
-            if effort != 'none':
-                kwargs['extra_body'] = {'reasoning': {'effort': effort}}
+            if effort != "none":
+                kwargs["extra_body"] = {"reasoning": {"effort": effort}}
 
         if getattr(request, "provider", "") == "openrouter" and model.endswith(":free"):
             routing = kwargs.setdefault("extra_body", {})
             routing["provider"] = _free_routing()
         try:
-            response = self._send(api_key=api_key, timeout_seconds=timeout_seconds, **kwargs)
+            response = self._send(
+                api_key=api_key, timeout_seconds=timeout_seconds, **kwargs
+            )
         except ProviderError:
             raise
         except Exception as error:  # noqa: BLE001
@@ -543,25 +576,48 @@ class OpenAICompatibleEnhancementProvider:
         finish_reason = _value(choice, "finish_reason", None)
 
         usage_obj = _value(response, "usage")
-        reasoning_tokens = _value(_value(usage_obj, 'completion_tokens_details'), 'reasoning_tokens')
-        completion_tokens = _value(usage_obj, 'completion_tokens')
+        reasoning_tokens = _value(
+            _value(usage_obj, "completion_tokens_details"), "reasoning_tokens"
+        )
+        completion_tokens = _value(usage_obj, "completion_tokens")
         usage = ProviderUsage(
             input_tokens=_value(usage_obj, "prompt_tokens"),
             output_tokens=_value(usage_obj, "completion_tokens"),
             total_tokens=_value(usage_obj, "total_tokens"),
             reasoning_tokens=reasoning_tokens,
-            visible_output_tokens=(max(0, completion_tokens - reasoning_tokens)
-                if isinstance(completion_tokens, int) and isinstance(reasoning_tokens, int) else None),
+            visible_output_tokens=(
+                max(0, completion_tokens - reasoning_tokens)
+                if isinstance(completion_tokens, int)
+                and isinstance(reasoning_tokens, int)
+                else None
+            ),
         )
         response_id = str(_value(response, "id", "") or "")
         resolved_model = str(_value(response, "model", "") or "")
 
         from ..private_diagnostics import capture_visible
-        capture_visible(messages, kwargs.get("response_format"), content if isinstance(content, str) else None,
-                        finish_reason, response_id, resolved_model, api_key)
-        if getattr(request, "provider", "") == "openrouter" and model.endswith(":free") and resolved_model != model:
-            raise ProviderError("model_access_denied", validation_code="pinned_model_changed",
-                                usage=usage, response_id=response_id, resolved_model=resolved_model)
+
+        capture_visible(
+            messages,
+            kwargs.get("response_format"),
+            content if isinstance(content, str) else None,
+            finish_reason,
+            response_id,
+            resolved_model,
+            api_key,
+        )
+        if (
+            getattr(request, "provider", "") == "openrouter"
+            and model.endswith(":free")
+            and resolved_model != model
+        ):
+            raise ProviderError(
+                "model_access_denied",
+                validation_code="pinned_model_changed",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            )
         if refusal:
             raise ProviderError(
                 "content_refusal",
@@ -586,9 +642,18 @@ class OpenAICompatibleEnhancementProvider:
             )
 
         if finish_reason != "stop":
-            raise ProviderError("invalid_output", validation_code="provider_incomplete",
-                                usage=usage, response_id=response_id, resolved_model=resolved_model)
-        output_text = content if isinstance(content, str) else ("" if content is None else str(content))
+            raise ProviderError(
+                "invalid_output",
+                validation_code="provider_incomplete",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            )
+        output_text = (
+            content
+            if isinstance(content, str)
+            else ("" if content is None else str(content))
+        )
 
         # Distinct validation codes for fenced / multi-object output.
         stripped = output_text.strip() if isinstance(output_text, str) else ""

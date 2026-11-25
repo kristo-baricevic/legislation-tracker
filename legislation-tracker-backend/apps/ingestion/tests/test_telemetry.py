@@ -54,24 +54,44 @@ def test_superuser_reads_do_not_create_state_or_work_and_reject_scope():
 def test_waiting_source_and_delayed_retries_are_not_reported_as_queued():
     now = timezone.now()
     for key, status, delay, error in [
-        ('waiting', 'pending', 3600, 'Awaiting a published bill text version.'),
-        ('due-recheck', 'pending', -1, 'Awaiting a published bill text version.'),
-        ('retry', 'pending', 60, 'Network unavailable'),
-        ('ready', 'pending', -1, ''),
-        ('sent', 'dispatched', -1, 'Awaiting a published bill text version.'),
+        ("waiting", "pending", 3600, "Awaiting a published bill text version."),
+        ("due-recheck", "pending", -1, "Awaiting a published bill text version."),
+        ("retry", "pending", 60, "Network unavailable"),
+        ("ready", "pending", -1, ""),
+        ("sent", "dispatched", -1, "Awaiting a published bill text version."),
     ]:
-        IngestionWorkItem.objects.create(kind='bill_versions', jurisdiction='federal',
-            congress=119, dedupe_key=key, source_updated_at=now, status=status,
-            available_at=now + timedelta(seconds=delay), last_error=error)
-    data = authenticated_client(is_staff=True, is_superuser=True).get('/api/ingestion/telemetry/').json()
-    assert {row['status']: row['count'] for row in data['counts_by_kind_and_status']} == {
-        'waiting_source': 2, 'scheduled': 1, 'pending': 1, 'dispatched': 1,
+        IngestionWorkItem.objects.create(
+            kind="bill_versions",
+            jurisdiction="federal",
+            congress=119,
+            dedupe_key=key,
+            source_updated_at=now,
+            status=status,
+            available_at=now + timedelta(seconds=delay),
+            last_error=error,
+        )
+    data = (
+        authenticated_client(is_staff=True, is_superuser=True)
+        .get("/api/ingestion/telemetry/")
+        .json()
+    )
+    assert {
+        row["status"]: row["count"] for row in data["counts_by_kind_and_status"]
+    } == {
+        "waiting_source": 2,
+        "scheduled": 1,
+        "pending": 1,
+        "dispatched": 1,
     }
-    assert sorted(row['status'] for row in data['recent_work_states']) == [
-        'dispatched', 'pending', 'scheduled', 'waiting_source', 'waiting_source',
+    assert sorted(row["status"] for row in data["recent_work_states"]) == [
+        "dispatched",
+        "pending",
+        "scheduled",
+        "waiting_source",
+        "waiting_source",
     ]
     # Reporting must not change durable scheduling or suppress source rechecks.
-    assert IngestionWorkItem.objects.filter(status='pending').count() == 4
+    assert IngestionWorkItem.objects.filter(status="pending").count() == 4
 
 
 @pytest.mark.django_db
@@ -81,7 +101,12 @@ def test_counts_are_scoped_and_latest_success_is_not_run_completion():
     work("119-hr-2", "pending", available_at=now + timedelta(minutes=1))
     work("119-hr-3", "succeeded", completed_at=now)
     for session in [118, 119]:
-        Bill.objects.create(jurisdiction="federal", session=session, bill_number="HR 45", title="Test bill")
+        Bill.objects.create(
+            jurisdiction="federal",
+            session=session,
+            bill_number="HR 45",
+            title="Test bill",
+        )
     IngestionWorkItem.objects.create(
         kind="bill",
         congress=118,
@@ -89,7 +114,11 @@ def test_counts_are_scoped_and_latest_success_is_not_run_completion():
         source_updated_at=now,
         status="dead",
     )
-    data = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/telemetry/").json()
+    data = (
+        authenticated_client(is_staff=True, is_superuser=True)
+        .get("/api/ingestion/telemetry/")
+        .json()
+    )
     assert data["stale_leases"] == 1
     assert data["bills_without_analysis"] == 1
     assert data["scheduled_pending"] == 1

@@ -6,8 +6,12 @@ class User(AbstractUser):
     """Custom user with email as the primary identifier."""
 
     email = models.EmailField("email address", unique=True)
-    dismissed_bills = models.ManyToManyField("legislation.Bill", related_name="+", blank=True)
-    dismissed_representatives = models.ManyToManyField("congress.Representative", related_name="+", blank=True)
+    dismissed_bills = models.ManyToManyField(
+        "legislation.Bill", related_name="+", blank=True
+    )
+    dismissed_representatives = models.ManyToManyField(
+        "congress.Representative", related_name="+", blank=True
+    )
     # Remove username from required; we use email
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]  # username still exists but not for login
@@ -20,7 +24,9 @@ class User(AbstractUser):
 
 
 class LLMCredentialManager(models.Manager):
-    def create_for_key(self, *, user, provider, api_key, enabled=True, activate_initial=True):
+    def create_for_key(
+        self, *, user, provider, api_key, enabled=True, activate_initial=True
+    ):
         from .llm_credentials import encrypt_credential
 
         normalized_key = (api_key or "").strip()
@@ -35,7 +41,11 @@ class LLMCredentialManager(models.Manager):
             # cannot serve as the serialization lock. The user row is stable
             # across both initial creation and later replacement.
             locked_user = type(user).objects.select_for_update().get(pk=user.pk)
-            credential = self.select_for_update().filter(user=locked_user, provider=normalized_provider).first()
+            credential = (
+                self.select_for_update()
+                .filter(user=locked_user, provider=normalized_provider)
+                .first()
+            )
             revision = (credential.revision + 1) if credential else 1
             encrypted_envelope, key_id = encrypt_credential(
                 user_id=locked_user.pk,
@@ -62,7 +72,12 @@ class LLMCredentialManager(models.Manager):
                 for field, value in values.items():
                     setattr(credential, field, value)
                 credential.save(update_fields=[*values, "updated_at"])
-            LLMPreference.objects.get_or_create(user=locked_user, defaults={"active_credential": credential if activate_initial else None})
+            LLMPreference.objects.get_or_create(
+                user=locked_user,
+                defaults={
+                    "active_credential": credential if activate_initial else None
+                },
+            )
             return credential
 
 
@@ -100,7 +115,11 @@ class LLMCredential(models.Model):
 
     class Meta:
         db_table = "accounts_llmcredential"
-        constraints = [models.UniqueConstraint(fields=["user", "provider"], name="account_llm_provider_unique")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "provider"], name="account_llm_provider_unique"
+            )
+        ]
 
     def replace_key(self, api_key, *, provider=None):
         fresh = type(self).objects.create_for_key(
@@ -118,7 +137,9 @@ class LLMCredential(models.Model):
 
 class LLMPreference(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    active_credential = models.ForeignKey(LLMCredential, on_delete=models.SET_NULL, null=True)
+    active_credential = models.ForeignKey(
+        LLMCredential, on_delete=models.SET_NULL, null=True
+    )
 
 
 def selected_credentials(user):
@@ -306,3 +327,8 @@ class TrackedLegislator(models.Model):
 
     def __str__(self):
         return f"User {self.user_id} tracks representative {self.representative_id}"
+
+
+class DashboardRevision(models.Model):
+    kind = models.CharField(max_length=16, primary_key=True)
+    sequence = models.BigIntegerField(default=0)

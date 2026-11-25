@@ -133,9 +133,7 @@ def _coverage(
         return False, "Roll-call discovery cannot cover a future Congress.", 0
     if not scopes:
         return False, "Service-term history is unavailable for this Congress.", 0
-    active_session = (
-        current_congress_session() if congress == active_congress else 2
-    )
+    active_session = current_congress_session() if congress == active_congress else 2
     applicable = {
         (scope.chamber, scope.session_number)
         for scope in scopes
@@ -153,9 +151,7 @@ def _coverage(
             "source_exhausted_at",
         )
     )
-    if {
-        (row["chamber"], row["session_number"]) for row in state_rows
-    } != applicable:
+    if {(row["chamber"], row["session_number"]) for row in state_rows} != applicable:
         return (
             False,
             "Roll-call discovery has not started for every applicable session.",
@@ -193,13 +189,19 @@ def _coverage(
         for chamber, session_number in applicable
     )
     if covers_full_sessions and persisted != discovered:
-        return False, "Persisted roll calls do not match the discovered source total.", discovered
+        return (
+            False,
+            "Persisted roll calls do not match the discovered source total.",
+            discovered,
+        )
     if open_work:
         return False, "Some discovered roll calls are still unresolved.", discovered
     return True, None, discovered
 
 
-def representative_summary(*, representative: Representative, congress: int) -> RepresentativeInsight:
+def representative_summary(
+    *, representative: Representative, congress: int
+) -> RepresentativeInsight:
     scopes = _service_scopes(representative=representative, congress=congress)
     votes = _votes_for_scopes(congress=congress, scopes=scopes)
     records = VoteRecord.objects.filter(vote__in=votes, representative=representative)
@@ -209,7 +211,9 @@ def representative_summary(*, representative: Representative, congress: int) -> 
         for position in ("yes", "no", "present", "not_voting", "other")
     }
     participation = sum(position_counts[position] for position in CAST_POSITIONS)
-    date_bounds = records.aggregate(first=Min("vote__vote_date"), last=Max("vote__vote_date"))
+    date_bounds = records.aggregate(
+        first=Min("vote__vote_date"), last=Max("vote__vote_date")
+    )
     sponsored = representative.sponsored_bills.filter(session=congress).count()
     cosponsored = BillCosponsor.objects.filter(
         representative=representative,
@@ -247,12 +251,17 @@ def representative_summary(*, representative: Representative, congress: int) -> 
     )
 
 
-def compare_representatives(*, left: Representative, right: Representative, congress: int) -> RepresentativeComparison:
+def compare_representatives(
+    *, left: Representative, right: Representative, congress: int
+) -> RepresentativeComparison:
     if left.id == right.id:
         raise ValueError("Choose two different representatives.")
     left_scopes = _service_scopes(representative=left, congress=congress)
     right_scopes = _service_scopes(representative=right, congress=congress)
-    if not ({scope.chamber for scope in left_scopes} & {scope.chamber for scope in right_scopes}):
+    if not (
+        {scope.chamber for scope in left_scopes}
+        & {scope.chamber for scope in right_scopes}
+    ):
         return RepresentativeComparison(
             left_representative_id=left.id,
             right_representative_id=right.id,
@@ -287,7 +296,9 @@ def compare_representatives(*, left: Representative, right: Representative, cong
         if left_positions[vote_id] in {"yes", "no"}
         and right_positions[vote_id] in {"yes", "no"}
     ]
-    agree = sum(left_positions[vote_id] == right_positions[vote_id] for vote_id in eligible)
+    agree = sum(
+        left_positions[vote_id] == right_positions[vote_id] for vote_id in eligible
+    )
     left_summary = representative_summary(representative=left, congress=congress)
     right_summary = representative_summary(representative=right, congress=congress)
     shared_vote_rows = list(
@@ -302,7 +313,8 @@ def compare_representatives(*, left: Representative, right: Representative, cong
         disagreement_count=len(eligible) - agree,
         excluded_shared_vote_count=len(shared) - len(eligible),
         agreement_rate=round(agree / len(eligible), 4) if eligible else None,
-        coverage_complete=left_summary.coverage_complete and right_summary.coverage_complete,
+        coverage_complete=left_summary.coverage_complete
+        and right_summary.coverage_complete,
         reason=None if eligible else "No shared yes/no roll calls are available.",
         shared_votes=tuple(
             {

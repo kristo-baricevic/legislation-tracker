@@ -5,11 +5,8 @@ Uses CONGRESS_API_KEY from Django settings. Base URL: https://api.congress.gov/v
 
 import json
 import logging
-import signal
-import threading
 import time
 import unicodedata
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from urllib.parse import parse_qs, urlsplit
@@ -19,6 +16,10 @@ import requests
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from django.conf import settings
+from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
+from apps.provider_requests import total_request_deadline
 
 logger = logging.getLogger(__name__)
 
@@ -100,50 +101,13 @@ class CongressAPIError(Exception):
         self.retry_after_seconds = retry_after_seconds
 
 
-@contextmanager
-def _total_request_deadline(seconds, *, error_factory=None):
-    """Interrupt a stalled HTTP read instead of waiting for another chunk.
-
-    ``requests`` applies its read timeout to individual socket reads.  A peer
-    that slowly drips bytes can therefore keep an ``iter_content`` call open
-    forever without triggering that timeout.  Celery executes this client in
-    its worker main thread on POSIX, where an interval timer can interrupt the
-    blocked system call at the request-wide deadline.
-
-    Do not replace an active timer owned by the host process. The previous
-    alarm handler is restored after every request, so Celery's idle handler can
-    coexist with this deadline. The ordinary requests timeout and
-    between-chunk check remain the portable fallback for non-POSIX platforms.
-    """
-    can_interrupt = (
-        threading.current_thread() is threading.main_thread()
-        and hasattr(signal, "SIGALRM")
-        and hasattr(signal, "ITIMER_REAL")
-        and hasattr(signal, "getitimer")
-        and hasattr(signal, "setitimer")
+def _total_request_deadline(seconds):
+    return total_request_deadline(
+        seconds,
+        error_factory=lambda: CongressAPIError(
+            "Congress API request exceeded total timeout"
+        ),
     )
-    if not can_interrupt:
-        yield False
-        return
-
-    remaining, interval = signal.getitimer(signal.ITIMER_REAL)
-    previous_handler = signal.getsignal(signal.SIGALRM)
-    if remaining or interval:
-        yield False
-        return
-
-    def _raise_total_timeout(_signum, _frame):
-        if error_factory is not None:
-            raise error_factory()
-        raise CongressAPIError("Congress API request exceeded total timeout")
-
-    signal.signal(signal.SIGALRM, _raise_total_timeout)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        yield True
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def _get_api_key():
@@ -162,6 +126,31 @@ def _request(method, path, params=None):
         )
     if api_key:
         params.setdefault("api_key", api_key)
+    from .congress_cooldown import (
+        COORDINATION_TIMEOUT_SECONDS,
+        cooldown_key,
+        defer_requests,
+        wait_for_slot,
+    )
+
+    key = cooldown_key(params.get("api_key", ""))
+
+    try:
+        with total_request_deadline(
+            min(COORDINATION_TIMEOUT_SECONDS, CONGRESS_API_TOTAL_TIMEOUT_SECONDS),
+            error_factory=lambda: RedisTimeoutError("Congress coordination timed out"),
+        ):
+            remaining = wait_for_slot(key)
+    except RedisError:
+        raise CongressAPIError(
+            "Congress request coordination unavailable",
+            status_code=429,
+            retry_after_seconds=5,
+        ) from None
+    if remaining:
+        raise CongressAPIError(
+            "Congress API cooldown", status_code=429, retry_after_seconds=remaining
+        )
     logger.debug(
         "Congress API request: %s %s (params keys: %s)",
         method,
@@ -218,6 +207,17 @@ def _request(method, path, params=None):
                             )
                         except (TypeError, ValueError, OverflowError):
                             pass
+                    try:
+                        defer_requests(
+                            key,
+                            (
+                                900
+                                if retry_after_seconds is None
+                                else max(1, retry_after_seconds)
+                            ),
+                        )
+                    except (RedisError, CongressAPIError):
+                        logger.warning("Unable to share Congress API cooldown")
                 logger.error(
                     "Congress API error: %s %s -> %s",
                     method,

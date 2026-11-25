@@ -49,7 +49,7 @@ export function useRecommendations<T>(key: string, load: (options: PersonalizedR
     const initial = capturePersonalizedScope();
     void (async () => {
       try {
-        const session = await dashboardSession();
+        const session = await dashboardSession(Boolean(settledKey.current && settledKey.current !== key));
         if (abort.signal.aborted || !isPersonalizedScopeCurrent(initial)) return;
         if (!session) { settledKey.current = key; setState({ data: null, dataKey: null, scope: initial, loading: false, signedIn: false, error: "" }); return; }
         const data = await dashboardValue(key, () => load({ scope: initial }));

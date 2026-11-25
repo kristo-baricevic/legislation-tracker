@@ -3,9 +3,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.legislation.enhancements.providers.anthropic import (
+    AnthropicEnhancementProvider,
+)
 from apps.legislation.enhancements.providers.base import ProviderError
-from apps.legislation.enhancements.providers.anthropic import AnthropicEnhancementProvider
-from apps.legislation.enhancements.schema import OUTPUT_SCHEMA
+
 from .test_enhancement_schema import _valid_output
 
 
@@ -77,17 +79,27 @@ def test_one_bounded_structured_request():
         timeout_seconds=90,
     )
 
-    assert factory.calls == [{"api_key": "sk-test-secret", "max_retries": 0, "timeout": 90}]
+    assert factory.calls == [
+        {"api_key": "sk-test-secret", "max_retries": 0, "timeout": 90}
+    ]
     assert len(messages.calls) == 1
     call = messages.calls[0]
     assert call["model"] == "claude-test-model"
     assert call["max_tokens"] == 8000  # LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS default-ish
     assert "system" in call
     assert call["messages"] == [
-        {"role": "user", "content": json.dumps(
-            {"bill": {"id": 4, "title": "Test Act"}, "source_packet": _request().request_envelope["source_packet"]},
-            sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-        )}
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "bill": {"id": 4, "title": "Test Act"},
+                    "source_packet": _request().request_envelope["source_packet"],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ),
+        }
     ]
     assert "tools" not in call
     assert "output_config" in call
@@ -100,7 +112,9 @@ def test_one_bounded_structured_request():
     assert result.usage.input_tokens == 120
     assert result.usage.output_tokens == 45
     assert result.usage.total_tokens == 165
-    conditions = call["output_config"]["format"]["schema"]["properties"]["obligations"]["items"]["properties"]["conditions"]
+    conditions = call["output_config"]["format"]["schema"]["properties"]["obligations"][
+        "items"
+    ]["properties"]["conditions"]
     assert {branch["type"] for branch in conditions["anyOf"]} == {"string", "null"}
     assert all("maxLength" not in branch for branch in conditions["anyOf"])
 
@@ -114,7 +128,9 @@ def test_multiple_text_blocks_concatenated():
     ]
     messages = FakeMessages(result=response)
     provider = AnthropicEnhancementProvider(client_factory=FakeClientFactory(messages))
-    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    result = provider.enhance_bill(
+        api_key="test", request=_request(), timeout_seconds=30
+    )
     assert result.output == _valid_output()
 
 
@@ -186,12 +202,12 @@ def test_timeout_one_attempt_outcome_unknown():
 def test_usage_and_resolved_model():
     messages = FakeMessages(result=_completed_response())
     provider = AnthropicEnhancementProvider(client_factory=FakeClientFactory(messages))
-    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    result = provider.enhance_bill(
+        api_key="test", request=_request(), timeout_seconds=30
+    )
     assert result.usage.input_tokens == 120
     assert result.usage.output_tokens == 45
     assert result.resolved_model == "claude-test-model-2026-08-01"
-
-
 
 
 def test_validate_credential():
@@ -199,7 +215,9 @@ def test_validate_credential():
     messages = FakeMessages(result=response)
     factory = FakeClientFactory(messages)
     provider = AnthropicEnhancementProvider(client_factory=factory)
-    check = provider.validate_credential(api_key="test", requested_model="m", timeout_seconds=30)
+    check = provider.validate_credential(
+        api_key="test", requested_model="m", timeout_seconds=30
+    )
     assert check.valid is True
     assert factory.calls[0]["max_retries"] == 0
     assert messages.calls[0]["max_tokens"] == 16

@@ -87,7 +87,7 @@ function Directory({query,topic,initial,onReady,controls}:{query:string;topic:st
 }
 
 export default function CommitteesPage(){
-  const controls = useDashboardBillTracking();
+  const controls = useDashboardBillTracking({ membershipOnly: true });
   const [directoryReady, setDirectoryReady] = useState(false);
   const firstPageLoaded = useCallback(() => setDirectoryReady(true), []);
   const [chamber,setChamber]=useState("");

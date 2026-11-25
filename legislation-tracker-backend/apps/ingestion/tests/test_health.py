@@ -34,7 +34,9 @@ def test_readiness_endpoint_reports_each_required_dependency(monkeypatch, settin
     }
 
 
-def test_readiness_endpoint_is_unavailable_when_a_dependency_fails(monkeypatch, settings):
+def test_readiness_endpoint_is_unavailable_when_a_dependency_fails(
+    monkeypatch, settings
+):
     settings.LLM_ENHANCEMENTS_ENABLED = False
     monkeypatch.setattr(health, "check_database", lambda: None)
     monkeypatch.setattr(

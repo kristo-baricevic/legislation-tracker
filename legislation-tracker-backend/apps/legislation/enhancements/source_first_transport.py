@@ -317,9 +317,9 @@ def prepare_transport(stage, payload):
             allowed_passages = list(
                 dict.fromkeys(unit["own_passage_ids"] + unit["context_passage_ids"])
             )
-            props["claims"]["items"]["properties"]["evidence_ids"]["items"]["enum"] = (
-                allowed_passages
-            )
+            props["claims"]["items"]["properties"]["evidence_ids"]["items"][
+                "enum"
+            ] = allowed_passages
             condition_key = f"condition_{unit['id']}"
             condition_schema = copy.deepcopy(schema["$defs"]["condition"])
             # Request-local IDs are not globally interchangeable: constrain
@@ -354,9 +354,9 @@ def prepare_transport(stage, payload):
             props["claims"]["items"]["properties"]["source_item_ids"]["items"][
                 "enum"
             ] = allowed
-            props["unresolved_items"]["items"]["properties"]["item_id"]["enum"] = (
-                allowed
-            )
+            props["unresolved_items"]["items"]["properties"]["item_id"][
+                "enum"
+            ] = allowed
             variants.append(variant)
         schema["properties"]["provisions"]["items"] = {"anyOf": variants}
         schema["$defs"]["money"] = copy.deepcopy(MONEY)

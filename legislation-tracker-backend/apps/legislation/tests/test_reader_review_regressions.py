@@ -188,8 +188,7 @@ def test_oversized_definition_does_not_discard_other_reader_items(length):
     text = (
         "SEC. 2. Definitions\nThe term eligible entity means—\n"
         "(1) an institution providing "
-        + "student services "
-        * (length // 17)
+        + "student services " * (length // 17)
         + ".\nSEC. 3. Grants\nThere is appropriated $5 million for rural grants.\n"
         "The Secretary shall publish a report."
     )
@@ -236,7 +235,9 @@ def test_long_composed_requirement_preserves_other_bill_items(repetitions):
     contract = extract(text)
     assert contract["schema_version"] == "2.1-legal-nlp"
     assert contract["financial_items"][0]["amount"] == "5000000.00"
-    assert any("publish annual accounts" in x["display_text"] for x in contract["requirements"])
+    assert any(
+        "publish annual accounts" in x["display_text"] for x in contract["requirements"]
+    )
     assert "reader_requirement_too_long" in contract["extraction"]["warnings"]
     assert "requirements" in contract["coverage_note"]
     assert "bill text" in contract["coverage_note"]
@@ -246,9 +247,16 @@ def test_long_composed_requirement_preserves_other_bill_items(repetitions):
 def test_requirement_display_overhead_is_included_in_length_limit(modality):
     claim = ExtractedClaim(
         "requirements",
-        {"actor": "The Secretary", "action": "publish " + "x" * 3982,
-         "modality": modality, "object": None, "conditions": []},
-        "Sec. 2", (), "reader.list.leaf.v1",
+        {
+            "actor": "The Secretary",
+            "action": "publish " + "x" * 3982,
+            "modality": modality,
+            "object": None,
+            "conditions": [],
+        },
+        "Sec. 2",
+        (),
+        "reader.list.leaf.v1",
     )
     rendered = _render_requirement(claim)
     assert isinstance(rendered, ExtractionWarning)

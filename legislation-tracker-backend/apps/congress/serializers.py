@@ -16,7 +16,9 @@ CHAMBER_CHOICES = ("house", "senate")
 
 class RepresentativeListQuerySerializer(PaginatedQuerySerializer):
     tracking = serializers.ChoiceField(choices=("tracked", "untracked"), required=False)
-    party = serializers.ChoiceField(choices=("D", "R", "I"), required=False, allow_blank=True)
+    party = serializers.ChoiceField(
+        choices=("D", "R", "I"), required=False, allow_blank=True
+    )
     search = serializers.CharField(required=False, allow_blank=True, max_length=200)
     state = serializers.RegexField(
         regex=r"^[A-Za-z]{2}$",
@@ -147,10 +149,14 @@ class CommitteeSerializer(serializers.ModelSerializer):
 class CommitteeDirectoryQuerySerializer(PaginatedQuerySerializer):
     topic_id = serializers.IntegerField(min_value=1, required=False)
     congress = serializers.IntegerField(min_value=1, required=False)
-    chamber = serializers.ChoiceField(choices=("house", "senate", "joint"), required=False)
+    chamber = serializers.ChoiceField(
+        choices=("house", "senate", "joint"), required=False
+    )
     search = serializers.CharField(required=False, allow_blank=True, max_length=200)
     member = serializers.CharField(required=False, allow_blank=True, max_length=200)
-    level = serializers.ChoiceField(choices=("committee", "subcommittee"), required=False)
+    level = serializers.ChoiceField(
+        choices=("committee", "subcommittee"), required=False
+    )
 
 
 class CommitteeMemberSerializer(serializers.ModelSerializer):
@@ -162,8 +168,12 @@ class CommitteeMemberSerializer(serializers.ModelSerializer):
 
 
 class CommitteeDirectorySerializer(CommitteeSerializer):
-    members = CommitteeMemberSerializer(source="directory_members", many=True, read_only=True)
-    parent_name = serializers.CharField(source="parent.name", read_only=True, default=None)
+    members = CommitteeMemberSerializer(
+        source="directory_members", many=True, read_only=True
+    )
+    parent_name = serializers.CharField(
+        source="parent.name", read_only=True, default=None
+    )
 
     class Meta(CommitteeSerializer.Meta):
         fields = CommitteeSerializer.Meta.fields + ["members", "parent_name"]

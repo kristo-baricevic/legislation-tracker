@@ -21,13 +21,31 @@ beforeEach(() => {
   navigation.query = "";
   if (!HTMLDialogElement.prototype.showModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value() {} });
   if (!HTMLDialogElement.prototype.close) Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value() {} });
-  vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (this: HTMLDialogElement) { this.setAttribute("open", ""); this.querySelector<HTMLElement>("[autofocus]")?.focus(); });
+  vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (this: HTMLDialogElement) { this.setAttribute("open", ""); (this.querySelector<HTMLElement>("[autofocus]") ?? this.querySelector<HTMLElement>("a[href],button"))?.focus(); });
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (this: HTMLDialogElement) { this.removeAttribute("open"); });
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const path = String(input);
-    const data = path.includes("/research/") ? { status: "partial", period: 2026, run: null, portrait: { url: "https://www.congress.gov/img/member/test.jpg", source: { url: "https://www.congress.gov", attribution: "Member portrait", fetched_at: "2026-10-10" } }, snapshot: null, biography: { text: biography.text, source: { url: biography.page_url, attribution: biography.attribution, license: biography.license, fetched_at: biography.fetched_at } } } : path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/vote-summary/") ? { scope: { congress: 119, chamber: null }, totals: { yes: 26, no: 1, present: 0, not_voting: 1, other: 0 }, topics: [{ id: 9, name: "Education", yes: 26, no: 1 }] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary: "Official bill summary", processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
+    const data = path.includes("/research/") ? { status: "partial", period: 2026, run: null, portrait: { url: "https://www.congress.gov/img/member/test.jpg", source: { url: "https://www.congress.gov", attribution: "Member portrait", fetched_at: "2026-10-10" } }, snapshot: null, biography: { text: biography.text, source: { url: biography.page_url, attribution: biography.attribution, license: biography.license, fetched_at: biography.fetched_at } } } : path.includes("/profile/") ? profile(path.includes("/2/") ? 2 : 1) : path.includes("/biography/") ? biography : path.includes("/sponsored-bills/") ? { count: 1, next: null, previous: null, results: [bill] } : path.includes("/vote-summary/") ? { scope: { congress: 119, chamber: null }, totals: { yes: 26, no: 1, present: 0, not_voting: 1, other: 0 }, topics: [{ id: 9, name: "Education", yes: 26, no: 1 }] } : path.includes("/voting-record/") ? { count: 1, next: null, previous: null, results: [vote], page_read_at: "2026-10-10T00:00:00Z", pagination_mode: "live_pages", coverage } : { ...bill, summary_preview: "Official bill summary", summary_has_more: false, summary_action_date: null, summary_last_updated_at: null, summary_source: null, summary_version_code: null, processing_status: "pending", sponsor: 1, source_api_id: null, documents: [], latest_contract: null, created_at: "2025-01-09T00:00:00Z", updated_at: "2025-01-09T00:00:00Z" };
     return new Response(JSON.stringify(data));
   }));
+});
+
+it("opens the profile with its link tooltip hidden until the link receives focus or hover", async () => {
+  render(page());
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("link", { name: "First Member" }));
+  const dialog = await screen.findByRole("dialog");
+  const close = within(dialog).getByRole("button", { name: "Close legislator profile" });
+  const link = within(dialog).getByRole("heading", { level: 2 }).querySelector("a")!;
+  expect(close).toHaveFocus();
+  expect(within(dialog).queryByRole("tooltip")).toBeNull();
+  await user.tab({ shift: true });
+  expect(link).toHaveFocus();
+  expect(within(dialog).getByRole("tooltip")).toHaveTextContent("Open the full representative page");
+  await user.tab();
+  expect(within(dialog).queryByRole("tooltip")).toBeNull();
+  await user.hover(link);
+  expect(within(dialog).getByRole("tooltip")).toHaveTextContent("Open the full representative page");
 });
 
 it.each(["loading", "error"])("bill Close remains usable while details are %s and supports reopening", async state => {
@@ -206,7 +224,7 @@ it("does not put a late response for one person into a new profile", async () =>
 });
 
 it("pairs the detail sponsor name and ID after a sponsor correction", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...bill, sponsor: 2, sponsor_name: "Corrected Sponsor", summary: null, documents: [] }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...bill, sponsor: 2, sponsor_name: "Corrected Sponsor", summary_preview: null, summary_has_more: false, summary_action_date: null, summary_last_updated_at: null, summary_source: null, summary_version_code: null, processing_status: "complete", source_api_id: null, congress_gov_url: null, latest_contract: null, created_at: "", updated_at: "", documents: [] }))));
   render(<ProfileProvider><BillDeckModal bill={bill} onClose={() => {}} /></ProfileProvider>);
   const modal = await screen.findByRole("dialog", { name: "Introduced legislation" });
   const corrected = await within(modal).findByRole("link", { name: "Corrected Sponsor" });
@@ -304,3 +322,32 @@ it("uses the current bill owner fallback after its row disappears", async () => 
   expect(fallback).toHaveBeenCalledOnce();
   expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/representatives/")).every(([, options]) => options?.signal?.aborted)).toBe(true);
  });
+
+it("rechecks completed research when Campaign funding opens and shows the new snapshot", async () => {
+  const originalFetch = global.fetch;
+  let snapshot = "old";
+  const reads: string[] = [];
+  const funding: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname.endsWith("/research/")) {
+      reads.push(snapshot);
+      return Response.json({ status: "succeeded", period: 2026, available_periods: [2026],
+        run: null, portrait: null, snapshot, biography: { text: "Completed biography", source: {} } });
+    }
+    if (url.searchParams.has("by_size")) {
+      const id = url.searchParams.get("snapshot")!;
+      funding.push(id);
+      return Response.json({ status: "available", total: "250", results: [{ label: id + " donations", amount: "250" }] });
+    }
+    return originalFetch(input, init);
+  }));
+  render(page());
+  await userEvent.click(screen.getByRole("link", { name: "First Member" }));
+  await screen.findByText("Completed biography");
+  snapshot = "new";
+  await userEvent.click(screen.getByRole("tab", { name: "Campaign funding" }));
+  expect(await screen.findByText("new donations")).toBeVisible();
+  expect(reads).toEqual(["old", "new"]);
+  expect(funding).toEqual(["new"]);
+});

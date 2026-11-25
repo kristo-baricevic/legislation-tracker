@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
 
 import httpx
-from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
-from .base import CredentialCheck, ProviderCapabilities, ProviderError, ProviderResult, ProviderUsage
 from . import harness
+from .base import (
+    CredentialCheck,
+    ProviderCapabilities,
+    ProviderError,
+    ProviderResult,
+    ProviderUsage,
+)
+from .session import delivery_client
 
 
 def _value(obj: Any, name: str, default=None):
@@ -52,8 +57,19 @@ def _mapped_error(error: Exception) -> ProviderError:
             retry_allowed=True,
             validation_code="provider_timeout",
         )
-    if (isinstance(error, (httpx.ReadError, httpx.WriteError, httpx.CloseError, httpx.RemoteProtocolError))
-            or "connection" in class_name or "protocol" in class_name):
+    if (
+        isinstance(
+            error,
+            (
+                httpx.ReadError,
+                httpx.WriteError,
+                httpx.CloseError,
+                httpx.RemoteProtocolError,
+            ),
+        )
+        or "connection" in class_name
+        or "protocol" in class_name
+    ):
         return ProviderError(
             "outcome_unknown",
             outcome_unknown=True,
@@ -142,6 +158,7 @@ class GeminiEnhancementProvider:
             retry_options=types.HttpRetryOptions(attempts=1),
         )
 
+    @delivery_client
     def _client(self, *, api_key: str, timeout_seconds: int):
         return self._client_factory(
             api_key=api_key,
@@ -161,7 +178,7 @@ class GeminiEnhancementProvider:
         http_options = self._http_options(timeout_seconds=timeout_seconds)
         try:
             models = getattr(client, "models", client)
-            response = models.generate_content(
+            models.generate_content(
                 model=requested_model,
                 contents="Reply with OK.",
                 config=types.GenerateContentConfig(
@@ -204,8 +221,12 @@ class GeminiEnhancementProvider:
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
         harness.ensure_citation_repair_fits(payload, request)
         return self._generate(
-            api_key=api_key, request=request, timeout_seconds=timeout_seconds,
-            input_payload=payload, instructions=REPAIR_INSTRUCTIONS, schema=REPAIR_SCHEMA,
+            api_key=api_key,
+            request=request,
+            timeout_seconds=timeout_seconds,
+            input_payload=payload,
+            instructions=REPAIR_INSTRUCTIONS,
+            schema=REPAIR_SCHEMA,
             schema_name="citation_repair_v1",
         )
 
@@ -306,20 +327,24 @@ class GeminiEnhancementProvider:
         usage = _usage(response)
         response_id = str(_value(response, "response_id", "") or "")
         resolved_model = str(
-            _value(response, "model_version", "")
-            or _value(response, "model", "")
-            or ""
+            _value(response, "model_version", "") or _value(response, "model", "") or ""
         )
 
         candidates = _value(response, "candidates", []) or []
         candidate = candidates[0] if candidates else None
-        finish_reason = _value(candidate, "finish_reason") if candidate is not None else None
+        finish_reason = (
+            _value(candidate, "finish_reason") if candidate is not None else None
+        )
         finish_reason_str = ""
         if finish_reason is not None:
             finish_reason_str = str(finish_reason).split(".")[-1].upper()
 
         prompt_feedback = _value(response, "prompt_feedback")
-        block_reason = _value(prompt_feedback, "block_reason") if prompt_feedback is not None else None
+        block_reason = (
+            _value(prompt_feedback, "block_reason")
+            if prompt_feedback is not None
+            else None
+        )
 
         if block_reason not in (None, "", "BLOCK_REASON_UNSPECIFIED"):
             raise ProviderError(
@@ -328,7 +353,14 @@ class GeminiEnhancementProvider:
                 response_id=response_id,
                 resolved_model=resolved_model,
             )
-        if finish_reason_str in {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "LANGUAGE"}:
+        if finish_reason_str in {
+            "SAFETY",
+            "RECITATION",
+            "BLOCKLIST",
+            "PROHIBITED_CONTENT",
+            "SPII",
+            "LANGUAGE",
+        }:
             raise ProviderError(
                 "content_refusal",
                 usage=usage,
@@ -355,7 +387,7 @@ class GeminiEnhancementProvider:
         parts = []
         if candidate is not None:
             content = _value(candidate, "content")
-            for part in (_value(content, "parts", []) or []):
+            for part in _value(content, "parts", []) or []:
                 text = _value(part, "text")
                 if isinstance(text, str) and not bool(_value(part, "thought", False)):
                     parts.append(text)
@@ -366,8 +398,16 @@ class GeminiEnhancementProvider:
                 output_text = fallback
 
         from ..private_diagnostics import capture_visible
-        capture_visible([{"instructions": instructions, "input": input_payload}], wire_schema,
-                        output_text, finish_reason_str, response_id, resolved_model, api_key)
+
+        capture_visible(
+            [{"instructions": instructions, "input": input_payload}],
+            wire_schema,
+            output_text,
+            finish_reason_str,
+            response_id,
+            resolved_model,
+            api_key,
+        )
         return harness.parse_json_output(
             output_text,
             usage=usage,

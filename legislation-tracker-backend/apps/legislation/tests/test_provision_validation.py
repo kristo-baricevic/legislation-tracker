@@ -22,12 +22,23 @@ def test_student_percentage_is_not_a_financial_percentage():
     assert not validate_provision(row, graph.units[0], graph)
 
 
-@pytest.mark.parametrize("detail", ["The details are not included in these assigned items.", "The text does not establish the contents of those referenced provisions."])
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "The details are not included in these assigned items.",
+        "The text does not establish the contents of those referenced provisions.",
+    ],
+)
 def test_generation_cannot_invent_source_availability_limitations(detail):
-    graph = build_source_graph("1", "IH", "SEC. 1. PAYMENT\nThe Secretary shall pay $100.")
+    graph = build_source_graph(
+        "1", "IH", "SEC. 1. PAYMENT\nThe Secretary shall pay $100."
+    )
     row = explanation(graph)
     row["details"] = [detail]
-    assert any(f.code == "source_availability_claim" and f.path == "explanations/1" for f in validate_provision(row, graph.units[0], graph))
+    assert any(
+        f.code == "source_availability_claim" and f.path == "explanations/1"
+        for f in validate_provision(row, graph.units[0], graph)
+    )
 
 
 @pytest.mark.parametrize(
@@ -510,9 +521,9 @@ def test_exact_condition_accepts_source_line_wrapping_but_not_changed_words():
     assert "condition_meaning_unverified" not in {
         f.code for f in validate_provision(row, graph.units[0], graph)
     }
-    row["claims"][0]["conditions"]["text"] = (
-        "only if evidence-based practices are optional."
-    )
+    row["claims"][0]["conditions"][
+        "text"
+    ] = "only if evidence-based practices are optional."
     assert "condition_meaning_unverified" in {
         f.code for f in validate_provision(row, graph.units[0], graph)
     }

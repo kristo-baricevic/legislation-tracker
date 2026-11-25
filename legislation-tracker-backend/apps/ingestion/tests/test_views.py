@@ -24,7 +24,9 @@ class FakeAsyncResult:
     id = "task-123"
 
 
-def authenticated_client(email="operator@example.com", *, is_staff=False, is_superuser=False):
+def authenticated_client(
+    email="operator@example.com", *, is_staff=False, is_superuser=False
+):
     user = get_user_model().objects.create_user(
         username=email,
         email=email,
@@ -207,7 +209,9 @@ def test_staff_can_list_dead_lettered_ingestion_work():
         error_message="Congress unavailable",
     )
 
-    response = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/failures/")
+    response = authenticated_client(is_staff=True, is_superuser=True).get(
+        "/api/ingestion/failures/"
+    )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -367,7 +371,9 @@ def test_staff_can_replay_a_dead_lettered_document_stage(monkeypatch):
         raising=False,
     )
 
-    listed = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/failures/")
+    listed = authenticated_client(is_staff=True, is_superuser=True).get(
+        "/api/ingestion/failures/"
+    )
     replayed = authenticated_client("replay-operator@example.com", is_staff=True).post(
         f"/api/ingestion/failures/{failure.id}/replay/",
         {},
@@ -407,7 +413,9 @@ def test_staff_can_replay_a_dead_lettered_contract_stage(monkeypatch):
         or FakeAsyncResult(),
     )
 
-    listed = authenticated_client(is_staff=True, is_superuser=True).get("/api/ingestion/failures/")
+    listed = authenticated_client(is_staff=True, is_superuser=True).get(
+        "/api/ingestion/failures/"
+    )
     replayed = authenticated_client(
         "contract-operator@example.com", is_staff=True
     ).post(
@@ -655,7 +663,9 @@ def test_stage_replay_remains_recoverable_when_the_web_process_stops_after_claim
     ],
 )
 def test_ingestion_endpoints_validate_integer_params(path, payload, error):
-    response = authenticated_client(is_staff=True, is_superuser=True).post(path, payload, format="json")
+    response = authenticated_client(is_staff=True, is_superuser=True).post(
+        path, payload, format="json"
+    )
 
     assert response.status_code == 400
     assert response.json() == {"error": error}

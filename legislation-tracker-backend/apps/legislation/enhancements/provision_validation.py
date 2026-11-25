@@ -143,9 +143,7 @@ def required_conditions(unit, graph):
                     scope = (
                         "section"
                         if len(ancestor.path) == 1
-                        else "subsection"
-                        if len(ancestor.path) == 2
-                        else "paragraph"
+                        else "subsection" if len(ancestor.path) == 2 else "paragraph"
                     )
                     for match in re.finditer(
                         r"\b(?:for purposes of|under|in|notwithstanding any other provision of)\s+this\s+"
@@ -276,8 +274,16 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
     has_conditions = bool(required_conditions(unit, graph))
     prose = " ".join([explanation["summary"], *explanation["details"]])
     for index, sentence in enumerate([explanation["summary"], *explanation["details"]]):
-        if re.search(r"\bassigned\s+(?:items|units|blocks|passages)\b|\btext\s+does\s+not\s+establish\s+the\s+contents\b", sentence, re.I):
-            add("source_availability_claim", path=f"explanations/{index}", message="Source availability is supplied by the server, not inferred by generation. Explain the actual rule and preserve its referenced qualifications; do not claim assigned items or supplied text omit provisions that may be elsewhere in the bill.")
+        if re.search(
+            r"\bassigned\s+(?:items|units|blocks|passages)\b|\btext\s+does\s+not\s+establish\s+the\s+contents\b",
+            sentence,
+            re.I,
+        ):
+            add(
+                "source_availability_claim",
+                path=f"explanations/{index}",
+                message="Source availability is supplied by the server, not inferred by generation. Explain the actual rule and preserve its referenced qualifications; do not claim assigned items or supplied text omit provisions that may be elsewhere in the bill.",
+            )
         if not re.search(r"[.!?][\"'’”)]*\s*$", sentence):
             add(
                 "reader_prose_incomplete",

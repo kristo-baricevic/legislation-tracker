@@ -1,6 +1,5 @@
 # ruff: noqa: F401, F811
 import pytest
-from apps.legislation.enhancements.service import confirmation_fingerprint
 from django.test import override_settings
 
 from apps.legislation.enhancements.providers.base import (
@@ -8,11 +7,13 @@ from apps.legislation.enhancements.providers.base import (
     ProviderResult,
     ProviderUsage,
 )
+from apps.legislation.enhancements.service import confirmation_fingerprint
 from apps.legislation.enhancements.source_packet import build_enhancement_preflight
 from apps.legislation.models import BillEnhancementAttempt
 from apps.legislation.tasks import run_bill_enhancement_attempt
 
 from .test_enhancement_service import (
+    _confirmation,
     enhancement_owner,
     enhancement_settings,
     source_bill,
@@ -25,6 +26,8 @@ from .test_enhancement_tasks import _pending_attempt
     "mode",
     [
         "success",
+        "confirmed_retry",
+        "confirmed_retry_mismatch",
         "unknown",
         "revoked",
         "source_changed",
@@ -45,7 +48,11 @@ def test_source_first_durable_dispatch(
         def generate_provisions(self, **kwargs):
             calls.append("generation")
             assert (
-                BillEnhancementStep.objects.get(attempt=attempt, step_index=0).status
+                BillEnhancementStep.objects.filter(
+                    attempt__enhancement_id=attempt.enhancement_id, step_index=0
+                )
+                .latest("attempt__sequence")
+                .status
                 == "dispatching"
             )
             if mode == "unknown":
@@ -59,6 +66,7 @@ def test_source_first_durable_dispatch(
                 )
             if mode == "model_limit_changed":
                 from django.conf import settings
+
                 settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = 2048
             if mode == "feature_disabled":
                 from django.conf import settings
@@ -109,6 +117,8 @@ def test_source_first_durable_dispatch(
 
         def generate_synopsis(self, **kwargs):
             calls.append("synopsis")
+            if mode.startswith("confirmed_retry") and calls.count("synopsis") == 1:
+                raise ProviderError("provider_request_rejected", retry_allowed=True)
             assert (
                 BillEnhancementStep.objects.get(attempt=attempt, step_index=0).status
                 == "succeeded"
@@ -129,7 +139,12 @@ def test_source_first_durable_dispatch(
                 "test",
             )
 
-    with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True, LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=8000):
+    with (
+        enhancement_settings,
+        override_settings(
+            LLM_SOURCE_FIRST_ENABLED=True, LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS=8000
+        ),
+    ):
         document = source_bill.documents.first()
         document.extracted_text = (
             "SEC. 1. REPORT\nThe Secretary shall publish a report within 90 days."
@@ -141,22 +156,56 @@ def test_source_first_durable_dispatch(
         attempt = _pending_attempt(enhancement_owner, source_bill)
         monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
         from unittest.mock import Mock
+
         from apps.legislation import tasks
         from apps.legislation.enhancements import source_first_preflight
+
         build_graph = Mock(wraps=source_first_preflight.build_source_graph)
         pack_plan = Mock(wraps=source_first_preflight._plan_built_graph)
         monkeypatch.setattr(source_first_preflight, "build_source_graph", build_graph)
         monkeypatch.setattr(source_first_preflight, "_plan_built_graph", pack_plan)
         if mode == "publication_source_changed":
             finish = tasks._finish_enhancement_attempt
+
             def change_before_publication(**kwargs):
-                source_bill.documents.update(extracted_text="SEC. 1. The Secretary must publish a different report.")
+                source_bill.documents.update(
+                    extracted_text="SEC. 1. The Secretary must publish a different report."
+                )
                 return finish(**kwargs)
-            monkeypatch.setattr(tasks, "_finish_enhancement_attempt", change_before_publication)
+
+            monkeypatch.setattr(
+                tasks, "_finish_enhancement_attempt", change_before_publication
+            )
         outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
         attempt.refresh_from_db()
         attempt.enhancement.refresh_from_db()
-        if mode == "success":
+        if mode.startswith("confirmed_retry"):
+            from apps.legislation.enhancements.service import retry_enhancement_attempt
+
+            assert outcome["status"] == "failed"
+            assert attempt.enhancement.published_attempt_id is None
+            if mode == "confirmed_retry_mismatch":
+                BillEnhancementStep.objects.filter(
+                    attempt=attempt, step_index=0
+                ).update(request_fingerprint="different")
+            second = retry_enhancement_attempt(
+                user=enhancement_owner,
+                bill=source_bill,
+                enhancement_id=attempt.enhancement_id,
+                confirmed=_confirmation(source_bill, attempt.credential),
+            ).attempt
+            assert (
+                run_bill_enhancement_attempt(second.pk, second.dispatch_token)["status"]
+                == "succeeded"
+            )
+            second.refresh_from_db()
+            if mode == "confirmed_retry_mismatch":
+                assert second.total_tokens == 30
+                assert calls == ["generation", "synopsis", "generation", "synopsis"]
+            else:
+                assert second.total_tokens == 10
+                assert calls == ["generation", "synopsis", "synopsis"]
+        elif mode == "success":
             assert outcome["status"] == "succeeded"
             assert attempt.enhancement.published_attempt_id == attempt.id
             assert attempt.enhancement.result_completeness == "complete"
@@ -166,7 +215,11 @@ def test_source_first_durable_dispatch(
             pack_plan.assert_called_once()
         else:
             assert outcome["status"] != "succeeded"
-            assert calls == (["generation", "synopsis"] if mode == "publication_source_changed" else ["generation"])
+            assert calls == (
+                ["generation", "synopsis"]
+                if mode == "publication_source_changed"
+                else ["generation"]
+            )
             assert attempt.enhancement.published_attempt_id is None
         assert (
             run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)["status"]
@@ -176,18 +229,31 @@ def test_source_first_durable_dispatch(
 
 @pytest.mark.django_db
 def test_source_first_reuse_rechecks_stored_xml_without_realigning(
-        source_bill, enhancement_owner, enhancement_settings, settings, tmp_path, monkeypatch):
+    source_bill,
+    enhancement_owner,
+    enhancement_settings,
+    settings,
+    tmp_path,
+    monkeypatch,
+):
     from unittest.mock import Mock
+
     from apps.ingestion.document_download import extract_document_text
     from apps.legislation.enhancements import xml_sections
     from apps.legislation.tasks import _worker_preflight
 
-    settings.STORAGES = {"default": {"BACKEND": "django.core.files.storage.FileSystemStorage",
-                                     "OPTIONS": {"location": tmp_path}}}
+    settings.STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": tmp_path},
+        }
+    }
     raw = b'<bill><legis-body><section id="one"><enum>1.</enum><text>The Secretary shall publish a report.</text></section></legis-body></bill>'
     doc = source_bill.documents.get()
     doc.object_storage_key, doc.content_hash = "bill.xml", ""
-    doc.extracted_text = extract_document_text(raw, "application/xml", doc.object_storage_key)
+    doc.extracted_text = extract_document_text(
+        raw, "application/xml", doc.object_storage_key
+    )
     doc.save()
     xml = tmp_path / doc.object_storage_key
     xml.write_bytes(raw)
@@ -200,9 +266,15 @@ def test_source_first_reuse_rechecks_stored_xml_without_realigning(
         assert _worker_preflight(attempt, cached_preflight=prepared)[0] is prepared
         align.assert_called_once()
         xml.write_bytes(raw.replace(b'id="one"', b'id="two"'))
-        assert _worker_preflight(attempt, cached_preflight=prepared)[2] == "source_unavailable"
+        assert (
+            _worker_preflight(attempt, cached_preflight=prepared)[2]
+            == "source_unavailable"
+        )
         xml.unlink()
-        assert _worker_preflight(attempt, cached_preflight=prepared)[2] == "source_unavailable"
+        assert (
+            _worker_preflight(attempt, cached_preflight=prepared)[2]
+            == "source_unavailable"
+        )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -291,17 +363,25 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
         monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
         if rerun:
             from rest_framework.test import APIClient
+
             client = APIClient()
             client.force_authenticate(enhancement_owner)
             url = f"/api/bills/{source_bill.pk}/enhancements/"
-            keys = ("source_fingerprint", "request_fingerprint", "credential_revision", "rerun_after")
+            keys = (
+                "source_fingerprint",
+                "request_fingerprint",
+                "credential_revision",
+                "rerun_after",
+            )
             phase[0] = 1
             run_bill_enhancement_attempt(first.pk, first.dispatch_token)
             published = first.enhancement_id
             estimate = client.get(url + "estimate/?rerun=1").data
             created = client.post(url, {k: estimate[k] for k in keys}, format="json")
             assert created.status_code == 202
-            first = BillEnhancementAttempt.objects.get(enhancement_id=created.data["id"])
+            first = BillEnhancementAttempt.objects.get(
+                enhancement_id=created.data["id"]
+            )
             phase[0] = 0
         run_bill_enhancement_attempt(first.pk, first.dispatch_token)
         first.refresh_from_db()
@@ -311,32 +391,66 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
         prior = enhancement.result_json
         if rerun:
             latest = client.get(url + "latest/").data
-            assert (latest["id"], latest["active_reader"]["id"]) == (enhancement.pk, published)
+            assert (latest["id"], latest["active_reader"]["id"]) == (
+                enhancement.pk,
+                published,
+            )
             estimate = client.get(url + "estimate/").data
             assert estimate["matching_enhancement"]["id"] == enhancement.pk
         preflight = build_enhancement_preflight(source_bill, reuse_result=prior)
+        confirmed = {
+            "source_fingerprint": preflight.source_fingerprint,
+            "request_fingerprint": confirmation_fingerprint(
+                preflight, first.credential, enhancement.rerun_after
+            ),
+            **({"rerun_after": published} if rerun else {}),
+            "credential_revision": first.credential_revision,
+        }
+        if not rerun:
+            from apps.legislation.enhancements.service import EnhancementServiceError
+
+            original = doc.extracted_text
+            doc.extracted_text = original.replace(
+                "publish a report", "publish a notice"
+            )
+            doc.save()
+            with pytest.raises(EnhancementServiceError) as changed:
+                retry_enhancement_attempt(
+                    user=enhancement_owner,
+                    bill=source_bill,
+                    enhancement_id=enhancement.pk,
+                    confirmed=confirmed,
+                )
+            assert (changed.value.code, changed.value.http_status) == (
+                "preflight_changed",
+                409,
+            )
+            assert enhancement.attempts.count() == 1
+            doc.extracted_text = original
+            doc.save()
         second = retry_enhancement_attempt(
             user=enhancement_owner,
             bill=source_bill,
             enhancement_id=enhancement.pk,
-            confirmed={
-                "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": confirmation_fingerprint(preflight, first.credential, enhancement.rerun_after),
-                **({"rerun_after": published} if rerun else {}),
-                "credential_revision": first.credential_revision,
-            },
+            confirmed=confirmed,
         ).attempt
         if rerun:
-            assert estimate["request_fingerprint"] == confirmation_fingerprint(preflight, first.credential, published)
+            assert estimate["request_fingerprint"] == confirmation_fingerprint(
+                preflight, first.credential, published
+            )
             assert second.reused_result_json == prior
         from apps.legislation.tasks import _worker_preflight
+
         prepared, _, failure = _worker_preflight(second)
         assert failure is None
         assert _worker_preflight(second, cached_preflight=prepared)[0] is prepared
         # A checkpoint reloads the attempt. Clearing the partial result changes
         # which units a fresh plan would dispatch under the prior confirmation.
         second.reused_result_json = None
-        assert _worker_preflight(second, cached_preflight=prepared)[2] == "source_unavailable"
+        assert (
+            _worker_preflight(second, cached_preflight=prepared)[2]
+            == "source_unavailable"
+        )
         phase[0] = 1
         run_bill_enhancement_attempt(second.pk, second.dispatch_token)
         enhancement.refresh_from_db()

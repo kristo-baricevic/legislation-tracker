@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
@@ -23,7 +24,7 @@ it("keeps the summary visible and preserves money filters across keyboard tab sw
 
 it("opens numbered evidence and dismisses it with Escape or an outside click", async () => {
   const user = userEvent.setup();
-  render(<><button>Outside</button><SourcePopover number={2}><blockquote>Exact legal text</blockquote><a href="/documents/4?start=10&end=30">Read in bill</a></SourcePopover></>);
+  render(<><button>Outside</button><SourcePopover number={2}><blockquote>Exact legal text</blockquote><Link href="/documents/4?start=10&end=30">Read in bill</Link></SourcePopover></>);
   const trigger = screen.getByRole("button", { name: "Source 2" });
   await user.click(trigger);
   expect(screen.getByRole("dialog")).toHaveTextContent("Exact legal text");
@@ -53,7 +54,7 @@ it("keeps parent glossary evidence open while a nested source is used", async ()
 
 it("returns keyboard navigation to the citation rather than the end of the document", async () => {
   const user = userEvent.setup();
-  render(<><SourcePopover><a href="#text">Read full source</a></SourcePopover><button>Following action</button></>);
+  render(<><SourcePopover><Link href="#text">Read full source</Link></SourcePopover><button>Following action</button></>);
   await user.click(screen.getByRole("button", { name: "Source 1" }));
   await user.tab(); // close button
   await user.tab(); // source link
