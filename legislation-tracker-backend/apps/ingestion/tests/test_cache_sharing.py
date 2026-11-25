@@ -55,7 +55,8 @@ from django.conf import settings
 import os
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings.test'
 django.setup()
-settings.CACHES = {{'default': {{'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': '{location}', 'KEY_PREFIX': '{cache_prefix}'}}}}
+from config.settings.base import CACHES as production_caches
+settings.CACHES = {{'congress_coordination': {{**production_caches["congress_coordination"], "LOCATION": "{location}", "KEY_PREFIX": "{cache_prefix}"}}, 'default': {{'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': '{location}', 'KEY_PREFIX': '{cache_prefix}'}}}}
 """
     writer = prefix + """
 from django.core.management import call_command

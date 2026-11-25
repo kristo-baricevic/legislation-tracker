@@ -15,6 +15,7 @@ CACHES = {
         "LOCATION": "legislation-tracker-e2e",
     }
 }
+CACHES["congress_coordination"] = CACHES["default"]
 CELERY_BROKER_URL = "filesystem://"
 CELERY_RESULT_BACKEND = "cache+memory://"
 CELERY_BROKER_TRANSPORT_OPTIONS = {

@@ -99,6 +99,11 @@ CACHES = {
     }
 }
 
+CACHES["congress_coordination"] = {
+    **CACHES["default"],
+    "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 1},
+}
+
 # Celery
 CELERY_BROKER_URL = env("CELERY_BROKER_URL") or REDIS_URL
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL

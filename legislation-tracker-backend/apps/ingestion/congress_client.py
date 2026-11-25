@@ -16,6 +16,8 @@ import requests
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from django.conf import settings
+from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from apps.provider_requests import total_request_deadline
 
@@ -124,13 +126,21 @@ def _request(method, path, params=None):
         )
     if api_key:
         params.setdefault("api_key", api_key)
-    from .congress_cooldown import cooldown_key, defer_requests, wait_for_slot
+    from .congress_cooldown import (
+        COORDINATION_TIMEOUT_SECONDS,
+        cooldown_key,
+        defer_requests,
+        wait_for_slot,
+    )
 
     key = cooldown_key(params.get("api_key", ""))
-    from redis.exceptions import RedisError
 
     try:
-        remaining = wait_for_slot(key)
+        with total_request_deadline(
+            min(COORDINATION_TIMEOUT_SECONDS, CONGRESS_API_TOTAL_TIMEOUT_SECONDS),
+            error_factory=lambda: RedisTimeoutError("Congress coordination timed out"),
+        ):
+            remaining = wait_for_slot(key)
     except RedisError:
         raise CongressAPIError(
             "Congress request coordination unavailable",
@@ -206,7 +216,7 @@ def _request(method, path, params=None):
                                 else max(1, retry_after_seconds)
                             ),
                         )
-                    except RedisError:
+                    except (RedisError, CongressAPIError):
                         logger.warning("Unable to share Congress API cooldown")
                 logger.error(
                     "Congress API error: %s %s -> %s",

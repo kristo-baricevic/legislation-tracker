@@ -8,6 +8,7 @@ import time
 from django.core.cache import caches
 from django.core.cache.backends.redis import RedisCache
 
+COORDINATION_TIMEOUT_SECONDS = 3
 _local_lock = threading.Lock()
 
 
@@ -17,11 +18,11 @@ def cooldown_key(credential):
 
 def wait_for_slot(key):
     """Space starts across production workers, returning any provider cooldown."""
-    cache = caches["default"]
+    cache = caches["congress_coordination"]
     if not isinstance(cache, RedisCache):
         return max(0, math.ceil((cache.get(key) or 0) - time.time()))
     client = cache._cache.get_client(write=True)
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + COORDINATION_TIMEOUT_SECONDS
     while True:
         # Check the provider's cooldown and claim the next 300 ms slot together.
         cooldown, wait = client.eval(
@@ -41,7 +42,7 @@ def wait_for_slot(key):
 
 
 def defer_requests(key, seconds):
-    cache = caches["default"]
+    cache = caches["congress_coordination"]
     if isinstance(cache, RedisCache):
         # Compare and extend atomically on the primary. A late short 429 must
         # never release another worker's longer cooldown.
