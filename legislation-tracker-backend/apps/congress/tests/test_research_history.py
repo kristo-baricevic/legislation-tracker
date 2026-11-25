@@ -97,7 +97,7 @@ def test_default_research_repairs_selected_cycle_missing_outside_scan(history_sc
     assert again.data['id'] == response.data['id']
 
 
-@pytest.mark.parametrize('failure', ['failed', 'dead', 'needs_review'])
+@pytest.mark.parametrize('failure', ['failed', 'dead', 'succeeded_work', 'needs_review'])
 def test_all_years_retains_failed_period_and_retry_clears_failure(history_scope, failure):
     from rest_framework.test import APIClient
     rep, user = history_scope
@@ -108,8 +108,8 @@ def test_all_years_retains_failed_period_and_retry_clears_failure(history_scope,
     for category in ['communication', 'electioneering']:
         OutsideSpendingScan.objects.create(snapshot=snapshot, candidate_id='S6IL00151', category=category, complete=True)
     old = request_research(rep.pk, 2020, user.pk, include_history=False)
-    if failure == 'dead':
-        old.work_item.status = 'dead'
+    if failure in {'dead', 'succeeded_work'}:
+        old.work_item.status = 'dead' if failure == 'dead' else 'succeeded'
         old.work_item.save()
     else:
         old.status = failure
@@ -120,6 +120,8 @@ def test_all_years_retains_failed_period_and_retry_clears_failure(history_scope,
     assert response['status'] == 'partial'
     assert response['failed_periods'] == [2020]
     assert response['support'] == '0'  # Keep successfully collected totals visible.
+    if failure == 'succeeded_work':
+        assert client.get(f'/api/representatives/{rep.pk}/research/?period=2020').data['status'] == 'failed'
     request_research(rep.pk, 2026, user.pk, refresh=False)
     run_history(rep)
     response = client.get(url).data

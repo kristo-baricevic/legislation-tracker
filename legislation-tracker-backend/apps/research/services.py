@@ -26,7 +26,7 @@ def _request_period(representative_id, period, user_id, *, refresh, finance_only
     validate_period(period)
     with transaction.atomic():
         Representative.objects.select_for_update().get(pk=representative_id)
-        ResearchRun.objects.filter(representative_id=representative_id, period=period, status__in=["queued", "running"], work_item__status="dead").update(status="failed", finished_at=timezone.now())
+        ResearchRun.objects.filter(representative_id=representative_id, period=period, status__in=["queued", "running"], work_item__status__in=ResearchRun.terminal_work_statuses).update(status="failed", finished_at=timezone.now())
         existing = ResearchRun.objects.filter(representative_id=representative_id, period=period, status__in=["queued", "running"]).first()
         if existing:
             return existing

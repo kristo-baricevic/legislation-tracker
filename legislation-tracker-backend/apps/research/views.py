@@ -83,10 +83,8 @@ def parameters(request, serializer=ResearchQuery):
 def run_data(run):
     if not run:
         return None
-    status = run.status
+    status = run.effective_status
     work = run.work_item
-    if status in {"running", "queued"} and work and work.status == "dead":
-        status = "failed"
     return {"id": str(run.pk), "status": status, "sections": run.sections, "created_at": run.created_at, "finished_at": run.finished_at, "retry_at": work.available_at if work and work.status == "pending" else None, "error": "Research failed. You can retry." if status == "failed" else None}
 
 
@@ -97,7 +95,7 @@ def source_data(source):
 def funding_periods(rep):
     latest_run = ResearchRun.objects.filter(representative=rep, period=OuterRef("period")).order_by("-created_at").values("pk")[:1]
     snapshots = FinanceSnapshot.objects.filter(representative=rep, invalidated=False).filter(
-        Q(active=True) | (Q(run_id=Subquery(latest_run), published_at__isnull=True, run__status__in=["queued", "running"]) & ~Q(run__work_item__status="dead"))
+        Q(active=True) | (Q(run_id=Subquery(latest_run), published_at__isnull=True, run__status__in=["queued", "running"]) & ~Q(run__work_item__status__in=ResearchRun.terminal_work_statuses))
     ).prefetch_related("checkpoints")
     periods = set(discover_periods(rep))
     for snapshot in snapshots:
@@ -270,7 +268,7 @@ class OutsideSpendingView(APIView):
             runs = [run for run in runs if in_scope(run.period)]
             periods = {period for period in periods if in_scope(period)}
         for run in runs:
-            if (run.work_item and run.work_item.status == 'dead') or run.status in {'failed', 'needs_review'}:
+            if (run.work_item and run.work_item.status == 'dead') or run.effective_status in {'failed', 'needs_review'}:
                 failed_periods.add(run.period)
             elif run.status in {'queued', 'running'}:
                 pending_periods.add(run.period)
