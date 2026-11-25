@@ -580,9 +580,13 @@ def retain_missing_financial_rules(review, sources):
                 a < right and b > left for a, b in covered for left, right in ranges
             ):
                 continue
-            fragments, quotes = [], []
+            # Keep recovered rows within their actual owned sources. Combining
+            # several owners into one row would assign only the first owner's
+            # deferred conditions and could make one immutable row unbounded.
+            parts = {}
             for left, right in ranges:
                 cursor = left
+                touched = []
                 for scan in scans.values():
                     offset = scan["start_char"]
                     if scan["end_char"] <= left or offset >= right:
@@ -595,32 +599,60 @@ def retain_missing_financial_rules(review, sources):
                                 raise output_error(
                                     "reader_coverage_incomplete", ["financial_items"]
                                 )
-                            fragments.append(passage["text"][a - offset : b - offset])
+                            part = parts.setdefault(
+                                scan["source_ref"], {"fragments": [], "quotes": []}
+                            )
+                            if scan["source_ref"] not in touched:
+                                touched.append(scan["source_ref"])
+                            part["fragments"].append(
+                                passage["text"][a - offset : b - offset]
+                            )
                             quote = {
                                 "source_ref": scan["source_ref"],
                                 "quote": passage["text"],
                             }
-                            if quote not in quotes:
-                                quotes.append(quote)
+                            if quote not in part["quotes"]:
+                                part["quotes"].append(quote)
                             cursor = b
                         offset = end
                 if cursor != right:
                     raise output_error(
                         "reader_coverage_incomplete", ["financial_items"]
                     )
-                fragments.append(" ")
+                for ref in touched:
+                    parts[ref]["fragments"].append(" ")
             item = target["facts"]["item"]
-            review["financial_items"].append(
-                {
-                    "text": "".join(fragments).strip(),
-                    "source_quotes": quotes,
-                    "label": (item.get("financial_action") or "Financial rule")
-                    .replace("_", " ")
-                    .capitalize(),
-                    "amount_display": "See provision",
-                    "fiscal_years": [],
-                }
-            )
+            for part in parts.values():
+                review["financial_items"].append(
+                    {
+                        "text": "".join(part["fragments"]).strip(),
+                        "source_quotes": part["quotes"],
+                        "label": (item.get("financial_action") or "Financial rule")
+                        .replace("_", " ")
+                        .capitalize(),
+                        "amount_display": "See provision",
+                        "fiscal_years": [],
+                    }
+                )
+
+
+def retained_financial_indices(items, sources):
+    """Identify oversized rows reproduced exactly from known source provisions."""
+    oversized = [
+        item
+        for item in items
+        if len(item["text"]) > 1600 or len(item["source_quotes"]) > 24
+    ]
+    if not oversized:
+        return set()
+    # Rebuild independently of the other displayed rows. Another recovered
+    # owner may cover a different part of the same known financial target.
+    reconstruction = {"financial_items": []}
+    retain_missing_financial_rules(reconstruction, sources)
+    recovered = reconstruction["financial_items"]
+    return {
+        i for i, item in enumerate(items) if item in oversized and item in recovered
+    }
 
 
 def validate_source_review(review, sources):
@@ -650,13 +682,14 @@ def validate_source_review(review, sources):
     if set(review) != fields:
         raise output_error("reader_target_invalid", ["source_review"])
     reconciled = False
+    reconciled_retained = set()
     if mapped and (
         "dependency_review" in review
         or any(s.get("deferred_context_source_refs") for s in scan_sources)
     ):
         from .reader_reconciliation import validate_reconciliation
 
-        validate_reconciliation(review, scan_sources)
+        reconciled_retained = validate_reconciliation(review, scan_sources)
         reconciled = True
     # Revalidate the stored prose shape and every server-resolved citation.
     for category in (
@@ -684,24 +717,10 @@ def validate_source_review(review, sources):
                     "reader_coverage_incomplete", ["source_review", "policy_changes"]
                 )
     # Revalidate every stored inventory, including pre-policy results.
-    oversized = [
-        item
-        for item in review["financial_items"]
-        if len(item["text"]) > 1600 or len(item["source_quotes"]) > 24
-    ]
-    retained_indices = []
-    if oversized:
-        reconstruction = {
-            "financial_items": [
-                item for item in review["financial_items"] if item not in oversized
-            ]
-        }
-        start = len(reconstruction["financial_items"])
-        retain_missing_financial_rules(reconstruction, sources)
-        recovered = reconstruction["financial_items"][start:]
-        retained_indices = [
-            i for i, item in enumerate(review["financial_items"]) if item in recovered
-        ]
+    retained_indices = (
+        retained_financial_indices(review["financial_items"], sources)
+        | reconciled_retained
+    )
     wire = copy.deepcopy(
         {
             k: v

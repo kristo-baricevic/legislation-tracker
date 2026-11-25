@@ -7,6 +7,7 @@ import re
 from .source_packet import canonical_json_bytes
 
 VALIDATOR_VERSION = 2
+DEPENDENCY_TRANSPORT_VERSION = 2
 
 
 def remap(value, references):
@@ -21,7 +22,13 @@ def remap(value, references):
     return value
 
 
-def call_identity(request, *, execution_version=3, adapter="existing"):
+def call_identity(
+    request,
+    *,
+    execution_version=3,
+    adapter="existing",
+    dependency_transport_version=DEPENDENCY_TRANSPORT_VERSION,
+):
     references = {}
     envelope = copy.deepcopy(request.request_envelope)
     planning_fields = {
@@ -64,6 +71,11 @@ def call_identity(request, *, execution_version=3, adapter="existing"):
         "provider": request.provider,
         "reasoning": request.reasoning_effort,
     }
+    if envelope.get("dependency_review") and dependency_transport_version != 1:
+        # These envelopes already contained the right schema when adapters still
+        # sent the legacy one. Invalidate only that transport's cached failures;
+        # retain the exact map-call identity and its reusable validated facts.
+        key["dependency_transport_version"] = dependency_transport_version
     if adapter != "existing":
         key["adapter"] = adapter
     return hashlib.sha256(canonical_json_bytes(key)).hexdigest(), references

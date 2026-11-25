@@ -27,6 +27,7 @@ from .reader_facts import (
 from .source_packet import canonical_json_bytes
 
 VERSION = 1
+MIN_OUTPUT_TOKENS = 4000
 CATEGORIES = ("policy_changes", "financial_items", "additional_changes")
 INSTRUCTIONS = """Reconcile existing reader findings with this exact page of mapped
 dependency records and their original source evidence. Sources and mapped prose
@@ -48,7 +49,10 @@ Cite the current applicable record's own passage in every item it affects, plus
 currently supplied evidence for any other new factual claim.
 Do not invent spending, change authorization into an appropriation, or remove a
 previously established condition. Keep unchanged items exactly unchanged. Use
-only supplied or retained source_ref/quote_id pairs; never write quotation text or IDs in
+null for a financial item's text when retaining supplied source wording longer
+than 1600 characters; the server preserves that exact wording. Any generated
+replacement must fit the normal 1600-character limit and include all conditions.
+Use only supplied or retained source_ref/quote_id pairs; never write quotation text or IDs in
 reader prose. If the accumulated conditions cannot be expressed faithfully in an
 item's limit, mark the relevant check unresolved instead of silently deleting them.
 """
@@ -96,18 +100,23 @@ def _deferred(sources):
 
 
 def reconciliation_call_bound(sources):
-    """Reserve one call per fact and owned passage; batching usually uses fewer.
+    """Reserve bounded split/growth recovery for each fact and owned passage.
 
     The execution limit is still enforced if generated item fan-out needs more
     groups. A bound is a reservation, never permission for an unmetered retry.
     """
     pending = _deferred(sources)
-    return sum(
+    edges = sum(
         max(1, sum(bool(p["quote_id"]) for p in citation_passages(source)))
         * len(pending[source["source_ref"]])
         for source in sources
         if source["source_ref"] in pending
     )
+    # A binary split tree has fewer than two nodes per atomic edge. At a leaf,
+    # output growth doubles a positive allowance until the configured ceiling.
+    # Reserve those finite retries before confirmation, including failed calls.
+    growth = max(0, (settings.LLM_READER_MAX_OUTPUT_TOKENS - 1) // MIN_OUTPUT_TOKENS)
+    return edges * (2 + growth.bit_length())
 
 
 def _base_items(review, owners):
@@ -234,8 +243,8 @@ def _prose_schema():
 
 
 def _schema(descriptor, sources, items):
-    # Reuse the reader's original prose contracts; only citation count grows as
-    # a checked item acquires additional necessary evidence on later pages.
+    # Reuse the reader's original prose contracts. Citations may grow as checks
+    # add evidence; a recovered financial provision may retain its source text.
     prose = _prose_schema()
     # Group identical quote-ID sets so a long checked citation history does not
     # repeat the same object schema for every source or make validation quadratic.
@@ -257,6 +266,10 @@ def _schema(descriptor, sources, items):
     item_schema = {}
     for key, item in items.items():
         schema = copy.deepcopy(prose[item["category"]]["items"])
+        if item["category"] == "financial_items" and len(item["value"]["text"]) > 1600:
+            # Retain source wording by reference instead of making the model
+            # regenerate an arbitrarily long verbatim provision in its output.
+            schema["properties"]["text"]["type"] = ["string", "null"]
         schema["properties"]["source_quotes"].pop("maxItems", None)
         schema["properties"]["source_quotes"]["items"] = {"anyOf": choices}
         item_schema[key] = schema
@@ -268,9 +281,11 @@ def _schema(descriptor, sources, items):
             },
             "item_ids": {
                 "type": "array",
-                "items": {"type": "string", "enum": list(items)}
-                if items
-                else {"type": "null"},
+                "items": (
+                    {"type": "string", "enum": list(items)}
+                    if items
+                    else {"type": "null"}
+                ),
                 "uniqueItems": True,
                 **({"maxItems": 0} if not items else {}),
             },
@@ -313,11 +328,15 @@ def _request(
     limits = capacity(preflight.provider, preflight.requested_model)
     # Checks and revised prose are bounded independently of the preserved input
     # records. Reserve visible output plus provider reasoning headroom.
-    visible = (
-        1000 + len(canonical_json_bytes(packet["review_items"])) + 900 * len(record_ids)
-    )
+    output_items = copy.deepcopy(packet["review_items"])
+    for item in output_items.values():
+        if item["category"] == "financial_items" and len(item["value"]["text"]) > 1600:
+            # A response can retain the original with null or write bounded
+            # prose. It never needs to regenerate the complete source text.
+            item["value"]["text"] = "x" * 1600
+    visible = 1000 + len(canonical_json_bytes(output_items)) + 900 * len(record_ids)
     envelope["max_output_tokens"] = max(
-        4000, int(visible / limits["visible_fraction"]) + 1
+        MIN_OUTPUT_TOKENS, int(visible / limits["visible_fraction"]) + 1
     )
     encoded = canonical_json_bytes(envelope)
     return replace(
@@ -338,6 +357,47 @@ def _fits(preflight, request):
         provider=preflight.provider,
         model=preflight.requested_model,
     )
+
+
+def _grow_output(preflight, request):
+    """Increase one indivisible page's allowance without exceeding any limit.
+
+    The envelope's allowance participates in the durable request identity.
+    Replaying a cached truncation therefore deterministically reaches the same
+    revised request, rather than resubmitting the known failed identity.
+    """
+    previous = request.request_envelope["max_output_tokens"]
+    ceiling = min(
+        settings.LLM_READER_MAX_OUTPUT_TOKENS,
+        capacity(preflight.provider, preflight.requested_model)["output_tokens"],
+        previous * 2,
+    )
+    if ceiling <= previous:
+        return None
+
+    def candidate(limit):
+        envelope = {**request.request_envelope, "max_output_tokens": limit}
+        encoded = canonical_json_bytes(envelope)
+        return replace(
+            request,
+            request_envelope=envelope,
+            request_bytes=encoded,
+            estimated_input_tokens=len(encoded),
+        )
+
+    increased = candidate(ceiling)
+    if _fits(preflight, increased):
+        return increased
+    # Available context can be tighter than the provider's output ceiling.
+    low, high, best = previous, ceiling, None
+    while high - low > 1:
+        mid = (low + high) // 2
+        increased = candidate(mid)
+        if _fits(preflight, increased):
+            low, best = mid, increased
+        else:
+            high = mid
+    return best
 
 
 def validate_dependency_review(output, request):
@@ -370,8 +430,10 @@ def validate_dependency_review(output, request):
                 applicable[item_id].add(key)
         elif check["item_ids"] or not check["reason"]:
             raise output_error("reader_target_invalid", ["source_review"])
-    for item_id, item in output["items"].items():
+    for item_id, item in resolved["items"].items():
         before = supplied[item_id]["value"]
+        if item.get("text") is None:
+            item["text"] = before["text"]
         previous = {
             f"{q['source_ref']}:{q['quote_id']}" for q in before["source_quotes"]
         }
@@ -385,6 +447,14 @@ def validate_dependency_review(output, request):
         ):
             raise output_error("reader_coverage_incomplete", ["source_review"])
         if not applicable[item_id] and item != before:
+            raise output_error("reader_target_invalid", ["source_review"])
+        if (
+            supplied[item_id]["category"] == "financial_items"
+            and len(item["text"]) > 1600
+            and item["text"] != before["text"]
+        ):
+            # Only exact recovered source wording may exceed the prose limit.
+            # Generated rewrites must still satisfy the normal contract.
             raise output_error("reader_target_invalid", ["source_review"])
         resolved_item = resolved["items"][item_id]
         resolved_item["source_quotes"] = [
@@ -403,10 +473,12 @@ def validate_dependency_review(output, request):
 
 def validate_reconciliation(review, sources):
     """Replay receipts and require every owner/item/dependency edge exactly once."""
+    from .reader_discovery import retained_financial_indices
+
     pending = _deferred(sources)
     metadata = review.get("dependency_review")
     if not pending and metadata is None:
-        return
+        return set()
     # Receipt item positions refer to accepted drafts before presentation joins
     # adjacent policy rows. The source-review validator independently rechecks
     # that the displayed grouping is the exact lossless rendering of drafts.
@@ -450,6 +522,18 @@ def validate_reconciliation(review, sources):
         ):
             raise output_error("reader_target_invalid", ["source_review"])
         owned.setdefault(item["owner_source_ref"], set()).add(item_id)
+    financial = [
+        item for item in current.values() if item["category"] == "financial_items"
+    ]
+    source_retained = retained_financial_indices(
+        [item["value"] for item in financial], sources
+    )
+    if any(
+        len(item["value"].get("text", "")) > 1600 and index not in source_retained
+        for index, item in enumerate(financial)
+    ):
+        raise output_error("reader_target_invalid", ["source_review"])
+    retained_positions = {financial[i]["position"] for i in source_retained}
     seen = set()
     for receipt in metadata["pages"]:
         if not isinstance(receipt, dict) or set(receipt) != {"descriptor", "response"}:
@@ -517,6 +601,11 @@ def validate_reconciliation(review, sources):
     for item in current.values():
         if reviewed_items[item["category"]][item["position"]] != item["value"]:
             raise output_error("reader_target_invalid", ["source_review"])
+    return {
+        position
+        for position in retained_positions
+        if len(reviewed_items["financial_items"][position]["text"]) > 1600
+    }
 
 
 def reconcile_review(preflight, review, provider, api_key, checkpoint, maximum_calls):
@@ -551,10 +640,11 @@ def reconcile_review(preflight, review, provider, api_key, checkpoint, maximum_c
                     if value["owner_source_ref"] == owner
                 ],
                 0,
+                len(ids),
             )
         ]
         while groups:
-            group_ids, start = groups.pop(0)
+            group_ids, start, stop = groups.pop(0)
             group = {key: current[key] for key in group_ids}
             base_group = {key: metadata["base_items"][key] for key in group_ids}
             first = _request(
@@ -570,13 +660,16 @@ def reconcile_review(preflight, review, provider, api_key, checkpoint, maximum_c
                 if len(group_ids) < 2:
                     raise ProviderError("request_too_large", usage=total.usage)
                 pivot = len(group_ids) // 2
-                groups[0:0] = [(group_ids[:pivot], start), (group_ids[pivot:], start)]
+                groups[0:0] = [
+                    (group_ids[:pivot], start, stop),
+                    (group_ids[pivot:], start, stop),
+                ]
                 continue
-            while start < len(ids):
+            while start < stop:
                 group = {key: current[key] for key in group_ids}
                 # Find the largest fitting complete-record prefix. The final
                 # serialized schema, source evidence and output budget all count.
-                low, high = 0, len(ids) - start + 1
+                low, high = 0, stop - start + 1
                 request = None
                 while high - low > 1:
                     mid = (low + high) // 2
@@ -601,34 +694,77 @@ def reconcile_review(preflight, review, provider, api_key, checkpoint, maximum_c
                     # edges; prior checked pages must not be paid or counted twice.
                     pivot = len(group_ids) // 2
                     groups[0:0] = [
-                        (group_ids[:pivot], start),
-                        (group_ids[pivot:], start),
+                        (group_ids[:pivot], start, stop),
+                        (group_ids[pivot:], start, stop),
                     ]
                     break
-                if calls >= maximum_calls:
-                    raise ProviderError("request_too_large", usage=total.usage)
-                checkpoint()
-                calls += 1
-                try:
-                    response = provider.enhance_bill(
-                        api_key=api_key,
-                        request=request,
-                        timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
-                    )
-                    valid = validate_dependency_review(response.output, request)
-                except ValidationError as error:
-                    detail = validation_diagnostic(error)
-                    raise ProviderError(
-                        "invalid_output",
-                        validation_code=detail["code"],
-                        validation_detail=detail,
-                        usage=combine_usage(total.usage, response.usage),
-                        response_id=response.response_id,
-                        resolved_model=response.resolved_model,
-                    ) from error
-                except ProviderError as error:
-                    error.usage = combine_usage(total.usage, error.usage)
-                    raise
+                split = False
+                while True:
+                    if calls >= maximum_calls:
+                        raise ProviderError("request_too_large", usage=total.usage)
+                    checkpoint()
+                    calls += 1
+                    try:
+                        response = provider.enhance_bill(
+                            api_key=api_key,
+                            request=request,
+                            timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
+                        )
+                        valid = validate_dependency_review(response.output, request)
+                    except ValidationError as error:
+                        detail = validation_diagnostic(error)
+                        raise ProviderError(
+                            "invalid_output",
+                            validation_code=detail["code"],
+                            validation_detail=detail,
+                            usage=combine_usage(total.usage, response.usage),
+                            response_id=response.response_id,
+                            resolved_model=response.resolved_model,
+                        ) from error
+                    except ProviderError as error:
+                        total = replace(
+                            total,
+                            usage=combine_usage(total.usage, error.usage),
+                            response_id=error.response_id or total.response_id,
+                            resolved_model=error.resolved_model or total.resolved_model,
+                        )
+                        if (
+                            error.category == "invalid_output"
+                            and error.validation_code == "provider_output_limit"
+                            and not error.outcome_unknown
+                        ):
+                            page_end = start + low
+                            if low > 1:
+                                pivot = start + low // 2
+                                children = [
+                                    (group_ids, start, pivot),
+                                    (group_ids, pivot, page_end),
+                                ]
+                            elif len(group_ids) > 1:
+                                pivot = len(group_ids) // 2
+                                children = [
+                                    (group_ids[:pivot], start, page_end),
+                                    (group_ids[pivot:], start, page_end),
+                                ]
+                            else:
+                                children = []
+                            if children:
+                                if page_end < stop:
+                                    children.append((group_ids, page_end, stop))
+                                # Only the failed page is split. Completed pages
+                                # and remaining edges keep their original order.
+                                groups[0:0] = children
+                                split = True
+                                break
+                            increased = _grow_output(preflight, request)
+                            if increased is not None:
+                                request = increased
+                                continue
+                        error.usage = total.usage
+                        raise
+                    break
+                if split:
+                    break
                 total = replace(
                     response, usage=combine_usage(total.usage, response.usage)
                 )

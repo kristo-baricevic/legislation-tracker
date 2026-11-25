@@ -64,7 +64,26 @@ def wire_schema(value_, *, unsupported_keywords=()):
 def select_bill_schema(request, input_payload) -> Any:
     schema = PROVIDER_OUTPUT_SCHEMA
     envelope = getattr(request, "request_envelope", None) or {}
-    if envelope.get("output_schema_version") == "1.4":
+    if envelope.get("output_schema_version") == "reader-dependency-1":
+        from ..reader_citations import READER_PROMPT_VERSION
+
+        # Reconciliation has its own page/check/item contract. Falling back to
+        # the legacy overview schema makes a conforming provider response fail
+        # dependency validation, even when the preflight request fits.
+        if (
+            envelope.get("prompt_version") != READER_PROMPT_VERSION
+            or not isinstance(envelope.get("dependency_review"), dict)
+            or not envelope["dependency_review"]
+            or not isinstance(envelope.get("output_schema"), dict)
+            or not envelope["output_schema"]
+        ):
+            raise ProviderError(
+                "invalid_output",
+                validation_code="source_snapshot_invalid",
+                usage=ProviderUsage(0, 0, 0),
+            )
+        schema = envelope["output_schema"]
+    elif envelope.get("output_schema_version") == "1.4":
         from ..reader_citations import READER_ID_SCHEMA, READER_PROMPT_VERSION
         from ..reader_targets import READER_SCHEMA
 

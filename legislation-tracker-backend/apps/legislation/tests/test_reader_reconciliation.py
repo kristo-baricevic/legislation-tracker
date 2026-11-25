@@ -65,9 +65,11 @@ def _fixture(settings, count=12):
                 "definitions": (
                     [
                         {
-                            "term": "qualifying hospital"
-                            if index == count + 1
-                            else f"Term {index}",
+                            "term": (
+                                "qualifying hospital"
+                                if index == count + 1
+                                else f"Term {index}"
+                            ),
                             "meaning": text,
                             "scope": "this section",
                             "evidence_ids": [key],
@@ -146,13 +148,15 @@ class Provider:
                 d["term"] == "qualifying hospital" for d in record["definitions"]
             )
             output["record_checks"][record["record_id"]] = {
-                "status": "applies"
-                if applicable and output["items"]
-                else "not_applicable",
+                "status": (
+                    "applies" if applicable and output["items"] else "not_applicable"
+                ),
                 "item_ids": list(output["items"]) if applicable else [],
-                "reason": None
-                if applicable and output["items"]
-                else "This definition does not change the supplied finding.",
+                "reason": (
+                    None
+                    if applicable and output["items"]
+                    else "This definition does not change the supplied finding."
+                ),
             }
             if applicable:
                 ref, quote_id = record["record_id"].split(":", 1)
@@ -263,13 +267,13 @@ def test_receipts_bind_complete_edges_facts_and_original_evidence(settings, tamp
             result["dependency_review"]["pages"][0]
         )
     elif tamper == "fact":
-        result["factual_records"][-1]["definitions"][0]["meaning"] = (
-            "Private hospitals qualify."
-        )
+        result["factual_records"][-1]["definitions"][0][
+            "meaning"
+        ] = "Private hospitals qualify."
     elif tamper == "owner":
-        result["dependency_review"]["pages"][0]["descriptor"]["owner_source_ref"] = (
-            "src_0002"
-        )
+        result["dependency_review"]["pages"][0]["descriptor"][
+            "owner_source_ref"
+        ] = "src_0002"
     elif tamper == "evidence":
         sources[-1]["quoted_text"] = sources[-1]["quoted_text"].replace(
             "Only public hospitals", "All private hospitals"
@@ -523,3 +527,149 @@ def test_applicable_history_over_100kb_is_retained_without_resending_it(settings
         assert len(request.request_bytes) <= 100000
         assert fits(request.request_envelope, provider="test", model="model")
     validate_reconciliation(result, preflight.source_snapshot)
+
+
+def test_truncated_dependency_pages_split_complete_record_edges(settings):
+    preflight, review = _fixture(settings, count=4)
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100000
+    settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 100000
+
+    class Truncated(Provider):
+        def __init__(self):
+            super().__init__()
+            self.attempts = []
+
+        def enhance_bill(self, *, request, **kwargs):
+            self.attempts.append(request)
+            if len(request.request_envelope["dependency_review"]["record_ids"]) > 1:
+                raise ProviderError(
+                    "invalid_output",
+                    validation_code="provider_output_limit",
+                    usage=ProviderUsage(11, 40, 51),
+                )
+            return super().enhance_bill(request=request, **kwargs)
+
+    provider = Truncated()
+    result, response, calls = reconcile_review(
+        preflight, review, provider, "", lambda: None, 100
+    )
+    assert calls == len(provider.attempts) == 7
+    assert response.usage.total_tokens == 3 * 51 + 4 * 30
+    assert len(result["dependency_review"]["pages"]) == 4
+    assert "providing emergency care" in result["policy_changes"][0]["text"]
+    validate_reconciliation(result, preflight.source_snapshot)
+
+
+def test_truncated_single_record_splits_reader_items_without_losing_edges(settings):
+    preflight, review = _fixture(settings, count=1)
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100000
+    settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 100000
+    review["policy_changes"] *= 4
+
+    class Truncated(Provider):
+        def __init__(self):
+            super().__init__()
+            self.attempts = []
+
+        def enhance_bill(self, *, request, **kwargs):
+            self.attempts.append(request)
+            if len(request.request_envelope["dependency_review"]["item_ids"]) > 1:
+                raise ProviderError(
+                    "invalid_output", validation_code="provider_output_limit"
+                )
+            return super().enhance_bill(request=request, **kwargs)
+
+    provider = Truncated()
+    result, _, calls = reconcile_review(
+        preflight, review, provider, "", lambda: None, 100
+    )
+    assert calls == len(provider.attempts) == 7
+    assert len(result["policy_changes"]) == 4
+    assert all(
+        "providing emergency care" in item["text"] for item in result["policy_changes"]
+    )
+    checked = [
+        (item_id, record_id)
+        for page in result["dependency_review"]["pages"]
+        for item_id in page["descriptor"]["item_ids"]
+        for record_id in page["descriptor"]["record_ids"]
+    ]
+    assert len(checked) == len(set(checked)) == 4
+    validate_reconciliation(result, preflight.source_snapshot)
+
+
+@pytest.mark.parametrize("stop", ["recover", "capacity", "budget", "unknown"])
+def test_indivisible_dependency_output_recovery_is_bounded(settings, stop):
+    from apps.legislation.enhancements.reader_cache import call_identity
+
+    preflight, review = _fixture(settings, count=1)
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100000
+    settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 100000
+
+    class Truncated(Provider):
+        def __init__(self):
+            super().__init__()
+            self.attempts = []
+
+        def enhance_bill(self, *, request, **kwargs):
+            self.attempts.append(request)
+            if stop != "recover" or len(self.attempts) == 1:
+                raise ProviderError(
+                    "invalid_output",
+                    validation_code="provider_output_limit",
+                    outcome_unknown=stop == "unknown",
+                    usage=ProviderUsage(11, 40, 51),
+                )
+            return super().enhance_bill(request=request, **kwargs)
+
+    provider = Truncated()
+    bound = reconciliation_call_bound(preflight.source_snapshot)
+    if stop == "recover":
+        result, response, calls = reconcile_review(
+            preflight, review, provider, "", lambda: None, bound
+        )
+        assert calls == 2
+        assert response.usage.total_tokens == 51 + 30
+        validate_reconciliation(result, preflight.source_snapshot)
+    else:
+        with pytest.raises(ProviderError) as caught:
+            reconcile_review(
+                preflight,
+                review,
+                provider,
+                "",
+                lambda: None,
+                2 if stop == "budget" else bound,
+            )
+        assert caught.value.usage.total_tokens == len(provider.attempts) * 51
+        if stop == "budget":
+            assert caught.value.category == "request_too_large"
+            assert len(provider.attempts) == 2
+        else:
+            assert caught.value.validation_code == "provider_output_limit"
+        if stop == "unknown":
+            assert len(provider.attempts) == 1
+        if stop == "capacity":
+            assert provider.attempts[-1].request_envelope["max_output_tokens"] == 24000
+            assert len(provider.attempts) <= bound
+    budgets = [
+        request.request_envelope["max_output_tokens"] for request in provider.attempts
+    ]
+    assert budgets == sorted(set(budgets))
+    assert len({call_identity(request)[0] for request in provider.attempts}) == len(
+        budgets
+    )
+    # Output growth changes dispatch identity, not the evidence/edge receipt.
+    assert (
+        len(
+            {
+                request.request_envelope["dependency_review"]["page_id"]
+                for request in provider.attempts
+            }
+        )
+        == 1
+    )
+    assert all(
+        fits(request.request_envelope, provider="test", model="model")
+        for request in provider.attempts
+    )

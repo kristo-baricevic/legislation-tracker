@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 1
+CONTEXT_PLANNER_VERSION = 2
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -182,9 +182,7 @@ class DependencyIndex:
             self._quotes.append(
                 i
                 if node.tag in {"quoted-block", "quoted-text"}
-                else self._quotes[node.parent]
-                if node.parent is not None
-                else None
+                else self._quotes[node.parent] if node.parent is not None else None
             )
         self._required = {}
         self.by_identity = {
@@ -362,6 +360,19 @@ class DependencyIndex:
         )
         return self._path_target(enclosing, labels) if enclosing is not None else []
 
+    def _retain_incoming_reference(self, origin, target):
+        # A reference can impose eligibility, a use restriction or a condition
+        # on its target without using any particular modal phrase. The parser
+        # establishes a local relationship, not whether it is legally relevant;
+        # retain it for interpretation (or bounded dependency review) instead of
+        # treating a failed wording match as proof that it does not apply.
+        if (
+            origin != target
+            and self.quote_scope(origin) == self.quote_scope(target)
+            and self.scope(origin, "section") == self.scope(target, "section")
+        ):
+            self.links[target].add(origin)
+
     def _index_dependencies(self):
         for i, node in enumerate(self.nodes):
             if node.tag in NAVIGATION:
@@ -405,7 +416,9 @@ class DependencyIndex:
                         self.qualifications[scope].append(i)
             for identity in node.references:
                 if identity in self.by_identity:
-                    self.links[i].add(self.by_identity[identity])
+                    target = self.by_identity[identity]
+                    self.links[i].add(target)
+                    self._retain_incoming_reference(i, target)
             for match in REFERENCE.finditer(normalized):
                 if (
                     node.tag == "section"
@@ -524,16 +537,8 @@ class DependencyIndex:
                             self.table_authorizations[table].add(i)
                     else:
                         self.links[i].add(target)
-                # A sibling can qualify an earlier action by referring back to
-                # it. Outbound references from the action do not find this rule.
-                if re.search(
-                    r"\b(?:may not|shall not|must not|only if|unless|no funds|prohibit\w*|subject to|condition\w*|matching|eligible|eligibility)\b",
-                    normalized,
-                    re.I,
-                ):
-                    for target in targets:
-                        if self.scope(i, "section") == self.scope(target, "section"):
-                            self.links[target].add(i)
+                for target in targets:
+                    self._retain_incoming_reference(i, target)
         alternatives = sorted(self.definitions, key=len, reverse=True)
         for term in tuple(alternatives):
             if term.endswith("y") and len(term) > 1 and term[-2] not in "aeiou":

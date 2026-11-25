@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from jsonschema import ValidationError
 
@@ -129,6 +130,32 @@ class DurableReaderProvider:
                     request, requested_model=current.pinned_model
                 )
             fingerprint, _ = call_identity(dispatch_request, adapter=adapter)
+            if request.request_envelope.get("dependency_review"):
+                # Correcting the schema invalidates known failed calls, but an
+                # old ambiguous dispatch must still fence new paid requests.
+                # Check logical identities as well as keys to include pinned
+                # models and salted reruns from other attempts/users.
+                old_identities = {
+                    call_identity(
+                        candidate,
+                        execution_version=version,
+                        adapter=adapter,
+                        dependency_transport_version=1,
+                    )[0]
+                    for candidate in (request, dispatch_request)
+                    for version in (2, 3)
+                }
+                blocked = (
+                    BillEnhancementCallCache.objects.filter(status="dispatching")
+                    .filter(
+                        Q(fingerprint__in=old_identities)
+                        | Q(dispatch_identity__in=old_identities)
+                    )
+                    .values_list("pk", flat=True)
+                    .first()
+                )
+                if blocked:
+                    raise unresolved_reservation(blocked)
             # Serialize all generations on the unsalted logical call, including
             # reruns paid for by another user. The fence survives owner deletion.
             BillEnhancementCallCache.objects.select_for_update().get_or_create(

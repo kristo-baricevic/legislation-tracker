@@ -33,7 +33,7 @@ All four complete planning variants pass:
 | 2,000 | 2,421 | 2,446 | 2,447 | 18,293 bytes |
 | 4,000 | 1,421 | 2,373 | 2,374 | 20,834 bytes |
 
-Initial planned calls include one summary slot. Dependency and recursive-summary reservations are additional ceilings, not claims that every reserved call will be used. No provider was called by these tests. In the final default run, actual preflight took **27.858 seconds**, preflight plus the coverage/budget assertions took 39.184 seconds, and the complete test took 53.63 seconds. The three experimental runs reported 83.638, 42.517, and 37.709 seconds respectively for **preflight plus assertions**, not preflight alone.
+Initial planned calls include one summary slot. Dependency and recursive-summary reservations are additional ceilings, not claims that every reserved call will be used. No provider was called by these tests. After the review corrections, all four complete variants were rerun: actual preflight took **31.165 / 89.446 / 43.252 / 35.001 seconds** for the default / 1,000 / 2,000 / 4,000-byte targets. Preflight plus the coverage/budget assertions took 45.965 / 94.949 / 47.423 / 41.985 seconds. The four-case test process took 274.067 seconds and peaked at **1,134,460 KiB RSS (about 1.08 GiB)**. The structural counts and maximum request sizes above were unchanged. These timings are local observations, not a controlled performance comparison.
 
 Both the local Compose API and production image now give the API worker 120 seconds to complete a request. This accommodates large-bill estimate/confirmation planning instead of relying on a short default worker timeout. Generation itself continues in the existing resumable background worker.
 
@@ -43,7 +43,7 @@ The pinned test also checks the source evidence governing sections 8805 and 8806
 
 ## Behavioral verification
 
-The final broad backend regression run completed **647 passed, 8 skipped, zero failures/errors** in 98.91 seconds. Four skips were the full pinned S.1071 cases, which passed separately with the XML path supplied. The other four require PostgreSQL concurrency/row-lock behavior and were not run in this SQLite environment. The final source-sized tests are additional to the 647 passing cases; repeated diagnostic runs are not counted as additional tests. Ruff and Git whitespace checks pass.
+After all review corrections, the complete legislation backend suite completed **1,543 passed, 10 skipped, zero failures/errors**, with two passing subtests, in 165.10 seconds. Four skips were the full pinned S.1071 cases, which passed separately with the XML path supplied. The other six require PostgreSQL: two full-text/headline search tests and four concurrency/row-lock tests. Those six were not run in this SQLite environment. The four source-sized tests are additional to the 1,543 passing cases; repeated diagnostic runs are not counted as additional tests. Django system checks, the migration dry-run, Black, Ruff, and Git whitespace checks pass.
 
 The staged worker tests use real temporary XML storage, database models, estimate and confirmation APIs, durable reservations, worker execution, cache validation, final synthesis, and publication. Only the upstream model is simulated; network generation is prohibited.
 
@@ -57,6 +57,21 @@ The staged worker tests use real temporary XML storage, database models, estimat
 - Receipt replay remains valid after reader policy drafts are grouped for display, and tampered drafts still fail validation.
 
 The shared enhancement test fixture now gives each test its own cache-key prefix. This fixes cross-test rate-limit contamination from reused database user IDs while retaining rate limits and cache persistence throughout each individual confirmation, recovery, and reuse scenario.
+
+## PR review corrections
+
+[The PR review](https://github.com/kristo-baricevic/legislation-tracker/pull/35#issuecomment-7176686794) identified integration failures that the initial offline orchestration tests did not cover. The earlier successful planning and simulated-provider results did not establish correct schema transmission through the actual adapters, recovery from a truncated dependency response, or inclusion of server-recovered financial rules in the receipt inventory.
+
+The corrections address all four findings:
+
+1. **Provider schema selection.** OpenAI, Anthropic, Gemini, and OpenAI-compatible adapters select the dependency page/check/item schema explicitly. Malformed dependency envelopes fail before SDK dispatch. Transport tests call the real adapters with mocked SDK responses and inspect the actual transmitted schema. A dependency-only cache version prevents reuse of failures produced by the old wrong schema while preserving map-call identities. Old ambiguous reservations still block duplicate paid dispatches, including salted reruns.
+2. **Incoming restrictions.** Resolved local references are retained without requiring a matching modal phrase. The regressions include all three review examples, another wording variant, XML `idref` references without a textual subsection label, and many incoming clauses that must become bounded deferred obligations. Section and quoted-law scope boundaries remain enforced.
+3. **Truncation recovery.** A truncated dependency page splits complete records, then reader-item groups; an indivisible page can increase its output allowance within configured, provider, context, and request-size limits. Failed calls are metered, revised requests have deterministic identities, and preflight reserves the finite recovery tree. Real worker regressions exercise completion in the same delivery, an authorized retry after a cached truncation and transient failure, and a crash after a recovered response was durably validated. Mapped facts and validated calls are reused. Capacity, call-budget, and unknown-outcome cases remain bounded.
+4. **Recovered financial inventory.** Source-derived financial rows are recovered before dependency reconciliation and summary, including saved-summary replay. A recovered provision spanning several mapped owners is retained as exact per-owner source fragments, so each owner receives its own dependency checks and no combined row becomes unbounded. An oversized source string can be retained with an explicit null text operation in the model response; the server restores its verified original text. Generated replacement prose remains limited to 1,600 characters. Receipt replay validates original source provenance, added citations, and every other prose field. Positive tests preserve a 22,989-character source row with more than 24 citations at the ordinary 24,000-token output ceiling. Tampered source text, generated oversized replacements, and altered labels are rejected.
+
+Financial ownership regressions cover contiguous and disjoint evidence ranges, mixed short/long source fragments, applicable conditions on a later owner, final publication validation, and zero-call replay of completed receipts. The complete source text is retained across these fragments. No provider limit was increased for the correction.
+
+The reader execution version is now 12, and the context planner version is 2. There are no schema migrations. The new cache version applies only to dependency transport; existing mapped facts keep their compatible cache identities.
 
 ## Verification boundary and rollout
 
@@ -72,11 +87,7 @@ With the backend's installed environment and a disposable test database:
 LARGE_BILL_XML_PATH=/path/to/BILLS-119s1071eah.xml .venv/bin/python -m pytest \
   apps/legislation/tests/test_large_bill_planning_regression.py -q -s
 
-.venv/bin/python -m pytest \
-  apps/legislation/tests/test_large_bill_staged_flow.py \
-  apps/legislation/tests/test_reader_facts.py \
-  apps/legislation/tests/test_reader_reconciliation.py \
-  apps/legislation/tests/test_reader_large_bills.py -q
+.venv/bin/python -m pytest apps/legislation/tests -q
 ```
 
 The XML is deliberately not bundled into the application. The fixture verifies its pinned hashes before the full-source tests run.

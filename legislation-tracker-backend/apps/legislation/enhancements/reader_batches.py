@@ -85,7 +85,7 @@ def reader_execution_settings():
 
     return {
         "policy_grouping_version": 7,
-        "reader_execution_version": 11,
+        "reader_execution_version": 12,
         "model_capacities": getattr(settings, "LLM_READER_MODEL_CAPACITIES", {}),
         **(
             {"owned_token_target": owned_token_target()} if owned_token_target() else {}
@@ -867,6 +867,15 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
         try:
             checkpoint(combined, completed)
             saved = plan.saved_result(node_key) if plan else None
+            if index == 0 and combined.output.get("source_review"):
+                from .reader_discovery import retain_missing_financial_rules
+
+                # Recovered source wording is part of the inventory that must
+                # receive dependency receipts and feed the final summary. This
+                # also reconstructs it when a saved summary has no receipts.
+                retain_missing_financial_rules(
+                    combined.output["source_review"], preflight.source_snapshot
+                )
             if index == 0 and saved is not None:
                 combined.output["summary"] = saved["summary"]
                 if "reconciled_source_review" in saved:
@@ -1157,10 +1166,6 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
         from .policy_compilation import group_policy_drafts
 
         review = combined.output.get("source_review", {})
-        if "financial_items" in review:
-            from .reader_discovery import retain_missing_financial_rules
-
-            retain_missing_financial_rules(review, preflight.source_snapshot)
         if "policy_changes" in review:
             review["policy_drafts"] = copy.deepcopy(review["policy_changes"])
             review["policy_changes"] = group_policy_drafts(
