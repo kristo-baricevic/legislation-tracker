@@ -39,6 +39,9 @@ from apps.legislation.models import (
 )
 
 
+from apps.legislation.search_index import rebuild_bill_search_index
+
+
 def _section_path():
     return [
         {"level": "section", "label": "Sec. 2", "heading": "Complete reader fixture"}
@@ -217,7 +220,9 @@ def _reader_contract_fixture():
 
 
 def main() -> None:
-    Topic.objects.get_or_create(name="Education", defaults={"slug": "education"})
+    education, _ = Topic.objects.get_or_create(
+        name="Education", defaults={"slug": "education"}
+    )
     health, _ = Topic.objects.get_or_create(name="Health", defaults={"slug": "health"})
 
     # The profile integration seam exercises the real API with explicitly
@@ -526,6 +531,31 @@ def main() -> None:
         source_exhausted_at=timezone.now(),
         last_polled_at=timezone.now(),
     )
+
+    # Three distinct orders (creation, newest and oldest) expose ignored sorts.
+    for number, title, status, topic, sponsor, day in [
+        ("S 71", "A bill to designate Marshall House", "Introduced", health, alex, 2),
+        (
+            "HR 72",
+            "School Libraries Act",
+            "Passed House",
+            education,
+            integration_member,
+            3,
+        ),
+        ("S 73", "Clinic Access Act", "Introduced", health, alex, 1),
+    ]:
+        candidate = Bill.objects.create(
+            jurisdiction="federal",
+            session=117,
+            bill_number=number,
+            title=title,
+            status=status,
+            sponsor=sponsor,
+            last_action_at=datetime(2022, 1, day, tzinfo=UTC),
+        )
+        BillTopic.objects.create(bill=candidate, topic=topic, confidence_score=1)
+        rebuild_bill_search_index(bill_id=candidate.pk)
 
 
 if __name__ == "__main__":

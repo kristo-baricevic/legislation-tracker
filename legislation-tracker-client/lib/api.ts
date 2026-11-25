@@ -453,6 +453,7 @@ export interface BillFilterOptions {
 }
 
 export interface GetBillsParams {
+  signal?: AbortSignal;
   tracking?: "tracked" | "untracked";
   page?: number;
   session?: number;
@@ -491,7 +492,8 @@ export async function getBills(params?: GetBillsParams): Promise<BillsPage> {
   if (params?.sort) sp.set("sort", params.sort);
   const q = sp.toString();
   const path = `/api/bills/${q ? `?${q}` : ""}`;
-  return params?.tracking ? authGet<BillsPage>(path) : publicGet<BillsPage>(path);
+  const options = params?.signal ? { signal: params.signal } : undefined;
+  return params?.tracking ? authGet<BillsPage>(path, options) : publicGet<BillsPage>(path, options);
 }
 
 export async function getTopics(): Promise<TopicItem[]> {

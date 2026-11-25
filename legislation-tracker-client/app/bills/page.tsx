@@ -8,7 +8,7 @@ import { STAGES } from "@/lib/bill-stage";
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import SelectField, { type SelectOption } from "../components/SelectField";
 import {
   getBillFilterOptions,
@@ -55,12 +55,12 @@ function parseSort(value: unknown): BillSort | null {
 function BillsCatalog() {
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [page, setPage] = useState<BillsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [shownPage, setShownPage] = useState(() => parsePositiveIntegerFilter(searchParams.get("page") ?? "") ?? 1);
   const [error, setError] = useState<string | null>(null);
   const endOfResults = useRef<HTMLDivElement>(null);
+  const [shownFilters, setShownFilters] = useState("");
   const [firstShownPage, setFirstShownPage] = useState(1);
   const committedResults = useRef({key: "", filters: "", page: 0, start: 1, revision: 0});
   const [retryResults, setRetryResults] = useState(0);
@@ -298,6 +298,7 @@ function BillsCatalog() {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
 
     const sessionParsed = sessionFilter.trim()
       ? parsePositiveIntegerFilter(sessionFilter)
@@ -329,6 +330,7 @@ function BillsCatalog() {
     const refreshLoadedPages = committedResults.current.filters === resultFilters && committedResults.current.revision !== resultsRevision;
     const start = refreshLoadedPages ? 1 : pageNum;
     const requestPage = (requestedPage: number) => getBills({
+      signal: controller.signal,
       page: requestedPage,
       session: sessionParsed,
       id: idParsed,
@@ -362,6 +364,7 @@ function BillsCatalog() {
           });
           setFirstShownPage(committedResults.current.start);
           setShownPage(pageNum);
+          setShownFilters(resultFilters);
         }
       })
       .catch((e) => {
@@ -374,6 +377,7 @@ function BillsCatalog() {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     pageNum,
@@ -403,7 +407,7 @@ function BillsCatalog() {
     if (pageNum > 1) next.set("page", String(pageNum));
     if (idFilter) next.set("id", idFilter);
     if (billNumberFilter) next.set("bill_number", billNumberFilter);
-    if (sessionFilter) next.set("session", sessionFilter);
+    if (sessionFilter || (sessionFilter === "" && !topicIdFilter)) next.set("session", sessionFilter);
     if (jurisdictionFilter) next.set("jurisdiction", jurisdictionFilter);
     if (statusFilter) next.set("status", statusFilter);
     if (trackingFilter) next.set("tracking", trackingFilter);
@@ -413,12 +417,12 @@ function BillsCatalog() {
     if (queryFilter) next.set("q", queryFilter);
     if (selectedSort) next.set("sort", selectedSort);
     const target = `/bills${next.size ? `?${next}` : ""}`;
-    if (next.toString() !== searchParamsKey) {
+    if (target !== window.location.pathname + window.location.search) {
       // These filters are client-owned. A route navigation can suspend the
       // provider tree and reset scroll even with scroll:false on mobile.
       window.history.replaceState(window.history.state, "", target);
     }
-  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, router, searchParamsKey, sessionFilter, selectedSort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
+  }, [billNumberFilter, filterMetaReady, idFilter, jurisdictionFilter, pageNum, queryFilter, searchParamsKey, sessionFilter, selectedSort, sponsorFilter, statusFilter, trackingFilter, topicFuzzyFilter, topicIdFilter]);
 
   const resetPageAndSet = useCallback(
     (setter: React.Dispatch<React.SetStateAction<string>>) =>
@@ -827,7 +831,7 @@ function BillsCatalog() {
           {!loading && error ? <span role="alert">{error}</span> : null}
         </div>
 
-        <LoadingSpinner centered active={loading && !page} label="Loading bills…" />
+        <LoadingSpinner centered active={loading && (!page || shownFilters !== resultFilters)} label="Loading bills…" />
 
         {page && (
           <>

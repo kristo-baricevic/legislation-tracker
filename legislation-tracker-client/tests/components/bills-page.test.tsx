@@ -447,6 +447,21 @@ describe("BillsPage", () => {
     await waitFor(() => expect(getBills).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined, sort: "unsorted" })));
   });
 
+  it("removes a cleared filter from the URL and cancels its pending request", async () => {
+    searchState.query = "session=119";
+    window.history.replaceState(null, "", "/bills?session=119");
+    render(<BillsPage />);
+    const field = await screen.findByLabelText("Bill # (contains)");
+    vi.mocked(getBills).mockImplementationOnce(() => new Promise(() => {}));
+    await userEvent.type(field, "9");
+    const signal = vi.mocked(getBills).mock.lastCall?.[0]?.signal;
+    expect(new URLSearchParams(window.location.search).get("bill_number")).toBe("9");
+    await screen.findByRole("status", {name: "Loading bills"});
+    await userEvent.clear(field);
+    expect(signal?.aborted).toBe(true);
+    expect(window.location.search).toBe("?session=119");
+  });
+
   it("rehydrates every public filter when browser history changes", async () => {
     searchState.query = "session=118&id=5&bill_number=HR+5&jurisdiction=federal&status=Passed&sponsor=Smith&topic=health&q=clinics&sort=relevance&page=2";
     const { rerender } = render(<BillsPage />);

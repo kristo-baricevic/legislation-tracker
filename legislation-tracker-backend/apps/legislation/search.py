@@ -11,15 +11,16 @@ from django.db.models import (
     Exists,
     F,
     FloatField,
+    Max,
     OuterRef,
     Q,
     QuerySet,
-    Subquery,
+    Value,
     Window,
 )
-from django.db.models.functions import RowNumber
+from django.db.models.functions import Cast, RowNumber
 
-from .models import Bill, BillSearchChunk
+from .models import Bill, BillSearchChunk, BillTopic
 
 MAX_QUERY_BYTES = 512
 MAX_QUERY_TOKENS = 32
@@ -168,9 +169,13 @@ def _metadata_match(queryset: QuerySet[Bill], query_text: str) -> QuerySet[Bill]
             | Q(status__icontains=term)
             | Q(sponsor__name__icontains=term)
             | Q(sponsor__bioguide_id__icontains=term)
-            | Q(bill_topics__topic__name__icontains=term)
+            | Q(
+                pk__in=BillTopic.objects.filter(topic__name__icontains=term).values(
+                    "bill_id"
+                )
+            )
         )
-    return matching.distinct()
+    return matching
 
 
 def _fallback_metadata_search(
@@ -213,26 +218,21 @@ def matching_bill_queryset(
         return _metadata_match(queryset, query_text)
 
     search_query = SearchQuery(query_text, search_type="websearch", config="english")
-    all_chunks = BillSearchChunk.objects.filter(bill_id=OuterRef("pk"))
-    ranked_chunks = (
-        all_chunks.filter(search_vector=search_query)
-        .annotate(_rank=SearchRank(F("search_vector"), search_query))
-        .order_by("-_rank", "id")
+    indexed_ids = BillSearchChunk.objects.filter(search_vector=search_query).values(
+        "bill_id"
     )
-    projected = queryset.annotate(
-        _has_search_projection=Exists(all_chunks),
-        _search_rank=Subquery(
-            ranked_chunks.values("_rank")[:1], output_field=FloatField()
+    return queryset.filter(pk__in=indexed_ids).union(
+        _unindexed_metadata(queryset, query_text), all=True
+    )
+
+
+def _unindexed_metadata(queryset, text):
+    return _metadata_match(
+        queryset.filter(
+            ~Exists(BillSearchChunk.objects.filter(bill_id=OuterRef("pk")))
         ),
+        text,
     )
-    indexed_matches = projected.filter(_search_rank__isnull=False)
-    unindexed_matches = _metadata_match(
-        projected.filter(_has_search_projection=False), query_text
-    )
-    # Existing bills remain discoverable while the projection backfill rolls
-    # out; once indexed, their complete metadata/contract/document projection
-    # is authoritative.
-    return indexed_matches.union(unindexed_matches)
 
 
 def top_highlight_chunks(chunks):
@@ -253,24 +253,42 @@ def _postgres_search(
     *, queryset: QuerySet[Bill], query: BillSearchQuery
 ) -> BillSearchPage:
     search_query = SearchQuery(query.q, search_type="websearch", config="english")
-    matching = matching_bill_queryset(queryset=queryset, query_text=query.q)
-    ranked = queryset.filter(pk__in=matching.values("pk")).annotate(
-        _search_rank=Subquery(
-            BillSearchChunk.objects.filter(
-                bill_id=OuterRef("pk"), search_vector=search_query
-            )
-            .annotate(_rank=SearchRank(F("search_vector"), search_query))
-            .order_by("-_rank", "id")
-            .values("_rank")[:1],
-            output_field=FloatField(),
+    # Rank only matching chunks, once per bill. Keep the unindexed metadata
+    # fallback disjoint so neither counting nor pagination needs to deduplicate it.
+    chunks = BillSearchChunk.objects.filter(
+        search_vector=search_query, bill_id__in=queryset.values("pk")
+    )
+    unindexed = _unindexed_metadata(queryset, query.q)
+    count = chunks.order_by().values("bill_id").distinct().count() + unindexed.count()
+    indexed_rows = (
+        chunks.order_by()
+        .values("bill_id", "bill__last_action_at")
+        .annotate(_search_rank=Max(SearchRank(F("search_vector"), search_query)))
+    )
+    metadata_rows = (
+        unindexed.order_by()
+        .annotate(_search_rank=Cast(Value(None), FloatField()))
+        .values_list("id", "last_action_at", "_search_rank")
+    )
+    combined = indexed_rows.values_list(
+        "bill_id", "bill__last_action_at", "_search_rank"
+    ).union(metadata_rows, all=True)
+    if query.sort == "relevance":
+        ordered = combined.order_by(F("_search_rank").desc(nulls_last=True), "bill_id")
+    elif query.sort == "recent_activity":
+        ordered = combined.order_by(
+            F("bill__last_action_at").desc(nulls_last=True), "-bill_id"
         )
-    )
-    ranked = _bill_order(ranked, query.sort, ranked=True)
-    count = ranked.count()
+    elif query.sort == "oldest_activity":
+        ordered = combined.order_by(
+            F("bill__last_action_at").asc(nulls_last=True), "bill_id"
+        )
+    else:
+        ordered = combined.order_by("bill_id")
     offset = (query.page - 1) * query.page_size
-    page_rows = list(
-        ranked.values_list("id", "_search_rank")[offset : offset + query.page_size]
-    )
+    page_rows = [
+        (pk, rank) for pk, _, rank in ordered[offset : offset + query.page_size]
+    ]
     page_ids = [bill_id for bill_id, _rank in page_rows]
     rank_by_id = {
         bill_id: float(rank) if rank is not None else None

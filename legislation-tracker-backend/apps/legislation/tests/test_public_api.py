@@ -239,6 +239,23 @@ def test_postgres_search_keeps_unindexed_bills_visible_and_fetches_headlines_for
         segment["matched"]
         for segment in unindexed_page.json()["results"][0]["highlights"][0]["segments"]
     )
+    for captured in queries:
+        sql = captured["sql"].lower()
+        if sql.startswith("select count"):
+            assert "ts_rank" not in sql
+    for sort in ("unsorted", "recent_activity", "oldest_activity", "relevance"):
+        filtered = APIClient().get(
+            "/api/bills/",
+            {
+                "q": "nephrology clinic",
+                "bill_number": "891",
+                "session": 119,
+                "sort": sort,
+            },
+        )
+        assert filtered.status_code == 200
+        assert filtered.json()["count"] == 1
+        assert [item["id"] for item in filtered.json()["results"]] == [unindexed.pk]
     assert len(headline_queries) == 1
     assert (
         f'"legislation_billsearchchunk"."bill_id" IN ({indexed.id})'
