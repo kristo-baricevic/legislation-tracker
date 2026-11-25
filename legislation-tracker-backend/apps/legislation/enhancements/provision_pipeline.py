@@ -311,7 +311,7 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
     )
 
 
-def run_analysis(plan, invoke, checkpoint):
+def run_analysis(plan, invoke, checkpoint, *, recover=None):
     graph = plan.graph
     if audit_graph(graph, graph.source_text):
         raise ValueError("source_identity")
@@ -331,25 +331,32 @@ def run_analysis(plan, invoke, checkpoint):
             or call_count >= plan.maximum_calls
         ):
             raise BudgetExceeded("budget_exceeded")
+        if recover is not None:
+            saved = recover(call)
+            if saved is not None:
+                return saved
         index = call_count
         checkpoint("dispatching", index, call, None)
         call_count += 1
         try:
             response = invoke(call)
         except ProviderError as error:
+            from apps.provider_requests import FailureKind, classify_failure
+
+            kind = classify_failure(error)
             checkpoint(
-                "outcome_unknown" if error.outcome_unknown else "failed",
+                "outcome_unknown" if kind == FailureKind.AMBIGUOUS else "failed",
                 index,
                 call,
                 error,
             )
             if (
                 call.stage == "synopsis"
-                and not error.outcome_unknown
+                and kind in {FailureKind.COOLDOWN, FailureKind.RETRYABLE}
                 and error.category in {"provider_unavailable", "provider_rate_limited"}
             ):
                 return None
-            if error.outcome_unknown or error.category != "invalid_output":
+            if kind != FailureKind.INVALID_OUTPUT:
                 raise
             return None
         checkpoint("succeeded", index, call, response)

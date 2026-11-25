@@ -1846,7 +1846,9 @@ def run_bill_enhancement_attempt(attempt_id, dispatch_token):
             _invalidate_rejected_credential(attempt)
         elif exc.category == "quota_exhausted":
             _require_quota_revalidation(attempt)
-        if exc.outcome_unknown:
+        from apps.provider_requests import FailureKind, classify_failure
+
+        if classify_failure(exc) == FailureKind.AMBIGUOUS:
             terminal_status = BillEnhancementAttempt.Status.OUTCOME_UNKNOWN
         elif exc.category == "content_refusal":
             terminal_status = BillEnhancementAttempt.Status.REFUSED

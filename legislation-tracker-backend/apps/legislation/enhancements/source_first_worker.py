@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from apps.legislation.models import BillEnhancementAttempt, BillEnhancementStep
@@ -113,7 +114,47 @@ def execute_source_first(attempt, run_token, preflight, provider, worker_preflig
             timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
         )
 
-    result = run_analysis(preflight.analysis_plan, invoke, checkpoint)
+    def recover(call):
+        if attempt.sequence <= 1:
+            return None
+        # Only an explicitly authorized retry of this exact request can recover
+        # a completed response. The pipeline validates the output again.
+        return (
+            BillEnhancementStep.objects.filter(
+                attempt__enhancement_id=attempt.enhancement_id,
+                attempt__sequence__lt=attempt.sequence,
+                attempt__credential_id=attempt.credential_id,
+                attempt__credential_revision=attempt.credential_revision,
+                attempt__execution_config=attempt.execution_config,
+                attempt__status__in=("failed", "paused", "outcome_unknown"),
+                request_fingerprint=call.request_fingerprint,
+                stage=call.stage,
+                unit_ids=list(call.unit_ids),
+                status="succeeded",
+                result_json__isnull=False,
+            )
+            .filter(
+                ~Q(attempt__failure_category="invalid_output")
+                | Exists(
+                    BillEnhancementStep.objects.filter(
+                        attempt_id=OuterRef("attempt_id"),
+                        step_index__gt=OuterRef("step_index"),
+                    )
+                )
+            )
+            .filter(
+                Q(attempt__approved_request_fingerprint=preflight.request_fingerprint)
+                | Q(
+                    attempt__approved_request_fingerprint="",
+                    attempt__enhancement__request_fingerprint=preflight.request_fingerprint,
+                )
+            )
+            .order_by("-attempt__sequence", "-step_index")
+            .values_list("result_json", flat=True)
+            .first()
+        )
+
+    result = run_analysis(preflight.analysis_plan, invoke, checkpoint, recover=recover)
     check_current()
     return result
 

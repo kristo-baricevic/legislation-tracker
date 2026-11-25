@@ -1046,18 +1046,17 @@ def _http_throttle_delay(exc):
     from email.utils import parsedate_to_datetime
 
     from apps.campaign_finance.fec_client import FECError
+    from apps.provider_requests import FailureKind, classify_failure
 
-    if isinstance(exc, (CongressAPIError, FECError)) and exc.status_code == 429:
+    if classify_failure(exc) != FailureKind.COOLDOWN:
+        return None
+    if isinstance(exc, (CongressAPIError, FECError)):
         seconds = (
             exc.retry_after_seconds if exc.retry_after_seconds is not None else 900
         )
         return timedelta(seconds=max(1, min(seconds, 365 * 86400)))
     response = getattr(exc, "response", None)
-    if (
-        not isinstance(exc, requests.HTTPError)
-        or response is None
-        or response.status_code != 429
-    ):
+    if not isinstance(exc, requests.HTTPError) or response is None:
         return None
     value = response.headers.get("Retry-After", "")
     try:

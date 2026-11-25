@@ -619,3 +619,30 @@ def test_bill_text_list_prefers_the_real_xml_format_over_the_version_referrer(
             "source_order": 1,
         }
     ]
+
+
+def test_congress_429_defers_other_requests_using_the_same_key(monkeypatch):
+    from unittest.mock import Mock
+
+    from apps.ingestion.congress_cooldown import cooldown_key, defer_requests
+
+    client = Mock(
+        side_effect=[
+            Mock(ok=False, status_code=429, headers={"Retry-After": "3600"}),
+            Mock(ok=False, status_code=404),
+        ]
+    )
+    monkeypatch.setattr(congress_client.requests, "request", client)
+    monkeypatch.setattr(congress_client, "_get_api_key", lambda: "cooldown-test-a")
+    with pytest.raises(congress_client.CongressAPIError) as first:
+        congress_client._request("GET", "bill")
+    assert first.value.retry_after_seconds == 3600
+    defer_requests(cooldown_key("cooldown-test-a"), 5)
+    with pytest.raises(congress_client.CongressAPIError) as second:
+        congress_client._request("GET", "member")
+    assert second.value.retry_after_seconds > 3590
+    assert client.call_count == 1
+    monkeypatch.setattr(congress_client, "_get_api_key", lambda: "cooldown-test-b")
+    with pytest.raises(congress_client.CongressAPIError) as third:
+        congress_client._request("GET", "member")
+    assert third.value.status_code == 404

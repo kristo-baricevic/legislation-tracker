@@ -1,5 +1,6 @@
 import { getSession, type AuthSession } from "./api";
 import { capturePersonalizedScope, isPersonalizedScopeCurrent, subscribePersonalizedChanges } from "./personalized-scope";
+import { refreshResearchPolls } from "./research-poll";
 import { useSyncExternalStore } from "react";
 
 // Tab memory only. Cache promises to coalesce concurrent readers; never retain failures.
@@ -54,6 +55,7 @@ export function dashboardSession(allowCached = false) {
         }
         if (trackingRevision !== session.tracking_revision) entries.delete("tracking");
         if (researchRevision !== session.research_revision) {
+          if (researchRevision !== undefined) refreshResearchPolls();
           for (const key of entries.keys()) if (key.startsWith("rep:") && !key.endsWith(":activity")) entries.delete(key);
         }
         if (refreshReps) { repVersion++; repListeners.forEach(fn => fn()); }

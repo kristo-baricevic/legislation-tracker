@@ -304,3 +304,32 @@ it("uses the current bill owner fallback after its row disappears", async () => 
   expect(fallback).toHaveBeenCalledOnce();
   expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/representatives/")).every(([, options]) => options?.signal?.aborted)).toBe(true);
  });
+
+it("rechecks completed research when Campaign funding opens and shows the new snapshot", async () => {
+  const originalFetch = global.fetch;
+  let snapshot = "old";
+  const reads: string[] = [];
+  const funding: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname.endsWith("/research/")) {
+      reads.push(snapshot);
+      return Response.json({ status: "succeeded", period: 2026, available_periods: [2026],
+        run: null, portrait: null, snapshot, biography: { text: "Completed biography", source: {} } });
+    }
+    if (url.searchParams.has("by_size")) {
+      const id = url.searchParams.get("snapshot")!;
+      funding.push(id);
+      return Response.json({ status: "available", total: "250", results: [{ label: id + " donations", amount: "250" }] });
+    }
+    return originalFetch(input, init);
+  }));
+  render(page());
+  await userEvent.click(screen.getByRole("link", { name: "First Member" }));
+  await screen.findByText("Completed biography");
+  snapshot = "new";
+  await userEvent.click(screen.getByRole("tab", { name: "Campaign funding" }));
+  expect(await screen.findByText("new donations")).toBeVisible();
+  expect(reads).toEqual(["old", "new"]);
+  expect(funding).toEqual(["new"]);
+});

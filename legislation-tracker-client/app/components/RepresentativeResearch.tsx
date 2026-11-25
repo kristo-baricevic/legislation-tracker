@@ -7,7 +7,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getResearch, startResearch, getContributors, type Research, type Contributors, type FinanceProgress } from "@/lib/representative-research";
 import { watchResearch } from "@/lib/research-poll";
-import { useDashboardRepVersion } from "@/lib/dashboard-cache";
 import styles from "./representative-research.module.css";
 import ContributorExplorer from "./ContributorExplorer";
 import CardTooltip from "./CardTooltip";
@@ -26,17 +25,17 @@ function SourceLink({ url, children, "aria-describedby": description }: { url: s
   return /^https:\/\//.test(url) ? <a href={url} aria-describedby={description} target="_blank" rel="noreferrer">{children}</a> : <span aria-describedby={description}>{children}</span>;
 }
 
-type ResearchProps = { visible?: boolean; representativeId: number; initialPeriod?: string | null; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; dashboardCard?: boolean; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
+type ResearchProps = { visible?: boolean; representativeId: number; initialPeriod?: string | null; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
 export default function RepresentativeResearch({ representativeId, compact = false, ...props }: ResearchProps) {
   return <ResearchPanel key={representativeId} representativeId={representativeId} compact={compact} {...props} />;
 }
 
-function ResearchPanel({ visible = true, representativeId, initialPeriod, compact, profileView = false, financeView = false, modalView = false, cardName, dashboardCard = false, onResearch, onPortrait }: ResearchProps) {
+function ResearchPanel({ visible = true, representativeId, initialPeriod, compact, profileView = false, financeView = false, modalView = false, cardName, onResearch, onPortrait }: ResearchProps) {
   const tabVisible = useDocumentVisible();
   const polling = visible && tabVisible;
+  const isCard = Boolean(cardName);
   const year = new Date().getFullYear();
-  const version = useDashboardRepVersion();
-  const cardVersion = dashboardCard ? version : 0;
+  const [retryStatus, setRetryStatus] = useState(0);
   const [period, setPeriod] = useState(() => initialPeriod && /^\d{4}$/.test(initialPeriod) && Number(initialPeriod) >= 1980 && Number(initialPeriod) <= year + year % 2 && Number(initialPeriod) % 2 === 0 ? Number(initialPeriod) : year + year % 2);
   const [availablePeriods, setAvailablePeriods] = useState<number[]>([]);
   const [allYears, setAllYears] = useState(initialPeriod === "all");
@@ -71,11 +70,11 @@ function ResearchPanel({ visible = true, representativeId, initialPeriod, compac
   }, [representativeId]);
   useEffect(() => {
     if (busy || !polling) return;
-    return watchResearch(representativeId, period, dashboardCard, {
+    return watchResearch(representativeId, period, {
       value(result) {
         const periods = result.available_periods ?? [];
         setAvailablePeriods(periods);
-        if (!cardName && periods.length && !periods.includes(period) && !["queued", "running", "needs_review"].includes(result.status)) {
+        if (!isCard && periods.length && !periods.includes(period) && !["queued", "running", "needs_review"].includes(result.status)) {
           setData(null);
           setPeriod(periods[0]);
           return;
@@ -85,7 +84,7 @@ function ResearchPanel({ visible = true, representativeId, initialPeriod, compac
       },
       error(e) { setError(e instanceof Error ? e.message : "Research could not be loaded."); },
     });
-  }, [representativeId, period, reload, cardName, dashboardCard, cardVersion, busy, polling]);
+  }, [representativeId, period, retryStatus, isCard, busy, polling]);
   async function research() {
     if (busy) return;
     const controller = new AbortController();
@@ -167,7 +166,7 @@ function ResearchPanel({ visible = true, representativeId, initialPeriod, compac
       {compact && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "Hide research" : "View research"}</button>}
       {!compact && <label>Reporting period <Dropdown aria-label="Reporting period" value={availablePeriods.includes(period) ? period : ""} disabled={busy || !availablePeriods.length} onChange={e => void selectPeriod(Number(e.target.value))}>{!availablePeriods.includes(period) && <option value="" disabled>{data ? "No data" : "Choose a period"}</option>}{availablePeriods.map(value => <option key={value} value={value}>{value - 1}–{value}</option>)}</Dropdown></label>}
     </div>
-    {error && <p role="alert">{error} <button type="button" onClick={() => { setError(""); setReload(n => n + 1); }}>Retry status</button></p>}
+    {error && <p role="alert">{error} <button type="button" onClick={() => { setError(""); setRetryStatus(n => n + 1); }}>Retry status</button></p>}
     {data?.run?.error && <p role="alert">{data.run.error} Saved information is unchanged.</p>}
     {overviewPending && data?.status !== "queued" && <p role="status">Collecting campaign overview…</p>}
     {expanded && <>

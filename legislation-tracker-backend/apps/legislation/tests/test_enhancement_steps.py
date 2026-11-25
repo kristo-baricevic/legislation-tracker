@@ -13,6 +13,7 @@ from apps.legislation.models import BillEnhancementAttempt
 from apps.legislation.tasks import run_bill_enhancement_attempt
 
 from .test_enhancement_service import (
+    _confirmation,
     enhancement_owner,
     enhancement_settings,
     source_bill,
@@ -25,6 +26,8 @@ from .test_enhancement_tasks import _pending_attempt
     "mode",
     [
         "success",
+        "confirmed_retry",
+        "confirmed_retry_mismatch",
         "unknown",
         "revoked",
         "source_changed",
@@ -45,7 +48,11 @@ def test_source_first_durable_dispatch(
         def generate_provisions(self, **kwargs):
             calls.append("generation")
             assert (
-                BillEnhancementStep.objects.get(attempt=attempt, step_index=0).status
+                BillEnhancementStep.objects.filter(
+                    attempt__enhancement_id=attempt.enhancement_id, step_index=0
+                )
+                .latest("attempt__sequence")
+                .status
                 == "dispatching"
             )
             if mode == "unknown":
@@ -110,6 +117,8 @@ def test_source_first_durable_dispatch(
 
         def generate_synopsis(self, **kwargs):
             calls.append("synopsis")
+            if mode.startswith("confirmed_retry") and calls.count("synopsis") == 1:
+                raise ProviderError("provider_request_rejected", retry_allowed=True)
             assert (
                 BillEnhancementStep.objects.get(attempt=attempt, step_index=0).status
                 == "succeeded"
@@ -170,7 +179,33 @@ def test_source_first_durable_dispatch(
         outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
         attempt.refresh_from_db()
         attempt.enhancement.refresh_from_db()
-        if mode == "success":
+        if mode.startswith("confirmed_retry"):
+            from apps.legislation.enhancements.service import retry_enhancement_attempt
+
+            assert outcome["status"] == "failed"
+            assert attempt.enhancement.published_attempt_id is None
+            if mode == "confirmed_retry_mismatch":
+                BillEnhancementStep.objects.filter(
+                    attempt=attempt, step_index=0
+                ).update(request_fingerprint="different")
+            second = retry_enhancement_attempt(
+                user=enhancement_owner,
+                bill=source_bill,
+                enhancement_id=attempt.enhancement_id,
+                confirmed=_confirmation(source_bill, attempt.credential),
+            ).attempt
+            assert (
+                run_bill_enhancement_attempt(second.pk, second.dispatch_token)["status"]
+                == "succeeded"
+            )
+            second.refresh_from_db()
+            if mode == "confirmed_retry_mismatch":
+                assert second.total_tokens == 30
+                assert calls == ["generation", "synopsis", "generation", "synopsis"]
+            else:
+                assert second.total_tokens == 10
+                assert calls == ["generation", "synopsis", "synopsis"]
+        elif mode == "success":
             assert outcome["status"] == "succeeded"
             assert attempt.enhancement.published_attempt_id == attempt.id
             assert attempt.enhancement.result_completeness == "complete"

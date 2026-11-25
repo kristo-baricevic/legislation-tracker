@@ -10,7 +10,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
-from apps.ingestion.congress_client import _total_request_deadline
+from apps.provider_requests import total_request_deadline
 
 
 def retry_after(value, now=None):
@@ -83,7 +83,7 @@ def get_page(path, params):
         session.trust_env = False
         try:
             with (
-                _total_request_deadline(
+                total_request_deadline(
                     30, error_factory=lambda: FECError("fec_response_limit")
                 ) as armed,
                 session.get(

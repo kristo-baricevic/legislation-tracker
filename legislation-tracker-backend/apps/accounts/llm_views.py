@@ -312,14 +312,22 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
 
         try:
             from apps.legislation.enhancements.providers.session import provider_session
+            from apps.provider_requests import total_request_deadline
 
-            with provider_session():
+            timeout = min(10, settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS)
+            with (
+                total_request_deadline(
+                    timeout,
+                    error_factory=lambda: ProviderError(
+                        "provider_unavailable", retry_allowed=True
+                    ),
+                ),
+                provider_session(),
+            ):
                 check = get_provider(snapshot["provider"]).validate_credential(
                     api_key=api_key,
                     requested_model=credential_target(credential)[1],
-                    timeout_seconds=min(
-                        10, settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS
-                    ),
+                    timeout_seconds=timeout,
                 )
         except ProviderError as exc:
             updated = LLMCredential.objects.filter(**snapshot).update(
