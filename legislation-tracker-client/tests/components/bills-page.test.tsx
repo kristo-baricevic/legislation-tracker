@@ -474,7 +474,7 @@ describe("BillsPage", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Session (Congress)")).toHaveValue("120");
-      expect(screen.getByLabelText("Bill ID")).toHaveValue("9");
+      expect(screen.queryByLabelText("Bill ID")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Bill # (contains)")).toHaveValue("S 9");
       expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("Filed");
       expect(screen.getByLabelText("Sponsor")).toHaveValue("Jones");

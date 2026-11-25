@@ -616,17 +616,6 @@ function BillsCatalog() {
               { value: "unsorted", label: "Unsorted" },
             ]} onChange={value => { setPageNum(1); setSelectedSort(parseSort(value)); }} />
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted">Bill ID</span>
-              <SearchInput
-                type="text"
-                inputMode="numeric"
-                value={idFilter}
-                onChange={resetPageAndSet(setIdFilter)}
-                placeholder="e.g. 42"
-                className="rounded border border-control bg-paper px-2 py-1 text-ink"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Bill # (contains)</span>
               <SearchInput
                 type="text"

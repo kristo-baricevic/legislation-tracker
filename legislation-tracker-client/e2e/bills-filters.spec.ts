@@ -23,16 +23,13 @@ test.beforeEach(async ({ page }) => {
   await expect(cards(page)).toHaveText(titles);
 });
 
-for (const [label, key, value, indices] of [
+for (const [label, key, filter, indices] of [
   ["Full-text search", "q", "a bill to designate", [0]],
   ["Bill # (contains)", "bill_number", "72", [1]],
   ["Sponsor", "sponsor", "Avery", [0, 2]],
   ["Topic contains", "topic", "educ", [1]],
-  ["Bill ID", "id", "", [2]],
 ] as const) {
   test(`${label} changes, clears and survives reload`, async ({ page }) => {
-    const id = await cards(page).nth(2).getByRole("link").getAttribute("href");
-    const filter = value || id!.split("/").pop()!;
     const input = page.getByLabel(label, { exact: true });
     await input.fill(filter);
     await verify(page, { ...session, [key]: filter }, indices.map(i => titles[i]));
