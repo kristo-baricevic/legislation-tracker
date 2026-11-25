@@ -76,10 +76,17 @@ def load_profile(user_id):
         .order_by("bill_id", "topic_id")
         .values("bill_id", "topic_id", "topic__name", "topic__slug", "confidence_score")
     )
-    dismissed = list(User.dismissed_bills.through.objects.filter(user_id=user_id).order_by("bill_id").values_list("bill_id", flat=True))
+    dismissed = list(
+        User.dismissed_bills.through.objects.filter(user_id=user_id)
+        .order_by("bill_id")
+        .values_list("bill_id", flat=True)
+    )
     signature = hashlib.sha256(
         json.dumps(
-            [topics, reps, seeds, edges, dismissed], default=str, allow_nan=False, sort_keys=True
+            [topics, reps, seeds, edges, dismissed],
+            default=str,
+            allow_nan=False,
+            sort_keys=True,
         ).encode()
     ).hexdigest()
     affinities = {
@@ -118,7 +125,11 @@ def candidate_query(profile):
     # Reusing IDs avoids repeating correlated follow-table joins for each score.
     followed_reps = list(profile.representatives)
     usable = BillTopic.objects.filter(USABLE_TOPIC, bill_id=OuterRef("pk"))
-    direct_topic = Exists(usable.filter(topic_id__in=[key for key, score in profile.topics.items() if score == 100]))
+    direct_topic = Exists(
+        usable.filter(
+            topic_id__in=[key for key, score in profile.topics.items() if score == 100]
+        )
+    )
     seed_topic = Exists(usable.filter(topic_id__in=list(profile.topic_seeds)))
     active_cosponsor = Exists(
         BillCosponsor.objects.filter(
@@ -277,6 +288,7 @@ def reasons_for(bill, profile, cosponsors):
 
 def build_ranking(profile, filters=None):
     from .recommendation_filters import filter_bills, sort_results
+
     result = {
         "algorithm": ALGORITHM,
         "unsupported_follow_types": profile.unsupported,
@@ -298,7 +310,11 @@ def build_ranking(profile, filters=None):
             )
         )
         return result
-    rows = list(filter_bills(candidate_query(profile), filters or {}).select_related("sponsor")[: POOL_LIMIT + 1])
+    rows = list(
+        filter_bills(candidate_query(profile), filters or {}).select_related("sponsor")[
+            : POOL_LIMIT + 1
+        ]
+    )
     result["candidate_pool_truncated"] = len(rows) > POOL_LIMIT
     rows = rows[:POOL_LIMIT]
     prefetch_related_objects(

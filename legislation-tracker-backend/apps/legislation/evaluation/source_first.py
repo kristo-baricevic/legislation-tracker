@@ -106,30 +106,36 @@ def execute_recorded(
             "per_call_input": plan.per_call_input,
         },
         "document_fingerprint": plan.graph.document_fingerprint,
-        "mode": "saved_output_live_retry"
-        if use_completed_output
-        else "saved_generation_live_retry"
-        if generation_recording is not None
-        else "fresh_generation",
-        "generation_recording_sha256": digest(generation_recording)
-        if generation_recording is not None
-        else None,
+        "mode": (
+            "saved_output_live_retry"
+            if use_completed_output
+            else (
+                "saved_generation_live_retry"
+                if generation_recording is not None
+                else "fresh_generation"
+            )
+        ),
+        "generation_recording_sha256": (
+            digest(generation_recording) if generation_recording is not None else None
+        ),
         "status": "running",
         "maximum_calls": plan.maximum_calls,
         "maximum_input": plan.maximum_input,
         "maximum_output": plan.maximum_output,
         "network_calls": 0,
         "calls": [],
-        "reuse_result": {
-            "schema_version": VERSION,
-            "document_fingerprint": plan.graph.document_fingerprint,
-            "provisions": [
-                hydrate_evidence(row, plan.graph)
-                for row in json.loads(plan.reused_json)
-            ],
-        }
-        if json.loads(plan.reused_json)
-        else None,
+        "reuse_result": (
+            {
+                "schema_version": VERSION,
+                "document_fingerprint": plan.graph.document_fingerprint,
+                "provisions": [
+                    hydrate_evidence(row, plan.graph)
+                    for row in json.loads(plan.reused_json)
+                ],
+            }
+            if json.loads(plan.reused_json)
+            else None
+        ),
     }
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as output:
@@ -159,12 +165,14 @@ def execute_recorded(
                     "unit_ids": list(call.unit_ids),
                     "status": state,
                     "origin": (
-                        "recorded_output"
-                        if use_completed_output
-                        else "recorded_generation"
-                    )
-                    if recorded
-                    else "provider",
+                        (
+                            "recorded_output"
+                            if use_completed_output
+                            else "recorded_generation"
+                        )
+                        if recorded
+                        else "provider"
+                    ),
                 }
             )
             artifact["network_calls"] += int(not recorded)

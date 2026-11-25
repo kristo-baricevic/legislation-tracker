@@ -207,6 +207,7 @@ class BillDocumentSerializer(serializers.ModelSerializer):
 
     def get_reader_summary(self, obj):
         from .source_summary import purpose_summary
+
         purpose = purpose_summary(getattr(obj, "source_purpose", ""))
         if purpose:
             return purpose
@@ -230,6 +231,7 @@ class BillDocumentSerializer(serializers.ModelSerializer):
             )
             return f"This bill would provide funding for {scope} for the fiscal year ending {statement[1]}."
         from .source_summary import source_summary
+
         return source_summary(source)
 
     def get_text_url(self, obj):
@@ -328,7 +330,9 @@ class TimelinePreviewPublicSerializer(serializers.Serializer):
 
 
 class ReaderLineItemPublicSerializer(serializers.Serializer):
-    reader_text = serializers.CharField(required=False, allow_blank=False, max_length=8000)
+    reader_text = serializers.CharField(
+        required=False, allow_blank=False, max_length=8000
+    )
     id = serializers.CharField(allow_blank=False, max_length=255)
     source_id = serializers.CharField(allow_blank=False, max_length=255)
     section_id = serializers.CharField(allow_blank=False, max_length=255)
@@ -519,15 +523,22 @@ class BillContractSummarySerializer(serializers.ModelSerializer):
 
     def get_reader_brief(self, obj):
         from .extraction.reader_language import projection
-        return projection(obj)["brief"] if obj.schema_version == "2.1-legal-nlp" else None
+
+        return (
+            projection(obj)["brief"] if obj.schema_version == "2.1-legal-nlp" else None
+        )
 
 
 class BillListSerializer(serializers.ModelSerializer):
     """For list view: bill fields + sponsor name + topics."""
 
     sponsor_name = serializers.SerializerMethodField()
-    sponsor_state = serializers.CharField(source="sponsor.state", read_only=True, default=None)
-    sponsor_party = serializers.CharField(source="sponsor.party", read_only=True, default=None)
+    sponsor_state = serializers.CharField(
+        source="sponsor.state", read_only=True, default=None
+    )
+    sponsor_party = serializers.CharField(
+        source="sponsor.party", read_only=True, default=None
+    )
     sponsor_id = serializers.IntegerField(read_only=True, allow_null=True)
     sponsor_bioguide_id = serializers.CharField(
         source="sponsor.bioguide_id", read_only=True, allow_null=True, default=None

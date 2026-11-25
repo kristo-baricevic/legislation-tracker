@@ -78,7 +78,11 @@ def _completed_response(output_text=None):
 
 
 def test_wire_schema_strips_declared_unsupported_keywords():
-    schema = {"type": "array", "uniqueItems": True, "items": {"type": "string", "uniqueItems": True}}
+    schema = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string", "uniqueItems": True},
+    }
     stripped = wire_schema(schema, unsupported_keywords=frozenset({"uniqueItems"}))
     assert "uniqueItems" not in json.dumps(stripped)
     assert stripped == {"type": "array", "items": {"type": "string"}}
@@ -118,30 +122,52 @@ def test_select_bill_schema_default_provider_output():
 
 def test_parse_json_malformed_fails_closed():
     with pytest.raises(ProviderError) as caught:
-        parse_json_output("not-json", usage=ProviderUsage(1, 2, 3), response_id="r", resolved_model="m")
+        parse_json_output(
+            "not-json",
+            usage=ProviderUsage(1, 2, 3),
+            response_id="r",
+            resolved_model="m",
+        )
     assert caught.value.validation_code == "provider_invalid_json"
 
 
 def test_parse_json_non_object_fails_closed():
     with pytest.raises(ProviderError) as caught:
-        parse_json_output("[]", usage=ProviderUsage(1, 2, 3), response_id="r", resolved_model="m")
+        parse_json_output(
+            "[]", usage=ProviderUsage(1, 2, 3), response_id="r", resolved_model="m"
+        )
     assert caught.value.validation_code == "provider_output_not_object"
 
 
 def test_parse_json_fenced_fails_closed():
     with pytest.raises(ProviderError) as caught:
-        parse_json_output("```json\n{\"a\": 1}\n```", usage=ProviderUsage(1, 2, 3), response_id="r", resolved_model="m")
+        parse_json_output(
+            '```json\n{"a": 1}\n```',
+            usage=ProviderUsage(1, 2, 3),
+            response_id="r",
+            resolved_model="m",
+        )
     assert caught.value.validation_code == "provider_invalid_json"
 
 
 def test_parse_json_multi_object_fails_closed():
     with pytest.raises(ProviderError) as caught:
-        parse_json_output('{"a": 1}{"b": 2}', usage=ProviderUsage(1, 2, 3), response_id="r", resolved_model="m")
+        parse_json_output(
+            '{"a": 1}{"b": 2}',
+            usage=ProviderUsage(1, 2, 3),
+            response_id="r",
+            resolved_model="m",
+        )
     assert caught.value.validation_code == "provider_invalid_json"
 
 
 def test_parse_json_valid_returns_result():
-    result = parse_json_output('{"ok": true}', usage=ProviderUsage(1, 2, 3), response_id="r", resolved_model="m")
+    result = parse_json_output(
+        '{"ok": true}',
+        usage=ProviderUsage(1, 2, 3),
+        response_id="r",
+        resolved_model="m",
+    )
     assert result.output == {"ok": True}
     assert result.response_id == "r"
 
@@ -182,13 +208,24 @@ def test_ensure_citation_repair_fits_helper():
 
 
 def test_enhance_bill_routes_to_bill_enhancement_schema():
-    response = _completed_response(json.dumps({
-        "schema_version": "1.0", "overview": [], "key_impacts": [], "obligations": [],
-        "funding_and_timing": [], "uncertain_language": [], "glossary": [],
-    }))
+    response = _completed_response(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "overview": [],
+                "key_impacts": [],
+                "obligations": [],
+                "funding_and_timing": [],
+                "uncertain_language": [],
+                "glossary": [],
+            }
+        )
+    )
     responses = FakeResponses(result=response)
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
-    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    result = provider.enhance_bill(
+        api_key="test", request=_request(), timeout_seconds=30
+    )
     assert isinstance(result.output, dict)
     assert responses.calls[0]["text"]["format"]["name"] == "bill_enhancement_v1_1"
 
@@ -199,7 +236,9 @@ def test_generate_provisions_routes_source_first():
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
     request.request_envelope["source_first_payload"] = {"units": [], "passages": {}}
-    result = provider.generate_provisions(api_key="test", request=request, timeout_seconds=30)
+    result = provider.generate_provisions(
+        api_key="test", request=request, timeout_seconds=30
+    )
     assert "provisions" in result.output
     assert responses.calls[0]["text"]["format"]["name"].startswith("source_first_")
 
@@ -210,7 +249,9 @@ def test_repair_provisions_routes_source_first():
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
     request.request_envelope["source_first_payload"] = {"units": [], "passages": {}}
-    result = provider.repair_provisions(api_key="test", request=request, timeout_seconds=30)
+    result = provider.repair_provisions(
+        api_key="test", request=request, timeout_seconds=30
+    )
     assert "provisions" in result.output
     assert responses.calls[0]["text"]["format"]["name"].startswith("source_first_")
 
@@ -221,6 +262,8 @@ def test_generate_synopsis_routes_source_first():
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
     request.request_envelope["source_first_payload"] = {"explanations": []}
-    result = provider.generate_synopsis(api_key="test", request=request, timeout_seconds=30)
+    result = provider.generate_synopsis(
+        api_key="test", request=request, timeout_seconds=30
+    )
     assert "explanation_ids" in result.output
     assert responses.calls[0]["text"]["format"]["name"].startswith("source_first_")

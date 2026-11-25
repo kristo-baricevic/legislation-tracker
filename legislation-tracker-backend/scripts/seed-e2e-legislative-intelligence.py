@@ -138,7 +138,14 @@ def _reader_contract_fixture():
                 "id": f"line-{index}",
                 "source_id": f"requirement-{index}",
                 "section_id": "section-2",
-                "section_path": [*_section_path(), {"level": "subsection", "label": f"({index + 1})", "heading": f"Independent requirement {index + 1}"}],
+                "section_path": [
+                    *_section_path(),
+                    {
+                        "level": "subsection",
+                        "label": f"({index + 1})",
+                        "heading": f"Independent requirement {index + 1}",
+                    },
+                ],
                 "kind": "requirement",
                 "display_text": (
                     "Requires the Secretary to publish a complete rural health implementation plan."
@@ -276,24 +283,56 @@ def main() -> None:
     )
 
     source_text, contract_json, evidence = _reader_contract_fixture()
-    reader_bill = Bill.objects.create(jurisdiction="federal", session=119,
-        bill_number="HR READER E2E", title="Reader grants fixture", status="Introduced", processing_status="complete")
-    reader_document = BillDocument.objects.create(bill=reader_bill, version_label="IH", is_active_version=True,
+    reader_bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR READER E2E",
+        title="Reader grants fixture",
+        status="Introduced",
+        processing_status="complete",
+    )
+    reader_document = BillDocument.objects.create(
+        bill=reader_bill,
+        version_label="IH",
+        is_active_version=True,
         extracted_text="SEC. 1. GRANTS\nThe Secretary shall award $100 in grants to rural hospitals.",
-        content_type="text/plain", content_hash="reader-e2e")
-    reader_payload = {**contract_json, "section_groups": [],
-                      "reader_stats": {key: 0 for key in contract_json["reader_stats"]},
-                      "line_items": [], "financial_items": [],
-                      "definitions": [], "timeline_items": []}
-    reader_bill.latest_contract = BillContract.objects.create(bill=reader_bill, document=reader_document,
-        contract_hash=contract_hash_from_dict(reader_payload), schema_version="2.1-legal-nlp", contract_json=reader_payload)
+        content_type="text/plain",
+        content_hash="reader-e2e",
+    )
+    reader_payload = {
+        **contract_json,
+        "section_groups": [],
+        "reader_stats": {key: 0 for key in contract_json["reader_stats"]},
+        "line_items": [],
+        "financial_items": [],
+        "definitions": [],
+        "timeline_items": [],
+    }
+    reader_bill.latest_contract = BillContract.objects.create(
+        bill=reader_bill,
+        document=reader_document,
+        contract_hash=contract_hash_from_dict(reader_payload),
+        schema_version="2.1-legal-nlp",
+        contract_json=reader_payload,
+    )
     reader_bill.save(update_fields=["latest_contract"])
-    source_first_bill = Bill.objects.create(jurisdiction="federal", session=119,
-        bill_number="HR SOURCE E2E", title="Source-first grants fixture", status="Introduced", processing_status="complete")
-    BillDocument.objects.create(bill=source_first_bill, version_label="IH", is_active_version=True,
+    source_first_bill = Bill.objects.create(
+        jurisdiction="federal",
+        session=119,
+        bill_number="HR SOURCE E2E",
+        title="Source-first grants fixture",
+        status="Introduced",
+        processing_status="complete",
+    )
+    BillDocument.objects.create(
+        bill=source_first_bill,
+        version_label="IH",
+        is_active_version=True,
         extracted_text="SEC. 1. GRANTS\nThe Secretary shall award $100 in grants to rural hospitals.",
         raw_text="SEC. 1. GRANTS\nThe Secretary shall award $100 in grants to rural hospitals.",
-        content_type="text/plain", content_hash="source-first-e2e")
+        content_type="text/plain",
+        content_hash="source-first-e2e",
+    )
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,

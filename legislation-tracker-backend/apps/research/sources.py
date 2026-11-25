@@ -1,4 +1,5 @@
 """Policy-approved official sources, pinned public DNS and bounded downloads."""
+
 import ipaddress
 import re
 import socket
@@ -6,6 +7,7 @@ import time
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
+
 from urllib3 import HTTPSConnectionPool, Timeout
 from urllib3.exceptions import HTTPError
 
@@ -18,28 +20,53 @@ class SourceUnavailable(ValueError):
 
 def fetch_bytes(url, allowed_host, max_bytes, allowed_types=None):
     parsed = urlsplit(url)
-    if (parsed.scheme != "https" or parsed.hostname != allowed_host or parsed.username
-            or parsed.password or parsed.port not in (None, 443) or parsed.fragment
-            or re.search(r"[\x00-\x20\x7f]", url)):
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != allowed_host
+        or parsed.username
+        or parsed.password
+        or parsed.port not in (None, 443)
+        or parsed.fragment
+        or re.search(r"[\x00-\x20\x7f]", url)
+    ):
         raise SourceUnavailable("invalid_source")
     try:
-        addresses = {row[4][0] for row in socket.getaddrinfo(allowed_host, 443, type=socket.SOCK_STREAM)}
+        addresses = {
+            row[4][0]
+            for row in socket.getaddrinfo(allowed_host, 443, type=socket.SOCK_STREAM)
+        }
     except OSError:
         raise SourceUnavailable("source_dns_unavailable") from None
     if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
         raise SourceUnavailable("private_destination")
     # Connect to the checked IP, retain hostname TLS verification and SNI, and
     # never resolve the name again or follow redirects/environment proxies.
-    pool = HTTPSConnectionPool(sorted(addresses)[0], port=443, server_hostname=allowed_host,
-                               assert_hostname=allowed_host, cert_reqs="CERT_REQUIRED",
-                               timeout=Timeout(connect=3, read=3), retries=False)
+    pool = HTTPSConnectionPool(
+        sorted(addresses)[0],
+        port=443,
+        server_hostname=allowed_host,
+        assert_hostname=allowed_host,
+        cert_reqs="CERT_REQUIRED",
+        timeout=Timeout(connect=3, read=3),
+        retries=False,
+    )
     response = None
     deadline = time.monotonic() + 15
     try:
         target = parsed.path or "/"
         if parsed.query:
             target += "?" + parsed.query
-        response = pool.request("GET", target, headers={"Host": allowed_host, "User-Agent": USER_AGENT, "Accept-Encoding": "identity"}, preload_content=False, redirect=False)
+        response = pool.request(
+            "GET",
+            target,
+            headers={
+                "Host": allowed_host,
+                "User-Agent": USER_AGENT,
+                "Accept-Encoding": "identity",
+            },
+            preload_content=False,
+            redirect=False,
+        )
         if response.status != 200:
             raise SourceUnavailable("source_status_unavailable")
         if response.headers.get("Content-Encoding", "identity") not in ("", "identity"):
@@ -76,7 +103,22 @@ class BiographyParser(HTMLParser):
         self.parts = []
 
     def handle_starttag(self, tag, attrs):
-        if tag in {"br", "img", "hr", "input", "meta", "link", "source", "wbr", "area", "base", "embed", "param", "track", "col"}:
+        if tag in {
+            "br",
+            "img",
+            "hr",
+            "input",
+            "meta",
+            "link",
+            "source",
+            "wbr",
+            "area",
+            "base",
+            "embed",
+            "param",
+            "track",
+            "col",
+        }:
             if self.depth and not self.skip:
                 self.parts.append(" ")
             return
@@ -84,7 +126,10 @@ class BiographyParser(HTMLParser):
             self.depth += 1
         elif dict(attrs).get("id") == self.element_id:
             self.depth = 1
-        if self.depth and (self.skip or tag in {"script", "style", "nav", "header", "footer", "noscript", "form"}):
+        if self.depth and (
+            self.skip
+            or tag in {"script", "style", "nav", "header", "footer", "noscript", "form"}
+        ):
             self.skip += 1
 
     def handle_endtag(self, tag):
@@ -118,7 +163,11 @@ def fetch_official_biography(policy):
     host = urlsplit(policy.url).hostname
     robots_url = f"https://{host}/robots.txt"
     robots = RobotFileParser(robots_url)
-    robots.parse(fetch_bytes(robots_url, host, 64_000, {"text/plain"}).decode("utf-8").splitlines())
+    robots.parse(
+        fetch_bytes(robots_url, host, 64_000, {"text/plain"})
+        .decode("utf-8")
+        .splitlines()
+    )
     if not robots.can_fetch(USER_AGENT, policy.url):
         raise SourceUnavailable("robots_denied")
     body = fetch_bytes(policy.url, host, 512_000, {"text/html"})

@@ -238,6 +238,7 @@ def _definition_term(match: re.Match[str]) -> str:
 
 class _HeadingLookup:
     """Per-extraction containment index; never cache documents globally."""
+
     def __init__(self, sections):
         self.ranges = {}
         for phrase in ("definition", "table of contents"):
@@ -250,6 +251,7 @@ class _HeadingLookup:
 
     def contains(self, section, phrase):
         from bisect import bisect_right
+
         starts, ends = self.ranges[phrase]
         position = section.span.start_char
         index = bisect_right(starts, position) - 1
@@ -312,9 +314,11 @@ def extract_modality_claims(
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     headings = _HeadingLookup(sections)
-    for section, sentence, context in (_clauses if _clauses is not None else iter_operative_clauses(
-        source_text, sections, reader_mode=reader_mode
-    )):
+    for section, sentence, context in (
+        _clauses
+        if _clauses is not None
+        else iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    ):
         modal_matches = list(
             MODAL_RE.finditer(
                 grammar_text(sentence.text) if reader_mode else sentence.text
@@ -397,9 +401,11 @@ def extract_modality_claims(
                         "conditions": conditions,
                     },
                     section=section,
-                    evidence=(context.evidence,)
-                    if reader_mode and context is not None
-                    else (sentence,),
+                    evidence=(
+                        (context.evidence,)
+                        if reader_mode and context is not None
+                        else (sentence,)
+                    ),
                     rule_id=f"modality.{modal.replace(' ', '_')}.v1",
                 )
             )
@@ -416,9 +422,11 @@ def extract_definition_claims(
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
     headings = _HeadingLookup(sections)
-    for section, sentence, _ in (_clauses if _clauses is not None else iter_operative_clauses(
-        source_text, sections, reader_mode=reader_mode
-    )):
+    for section, sentence, _ in (
+        _clauses
+        if _clauses is not None
+        else iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    ):
         match = _EXPLICIT_DEFINITION_RE.search(sentence.text)
         explicit = match is not None
         if match is None and _heading_contains(section, "definition", headings):
@@ -462,9 +470,11 @@ def extract_applicability_claims(
         (_EXCLUDES_RE, "excluded", "excludes"),
     )
     claims = []
-    for section, sentence, _ in (_clauses if _clauses is not None else iter_operative_clauses(
-        source_text, sections, reader_mode=reader_mode
-    )):
+    for section, sentence, _ in (
+        _clauses
+        if _clauses is not None
+        else iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    ):
         text = sentence.text.strip()
         for pattern, applicability_type, rule_name in patterns:
             match = pattern.match(text)
@@ -528,7 +538,8 @@ def _funding_purpose(text: str, *, normalize_whitespace: bool = False) -> str | 
     )
     leading_purpose = re.match(
         r"To\s+(carry\s+out\b[^,]+),\s*there\s+(?:are|is)\s+",
-        normalized_text, re.I,
+        normalized_text,
+        re.I,
     )
     if leading_purpose:
         return leading_purpose.group(1)
@@ -585,9 +596,11 @@ def extract_funding_claims(
     _clauses=None,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence, _ in (_clauses if _clauses is not None else iter_operative_clauses(
-        source_text, sections, reader_mode=reader_mode
-    )):
+    for section, sentence, _ in (
+        _clauses
+        if _clauses is not None
+        else iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    ):
         text = sentence.text
         lowered = text.casefold()
         such_sums = _SUCH_SUMS_RE.search(text) is not None
@@ -675,9 +688,11 @@ def extract_timeline_claims(
     _clauses=None,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence, _ in (_clauses if _clauses is not None else iter_operative_clauses(
-        source_text, sections, reader_mode=reader_mode
-    )):
+    for section, sentence, _ in (
+        _clauses
+        if _clauses is not None
+        else iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    ):
         relative = _RELATIVE_TIMELINE_RE.search(sentence.text)
         date_match = _DATE_RE.search(sentence.text)
         normalized_date = _normalized_date(date_match) if date_match else None
@@ -761,9 +776,11 @@ def extract_amendment_claims(
     _clauses=None,
 ) -> tuple[ExtractedClaim, ...]:
     claims = []
-    for section, sentence, _ in (_clauses if _clauses is not None else iter_operative_clauses(
-        source_text, sections, reader_mode=reader_mode
-    )):
+    for section, sentence, _ in (
+        _clauses
+        if _clauses is not None
+        else iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    ):
         details = _amendment_details(sentence.text)
         if details is None:
             continue
@@ -819,11 +836,23 @@ def extract_claims(
         "definitions": 4,
         "applicability": 5,
     }
-    clauses = tuple(iter_operative_clauses(source_text, sections, reader_mode=reader_mode))
-    claims = tuple(claim for extractor in (
-        extract_modality_claims, extract_amendment_claims, extract_funding_claims,
-        extract_timeline_claims, extract_definition_claims, extract_applicability_claims,
-    ) for claim in extractor(source_text, sections, reader_mode=reader_mode, _clauses=clauses))
+    clauses = tuple(
+        iter_operative_clauses(source_text, sections, reader_mode=reader_mode)
+    )
+    claims = tuple(
+        claim
+        for extractor in (
+            extract_modality_claims,
+            extract_amendment_claims,
+            extract_funding_claims,
+            extract_timeline_claims,
+            extract_definition_claims,
+            extract_applicability_claims,
+        )
+        for claim in extractor(
+            source_text, sections, reader_mode=reader_mode, _clauses=clauses
+        )
+    )
     return tuple(
         sorted(
             claims,

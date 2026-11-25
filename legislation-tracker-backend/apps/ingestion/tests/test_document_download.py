@@ -28,32 +28,46 @@ class FakeStreamingResponse:
 def test_congress_throttle_uses_exact_version_official_xml_mirror(monkeypatch):
     response = FakeStreamingResponse([])
     response.status_code = 429
+
     def throttle():
-        raise requests.HTTPError('429', response=response)
+        raise requests.HTTPError("429", response=response)
+
     response.raise_for_status = throttle
-    mirror = FakeStreamingResponse([b'<bill/>'], {'Content-Type': 'application/xml'})
+    mirror = FakeStreamingResponse([b"<bill/>"], {"Content-Type": "application/xml"})
     urls = []
+
     def get(url, **kwargs):
         urls.append(url)
         return response if len(urls) == 1 else mirror
-    monkeypatch.setattr(requests, 'get', get)
-    with document_download.download_url('https://www.congress.gov/119/bills/hr5760/BILLS-119hr5760ih.xml') as result:
-        assert result.file.read() == b'<bill/>'
-    assert urls == ['https://www.congress.gov/119/bills/hr5760/BILLS-119hr5760ih.xml',
-                    'https://www.govinfo.gov/content/pkg/BILLS-119hr5760ih/xml/BILLS-119hr5760ih.xml']
+
+    monkeypatch.setattr(requests, "get", get)
+    with document_download.download_url(
+        "https://www.congress.gov/119/bills/hr5760/BILLS-119hr5760ih.xml"
+    ) as result:
+        assert result.file.read() == b"<bill/>"
+    assert urls == [
+        "https://www.congress.gov/119/bills/hr5760/BILLS-119hr5760ih.xml",
+        "https://www.govinfo.gov/content/pkg/BILLS-119hr5760ih/xml/BILLS-119hr5760ih.xml",
+    ]
     assert response.closed and mirror.closed
 
 
 def test_unrelated_host_never_uses_congress_mirror(monkeypatch):
     response = FakeStreamingResponse([])
     response.status_code = 429
+
     def throttle():
-        raise requests.HTTPError('429', response=response)
+        raise requests.HTTPError("429", response=response)
+
     response.raise_for_status = throttle
     calls = []
-    monkeypatch.setattr(requests, 'get', lambda url, **kwargs: (calls.append(url) or response))
+    monkeypatch.setattr(
+        requests, "get", lambda url, **kwargs: (calls.append(url) or response)
+    )
     with pytest.raises(requests.HTTPError):
-        document_download.download_url('https://example.test/119/bills/hr5760/BILLS-119hr5760ih.xml')
+        document_download.download_url(
+            "https://example.test/119/bills/hr5760/BILLS-119hr5760ih.xml"
+        )
     assert len(calls) == 1
 
 

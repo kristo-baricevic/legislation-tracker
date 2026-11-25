@@ -52,10 +52,14 @@ def _assert_private(response):
     assert response["Cache-Control"] == "private, no-store"
 
 
-def test_model_selection_persists_and_never_sends_old_key_to_another_provider(authenticated_client, llm_settings, monkeypatch):
+def test_model_selection_persists_and_never_sends_old_key_to_another_provider(
+    authenticated_client, llm_settings, monkeypatch
+):
     model = "example/structured:free"
-    monkeypatch.setattr("apps.legislation.enhancements.openrouter_catalog.entries", lambda: {
-        model: {"model": model, "provider": "openrouter", "free": True}})
+    monkeypatch.setattr(
+        "apps.legislation.enhancements.openrouter_catalog.entries",
+        lambda: {model: {"model": model, "provider": "openrouter", "free": True}},
+    )
     url = "/api/settings/llm/"
     with llm_settings:
         catalog = authenticated_client.get(url).json()["models"]
@@ -63,14 +67,35 @@ def test_model_selection_persists_and_never_sends_old_key_to_another_provider(au
         authenticated_client.put(url, {"api_key": "original-secret"}, format="json")
         selection = {"provider": "openrouter", "requested_model": model}
         authenticated_client.put(url, {"enabled": False}, format="json")
-        assert authenticated_client.put(url, selection, format="json").status_code == 400
-        assert authenticated_client.put(url, {**selection, "api_key": "router-secret"}, format="json").status_code == 200
+        assert (
+            authenticated_client.put(url, selection, format="json").status_code == 400
+        )
+        assert (
+            authenticated_client.put(
+                url, {**selection, "api_key": "router-secret"}, format="json"
+            ).status_code
+            == 200
+        )
         saved = authenticated_client.get(url).json()
         assert saved["enabled"] is False
-        assert authenticated_client.put(url, {"api_key": "old-tab-secret"}, format="json").status_code == 409
+        assert (
+            authenticated_client.put(
+                url, {"api_key": "old-tab-secret"}, format="json"
+            ).status_code
+            == 409
+        )
         assert authenticated_client.get(url).json() == saved
-        assert (saved["provider"], saved["requested_model"], saved["key_suffix"]) == ("openrouter", model, "cret")
-        assert authenticated_client.put(url, {**selection, "requested_model": "unlisted"}, format="json").status_code == 400
+        assert (saved["provider"], saved["requested_model"], saved["key_suffix"]) == (
+            "openrouter",
+            model,
+            "cret",
+        )
+        assert (
+            authenticated_client.put(
+                url, {**selection, "requested_model": "unlisted"}, format="json"
+            ).status_code
+            == 400
+        )
 
 
 def test_public_capabilities_exposes_only_runtime_feature_availability(llm_settings):

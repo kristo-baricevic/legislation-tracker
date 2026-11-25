@@ -127,7 +127,7 @@ def _unit_payload(graph, unit):
         **asdict(unit),
         "required_conditions": required_conditions(unit, graph),
         "source_checklist": [
-            {**item, "text": graph.source_text[item["start"]:item["end"]]}
+            {**item, "text": graph.source_text[item["start"] : item["end"]]}
             for item in source_checklist(unit, graph)
         ],
     }
@@ -150,7 +150,9 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
     max_generation = min(4, limits.get("generation_calls", 4))
     batch_size = min(8, limits.get("batch_size", 8))
     if per_call <= 0 or output_tokens <= 0 or max_generation < 1 or batch_size < 1:
-        raise BudgetExceeded("budget_exceeded", {uid: "generation_budget" for uid in units})
+        raise BudgetExceeded(
+            "budget_exceeded", {uid: "generation_budget" for uid in units}
+        )
     reused = []
     if reuse_result:
         if (
@@ -185,7 +187,11 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
     passage_rows = {}
 
     def refuse(reason):
-        reasons = {uid: unresolved.get(uid, "generation_budget") for uid in units if uid not in reused_ids}
+        reasons = {
+            uid: unresolved.get(uid, "generation_budget")
+            for uid in units
+            if uid not in reused_ids
+        }
         raise BudgetExceeded(reason, reasons, reused_ids)
 
     def output_fits(ids):
@@ -193,14 +199,24 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
 
     def make(ids):
         # Preserve historical wire aliases and fingerprints for unchanged plans.
-        pids = {pid for uid in ids for pid in
-                units[uid].own_passage_ids + units[uid].context_passage_ids}
+        pids = {
+            pid
+            for uid in ids
+            for pid in units[uid].own_passage_ids + units[uid].context_passage_ids
+        }
         return _call(
             "generation",
             ids,
-            {"document_fingerprint": graph.document_fingerprint,
-             "units": [records[uid] for uid in sorted(ids, key=unit_order.__getitem__)],
-             "passages": {pid: passage_rows[pid] for pid in sorted(pids, key=passage_order.__getitem__)}},
+            {
+                "document_fingerprint": graph.document_fingerprint,
+                "units": [
+                    records[uid] for uid in sorted(ids, key=unit_order.__getitem__)
+                ],
+                "passages": {
+                    pid: passage_rows[pid]
+                    for pid in sorted(pids, key=passage_order.__getitem__)
+                },
+            },
             model,
             reasoning_effort,
             output_tokens,
@@ -237,7 +253,9 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
         refuse("zero_coverage")
     if len(singles) > max_generation * batch_size:
         refuse("budget_exceeded")
-    for uid in sorted(singles, key=lambda uid: singles[uid].estimated_input, reverse=True):
+    for uid in sorted(
+        singles, key=lambda uid: singles[uid].estimated_input, reverse=True
+    ):
         # Reuse spare capacity in earlier batches. Each unit carries its own
         # complete context, and final presentation remains in source order.
         # Consecutive-only packing can needlessly exceed the paid-call ceiling.
@@ -556,9 +574,11 @@ def run_analysis(plan, invoke, checkpoint):
                 # A synopsis remains a generated claim, explicitly unreviewed.
                 synopsis = {
                     **output,
-                    "status": "partial"
-                    if failed or any(u.unresolved_dependencies for u in graph.units)
-                    else "complete",
+                    "status": (
+                        "partial"
+                        if failed or any(u.unresolved_dependencies for u in graph.units)
+                        else "complete"
+                    ),
                 }
             except ValidationError:
                 pass
@@ -586,11 +606,13 @@ def run_analysis(plan, invoke, checkpoint):
                 {
                     **item,
                     "unit_id": unit.id,
-                    "status": "structural_context"
-                    if "structural_context" in item["kinds"]
-                    else "mapped_unreviewed"
-                    if unit.id in accepted
-                    else "unresolved",
+                    "status": (
+                        "structural_context"
+                        if "structural_context" in item["kinds"]
+                        else (
+                            "mapped_unreviewed" if unit.id in accepted else "unresolved"
+                        )
+                    ),
                 }
                 for unit in graph.units
                 for item in source_checklist(unit, graph)

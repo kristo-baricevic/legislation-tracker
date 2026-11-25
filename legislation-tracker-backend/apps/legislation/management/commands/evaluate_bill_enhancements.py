@@ -224,17 +224,19 @@ class Command(BaseCommand):
                         provider_result,
                         preflight.source_snapshot,
                         repair=(
-                            lambda payload, repair_method=repair_method, preflight=preflight: (
-                                repair_method(
-                                    api_key=api_key,
-                                    request=preflight,
-                                    payload=payload,
-                                    timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
+                            (
+                                lambda payload, repair_method=repair_method, preflight=preflight: (
+                                    repair_method(
+                                        api_key=api_key,
+                                        request=preflight,
+                                        payload=payload,
+                                        timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
+                                    )
                                 )
                             )
-                        )
-                        if options["repair_citations"] and repair_method
-                        else None,
+                            if options["repair_citations"] and repair_method
+                            else None
+                        ),
                         max_request_bytes=min(
                             max_input_tokens, settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
                         ),
@@ -291,9 +293,11 @@ class Command(BaseCommand):
                             "failure_category": failure_category,
                             **(
                                 {
-                                    "citation_resolution": exc.citation_resolution
-                                    if isinstance(exc, ProviderError)
-                                    else provider_result.citation_resolution
+                                    "citation_resolution": (
+                                        exc.citation_resolution
+                                        if isinstance(exc, ProviderError)
+                                        else provider_result.citation_resolution
+                                    )
                                 }
                                 if (
                                     exc.citation_resolution

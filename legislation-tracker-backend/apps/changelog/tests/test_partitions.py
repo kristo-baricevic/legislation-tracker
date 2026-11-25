@@ -39,9 +39,7 @@ _EXPECTED_PARENT_INDEXES = {
 
 def _applied_apps():
     executor = MigrationExecutor(connection)
-    return executor.loader.project_state(
-        list(executor.loader.applied_migrations)
-    ).apps
+    return executor.loader.project_state(list(executor.loader.applied_migrations)).apps
 
 
 def test_month_bounds_roll_over_december():
@@ -68,9 +66,7 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations(requ
     """Exercise the real 0002 -> 0003 -> 0002 conversion on PostgreSQL."""
     executor = MigrationExecutor(connection)
     latest_targets = executor.loader.graph.leaf_nodes()
-    request.addfinalizer(
-        lambda: MigrationExecutor(connection).migrate(latest_targets)
-    )
+    request.addfinalizer(lambda: MigrationExecutor(connection).migrate(latest_targets))
     executor.migrate([_PRE_PARTITION_MIGRATION])
     old_apps = _applied_apps()
     OldChangeLog = old_apps.get_model("changelog", "ChangeLog")
@@ -153,8 +149,12 @@ def test_partition_migration_preserves_data_indexes_sequences_and_relations(requ
             )
             assert cursor.fetchone()[0] == "changelog_changelog_2026_02"
 
-        assert PartitionedChangeLog.objects.get(pk=first.pk).new_value == {"status": "introduced"}
-        assert PartitionedChangeLog.objects.get(pk=second.pk).old_value == {"version": 1}
+        assert PartitionedChangeLog.objects.get(pk=first.pk).new_value == {
+            "status": "introduced"
+        }
+        assert PartitionedChangeLog.objects.get(pk=second.pk).old_value == {
+            "version": 1
+        }
         fresh = PartitionedChangeLog.objects.create(
             bill_id=bill.id,
             change_type="status_update",

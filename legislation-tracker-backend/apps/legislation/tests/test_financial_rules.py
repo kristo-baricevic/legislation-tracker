@@ -262,7 +262,10 @@ SEC. 5. GRANTS
 """
     claims = extract(source)
     assert [(c.fields["amount"], c.fields["currency"]) for c in claims] == [
-        ("2.00", None), ("20.00", None), ("5.00", None), ("2.00", None),
+        ("2.00", None),
+        ("20.00", None),
+        ("5.00", None),
+        ("2.00", None),
     ]
     assert "technical assistance" in claims[-1].fields["purpose"]
     assert len(claims[-1].evidence) == 2

@@ -9,7 +9,7 @@ from decimal import Decimal
 from itertools import pairwise
 
 from .display_text import normalize_reader_fragment
-from .federal_clauses import iter_operative_clauses, _quoted_block_ranges
+from .federal_clauses import _quoted_block_ranges, iter_operative_clauses
 from .federal_structure import sentence_spans
 from .operative_context import parse_operative_clauses
 from .types import ExtractedClaim, SourceSpan, StructuralSection
@@ -174,8 +174,8 @@ def _reservation_has_financial_object(before: str, after: str) -> bool:
 def is_explicit_tax_rule(text: str) -> bool:
     """A tax on a transaction is not an instruction to make that transaction."""
     return bool(
-        re.search(r'\btax\b', text, re.I)
-        and re.search(r'\b(?:is|shall be)\s+(?:hereby\s+)?imposed\b', text, re.I)
+        re.search(r"\btax\b", text, re.I)
+        and re.search(r"\b(?:is|shall be)\s+(?:hereby\s+)?imposed\b", text, re.I)
         and (_PERCENT_RE.search(text) or _MONEY_RE.search(text))
     )
 
@@ -488,17 +488,28 @@ def _grant_payment_claims(source_text, sections, clauses):
             for amount in _amounts(text):
                 if amount.amount is None:
                     continue
-                before = text[:amount.start]
+                before = text[: amount.start]
                 action = None
-                if (grant and amount.currency == "USD"
+                if (
+                    grant
+                    and amount.currency == "USD"
                     and re.search(r"\bshall\s+pay\b", before, re.I)
-                    and re.search(r"\ba grant\b[^.;]*\bin the amount of\s*$", before, re.I)):
+                    and re.search(
+                        r"\ba grant\b[^.;]*\bin the amount of\s*$", before, re.I
+                    )
+                ):
                     action = "other_explicit"
-                elif (grant and amount.currency == "USD"
-                      and re.search(r"\bshall not exceed\s*$", before, re.I)):
+                elif (
+                    grant
+                    and amount.currency == "USD"
+                    and re.search(r"\bshall not exceed\s*$", before, re.I)
+                ):
                     action = "limitation"
-                elif (amount.amount_type == "percentage"
-                      and re.search(r"\bpercent of (?:any |the |such )?funds\b.*\bshall be advanced\b", text, re.I)):
+                elif amount.amount_type == "percentage" and re.search(
+                    r"\bpercent of (?:any |the |such )?funds\b.*\bshall be advanced\b",
+                    text,
+                    re.I,
+                ):
                     action = "allocation"
                 if action is None:
                     continue
@@ -511,8 +522,11 @@ def _grant_payment_claims(source_text, sections, clauses):
                 # legacy cap parser must not revive it without its context.
                 owned_amounts.add((start, end))
                 owner = next(
-                    (c for c in clauses
-                     if c.span.start_char <= start and end <= c.span.end_char),
+                    (
+                        c
+                        for c in clauses
+                        if c.span.start_char <= start and end <= c.span.end_char
+                    ),
                     None,
                 )
                 if owner is None or owner.disposition in {"discussion", "unasserted"}:
@@ -533,11 +547,21 @@ def _grant_payment_claims(source_text, sections, clauses):
                 if owner.disposition == "uncertain" and action != "limitation":
                     continue
                 evidence = owner.evidence
-                claim = _claim(section=section, evidence=evidence, action=action,
-                               amount=amount, fiscal_years=_fiscal_years(text),
-                               purpose=None, source_account=None, destination_account=None,
-                               inherited=bool(owner.context), source_span=span)
-                claims.append(replace(claim, rule_id=f"financial.grant_source.{action}.v1"))
+                claim = _claim(
+                    section=section,
+                    evidence=evidence,
+                    action=action,
+                    amount=amount,
+                    fiscal_years=_fiscal_years(text),
+                    purpose=None,
+                    source_account=None,
+                    destination_account=None,
+                    inherited=bool(owner.context),
+                    source_span=span,
+                )
+                claims.append(
+                    replace(claim, rule_id=f"financial.grant_source.{action}.v1")
+                )
     return claims, owned_amounts
 
 
@@ -673,12 +697,19 @@ def extract_financial_claims(
                             ),
                         )
             governing = next(
-                (c for c in clauses if c.span.start_char <= span.start_char
-                 and span.end_char <= c.span.end_char and c.evidence_context),
+                (
+                    c
+                    for c in clauses
+                    if c.span.start_char <= span.start_char
+                    and span.end_char <= c.span.end_char
+                    and c.evidence_context
+                ),
                 None,
             )
             if governing is not None:
-                evidence = tuple(dict.fromkeys((*governing.evidence_context, *evidence)))
+                evidence = tuple(
+                    dict.fromkeys((*governing.evidence_context, *evidence))
+                )
             claims.append(
                 _claim(
                     section=section,

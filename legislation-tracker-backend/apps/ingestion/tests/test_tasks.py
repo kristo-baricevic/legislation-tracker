@@ -410,7 +410,8 @@ def test_dispatch_ingestion_work_leases_pending_rows_before_sending_to_celery(
     monkeypatch.setattr(
         tasks.process_ingestion_work_item,
         "apply_async",
-        lambda args=None, kwargs=None, **options: enqueued.append((args, kwargs)) or Result(),
+        lambda args=None, kwargs=None, **options: enqueued.append((args, kwargs))
+        or Result(),
     )
 
     result = tasks.dispatch_ingestion_work()
@@ -479,20 +480,30 @@ def test_dispatch_prioritizes_bill_completion_over_roll_call_backlog(monkeypatch
 
 @pytest.mark.django_db
 def test_document_extraction_has_cpu_budget_without_relaxing_network_jobs(monkeypatch):
-    for kind in ('document_contract', 'bill'):
-        IngestionWorkItem.objects.create(kind=kind, dedupe_key='budget-' + kind,
-            source_updated_at=timezone.now(), payload_json={})
+    for kind in ("document_contract", "bill"):
+        IngestionWorkItem.objects.create(
+            kind=kind,
+            dedupe_key="budget-" + kind,
+            source_updated_at=timezone.now(),
+            payload_json={},
+        )
     deliveries = {}
+
     def publish(args, **options):
         from types import SimpleNamespace
+
         deliveries[IngestionWorkItem.objects.get(pk=args[0]).kind] = options
-        return SimpleNamespace(id='test-budget')
-    monkeypatch.setattr(tasks.process_ingestion_work_item, 'apply_async', publish)
-    assert tasks.dispatch_ingestion_work()['dispatched'] == 2
-    assert deliveries['document_contract']['soft_time_limit'] == 180
-    assert deliveries['document_contract']['time_limit'] == 210
-    assert deliveries['document_contract']['time_limit'] < tasks.WORK_LEASE_DURATION.total_seconds()
-    assert 'soft_time_limit' not in deliveries['bill']
+        return SimpleNamespace(id="test-budget")
+
+    monkeypatch.setattr(tasks.process_ingestion_work_item, "apply_async", publish)
+    assert tasks.dispatch_ingestion_work()["dispatched"] == 2
+    assert deliveries["document_contract"]["soft_time_limit"] == 180
+    assert deliveries["document_contract"]["time_limit"] == 210
+    assert (
+        deliveries["document_contract"]["time_limit"]
+        < tasks.WORK_LEASE_DURATION.total_seconds()
+    )
+    assert "soft_time_limit" not in deliveries["bill"]
     assert tasks.process_ingestion_work_item.soft_time_limit == 60
 
 
@@ -918,17 +929,24 @@ def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatc
 @pytest.mark.django_db
 def test_http_throttle_retains_work_and_honors_retry_after(monkeypatch):
     import requests
-    work = IngestionWorkItem.objects.create(kind="bill", dedupe_key="119-hr-429",
+
+    work = IngestionWorkItem.objects.create(
+        kind="bill",
+        dedupe_key="119-hr-429",
         source_updated_at=timezone.now(),
-        payload_json={"bill_key": "119-hr-429"}, status=IngestionWorkStatus.DISPATCHED,
+        payload_json={"bill_key": "119-hr-429"},
+        status=IngestionWorkStatus.DISPATCHED,
         attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1,
-        lease_expires_at=timezone.now() + timedelta(minutes=5))
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
     response = requests.Response()
     response.status_code = 429
-    response.headers['Retry-After'] = '7200'
+    response.headers["Retry-After"] = "7200"
+
     def throttled(*args):
-        raise requests.HTTPError('429 Too Many Requests', response=response)
-    monkeypatch.setattr(tasks, '_process_bill_impl', throttled)
+        raise requests.HTTPError("429 Too Many Requests", response=response)
+
+    monkeypatch.setattr(tasks, "_process_bill_impl", throttled)
     before = timezone.now()
     tasks.process_ingestion_work_item(work.id)
     work.refresh_from_db()
@@ -939,16 +957,26 @@ def test_http_throttle_retains_work_and_honors_retry_after(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_no_published_versions_remains_scheduled_without_spending_retry_budget(monkeypatch):
-    work = IngestionWorkItem.objects.create(kind=tasks.WORK_KIND_BILL_VERSIONS,
-        dedupe_key='awaiting-text', source_updated_at=timezone.now(),
-        payload_json={'bill_id': 123}, status=IngestionWorkStatus.DISPATCHED,
-        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1)
-    monkeypatch.setattr(tasks, '_process_bill_versions_impl', lambda *args: {'versions': 0, 'fallback_enqueued': True})
+def test_no_published_versions_remains_scheduled_without_spending_retry_budget(
+    monkeypatch,
+):
+    work = IngestionWorkItem.objects.create(
+        kind=tasks.WORK_KIND_BILL_VERSIONS,
+        dedupe_key="awaiting-text",
+        source_updated_at=timezone.now(),
+        payload_json={"bill_id": 123},
+        status=IngestionWorkStatus.DISPATCHED,
+        attempt_count=tasks.MAX_INGESTION_WORK_ATTEMPTS - 1,
+    )
+    monkeypatch.setattr(
+        tasks,
+        "_process_bill_versions_impl",
+        lambda *args: {"versions": 0, "fallback_enqueued": True},
+    )
     before = timezone.now()
     result = tasks.process_ingestion_work_item(work.id)
     work.refresh_from_db()
-    assert result['status'] == 'awaiting_source'
+    assert result["status"] == "awaiting_source"
     assert work.status == IngestionWorkStatus.PENDING
     assert work.available_at > before
     assert work.attempt_count == tasks.MAX_INGESTION_WORK_ATTEMPTS - 1
@@ -2075,11 +2103,16 @@ def test_process_bill_refreshes_votes_when_existing_documents_are_complete(monke
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("new_action", [
-    "New action",
-    "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of the provisions within their respective jurisdictions.",
-])
-def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch, new_action):
+@pytest.mark.parametrize(
+    "new_action",
+    [
+        "New action",
+        "Referred to the Committee on Education and Workforce, and in addition to the Committees on the Judiciary and Oversight, for consideration of the provisions within their respective jurisdictions.",
+    ],
+)
+def test_process_bill_status_changelog_preserves_old_and_new_values(
+    monkeypatch, new_action
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -2121,30 +2154,52 @@ def test_process_bill_status_changelog_preserves_old_and_new_values(monkeypatch,
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("has_previous", [True, False])
-def test_version_reorder_reconciles_analysis_even_after_completed_generation(monkeypatch, has_previous):
+def test_version_reorder_reconciles_analysis_even_after_completed_generation(
+    monkeypatch, has_previous
+):
     from apps.legislation.tasks import enqueue_document_contract, generate_contract
 
     monkeypatch.setattr(tasks.dispatch_ingestion_work, "delay", lambda: None)
-    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 1", title="Reports")
-    docs = [BillDocument.objects.create(
-        bill=bill, version_label=label, source_order=2-i, is_active_version=i == 0,
-        source_url=f"https://example.org/{i}.txt", object_storage_key=f"{i}.txt",
-        downloaded_at=timezone.now(), extracted_text="SEC. 1. Report\nThe Secretary shall submit an annual report.",
-    ) for i, label in enumerate(["Introduced", "Enrolled"])]
+    bill = Bill.objects.create(
+        jurisdiction="federal", session=119, bill_number="HR 1", title="Reports"
+    )
+    docs = [
+        BillDocument.objects.create(
+            bill=bill,
+            version_label=label,
+            source_order=2 - i,
+            is_active_version=i == 0,
+            source_url=f"https://example.org/{i}.txt",
+            object_storage_key=f"{i}.txt",
+            downloaded_at=timezone.now(),
+            extracted_text="SEC. 1. Report\nThe Secretary shall submit an annual report.",
+        )
+        for i, label in enumerate(["Introduced", "Enrolled"])
+    ]
     if has_previous:
         generate_contract(docs[0].id)
     generate_contract(docs[1].id)
     prior = enqueue_document_contract(docs[1])
     prior.status = IngestionWorkStatus.SUCCEEDED
     prior.save(update_fields=["status"])
-    monkeypatch.setattr(tasks, "bill_text_list", lambda *args: [
-        {"version_label": d.version_label, "source_order": i+1, "url": d.source_url}
-        for i, d in enumerate(docs)
-    ])
+    monkeypatch.setattr(
+        tasks,
+        "bill_text_list",
+        lambda *args: [
+            {
+                "version_label": d.version_label,
+                "source_order": i + 1,
+                "url": d.source_url,
+            }
+            for i, d in enumerate(docs)
+        ],
+    )
 
     tasks._process_bill_versions_impl(bill.id)
     tasks._process_bill_versions_impl(bill.id)
-    pending = IngestionWorkItem.objects.filter(kind="document_contract", status=IngestionWorkStatus.PENDING)
+    pending = IngestionWorkItem.objects.filter(
+        kind="document_contract", status=IngestionWorkStatus.PENDING
+    )
     assert pending.count() == 1
     work = pending.get()
     assert work.payload_json["document_id"] == docs[1].id
@@ -2869,8 +2924,12 @@ def test_poll_tracked_bills_creates_durable_work_and_dispatches(monkeypatch):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('outstanding_status', ['pending', 'dispatched', 'processing', 'blocked'])
-def test_poll_tracked_bills_preserves_the_previous_unstarted_refresh(monkeypatch, outstanding_status):
+@pytest.mark.parametrize(
+    "outstanding_status", ["pending", "dispatched", "processing", "blocked"]
+)
+def test_poll_tracked_bills_preserves_the_previous_unstarted_refresh(
+    monkeypatch, outstanding_status
+):
     user = get_user_model().objects.create_user(
         username="owner@example.com",
         email="owner@example.com",
@@ -3084,16 +3143,28 @@ def test_sync_representatives_rejects_mismatched_member_detail_identity(monkeypa
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("stage_status", ["superseded", "succeeded"])
-def test_expired_claim_cannot_complete_even_before_recovery_runs(monkeypatch, stage_status):
-    work = IngestionWorkItem.objects.create(kind="representative_research",
-        source_updated_at=timezone.now(), dedupe_key="expired-research", payload_json={"stage": "finance", "step": 3},
-        status=IngestionWorkStatus.DISPATCHED, dispatch_token="original")
+def test_expired_claim_cannot_complete_even_before_recovery_runs(
+    monkeypatch, stage_status
+):
+    work = IngestionWorkItem.objects.create(
+        kind="representative_research",
+        source_updated_at=timezone.now(),
+        dedupe_key="expired-research",
+        payload_json={"stage": "finance", "step": 3},
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original",
+    )
+
     def expire_claim(item):
         IngestionWorkItem.objects.filter(pk=item.pk).update(
-            lease_expires_at=timezone.now() - timedelta(seconds=1))
+            lease_expires_at=timezone.now() - timedelta(seconds=1)
+        )
         return {"status": stage_status}
+
     monkeypatch.setattr(tasks, "_process_durable_work", expire_claim)
-    monkeypatch.setattr(tasks.dispatch_ingestion_work, "apply_async", lambda **kwargs: None)
+    monkeypatch.setattr(
+        tasks.dispatch_ingestion_work, "apply_async", lambda **kwargs: None
+    )
     result = tasks.process_ingestion_work_item(work.pk, "original")
     work.refresh_from_db()
     assert result["status"] == "superseded"
@@ -3107,11 +3178,19 @@ def test_expired_claim_cannot_complete_even_before_recovery_runs(monkeypatch, st
 
 @pytest.mark.django_db
 def test_superseded_stage_cannot_be_recorded_as_success(monkeypatch):
-    work = IngestionWorkItem.objects.create(kind="representative_research",
-        source_updated_at=timezone.now(), dedupe_key="superseded-research", status=IngestionWorkStatus.DISPATCHED,
-        dispatch_token="original")
-    monkeypatch.setattr(tasks, "_process_durable_work", lambda _: {"status": "superseded"})
-    monkeypatch.setattr(tasks.dispatch_ingestion_work, "apply_async", lambda **kwargs: None)
+    work = IngestionWorkItem.objects.create(
+        kind="representative_research",
+        source_updated_at=timezone.now(),
+        dedupe_key="superseded-research",
+        status=IngestionWorkStatus.DISPATCHED,
+        dispatch_token="original",
+    )
+    monkeypatch.setattr(
+        tasks, "_process_durable_work", lambda _: {"status": "superseded"}
+    )
+    monkeypatch.setattr(
+        tasks.dispatch_ingestion_work, "apply_async", lambda **kwargs: None
+    )
     result = tasks.process_ingestion_work_item(work.pk, "original")
     work.refresh_from_db()
     assert result["status"] == "superseded"

@@ -5,6 +5,7 @@ import logging
 from celery import shared_task
 
 from apps.accounts.recommendation_support import RecommendationError
+
 from .topic_activity import representative_activity_catalog
 
 logger = logging.getLogger(__name__)

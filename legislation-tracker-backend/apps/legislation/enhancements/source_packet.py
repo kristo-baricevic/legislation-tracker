@@ -6,11 +6,12 @@ from dataclasses import replace
 from typing import Any
 
 from django.conf import settings
-from .model_selection import target as planning_target, reasoning_effort, owned_token_target
 
 from apps.legislation.models import BillDocument
 
 from .citations import compact_source_text
+from .model_selection import owned_token_target, reasoning_effort
+from .model_selection import target as planning_target
 from .prompts import DEVELOPER_INSTRUCTIONS, PROMPT_VERSION, SOURCE_PACKET_VERSION
 from .schema import OUTPUT_SCHEMA_VERSION, PROVIDER_OUTPUT_SCHEMA
 from .types import EnhancementPreflight
@@ -19,7 +20,9 @@ MAX_SOURCE_TEXT_LENGTH = 4_000
 
 
 class PreflightUnavailable(ValueError):
-    def __init__(self, message: str, *, reason: str = "source_unavailable", coverage=None):
+    def __init__(
+        self, message: str, *, reason: str = "source_unavailable", coverage=None
+    ):
         super().__init__(message)
         self.reason = reason
         self.coverage = coverage
@@ -82,11 +85,22 @@ def legacy_token_limits(provider, model):
 
     cap = resolve_capabilities(provider, model)
     output = min(settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS, cap.output_tokens)
-    return min(settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS, cap.context_tokens - output - 1024), output
+    return (
+        min(
+            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+            cap.context_tokens - output - 1024,
+        ),
+        output,
+    )
 
 
 def _request_envelope(
-    bill, sources: list[dict[str, Any]], *, truncated: bool, coverage=None, max_output_tokens=None
+    bill,
+    sources: list[dict[str, Any]],
+    *,
+    truncated: bool,
+    coverage=None,
+    max_output_tokens=None,
 ) -> dict[str, Any]:
     return {
         "provider": planning_target()[0],
@@ -95,7 +109,11 @@ def _request_envelope(
         "prompt_version": PROMPT_VERSION,
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
         "source_packet_version": SOURCE_PACKET_VERSION,
-        "max_output_tokens": settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS if max_output_tokens is None else max_output_tokens,
+        "max_output_tokens": (
+            settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS
+            if max_output_tokens is None
+            else max_output_tokens
+        ),
         "citation_resolution": {"version": 2, "max_repair_calls": 1},
         "instructions": DEVELOPER_INSTRUCTIONS,
         "bill": {
@@ -124,22 +142,33 @@ def _request_envelope(
 
 
 def _within_limits(request_bytes: bytes, input_limit=None) -> bool:
-    return (
-        len(request_bytes) <= settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
-        and estimate_input_tokens(request_bytes)
-        <= (settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS if input_limit is None else input_limit)
+    return len(
+        request_bytes
+    ) <= settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES and estimate_input_tokens(
+        request_bytes
+    ) <= (
+        settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS
+        if input_limit is None
+        else input_limit
     )
 
 
-def select_document_sources(bill, text: str, version_label: str, *, glossary_targets=(), envelope_transform=None):
+def select_document_sources(
+    bill, text: str, version_label: str, *, glossary_targets=(), envelope_transform=None
+):
     """Select complete sections, never a prefix of an operative condition group."""
     from .source_sections import document_groups, section_coverage
 
     if not text.strip():
         raise PreflightUnavailable("No stored source text is available for this bill")
-    input_limit, output_limit = (None, None) if envelope_transform else legacy_token_limits(*planning_target())
+    input_limit, output_limit = (
+        (None, None) if envelope_transform else legacy_token_limits(*planning_target())
+    )
     if not _within_limits(
-        canonical_json_bytes(_request_envelope(bill, [], truncated=True, max_output_tokens=output_limit)), input_limit
+        canonical_json_bytes(
+            _request_envelope(bill, [], truncated=True, max_output_tokens=output_limit)
+        ),
+        input_limit,
     ):
         raise PreflightUnavailable(
             "The fixed request overhead exceeds configured limits",
@@ -158,10 +187,15 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
             ]
         )
         from .glossary import attach_targets
+
         attach_targets(sources, glossary_targets)
         coverage = section_coverage(groups, selected, sources)
         envelope = _request_envelope(
-            bill, sources, truncated=len(selected) != len(groups), coverage=coverage, max_output_tokens=output_limit
+            bill,
+            sources,
+            truncated=len(selected) != len(groups),
+            coverage=coverage,
+            max_output_tokens=output_limit,
         )
         if envelope_transform is not None:
             envelope = envelope_transform(sources, envelope)
@@ -196,7 +230,9 @@ def select_document_sources(bill, text: str, version_label: str, *, glossary_tar
     return current
 
 
-def build_enhancement_preflight(bill, *, reuse_result=None, cached_preflight=None, reuse_publication=True) -> EnhancementPreflight:
+def build_enhancement_preflight(
+    bill, *, reuse_result=None, cached_preflight=None, reuse_publication=True
+) -> EnhancementPreflight:
     if str(bill.jurisdiction or "").strip().lower() != "federal":
         raise PreflightUnavailable(
             "LLM enhancements are currently available only for federal bills",
@@ -207,44 +243,68 @@ def build_enhancement_preflight(bill, *, reuse_result=None, cached_preflight=Non
     document = active_document or _stored_document(bill)
     if document is None:
         raise PreflightUnavailable("No stored source text is available for this bill")
-    return build_document_preflight(document, reuse_result=reuse_result, cached_preflight=cached_preflight, reuse_publication=reuse_publication)
+    return build_document_preflight(
+        document,
+        reuse_result=reuse_result,
+        cached_preflight=cached_preflight,
+        reuse_publication=reuse_publication,
+    )
 
 
 def needs_large_document_review(text):
-    return len(text.encode("utf-8")) > min(settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
-                                           settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS)
+    return len(text.encode("utf-8")) > min(
+        settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+        settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+    )
 
 
-def build_document_preflight(document, *, reuse_result=None, cached_preflight=None, reuse_publication=True):
+def build_document_preflight(
+    document, *, reuse_result=None, cached_preflight=None, reuse_publication=True
+):
     bill = document.bill
     text = document.extracted_text or document.raw_text or ""
     if not reuse_result and (needs_large_document_review(text) or owned_token_target()):
         from .xml_sections import stored_xml_sections
+
         sections = stored_xml_sections(document, text)
         from .reader_batches import build_reader_preflight
-        return build_reader_preflight(document, xml_sections=sections, reuse_publication=reuse_publication)
+
+        return build_reader_preflight(
+            document, xml_sections=sections, reuse_publication=reuse_publication
+        )
     if getattr(settings, "LLM_SOURCE_FIRST_ENABLED", False):
         from .source_first_preflight import build_source_first_preflight
-        return build_source_first_preflight(document, text, reuse_result=reuse_result, cached_preflight=cached_preflight)
+
+        return build_source_first_preflight(
+            document, text, reuse_result=reuse_result, cached_preflight=cached_preflight
+        )
     from .reader_targets import reader_contract
+
     if reader_contract(document):
         from .reader_batches import build_reader_preflight
+
         return build_reader_preflight(document, reuse_publication=reuse_publication)
-    from .glossary import definition_targets, build_glossary_batches
+    from .glossary import build_glossary_batches, definition_targets
+
     numbered, request_envelope, request_bytes = select_document_sources(
         bill, text, document.version_label
     )
     batches = build_glossary_batches(
-        bill, text, document.version_label, definition_targets(document),
+        bill,
+        text,
+        document.version_label,
+        definition_targets(document),
         source_ref_start=len(numbered) + 1,
     )
     main_bytes = request_bytes
     if batches:
         # Fingerprint every paid request, including its limits and instructions.
-        request_bytes = canonical_json_bytes({
-            "main": request_envelope,
-            "glossary_batches": [batch["envelope"] for batch in batches],
-        })
+        request_bytes = canonical_json_bytes(
+            {
+                "main": request_envelope,
+                "glossary_batches": [batch["envelope"] for batch in batches],
+            }
+        )
     source_identity = {
         "document_id": document.id,
         "document_content_hash": _text_hash(text),
@@ -280,9 +340,12 @@ def build_document_preflight(document, *, reuse_result=None, cached_preflight=No
             "batch_count": len(batches),
         }
         manifest["budget"] = {
-            "maximum_calls": 2 + len(batches),  # Main generation + optional citation repair.
-            "maximum_input": 2 * len(main_bytes) + sum(len(batch["bytes"]) for batch in batches),
-            "maximum_output": (2 + len(batches)) * request_envelope["max_output_tokens"],
+            "maximum_calls": 2
+            + len(batches),  # Main generation + optional citation repair.
+            "maximum_input": 2 * len(main_bytes)
+            + sum(len(batch["bytes"]) for batch in batches),
+            "maximum_output": (2 + len(batches))
+            * request_envelope["max_output_tokens"],
         }
     preflight = EnhancementPreflight(
         provider=planning_target()[0],
@@ -297,12 +360,22 @@ def build_document_preflight(document, *, reuse_result=None, cached_preflight=No
         source_snapshot=source_snapshot,
         request_envelope=request_envelope,
         request_bytes=request_bytes,
-        estimated_input_tokens=manifest.get("budget", {}).get("maximum_input", estimate_input_tokens(request_bytes)),
+        estimated_input_tokens=manifest.get("budget", {}).get(
+            "maximum_input", estimate_input_tokens(request_bytes)
+        ),
         truncated=truncated,
     )
-    return replace(preflight, glossary_batches=tuple(
-        replace(preflight, request_envelope=batch["envelope"], request_bytes=batch["bytes"],
-                source_snapshot=batch["sources"], estimated_input_tokens=len(batch["bytes"]),
-                truncated=False)
-        for batch in batches
-    ))
+    return replace(
+        preflight,
+        glossary_batches=tuple(
+            replace(
+                preflight,
+                request_envelope=batch["envelope"],
+                request_bytes=batch["bytes"],
+                source_snapshot=batch["sources"],
+                estimated_input_tokens=len(batch["bytes"]),
+                truncated=False,
+            )
+            for batch in batches
+        ),
+    )

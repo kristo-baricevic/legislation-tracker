@@ -5,13 +5,14 @@ from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Case, CharField, Count, F, Max, Value, When
 from django.utils import timezone
-from .permissions import IsSuperuser
-from apps.legislation.models import Bill
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.legislation.models import Bill
+
 from .discoverable_readiness import discoverable_snapshot_available
 from .models import IngestionRun, IngestionState, IngestionWorkItem
+from .permissions import IsSuperuser
 from .run_tracking import claim_run, validate_scope
 from .source_inventory import BILL_TYPES, snapshot_key
 
@@ -48,21 +49,34 @@ class IngestionTelemetryView(APIView):
         )
         # Reporting states distinguish deferred work from the runnable queue.
         # Keep the durable pending state intact so automatic rechecks still run.
-        reported_work = work.annotate(telemetry_status=Case(
-            When(status="pending", kind="bill_versions",
-                 last_error="Awaiting a published bill text version.",
-                 then=Value("waiting_source")),
-            When(status="pending", available_at__gt=now, then=Value("scheduled")),
-            default=F("status"), output_field=CharField(),
-        ))
+        reported_work = work.annotate(
+            telemetry_status=Case(
+                When(
+                    status="pending",
+                    kind="bill_versions",
+                    last_error="Awaiting a published bill text version.",
+                    then=Value("waiting_source"),
+                ),
+                When(status="pending", available_at__gt=now, then=Value("scheduled")),
+                default=F("status"),
+                output_field=CharField(),
+            )
+        )
         counts = [
-            {"kind": row["kind"], "status": row["telemetry_status"], "count": row["count"]}
+            {
+                "kind": row["kind"],
+                "status": row["telemetry_status"],
+                "count": row["count"],
+            }
             for row in reported_work.values("kind", "telemetry_status")
-            .annotate(count=Count("id")).order_by("kind", "telemetry_status")
+            .annotate(count=Count("id"))
+            .order_by("kind", "telemetry_status")
         ]
-        recent = list(reported_work.order_by("-updated_at").values(
-            "id", "kind", "telemetry_status", "updated_at", "attempt_count"
-        )[:20])
+        recent = list(
+            reported_work.order_by("-updated_at").values(
+                "id", "kind", "telemetry_status", "updated_at", "attempt_count"
+            )[:20]
+        )
         for row in recent:
             row["status"] = row.pop("telemetry_status")
         state = IngestionState.objects.filter(
@@ -83,7 +97,11 @@ class IngestionTelemetryView(APIView):
                     status="succeeded"
                 ).aggregate(value=Max("completed_at"))["value"],
                 "counts_by_kind_and_status": counts,
-                "bills_without_analysis": Bill.objects.filter(jurisdiction=jurisdiction, session=congress, latest_contract_id__isnull=True).count(),
+                "bills_without_analysis": Bill.objects.filter(
+                    jurisdiction=jurisdiction,
+                    session=congress,
+                    latest_contract_id__isnull=True,
+                ).count(),
                 "runnable_pending": work.filter(
                     status="pending", available_at__lte=now
                 ).count(),

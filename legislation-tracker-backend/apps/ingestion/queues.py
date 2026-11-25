@@ -1,11 +1,20 @@
 """Dedicated execution lanes; the default queue only coordinates work."""
 
 STAGE_QUEUES = {
-    kind: kind for kind in (
-        "bill", "bill_versions", "bill_votes", "bill_relationships",
-        "document_download", "document_contract", "metadata_contract",
-        "topic_update", "search_index", "representative_detail",
-        "roll_call_vote", "committee_roster",
+    kind: kind
+    for kind in (
+        "bill",
+        "bill_versions",
+        "bill_votes",
+        "bill_relationships",
+        "document_download",
+        "document_contract",
+        "metadata_contract",
+        "topic_update",
+        "search_index",
+        "representative_detail",
+        "roll_call_vote",
+        "committee_roster",
     )
 }
 STAGE_QUEUES.update(representative_research="research", similarity="similarity")

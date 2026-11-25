@@ -27,8 +27,14 @@ def test_metadata_diff_emits_only_the_changed_public_fields():
 
     changes = diff_bill_metadata(before, after)
 
-    assert [(change.change_type, change.old_value, change.new_value) for change in changes] == [
-        ("summary_update", {"summary": "Original summary"}, {"summary": "Updated summary"})
+    assert [
+        (change.change_type, change.old_value, change.new_value) for change in changes
+    ] == [
+        (
+            "summary_update",
+            {"summary": "Original summary"},
+            {"summary": "Updated summary"},
+        )
     ]
 
 

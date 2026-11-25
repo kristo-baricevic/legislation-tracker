@@ -246,9 +246,9 @@ def test_external_reference_does_not_hide_explicit_rule_but_limits_analysis():
         "SEC. 1. PAYMENT\nSubject to section 10 of the Other Act, the Secretary shall pay $100.",
     )
     plan = plan_analysis(g)
-    assert plan.calls, (
-        "Explicit bill rules must not be discarded with unresolved outside-law context"
-    )
+    assert (
+        plan.calls
+    ), "Explicit bill rules must not be discarded with unresolved outside-law context"
     row = explanation(g)
     row["summary"] = (
         "The Secretary must pay $100, subject to section 10 of the Other Act."
@@ -280,8 +280,13 @@ def test_reference_only_amendment_stays_unresolved():
 def test_large_plan_refusal_accounts_for_every_unit_without_dispatch():
     from time import perf_counter
 
-    g = build_source_graph("big", "IH", "\n".join(
-        f"SEC. {i}. PAYMENT\nThe Secretary shall pay $100." for i in range(1, 2229)))
+    g = build_source_graph(
+        "big",
+        "IH",
+        "\n".join(
+            f"SEC. {i}. PAYMENT\nThe Secretary shall pay $100." for i in range(1, 2229)
+        ),
+    )
     start = perf_counter()
     with pytest.raises(BudgetExceeded, match="budget_exceeded") as failure:
         plan_analysis(g)
@@ -294,14 +299,23 @@ def test_large_plan_refusal_accounts_for_every_unit_without_dispatch():
 
 def test_partial_preflight_exposes_unresolved_coverage_to_caller():
     from types import SimpleNamespace
-    from apps.legislation.enhancements.source_first_preflight import build_source_first_preflight
 
-    p = build_source_first_preflight(SimpleNamespace(pk=1, version_label="IH"),
+    from apps.legislation.enhancements.source_first_preflight import (
+        build_source_first_preflight,
+    )
+
+    p = build_source_first_preflight(
+        SimpleNamespace(pk=1, version_label="IH"),
         "SEC. 1. PAYMENT\nThe Secretary shall pay $100.\n"
-        "SEC. 2. AMENDMENT\nSection 10 of the Other Act is amended.")
+        "SEC. 2. AMENDMENT\nSection 10 of the Other Act is amended.",
+    )
     coverage = p.source_manifest["coverage"]
-    assert (coverage["total_units"], coverage["planned_units"], coverage["reused_units"],
-            coverage["unresolved_units"]) == (2, 1, 0, 1)
+    assert (
+        coverage["total_units"],
+        coverage["planned_units"],
+        coverage["reused_units"],
+        coverage["unresolved_units"],
+    ) == (2, 1, 0, 1)
     assert coverage["reasons"] == {"unexplained_source": 1}
 
 

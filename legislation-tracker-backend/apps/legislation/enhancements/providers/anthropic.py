@@ -7,8 +7,14 @@ from typing import Any
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
 
-from .base import CredentialCheck, ProviderCapabilities, ProviderError, ProviderResult, ProviderUsage
 from . import harness
+from .base import (
+    CredentialCheck,
+    ProviderCapabilities,
+    ProviderError,
+    ProviderResult,
+    ProviderUsage,
+)
 
 
 def _value(obj: Any, name: str, default=None):
@@ -17,8 +23,16 @@ def _value(obj: Any, name: str, default=None):
 
 def _usage(response) -> ProviderUsage:
     usage = harness.usage_from_response(response)
-    if usage.total_tokens is None and usage.input_tokens is not None and usage.output_tokens is not None:
-        return ProviderUsage(usage.input_tokens, usage.output_tokens, usage.input_tokens + usage.output_tokens)
+    if (
+        usage.total_tokens is None
+        and usage.input_tokens is not None
+        and usage.output_tokens is not None
+    ):
+        return ProviderUsage(
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.input_tokens + usage.output_tokens,
+        )
     return usage
 
 
@@ -29,7 +43,11 @@ def _mapped_error(error: Exception, *, timeout_seconds: int = 0) -> ProviderErro
             "outcome_unknown",
             outcome_unknown=True,
             retry_allowed=True,
-            validation_code="provider_timeout" if "timeout" in class_name else "provider_connection_lost",
+            validation_code=(
+                "provider_timeout"
+                if "timeout" in class_name
+                else "provider_connection_lost"
+            ),
             validation_detail={"timeout_seconds": timeout_seconds},
         )
     body = getattr(error, "body", None)
@@ -281,8 +299,13 @@ class AnthropicEnhancementProvider:
             )
 
         if stop_reason not in {"end_turn", "stop_sequence"}:
-            raise ProviderError("invalid_output", validation_code="provider_incomplete",
-                                usage=usage, response_id=response_id, resolved_model=resolved_model)
+            raise ProviderError(
+                "invalid_output",
+                validation_code="provider_incomplete",
+                usage=usage,
+                response_id=response_id,
+                resolved_model=resolved_model,
+            )
         content = _value(response, "content", None)
         parts = []
         if content:
@@ -299,8 +322,16 @@ class AnthropicEnhancementProvider:
                 output_text = "" if output_text is None else str(output_text)
 
         from ..private_diagnostics import capture_visible
-        capture_visible([{"instructions": instructions, "input": input_payload}], schema,
-                        output_text, stop_reason, response_id, resolved_model, api_key)
+
+        capture_visible(
+            [{"instructions": instructions, "input": input_payload}],
+            schema,
+            output_text,
+            stop_reason,
+            response_id,
+            resolved_model,
+            api_key,
+        )
         return harness.parse_json_output(
             output_text,
             usage=usage,

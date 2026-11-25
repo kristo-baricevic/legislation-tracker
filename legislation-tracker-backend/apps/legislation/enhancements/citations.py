@@ -241,15 +241,11 @@ def resolve_citations(
         validate_enhancement_output(result.output, sources)
         return result
     except ValidationError as error:
-        if (
-            error.validator
-            not in {
-                "citation_quote_not_found",
-                "citation_quote_ambiguous",
-                "citation_reference_unknown",
-            }
-            or result.output.get("schema_version") not in {"1.2", "1.3"}
-        ):
+        if error.validator not in {
+            "citation_quote_not_found",
+            "citation_quote_ambiguous",
+            "citation_reference_unknown",
+        } or result.output.get("schema_version") not in {"1.2", "1.3"}:
             return result
 
     output = copy.deepcopy(result.output)

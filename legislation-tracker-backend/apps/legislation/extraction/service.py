@@ -45,10 +45,11 @@ def extract_contract(*, document: BillDocument, bill: Bill) -> ExtractionResult:
 
             claims = enrich_reader_claims(source_text, sections, claims)
             from .source_coverage import supplement_source_claims
+
             claims = supplement_source_claims(source_text, sections, claims, clauses)
         if not claims and not (
             settings.LEGAL_NLP_V21_WRITE_ENABLED
-            and any(c.disposition == 'uncertain' or c.preserve_group for c in clauses)
+            and any(c.disposition == "uncertain" or c.preserve_group for c in clauses)
         ):
             raise ExpectedExtractionRejection("no_supported_claims")
         if settings.LEGAL_NLP_V21_WRITE_ENABLED:

@@ -1,8 +1,11 @@
 """Normalize person labels, not donor/committee names or identity keys."""
+
 import re
 import unicodedata
 
-_TITLE = r"(?:Rep\.|Sen\.|Del\.|Hon\.|Representative|Senator|Delegate|Resident Commissioner)"
+_TITLE = (
+    r"(?:Rep\.|Sen\.|Del\.|Hon\.|Representative|Senator|Delegate|Resident Commissioner)"
+)
 _PREFIX = r"(?:Rep\.?|Sen\.?|Del\.?|Hon\.?|Representative|Senator|Delegate|Resident Commissioner)"
 
 

@@ -93,6 +93,7 @@ JSON_REASONS = {
 def json_parse_diagnostic(error, text):
     """Keep parser coordinates and a fixed reason, never error.doc or raw text."""
     import json
+
     detail = {"text_length": len(text) if isinstance(text, str) else 0}
     if not isinstance(text, str):
         detail["reason"] = "wrong_text_type"
@@ -136,7 +137,10 @@ def provider_validation_diagnostic(error):
         return diagnostic(error.validation_code)
     path = detail.get("path", "")
     parts = path.strip("/").split("/") if isinstance(path, str) else []
-    result = diagnostic(error.validation_code, [int(p) if p.isdecimal() and len(p) <= 5 else p for p in parts])
+    result = diagnostic(
+        error.validation_code,
+        [int(p) if p.isdecimal() and len(p) <= 5 else p for p in parts],
+    )
     if detail.get("stage") in {"main_analysis", "glossary_batch", "reader_batch"}:
         result["stage"] = detail["stage"]
     index = detail.get("batch_index")
@@ -145,9 +149,21 @@ def provider_validation_diagnostic(error):
     parser = detail.get("parser")
     if isinstance(parser, dict):
         safe = {}
-        if parser.get("reason") in {*JSON_REASONS.values(), "wrong_text_type", "empty_text", "invalid_syntax"}:
+        if parser.get("reason") in {
+            *JSON_REASONS.values(),
+            "wrong_text_type",
+            "empty_text",
+            "invalid_syntax",
+        }:
             safe["reason"] = parser["reason"]
-        for field in ("text_length", "position", "line", "column", "output_text_parts", "output_text_part_length"):
+        for field in (
+            "text_length",
+            "position",
+            "line",
+            "column",
+            "output_text_parts",
+            "output_text_part_length",
+        ):
             value = parser.get(field)
             if type(value) is int and 0 <= value <= 100_000_000:
                 safe[field] = value
@@ -167,7 +183,11 @@ def provider_failure_diagnostic(error):
     for key in ("stage", "batch_index"):
         if key in safe:
             result[key] = safe[key]
-    seconds = error.validation_detail.get("timeout_seconds") if isinstance(error.validation_detail, dict) else None
+    seconds = (
+        error.validation_detail.get("timeout_seconds")
+        if isinstance(error.validation_detail, dict)
+        else None
+    )
     if type(seconds) is int and 0 < seconds <= 86400:
         result["timeout_seconds"] = seconds
     return result

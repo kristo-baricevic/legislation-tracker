@@ -7,7 +7,16 @@ from dataclasses import dataclass
 
 from django.contrib.postgres.search import SearchHeadline, SearchQuery, SearchRank
 from django.db import connection
-from django.db.models import Exists, F, FloatField, OuterRef, Q, QuerySet, Subquery, Window
+from django.db.models import (
+    Exists,
+    F,
+    FloatField,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Window,
+)
 from django.db.models.functions import RowNumber
 
 from .models import Bill, BillSearchChunk
@@ -84,7 +93,9 @@ def plain_highlight_segments(text: str, query: str) -> tuple[SearchSegment, ...]
         for match in re.finditer(re.escape(term), lowered):
             ranges.append(match.span())
     if not ranges:
-        return (SearchSegment(text=clean_text[:240], matched=False),) if clean_text else ()
+        return (
+            (SearchSegment(text=clean_text[:240], matched=False),) if clean_text else ()
+        )
     ranges.sort()
     merged: list[tuple[int, int]] = []
     for start, end in ranges:
@@ -115,14 +126,23 @@ def parse_headline_segments(headline: str) -> tuple[SearchSegment, ...]:
         next_marker = headline.find(MARKER_END if matched else MARKER_START, cursor)
         if next_marker < 0:
             if matched:
-                return (SearchSegment(headline.replace(MARKER_START, "").replace(MARKER_END, ""), False),)
+                return (
+                    SearchSegment(
+                        headline.replace(MARKER_START, "").replace(MARKER_END, ""),
+                        False,
+                    ),
+                )
             result.append(SearchSegment(headline[cursor:], False))
             break
         result.append(SearchSegment(headline[cursor:next_marker], matched))
         cursor = next_marker + 1
         matched = not matched
     if matched:
-        return (SearchSegment(headline.replace(MARKER_START, "").replace(MARKER_END, ""), False),)
+        return (
+            SearchSegment(
+                headline.replace(MARKER_START, "").replace(MARKER_END, ""), False
+            ),
+        )
     return tuple(segment for segment in result if segment.text)
 
 
@@ -170,7 +190,11 @@ def _fallback_metadata_search(
                     SearchHighlight(
                         kind="metadata",
                         segments=plain_highlight_segments(
-                            "\n".join(part for part in (bill.title, bill.summary or "") if part),
+                            "\n".join(
+                                part
+                                for part in (bill.title, bill.summary or "")
+                                if part
+                            ),
                             query.q,
                         ),
                     ),
@@ -212,13 +236,22 @@ def matching_bill_queryset(
 
 
 def top_highlight_chunks(chunks):
-    return chunks.annotate(_highlight_order=Window(
-        expression=RowNumber(), partition_by=[F("bill_id")],
-        order_by=[F("_rank").desc(), F("id").asc()],
-    )).filter(_highlight_order__lte=3).order_by("bill_id", "-_rank", "id")
+    return (
+        chunks.annotate(
+            _highlight_order=Window(
+                expression=RowNumber(),
+                partition_by=[F("bill_id")],
+                order_by=[F("_rank").desc(), F("id").asc()],
+            )
+        )
+        .filter(_highlight_order__lte=3)
+        .order_by("bill_id", "-_rank", "id")
+    )
 
 
-def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> BillSearchPage:
+def _postgres_search(
+    *, queryset: QuerySet[Bill], query: BillSearchQuery
+) -> BillSearchPage:
     search_query = SearchQuery(query.q, search_type="websearch", config="english")
     matching = matching_bill_queryset(queryset=queryset, query_text=query.q)
     ranked = queryset.filter(pk__in=matching.values("pk")).annotate(
@@ -244,14 +277,15 @@ def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> Bil
         for bill_id, rank in page_rows
     }
     # Bound the rows BEFORE ts_headline runs, not after materializing all matches.
-    highlight_ids = list(top_highlight_chunks(
-        BillSearchChunk.objects.filter(bill_id__in=page_ids, search_vector=search_query)
-        .annotate(_rank=SearchRank(F("search_vector"), search_query))
-    ).values_list("pk", flat=True))
+    highlight_ids = list(
+        top_highlight_chunks(
+            BillSearchChunk.objects.filter(
+                bill_id__in=page_ids, search_vector=search_query
+            ).annotate(_rank=SearchRank(F("search_vector"), search_query))
+        ).values_list("pk", flat=True)
+    )
     chunks = (
-        BillSearchChunk.objects.filter(
-            pk__in=highlight_ids, bill_id__in=page_ids
-        )
+        BillSearchChunk.objects.filter(pk__in=highlight_ids, bill_id__in=page_ids)
         .annotate(
             _rank=SearchRank(F("search_vector"), search_query),
             _headline=SearchHeadline(
@@ -298,6 +332,7 @@ def _postgres_search(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> Bil
                 ),
             ),
         )
+
     return BillSearchPage(
         count=count,
         hits=tuple(
@@ -336,17 +371,24 @@ def search_bills(*, queryset: QuerySet[Bill], query: BillSearchQuery) -> BillSea
     return _postgres_search(queryset=queryset, query=query)
 
 
-def apply_bill_list_filters(queryset: QuerySet[Bill], params: dict, *, user_id=None) -> QuerySet[Bill]:
+def apply_bill_list_filters(
+    queryset: QuerySet[Bill], params: dict, *, user_id=None
+) -> QuerySet[Bill]:
     """Apply the public list filters before search ranking or activity counts."""
     session = params.get("session") or params.get("congress")
     if params.get("tracking"):
         from rest_framework.exceptions import NotAuthenticated
+
         from apps.accounts.models import TrackedBill
 
         if user_id is None:
             raise NotAuthenticated("Log in to filter tracked bills.")
         tracked = TrackedBill.objects.filter(user_id=user_id).values("bill_id")
-        queryset = queryset.filter(pk__in=tracked) if params["tracking"] == "tracked" else queryset.exclude(pk__in=tracked)
+        queryset = (
+            queryset.filter(pk__in=tracked)
+            if params["tracking"] == "tracked"
+            else queryset.exclude(pk__in=tracked)
+        )
     if session is not None:
         queryset = queryset.filter(session=session)
     if params.get("jurisdiction"):
@@ -364,15 +406,19 @@ def apply_bill_list_filters(queryset: QuerySet[Bill], params: dict, *, user_id=N
             # in the shared filter path so saved searches behave identically.
             stage = status.removeprefix("stage:")
             values = queryset.order_by().values_list("status", flat=True).distinct()
-            queryset = queryset.filter(status__in=[value for value in values if stage_for(value) == stage])
+            queryset = queryset.filter(
+                status__in=[value for value in values if stage_for(value) == stage]
+            )
         else:
             # Existing saved searches and URLs retain their text-search meaning.
             queryset = queryset.filter(status__icontains=status)
     if params.get("sponsor"):
         sponsor = params["sponsor"].strip()
-        queryset = queryset.filter(
-            sponsor_id=int(sponsor) if sponsor.isdigit() else None
-        ) if sponsor.isdigit() else queryset.filter(sponsor__name__icontains=sponsor)
+        queryset = (
+            queryset.filter(sponsor_id=int(sponsor) if sponsor.isdigit() else None)
+            if sponsor.isdigit()
+            else queryset.filter(sponsor__name__icontains=sponsor)
+        )
     if params.get("topic_id") is not None:
         queryset = queryset.filter(bill_topics__topic_id=params["topic_id"]).distinct()
     elif params.get("topic"):

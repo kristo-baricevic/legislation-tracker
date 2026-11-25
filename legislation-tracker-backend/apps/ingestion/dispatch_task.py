@@ -1,4 +1,5 @@
 """Bound scheduler notifications; durable database work is never discarded."""
+
 import logging
 
 from celery import Task
@@ -13,11 +14,13 @@ class CoalescedDispatcherTask(Task):
     def before_start(self, task_id, args, kwargs):
         # Coalesce queued notifications, not completed work. Once consumed,
         # a worker finishing a stage must be able to request an immediate refill.
-        queue = (self.request.delivery_info or {}).get('routing_key') or self.app.conf.task_default_queue
+        queue = (self.request.delivery_info or {}).get(
+            "routing_key"
+        ) or self.app.conf.task_default_queue
         try:
-            cache.delete(f'dispatcher-wakeup:{self.name}:{queue}')
+            cache.delete(f"dispatcher-wakeup:{self.name}:{queue}")
         except Exception:
-            logger.exception('Could not release dispatcher wake-up marker')
+            logger.exception("Could not release dispatcher wake-up marker")
 
     def apply_async(self, args=None, kwargs=None, **options):
         # Separate research wake-ups from ordinary ingestion. Coalesce bursts
@@ -29,7 +32,9 @@ class CoalescedDispatcherTask(Task):
             if not cache.add(key, True, timeout=30):
                 return None
         except Exception:
-            logger.exception("Dispatcher wake-up unavailable; periodic scheduling will retry")
+            logger.exception(
+                "Dispatcher wake-up unavailable; periodic scheduling will retry"
+            )
             return None
         return super().apply_async(args=args, kwargs=kwargs, **options)
 
@@ -43,12 +48,17 @@ class RefillIngestionTask(Task):
         from .models import IngestionWorkItem
         from .tasks import dispatch_ingestion_work
 
-        work_id = kwargs.get('work_item_id', args[0] if args else None)
+        work_id = kwargs.get("work_item_id", args[0] if args else None)
         try:
-            released = IngestionWorkItem.objects.filter(pk=work_id).exclude(
-                kind__in=['representative_research', 'similarity']
-            ).exclude(status__in=['processing', 'dispatched']).exists()
+            released = (
+                IngestionWorkItem.objects.filter(pk=work_id)
+                .exclude(kind__in=["representative_research", "similarity"])
+                .exclude(status__in=["processing", "dispatched"])
+                .exists()
+            )
             if released:
                 dispatch_ingestion_work.delay()
         except Exception:
-            logger.exception('Could not refill ingestion workers; periodic dispatch will recover')
+            logger.exception(
+                "Could not refill ingestion workers; periodic dispatch will recover"
+            )

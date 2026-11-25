@@ -26,7 +26,16 @@ _AMENDMENT_INSTRUCTION_RE = re.compile(
 )
 _QUOTED_BLOCK_START = "[[QUOTED_BLOCK_START]]"
 _QUOTED_BLOCK_END = "[[QUOTED_BLOCK_END]]"
-_OPERATIVE_LEVELS = {"section", "subsection", "paragraph", "subparagraph", "clause", "subclause", "item", "subitem"}
+_OPERATIVE_LEVELS = {
+    "section",
+    "subsection",
+    "paragraph",
+    "subparagraph",
+    "clause",
+    "subclause",
+    "item",
+    "subitem",
+}
 
 _CALENDAR_DATE = re.compile(
     r"\b(?:May\s+(?:\d{4}|\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?)|"
@@ -71,48 +80,88 @@ def _quoted_block_ranges(source_text: str) -> tuple[tuple[int, int], ...]:
     )
     for match in marker.finditer(source_text):
         if match.group() == _QUOTED_BLOCK_START:
-            prefix = source_text[:match.start()].rstrip()
+            prefix = source_text[: match.start()].rstrip()
             instruction = prefix.rsplit("\n", 1)[-1]
             # Classify the terminal operation, not the name of the added
             # structural unit. Ignore verbs inside inline quoted old wording.
-            grammar = re.sub(r'''"[^"\n]*"|“[^”\n]*”|(?<!\w)'[^'\n]*'(?!\w)|‘[^’\n]*’''', ' ', instruction)
             grammar = re.sub(
-                r'\(and\s+(?:amending|conforming)\s+the\s+table\s+of\s+(?:sections|contents)\b[^()\n]*\)',
-                ' ', grammar, flags=re.I,
+                r""""[^"\n]*"|“[^”\n]*”|(?<!\w)'[^'\n]*'(?!\w)|‘[^’\n]*’""",
+                " ",
+                instruction,
             )
-            grammar = re.sub(r',?\s+and redesignating succeeding (?:paragraphs|subsections|sections) accordingly(?=[:—–-]?$)', '', grammar, flags=re.I)
-            amended = re.search(r'\b(?:is|are)(?: further)? amended\b|\band amended(?= to read\b)', grammar, re.I)
-            operations = list(re.finditer(
-                r'\b(?:by|and)\s+(?:by\s+)?(?P<verb>adding|inserting|striking|repealing|redesignating|amending)\b|\b(?P<replace>to read(?: as follows)?)\b',
-                grammar[amended.end():] if amended else '', re.I,
-            ))
-            has_payload_boundary = grammar.rstrip().endswith((':','—','–','-')) or bool(re.search(r'\b(?:adding|inserting) at the end$', grammar, re.I))
-            inserted = bool(amended and operations and has_payload_boundary and (
-                operations[-1].group('replace') or operations[-1].group('verb').lower() in {'adding','inserting'}
-            ))
+            grammar = re.sub(
+                r"\(and\s+(?:amending|conforming)\s+the\s+table\s+of\s+(?:sections|contents)\b[^()\n]*\)",
+                " ",
+                grammar,
+                flags=re.I,
+            )
+            grammar = re.sub(
+                r",?\s+and redesignating succeeding (?:paragraphs|subsections|sections) accordingly(?=[:—–-]?$)",
+                "",
+                grammar,
+                flags=re.I,
+            )
+            amended = re.search(
+                r"\b(?:is|are)(?: further)? amended\b|\band amended(?= to read\b)",
+                grammar,
+                re.I,
+            )
+            operations = list(
+                re.finditer(
+                    r"\b(?:by|and)\s+(?:by\s+)?(?P<verb>adding|inserting|striking|repealing|redesignating|amending)\b|\b(?P<replace>to read(?: as follows)?)\b",
+                    grammar[amended.end() :] if amended else "",
+                    re.I,
+                )
+            )
+            has_payload_boundary = grammar.rstrip().endswith(
+                (":", "—", "–", "-")
+            ) or bool(re.search(r"\b(?:adding|inserting) at the end$", grammar, re.I))
+            inserted = bool(
+                amended
+                and operations
+                and has_payload_boundary
+                and (
+                    operations[-1].group("replace")
+                    or operations[-1].group("verb").lower() in {"adding", "inserting"}
+                )
+            )
             # "Is amended as follows:" directly introduces replacement law,
             # just as "is amended to read as follows:" does. Require the
             # exact immediate suffix: a deletion's description is not new law.
-            if (amended and re.fullmatch(r'\s+as follows\s*[:—–-]', grammar[amended.end():], re.I)
-                    and not re.search(r'\b(?:recommends?|proposes?|discusses|whether)\b',
-                                      grammar[:amended.start()], re.I)):
+            if (
+                amended
+                and re.fullmatch(
+                    r"\s+as follows\s*[:—–-]", grammar[amended.end() :], re.I
+                )
+                and not re.search(
+                    r"\b(?:recommends?|proposes?|discusses|whether)\b",
+                    grammar[: amended.start()],
+                    re.I,
+                )
+            ):
                 inserted = True
             if not inserted and re.fullmatch(
                 rf"\([A-Za-z0-9]+\)\s+by\s+(?:inserting|adding)\b[^\n]*\b{inserted_tail}\s*[:—–-]",
-                instruction, re.I,
+                instruction,
+                re.I,
             ):
                 # A child instruction inherits only an actual structural
                 # ancestor's amendment, never an unrelated earlier section.
                 from .federal_structure import parse_federal_structure
+
                 if sections is None:
                     sections = parse_federal_structure(source_text)
                 offset = len(prefix) - len(instruction)
-                owners = [s for s in sections if s.span.start_char <= offset < s.span.end_char]
+                owners = [
+                    s for s in sections if s.span.start_char <= offset < s.span.end_char
+                ]
                 owner = max(owners, key=lambda s: s.span.start_char) if owners else None
                 parent = _parent_section(owner, sections) if owner else None
                 while parent is not None:
                     parent_sentences = sentence_spans(parent, source_text)
-                    if parent_sentences and re.search(r"\bis amended\s*[:—–-]$", parent_sentences[-1].text, re.I):
+                    if parent_sentences and re.search(
+                        r"\bis amended\s*[:—–-]$", parent_sentences[-1].text, re.I
+                    ):
                         inserted = True
                         break
                     parent = _parent_section(parent, sections)

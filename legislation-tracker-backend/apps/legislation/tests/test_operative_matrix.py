@@ -14,9 +14,9 @@ SEC. 101. Funding
 There is appropriated $100,000 for worker advocacy services.
 """
     result = extract(source).contract_json
-    assert [(i["financial_action"], i["amount"]) for i in result["financial_items"]] == [
-        ("appropriation", "100000.00")
-    ]
+    assert [
+        (i["financial_action"], i["amount"]) for i in result["financial_items"]
+    ] == [("appropriation", "100000.00")]
 
 
 def test_allotment_minimum_retains_governing_threshold_and_recipient():
@@ -34,7 +34,9 @@ def test_allotment_minimum_retains_governing_threshold_and_recipient():
         if item["amount"] in {"100000.00", "200000.00"}:
             assert "$20,000,000" in item["display_text"]
             assert "not less than" in item["display_text"]
-            assert ("American Samoa" if item["amount"] == "100000.00" else "other State") in item["display_text"]
+            assert (
+                "American Samoa" if item["amount"] == "100000.00" else "other State"
+            ) in item["display_text"]
 
 
 def test_conditional_technical_assistance_percentage_keeps_threshold():
@@ -49,7 +51,10 @@ There are authorized to be appropriated for allotments under section 433 such su
     percentage = next(i for i in items if i["amount"] == "2.00")
     assert "more than $24,500,000" in percentage["display_text"]
     assert "of the amount appropriated" in percentage["display_text"]
-    assert any(i["financial_action"] == "authorization" and i["amount_type"] == "such_sums" for i in items)
+    assert any(
+        i["financial_action"] == "authorization" and i["amount_type"] == "such_sums"
+        for i in items
+    )
 
 
 @pytest.mark.parametrize(

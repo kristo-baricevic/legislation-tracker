@@ -98,9 +98,9 @@ def prepare(bill, text, version):
 
 def _correction(request, coverage, citation_error, output, coverage_error=None):
     envelope = copy.deepcopy(request.request_envelope)
-    envelope["instructions"] += (
-        "\nThis is the single correction pass. Return a complete revised analysis, preserving already covered provisions. Focus on the supplied coverage findings and recheck all conditions. Do not just return missing items."
-    )
+    envelope[
+        "instructions"
+    ] += "\nThis is the single correction pass. Return a complete revised analysis, preserving already covered provisions. Focus on the supplied coverage findings and recheck all conditions. Do not just return missing items."
     envelope["source_packet"]["coverage_findings"] = {
         "rows": [
             {k: v for k, v in row.items() if k in {"id", "status", "missing_amounts"}}
@@ -235,9 +235,11 @@ def run(request, inventory, generate):
                 inventory,
                 output,
                 original.source_snapshot,
-                mapping={key: entry["output_paths"] for key, entry in ledger.items()}
-                if not coverage_error
-                else None,
+                mapping=(
+                    {key: entry["output_paths"] for key, entry in ledger.items()}
+                    if not coverage_error
+                    else None
+                ),
             )
             ledger_valid = not coverage_error
             for row in coverage:

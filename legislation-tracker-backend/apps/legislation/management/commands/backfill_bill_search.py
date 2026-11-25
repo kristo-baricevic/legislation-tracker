@@ -37,4 +37,6 @@ class Command(BaseCommand):
             return
         for bill in candidates:
             enqueue_search_index(bill)
-        self.stdout.write(self.style.SUCCESS(f"Enqueued {len(candidates)} search jobs."))
+        self.stdout.write(
+            self.style.SUCCESS(f"Enqueued {len(candidates)} search jobs.")
+        )

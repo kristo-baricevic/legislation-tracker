@@ -21,7 +21,13 @@ def test_bill_history_topic_filter_applies_before_pagination(endpoint):
     topic = Topic.objects.create(name="History filter", slug="history-filter")
     expected = []
     for number in range(30):
-        bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number=f"HR {number}", title="Test", sponsor=representative)
+        bill = Bill.objects.create(
+            jurisdiction="federal",
+            session=119,
+            bill_number=f"HR {number}",
+            title="Test",
+            sponsor=representative,
+        )
         BillCosponsor.objects.create(bill=bill, representative=representative)
         if number < 2:
             BillTopic.objects.create(bill=bill, topic=topic)
@@ -32,7 +38,10 @@ def test_bill_history_topic_filter_applies_before_pagination(endpoint):
     assert response.status_code == 200
     assert response.data["count"] == 2
     rows = response.data["results"]
-    assert {row["bill"]["id"] if endpoint == "cosponsored-bills" else row["id"] for row in rows} == set(expected)
+    assert {
+        row["bill"]["id"] if endpoint == "cosponsored-bills" else row["id"]
+        for row in rows
+    } == set(expected)
     assert client.get(url, {"congress": 119, "topic_id": -1}).status_code == 400
     assert client.get(url, {"congress": 119}).data["count"] == 30
 
@@ -40,7 +49,9 @@ def test_bill_history_topic_filter_applies_before_pagination(endpoint):
 def test_vote_filters_apply_before_pagination_and_combine_with_topic():
     representative = member()
     topic, _ = Topic.objects.get_or_create(slug="schools", defaults={"name": "Schools"})
-    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 9", title="Schools")
+    bill = Bill.objects.create(
+        jurisdiction="federal", session=119, bill_number="HR 9", title="Schools"
+    )
     BillTopic.objects.create(bill=bill, topic=topic)
     for roll in range(1, 32):
         row = record(representative, roll, position="yes" if roll < 29 else "no")
@@ -51,22 +62,31 @@ def test_vote_filters_apply_before_pagination_and_combine_with_topic():
         record(representative, roll, position=position)
     url = f"/api/representatives/{representative.id}/voting-record/"
     client = APIClient()
-    response = client.get(url, {"congress": 119, "position": "no", "topic_id": topic.id})
+    response = client.get(
+        url, {"congress": 119, "position": "no", "topic_id": topic.id}
+    )
     assert response.status_code == 200
     assert response.json()["count"] == 3
     assert {r["position"] for r in response.json()["results"]} == {"no"}
-    response = client.get(url, {"congress": 119, "position": "yes", "topic_id": topic.id})
+    response = client.get(
+        url, {"congress": 119, "position": "yes", "topic_id": topic.id}
+    )
     assert response.json()["count"] == 1
     response = client.get(url, {"congress": 119, "position": "no_vote"})
     assert response.json()["count"] == 2
-    assert {r["position"] for r in response.json()["results"]} == {"present", "not_voting"}
+    assert {r["position"] for r in response.json()["results"]} == {
+        "present",
+        "not_voting",
+    }
     for invalid in ({"position": "unknown"}, {"topic_id": -1}):
         assert client.get(url, {"congress": 119, **invalid}).status_code == 400
 
 
 def test_vote_topic_totals_cover_all_records_without_topic_join_inflation():
     representative = member()
-    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 1", title="Schools")
+    bill = Bill.objects.create(
+        jurisdiction="federal", session=119, bill_number="HR 1", title="Schools"
+    )
     education, _ = Topic.objects.get_or_create(name="Education", slug="education")
     budget, _ = Topic.objects.get_or_create(name="Budget", slug="budget")
     for topic in (education, budget):
@@ -82,17 +102,38 @@ def test_vote_topic_totals_cover_all_records_without_topic_join_inflation():
     prior = record(representative, 31)
     prior.vote.congress = 118
     prior.vote.save(update_fields=["congress"])
-    response = APIClient().get(f"/api/representatives/{representative.id}/vote-summary/?congress=119&chamber=house")
+    response = APIClient().get(
+        f"/api/representatives/{representative.id}/vote-summary/?congress=119&chamber=house"
+    )
     assert response.status_code == 200
     data = response.json()
-    assert data["totals"] == {"yes": 26, "no": 1, "present": 0, "not_voting": 1, "other": 0}
-    assert {row["name"]: (row["yes"], row["no"]) for row in data["topics"]} == {"Education": (26, 0), "Budget": (26, 0), "No topic assigned": (0, 1)}
-    assert APIClient().get(f"/api/representatives/{representative.id}/vote-summary/?congress=119&page=1").status_code == 400
+    assert data["totals"] == {
+        "yes": 26,
+        "no": 1,
+        "present": 0,
+        "not_voting": 1,
+        "other": 0,
+    }
+    assert {row["name"]: (row["yes"], row["no"]) for row in data["topics"]} == {
+        "Education": (26, 0),
+        "Budget": (26, 0),
+        "No topic assigned": (0, 1),
+    }
+    assert (
+        APIClient()
+        .get(
+            f"/api/representatives/{representative.id}/vote-summary/?congress=119&page=1"
+        )
+        .status_code
+        == 400
+    )
 
 
 def test_empty_vote_summary_does_not_infer_votes():
     representative = member()
-    response = APIClient().get(f"/api/representatives/{representative.id}/vote-summary/?congress=119")
+    response = APIClient().get(
+        f"/api/representatives/{representative.id}/vote-summary/?congress=119"
+    )
     assert response.status_code == 200
     assert response.json()["topics"] == []
     assert not any(response.json()["totals"].values())

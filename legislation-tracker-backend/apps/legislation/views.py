@@ -239,6 +239,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         response = super().finalize_response(request, response, *args, **kwargs)
         if request.query_params.get("tracking"):
             from django.utils.cache import patch_vary_headers
+
             response["Cache-Control"] = "private, no-store"
             patch_vary_headers(response, ["Cookie", "Authorization"])
         return response
@@ -249,6 +250,7 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
         if self.request.GET.get("tracking"):
             return super().get_authenticators()
         return []
+
     permission_classes = [AllowAny]
     queryset = (
         Bill.objects.all()
@@ -278,7 +280,12 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         if self.action == "list":
-            qs = qs.select_related(None).select_related("sponsor").prefetch_related(None).prefetch_related("bill_topics__topic")
+            qs = (
+                qs.select_related(None)
+                .select_related("sponsor")
+                .prefetch_related(None)
+                .prefetch_related("bill_topics__topic")
+            )
             query_serializer = BillListQuerySerializer
         elif self.action == "retrieve":
             query_serializer = BillDetailQuerySerializer
@@ -296,7 +303,9 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
                 qs = qs.prefetch_related("latest_contract__evidence_spans")
             return qs
         user = self.request.user
-        return apply_bill_list_filters(qs, query.validated_data, user_id=user.pk if user.is_authenticated else None)
+        return apply_bill_list_filters(
+            qs, query.validated_data, user_id=user.pk if user.is_authenticated else None
+        )
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()

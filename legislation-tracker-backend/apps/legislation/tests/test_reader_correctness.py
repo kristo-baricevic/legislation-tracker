@@ -368,9 +368,9 @@ def test_ai_replay_checks_same_item_conditions_and_actual_quote_not_any_source()
     assert score_reader(case, ai_items(output), sources=sources, pipeline="ai")[
         "passed"
     ]
-    output["funding_and_timing"][0]["source_quotes"][0]["quote"] = (
-        "applicants shall pay"
-    )
+    output["funding_and_timing"][0]["source_quotes"][0][
+        "quote"
+    ] = "applicants shall pay"
     assert not score_reader(case, ai_items(output), sources=sources, pipeline="ai")[
         "passed"
     ]

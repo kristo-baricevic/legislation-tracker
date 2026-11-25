@@ -25,23 +25,39 @@ def recorded_votes(representative, congress, chamber=None):
 
 def vote_topic_summary(representative, congress, chamber=None):
     records = recorded_votes(representative, congress, chamber).order_by()
-    totals = records.aggregate(**{
-        position: Count("pk", filter=Q(position=position))
-        for position in ("yes", "no", "present", "not_voting", "other")
-    })
-    rows = records.filter(position__in=("yes", "no")).values(
-        "vote__bill__bill_topics__topic_id", "vote__bill__bill_topics__topic__name"
-    ).annotate(
-        yes=Count("pk", filter=Q(position="yes"), distinct=True),
-        no=Count("pk", filter=Q(position="no"), distinct=True),
+    totals = records.aggregate(
+        **{
+            position: Count("pk", filter=Q(position=position))
+            for position in ("yes", "no", "present", "not_voting", "other")
+        }
     )
-    topics = [{
-        "id": row["vote__bill__bill_topics__topic_id"],
-        "name": row["vote__bill__bill_topics__topic__name"] or "No topic assigned",
-        "yes": row["yes"], "no": row["no"],
-    } for row in rows]
-    topics.sort(key=lambda row: (-(row["yes"] + row["no"]), row["name"], row["id"] or 0))
-    return {"scope": {"congress": congress, "chamber": chamber}, "totals": totals, "topics": topics}
+    rows = (
+        records.filter(position__in=("yes", "no"))
+        .values(
+            "vote__bill__bill_topics__topic_id", "vote__bill__bill_topics__topic__name"
+        )
+        .annotate(
+            yes=Count("pk", filter=Q(position="yes"), distinct=True),
+            no=Count("pk", filter=Q(position="no"), distinct=True),
+        )
+    )
+    topics = [
+        {
+            "id": row["vote__bill__bill_topics__topic_id"],
+            "name": row["vote__bill__bill_topics__topic__name"] or "No topic assigned",
+            "yes": row["yes"],
+            "no": row["no"],
+        }
+        for row in rows
+    ]
+    topics.sort(
+        key=lambda row: (-(row["yes"] + row["no"]), row["name"], row["id"] or 0)
+    )
+    return {
+        "scope": {"congress": congress, "chamber": chamber},
+        "totals": totals,
+        "topics": topics,
+    }
 
 
 def vote_coverage(representative, congress, chamber=None):

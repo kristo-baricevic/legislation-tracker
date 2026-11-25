@@ -8,7 +8,9 @@ from apps.legislation.models import Bill
 
 
 @pytest.mark.django_db
-def test_relationship_sync_replaces_complete_collections_and_records_activity(monkeypatch):
+def test_relationship_sync_replaces_complete_collections_and_records_activity(
+    monkeypatch,
+):
     bill = Bill.objects.create(
         jurisdiction="federal",
         session=119,
@@ -52,7 +54,9 @@ def test_relationship_sync_replaces_complete_collections_and_records_activity(mo
     assert result.changed is True
     assert BillCosponsor.objects.get().representative == representative
     assert BillCommittee.objects.get().committee.system_code == "hsii00"
-    assert set(ChangeLog.objects.filter(bill=bill).values_list("change_type", flat=True)) == {
+    assert set(
+        ChangeLog.objects.filter(bill=bill).values_list("change_type", flat=True)
+    ) == {
         "cosponsor_update",
         "committee_update",
     }

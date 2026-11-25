@@ -6,9 +6,9 @@ from rest_framework import serializers
 
 from apps.legislation.models import BillEnhancement, BillEnhancementAttempt
 
+from .citations import citation_spans
 from .prompts import LEGAL_INFORMATION_DISCLAIMER, TRUNCATED_COVERAGE_NOTICE
 from .service import retry_allowed
-from .citations import citation_spans
 
 
 class EnhancementConfirmationSerializer(serializers.Serializer):
@@ -51,13 +51,36 @@ def _expanded_result(enhancement: BillEnhancement):
     }
     if result.get("schema_version") == "1.4":
         from .reader_targets import snapshot_targets
-        targets = {t["target_id"]: t for t in snapshot_targets(enhancement.source_snapshot_json)}
-        result["identity"] = {key: enhancement.source_manifest_json[key] for key in (
-            "document_id", "document_content_hash", "contract_id", "contract_hash")}
+
+        targets = {
+            t["target_id"]: t
+            for t in snapshot_targets(enhancement.source_snapshot_json)
+        }
+        result["identity"] = {
+            key: enhancement.source_manifest_json[key]
+            for key in (
+                "document_id",
+                "document_content_hash",
+                "contract_id",
+                "contract_hash",
+            )
+        }
         for item in result["explanations"]:
             target = targets[item["target_id"]]
-            item.update({key: target[key] for key in (
-                "kind", "item_id", "contract_id", "contract_hash", "document_id", "document_content_hash", "original_text")})
+            item.update(
+                {
+                    key: target[key]
+                    for key in (
+                        "kind",
+                        "item_id",
+                        "contract_id",
+                        "contract_hash",
+                        "document_id",
+                        "document_content_hash",
+                        "original_text",
+                    )
+                }
+            )
     categories = (
         "overview",
         "key_impacts",
@@ -69,23 +92,34 @@ def _expanded_result(enhancement: BillEnhancement):
         "explanations",
     )
     rows = [(category, result.get(category, [])) for category in categories]
-    if result.get('source_review'):
-        drafts = result['source_review'].pop('policy_drafts', None)
+    if result.get("source_review"):
+        drafts = result["source_review"].pop("policy_drafts", None)
         if drafts is not None:
             from types import SimpleNamespace
+
             from .policy_compilation import group_policy_drafts
+
             # Old saved compiler output may have dropped or changed conditions.
             # Re-present its accepted drafts locally; never charge to repair UI.
-            result['source_review']['policy_changes'] = group_policy_drafts(
-                SimpleNamespace(source_snapshot=enhancement.source_snapshot_json), drafts)
-        rows.extend((category, result['source_review'].get(category, []))
-                    for category in ('financial_items', 'additional_changes', 'policy_changes'))
+            result["source_review"]["policy_changes"] = group_policy_drafts(
+                SimpleNamespace(source_snapshot=enhancement.source_snapshot_json),
+                drafts,
+            )
+        rows.extend(
+            (category, result["source_review"].get(category, []))
+            for category in ("financial_items", "additional_changes", "policy_changes")
+        )
     for category, items in rows:
         for item in items:
             if category == "glossary":
                 target = next(
-                    (t for s in sources.values() for t in s.get("glossary_targets", [])
-                     if t["definition_id"] == item["definition_id"]), None,
+                    (
+                        t
+                        for s in sources.values()
+                        for t in s.get("glossary_targets", [])
+                        if t["definition_id"] == item["definition_id"]
+                    ),
+                    None,
                 )
                 if target is None:
                     continue
@@ -111,9 +145,9 @@ def _expanded_result(enhancement: BillEnhancement):
                             "quoted_text": source["quoted_text"][local_start:local_end],
                             "section_label": source.get("section_label"),
                             "start_char": start,
-                            "end_char": offset + local_end
-                            if start is not None
-                            else None,
+                            "end_char": (
+                                offset + local_end if start is not None else None
+                            ),
                         }
                     )
                 continue
@@ -132,7 +166,9 @@ def _expanded_result(enhancement: BillEnhancement):
     return result
 
 
-def enhancement_payload(enhancement: BillEnhancement, *, detail: bool, viewer=None) -> dict:
+def enhancement_payload(
+    enhancement: BillEnhancement, *, detail: bool, viewer=None
+) -> dict:
     attempts = getattr(enhancement, "ordered_attempts_cache", None)
     if attempts is None:
         attempts = list(enhancement.attempts.order_by("sequence"))
@@ -169,9 +205,15 @@ def enhancement_payload(enhancement: BillEnhancement, *, detail: bool, viewer=No
     }
     if detail:
         from .shared import _reader_result_valid
-        eligible = (enhancement.result_json is None
-                    or (enhancement.output_schema_version == "2.0-source-first" and enhancement.result_completeness == "partial")
-                    or _reader_result_valid(enhancement))
+
+        eligible = (
+            enhancement.result_json is None
+            or (
+                enhancement.output_schema_version == "2.0-source-first"
+                and enhancement.result_completeness == "partial"
+            )
+            or _reader_result_valid(enhancement)
+        )
         payload["result"] = _expanded_result(enhancement) if eligible else None
         payload["attempts"] = [_attempt_payload(attempt) for attempt in attempts]
         payload["poll_after_seconds"] = (
@@ -187,7 +229,11 @@ def enhancement_payload(enhancement: BillEnhancement, *, detail: bool, viewer=No
         payload["shared"] = True
         payload["latest_attempt"] = None
         payload["published_attempt_id"] = None
-        payload["usage"] = {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+        payload["usage"] = {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
         if detail:
             payload["attempts"] = []
     return payload

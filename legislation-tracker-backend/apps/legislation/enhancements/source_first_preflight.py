@@ -1,51 +1,80 @@
+from collections import Counter
 from dataclasses import asdict
 
 from django.conf import settings
-from .model_selection import target as planning_target, reasoning_effort
 
-from collections import Counter
-
-from .provision_pipeline import BudgetExceeded, digest, encoded, _plan_built_graph
+from .model_selection import reasoning_effort
+from .model_selection import target as planning_target
+from .provision_pipeline import BudgetExceeded, _plan_built_graph, digest, encoded
 from .source_first_prompts import PROMPT_VERSION
 from .source_first_schema import VERSION
 from .source_graph import build_source_graph
 from .types import EnhancementPreflight
 
 
-def build_source_first_preflight(document, text, *, reuse_result=None, cached_preflight=None):
+def build_source_first_preflight(
+    document, text, *, reuse_result=None, cached_preflight=None
+):
     from .source_packet import PreflightUnavailable, _text_hash
 
     if not text.strip():
         raise PreflightUnavailable("Source text unavailable")
     from .xml_sections import aligned_xml_sections, read_stored_xml
+
     raw, xml_digest = read_stored_xml(document)
     text_hash = _text_hash(text)
     from .model_capabilities import resolve_capabilities
+
     limits = resolve_capabilities(*planning_target())
-    output_limit = min(8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS, limits.output_tokens)
+    output_limit = min(
+        8000, settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS, limits.output_tokens
+    )
     plan_limits = {
         "model": planning_target()[1],
         "reasoning_effort": reasoning_effort(),
         "output_tokens": output_limit,
-        "per_call_input": min(limits.context_tokens - output_limit, settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
-                              settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS),
+        "per_call_input": min(
+            limits.context_tokens - output_limit,
+            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+        ),
     }
     # Bind reuse to the inputs actually read for this build, including historical
     # XML with no recorded content hash and accepted provisions from partial retries.
-    guard = digest([document.pk, document.version_label, text_hash, xml_digest, planning_target()[0],
-                    plan_limits, reuse_result, PROMPT_VERSION, VERSION])
+    guard = digest(
+        [
+            document.pk,
+            document.version_label,
+            text_hash,
+            xml_digest,
+            planning_target()[0],
+            plan_limits,
+            reuse_result,
+            PROMPT_VERSION,
+            VERSION,
+        ]
+    )
     if cached_preflight is not None and cached_preflight.worker_guard == guard:
         return cached_preflight
-    graph = build_source_graph(str(document.pk), document.version_label, text,
-                               xml_sections=aligned_xml_sections(raw, text))
+    graph = build_source_graph(
+        str(document.pk),
+        document.version_label,
+        text,
+        xml_sections=aligned_xml_sections(raw, text),
+    )
     try:
         plan = _plan_built_graph(graph, plan_limits, reuse_result=reuse_result)
     except BudgetExceeded as exc:
         raise PreflightUnavailable(
-            "No executable analysis plan", reason=str(exc),
-            coverage={"total_units": len(graph.units), "planned_units": 0,
-                      "reused_units": len(exc.reused), "unresolved_units": len(exc.reasons),
-                      "reasons": dict(Counter(exc.reasons.values()))},
+            "No executable analysis plan",
+            reason=str(exc),
+            coverage={
+                "total_units": len(graph.units),
+                "planned_units": 0,
+                "reused_units": len(exc.reused),
+                "unresolved_units": len(exc.reasons),
+                "reasons": dict(Counter(exc.reasons.values())),
+            },
         ) from None
     budget = {
         "maximum_calls": plan.maximum_calls,
@@ -58,7 +87,11 @@ def build_source_first_preflight(document, text, *, reuse_result=None, cached_pr
         "reasoning_effort": reasoning_effort(),
         "output_limit": plan.output_tokens,
     }
-    envelope = {"source_first_plan": identity, "budget": budget, "max_output_tokens": plan.output_tokens}
+    envelope = {
+        "source_first_plan": identity,
+        "budget": budget,
+        "max_output_tokens": plan.output_tokens,
+    }
     return EnhancementPreflight(
         provider=planning_target()[0],
         requested_model=plan.model,
@@ -75,12 +108,16 @@ def build_source_first_preflight(document, text, *, reuse_result=None, cached_pr
             "source_kind": "pinned_passages",
             "model_limits_version": 1,
             "budget": budget,
-            "coverage": {**graph.coverage, "total_units": len(graph.units),
-                         "planned_units": sum(len(c.unit_ids) for c in plan.calls),
-                         "reused_units": len(graph.units) - len(plan.unresolved_unit_ids)
-                                         - sum(len(c.unit_ids) for c in plan.calls),
-                         "unresolved_units": len(plan.unresolved_unit_ids),
-                         "reasons": dict(Counter(dict(plan.unresolved_reasons).values()))},
+            "coverage": {
+                **graph.coverage,
+                "total_units": len(graph.units),
+                "planned_units": sum(len(c.unit_ids) for c in plan.calls),
+                "reused_units": len(graph.units)
+                - len(plan.unresolved_unit_ids)
+                - sum(len(c.unit_ids) for c in plan.calls),
+                "unresolved_units": len(plan.unresolved_unit_ids),
+                "reasons": dict(Counter(dict(plan.unresolved_reasons).values())),
+            },
             "unresolved_unit_ids": list(plan.unresolved_unit_ids),
             "truncated": False,
         },

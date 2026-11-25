@@ -6,8 +6,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
 
-from .diagnostics import output_error
 from .citations import citation_spans
+from .diagnostics import output_error
 
 OUTPUT_SCHEMA_VERSION = "1.3"
 
@@ -154,14 +154,17 @@ V12_OUTPUT_SCHEMA = copy.deepcopy(OUTPUT_SCHEMA)
 V12_OUTPUT_SCHEMA["properties"]["schema_version"]["const"] = "1.2"
 OUTPUT_SCHEMA["required"].append("glossary")
 OUTPUT_SCHEMA["properties"]["glossary"] = {
-    "type": "array", "maxItems": 64,
+    "type": "array",
+    "maxItems": 64,
     "items": {
-        "type": "object", "additionalProperties": False,
+        "type": "object",
+        "additionalProperties": False,
         "required": ["definition_id", "text", "source_refs", "source_quotes"],
         "properties": {
             "definition_id": {"type": "string", "minLength": 1, "maxLength": 200},
             "text": {"type": "string", "minLength": 1, "maxLength": 600},
-            "source_refs": SOURCE_REFS_SCHEMA, "source_quotes": SOURCE_QUOTES_SCHEMA,
+            "source_refs": SOURCE_REFS_SCHEMA,
+            "source_quotes": SOURCE_QUOTES_SCHEMA,
         },
     },
 }
@@ -207,9 +210,12 @@ def add_derived_source_refs(output):
                 continue
             quotes = item.get("source_quotes")
             if isinstance(quotes, list) and all(
-                isinstance(q, dict) and isinstance(q.get("source_ref"), str) for q in quotes
+                isinstance(q, dict) and isinstance(q.get("source_ref"), str)
+                for q in quotes
             ):
-                item["source_refs"] = list(dict.fromkeys(q["source_ref"] for q in quotes))
+                item["source_refs"] = list(
+                    dict.fromkeys(q["source_ref"] for q in quotes)
+                )
     return result
 
 
@@ -242,12 +248,17 @@ def validate_enhancement_output(
     if expected_version and value.get("schema_version") != expected_version:
         raise output_error("schema_version_mismatch", ["schema_version"])
     if value.get("schema_version") == "1.4":
-        from .reader_targets import validate_reader_explanations, snapshot_targets
-        return validate_reader_explanations(value, snapshot_targets(source_snapshot), source_snapshot)
+        from .reader_targets import snapshot_targets, validate_reader_explanations
+
+        return validate_reader_explanations(
+            value, snapshot_targets(source_snapshot), source_snapshot
+        )
     schema = (
-        LEGACY_OUTPUT_SCHEMA if value.get("schema_version") == "1.1"
-        else V12_OUTPUT_SCHEMA if value.get("schema_version") == "1.2"
-        else OUTPUT_SCHEMA
+        LEGACY_OUTPUT_SCHEMA
+        if value.get("schema_version") == "1.1"
+        else (
+            V12_OUTPUT_SCHEMA if value.get("schema_version") == "1.2" else OUTPUT_SCHEMA
+        )
     )
     if aggregate_glossary and value.get("schema_version") == "1.3":
         schema = copy.deepcopy(schema)
@@ -293,7 +304,9 @@ def validate_enhancement_output(
                     )
                 sources = {s["source_ref"]: s["quoted_text"] for s in source_snapshot}
                 for quote_index, quote in enumerate(quotes):
-                    matches = citation_spans(sources[quote["source_ref"]], quote["quote"])
+                    matches = citation_spans(
+                        sources[quote["source_ref"]], quote["quote"]
+                    )
                     if len(matches) != 1:
                         code = (
                             "citation_quote_ambiguous"
@@ -313,7 +326,10 @@ def validate_enhancement_output(
                 if category == "glossary":
                     definition_id = item["definition_id"]
                     if definition_id in seen_definitions:
-                        raise output_error("glossary_definition_duplicate", [category, item_index, "definition_id"])
+                        raise output_error(
+                            "glossary_definition_duplicate",
+                            [category, item_index, "definition_id"],
+                        )
                     seen_definitions.add(definition_id)
                     supported = False
                     for source in source_snapshot:
@@ -323,11 +339,21 @@ def validate_enhancement_output(
                             for quote in quotes:
                                 if quote["source_ref"] != source["source_ref"]:
                                     continue
-                                start, end = citation_spans(source["quoted_text"], quote["quote"])[0]
+                                start, end = citation_spans(
+                                    source["quoted_text"], quote["quote"]
+                                )[0]
                                 start += source["start_char"]
                                 end += source["start_char"]
-                                if target["start_char"] <= start < end <= target["end_char"]:
+                                if (
+                                    target["start_char"]
+                                    <= start
+                                    < end
+                                    <= target["end_char"]
+                                ):
                                     supported = True
                     if not supported:
-                        raise output_error("glossary_definition_unsupported", [category, item_index, "source_quotes"])
+                        raise output_error(
+                            "glossary_definition_unsupported",
+                            [category, item_index, "source_quotes"],
+                        )
     return copy.deepcopy(value)

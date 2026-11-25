@@ -64,13 +64,16 @@ class _Marker:
 
 class StructuralSections(tuple):
     """An immutable traversal with a document-local containment index."""
+
     def __new__(cls, sections):
         result = super().__new__(cls, sections)
         result.parents = {}
         stack = []
         for section in result:
-            while stack and (stack[-1].span.start_char >= section.span.start_char or
-                             stack[-1].span.end_char < section.span.end_char):
+            while stack and (
+                stack[-1].span.start_char >= section.span.start_char
+                or stack[-1].span.end_char < section.span.end_char
+            ):
                 stack.pop()
             result.parents[id(section)] = stack[-1] if stack else None
             stack.append(section)
@@ -113,30 +116,41 @@ def _subdivision_rank(label: str, prior_markers: list[_Marker]) -> int:
     if token.isdigit():
         return _PARAGRAPH_RANK
     prior_rank = prior_markers[-1].rank if prior_markers else 0
-    if len(token) > 1 and len(set(token)) == 1 and not re.fullmatch(r'[ivxlcdmIVXLCDM]+', token):
+    if (
+        len(token) > 1
+        and len(set(token)) == 1
+        and not re.fullmatch(r"[ivxlcdmIVXLCDM]+", token)
+    ):
         if token.islower() and prior_rank >= _SUBCLAUSE_RANK:
             return _ITEM_RANK
         if token.isupper() and prior_rank >= _ITEM_RANK:
             return _SUBITEM_RANK
     if token.isupper():
         # (I), (II) below roman (i) are subclauses, not sibling (A)s.
-        enclosing = next((m for m in reversed(prior_markers) if m.rank <= _SUBPARAGRAPH_RANK), None)
-        previous = enclosing.label[1:-1] if enclosing else ''
-        is_next_letter = len(previous) == len(token) == 1 and ord(token) == ord(previous) + 1
-        if not is_next_letter and ((token == 'I' and prior_rank >= _CLAUSE_RANK) or
-            (re.fullmatch(r'[IVXLCDM]+', token) and len(token) > 1 and prior_rank >= _SUBCLAUSE_RANK)):
+        enclosing = next(
+            (m for m in reversed(prior_markers) if m.rank <= _SUBPARAGRAPH_RANK), None
+        )
+        previous = enclosing.label[1:-1] if enclosing else ""
+        is_next_letter = (
+            len(previous) == len(token) == 1 and ord(token) == ord(previous) + 1
+        )
+        if not is_next_letter and (
+            (token == "I" and prior_rank >= _CLAUSE_RANK)
+            or (
+                re.fullmatch(r"[IVXLCDM]+", token)
+                and len(token) > 1
+                and prior_rank >= _SUBCLAUSE_RANK
+            )
+        ):
             return _SUBCLAUSE_RANK
         return _SUBPARAGRAPH_RANK
     if prior_markers:
         previous_marker = prior_markers[-1]
         previous_token = previous_marker.label[1:-1]
-        if (
-            (token == "i" and previous_marker.rank == _SUBPARAGRAPH_RANK)
-            or (
-                previous_marker.rank == _CLAUSE_RANK
-                and re.fullmatch(r"[ivxlcdm]+", token)
-                and _roman_number(token) == _roman_number(previous_token) + 1
-            )
+        if (token == "i" and previous_marker.rank == _SUBPARAGRAPH_RANK) or (
+            previous_marker.rank == _CLAUSE_RANK
+            and re.fullmatch(r"[ivxlcdm]+", token)
+            and _roman_number(token) == _roman_number(previous_token) + 1
         ):
             return _CLAUSE_RANK
     # A new subsection (d) after (c)'s nested list is not roman clause 500.
@@ -305,7 +319,15 @@ def parse_federal_structure(source_text: str) -> tuple[StructuralSection, ...]:
 def _content_start(section: StructuralSection, source_text: str) -> int:
     start, end = section.span.start_char, section.span.end_char
     first_line_end = min(_line_end(source_text, start), end)
-    if section.level in {"subsection", "paragraph", "subparagraph", "clause", "subclause", "item", "subitem"}:
+    if section.level in {
+        "subsection",
+        "paragraph",
+        "subparagraph",
+        "clause",
+        "subclause",
+        "item",
+        "subitem",
+    }:
         match = _SUBDIVISION_PREFIX_RE.match(source_text, start, end)
         if match is None:
             return start

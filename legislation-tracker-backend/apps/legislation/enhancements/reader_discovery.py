@@ -1,4 +1,5 @@
 """Full-source discovery, independent of the deterministic reader inventory."""
+
 import copy
 import hashlib
 import json
@@ -79,16 +80,27 @@ conditions even when they share the same entry. All entries must be source-backe
 
 
 def policy_passages(sources):
-    return [f"{s['source_ref']}:{p['quote_id']}" for s in sources for p in citation_passages(s)
-            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids'])]
+    return [
+        f"{s['source_ref']}:{p['quote_id']}"
+        for s in sources
+        for p in citation_passages(s)
+        if p["quote_id"]
+        and (
+            s.get("review_quote_ids") is None or p["quote_id"] in s["review_quote_ids"]
+        )
+    ]
 
 
 def xml_batch_coverage(text, sections, scans):
     """Check the actual batch ranges, not just the parser's inventory."""
     cursor = 0
     for source in scans:
-        start, end = source['start_char'], source['end_char']
-        if start != cursor or not start < end <= len(text) or source['quoted_text'] != text[start:end]:
+        start, end = source["start_char"], source["end_char"]
+        if (
+            start != cursor
+            or not start < end <= len(text)
+            or source["quoted_text"] != text[start:end]
+        ):
             raise ValueError("source_batch_range_mismatch")
         cursor = end
     if cursor != len(text):
@@ -100,8 +112,11 @@ def xml_batch_coverage(text, sections, scans):
             raise ValueError("source_batch_section_mismatch")
         seen.add(identifier)
         previous = right
-    return {"sections_planned": len(seen), "sections_omitted": 0,
-            "source_chars_planned": cursor}
+    return {
+        "sections_planned": len(seen),
+        "sections_omitted": 0,
+        "source_chars_planned": cursor,
+    }
 
 
 def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000):
@@ -112,24 +127,39 @@ def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000
     depth = 0
     if xml_sections:
         boundaries = [edge for _, a, b, *_ in xml_sections for edge in (a, b)]
-    for match in (() if xml_sections else re.finditer(r'\[\[QUOTED_BLOCK_START\]\]|\[\[QUOTED_BLOCK_END\]\]|^SEC\.\s', text, re.M)):
-        if match.group() == '[[QUOTED_BLOCK_START]]':
+    for match in (
+        ()
+        if xml_sections
+        else re.finditer(
+            r"\[\[QUOTED_BLOCK_START\]\]|\[\[QUOTED_BLOCK_END\]\]|^SEC\.\s", text, re.M
+        )
+    ):
+        if match.group() == "[[QUOTED_BLOCK_START]]":
             depth += 1
-        elif match.group() == '[[QUOTED_BLOCK_END]]':
+        elif match.group() == "[[QUOTED_BLOCK_END]]":
             depth = max(0, depth - 1)
         elif depth == 0:
             boundaries.append(match.start())
     boundaries = sorted({0, len(text), *boundaries})
     ranges = []
     for left, right in zip(boundaries, boundaries[1:]):
-        while right - left > 12000 if not xml_sections else len(text[left:min(right,left+xml_batch_bytes+1)].encode()) > xml_batch_bytes:
+        while (
+            right - left > 12000
+            if not xml_sections
+            else len(text[left : min(right, left + xml_batch_bytes + 1)].encode())
+            > xml_batch_bytes
+        ):
             if xml_sections:
-                chunk = text[left:min(right, left+xml_batch_bytes)].encode()[:xml_batch_bytes].decode(errors="ignore")
+                chunk = (
+                    text[left : min(right, left + xml_batch_bytes)]
+                    .encode()[:xml_batch_bytes]
+                    .decode(errors="ignore")
+                )
                 stop = left + len(chunk)
-                floor = left + len(chunk)//2
+                floor = left + len(chunk) // 2
             else:
                 stop, floor = left + 10000, left + 4000
-            end = text.rfind('\n', floor, stop)
+            end = text.rfind("\n", floor, stop)
             end = end + 1 if end >= 0 else stop
             ranges.append((left, end))
             left = end
@@ -137,85 +167,190 @@ def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000
             ranges.append((left, right))
     sources = []
     for start, end in ranges:
-        if sources and (len(text[sources[-1]['start_char']:end].encode()) <= xml_batch_bytes if xml_sections
-                        else end - sources[-1]['start_char'] <= 7000):
+        if sources and (
+            len(text[sources[-1]["start_char"] : end].encode()) <= xml_batch_bytes
+            if xml_sections
+            else end - sources[-1]["start_char"] <= 7000
+        ):
             source = sources[-1]
-            source['end_char'] = end
-            source['quoted_text'] = text[source['start_char']:end]
+            source["end_char"] = end
+            source["quoted_text"] = text[source["start_char"] : end]
         else:
-            sources.append({'source_ref': f'src_{first_ref + len(sources):04d}',
-                'kind': 'document_chunk', 'field_path': None, 'section_label': 'Bill text',
-                'start_char': start, 'end_char': end, 'quoted_text': text[start:end],
-                'discovery_source': True})
+            sources.append(
+                {
+                    "source_ref": f"src_{first_ref + len(sources):04d}",
+                    "kind": "document_chunk",
+                    "field_path": None,
+                    "section_label": "Bill text",
+                    "start_char": start,
+                    "end_char": end,
+                    "quoted_text": text[start:end],
+                    "discovery_source": True,
+                }
+            )
     for source in sources:
-        source['text_sha256'] = hashlib.sha256(source['quoted_text'].encode()).hexdigest()
-        enclosing = [(a, b) for a, b in zip(boundaries, boundaries[1:])
-                     if a < source['end_char'] and b > source['start_char']]
-        if enclosing and (enclosing[0][0] < source['start_char'] or enclosing[-1][1] > source['end_char']):
-            section = text[enclosing[0][0]:enclosing[-1][1]]
-            source['section_context_sha256'] = hashlib.sha256(section.encode()).hexdigest()
-            source['section_context_complete'] = len(section.encode()) <= 24000
-            if source['section_context_complete']:
-                source['section_context'] = section
+        source["text_sha256"] = hashlib.sha256(
+            source["quoted_text"].encode()
+        ).hexdigest()
+        enclosing = [
+            (a, b)
+            for a, b in zip(boundaries, boundaries[1:])
+            if a < source["end_char"] and b > source["start_char"]
+        ]
+        if enclosing and (
+            enclosing[0][0] < source["start_char"]
+            or enclosing[-1][1] > source["end_char"]
+        ):
+            section = text[enclosing[0][0] : enclosing[-1][1]]
+            source["section_context_sha256"] = hashlib.sha256(
+                section.encode()
+            ).hexdigest()
+            source["section_context_complete"] = len(section.encode()) <= 24000
+            if source["section_context_complete"]:
+                source["section_context"] = section
             else:
                 # Every byte remains in the review inventory. Supply bounded
                 # adjacent context instead of repeating a hundred-page section
                 # for each chunk. Pin the whole section hash so a changed remote
                 # condition invalidates reuse, even outside this local window.
-                before = text[max(enclosing[0][0], source['start_char'] - 2000):source['start_char']]
-                after = text[source['end_char']:min(enclosing[-1][1], source['end_char'] + 2000)]
-                source['section_context'] = before + '\n[CURRENT REVIEW CHUNK]\n' + after
+                before = text[
+                    max(enclosing[0][0], source["start_char"] - 2000) : source[
+                        "start_char"
+                    ]
+                ]
+                after = text[
+                    source["end_char"] : min(
+                        enclosing[-1][1], source["end_char"] + 2000
+                    )
+                ]
+                source["section_context"] = (
+                    before + "\n[CURRENT REVIEW CHUNK]\n" + after
+                )
     return sources
 
 
 def money_candidates(sources):
     from .reader_integrity import financial_signal_text
-    return [f"{s['source_ref']}:{p['quote_id']}" for s in sources for p in citation_passages(s)
-            if p['quote_id'] and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids']) and re.search(r'\$|%|\b(?:percent|appropriat(?:ed|ing|ion|ions)|(?:shall|may|must) appropriate\s+(?:funds|money|sums)|tax credit|deduction|grant amounts|tariffs?|shall (?:reserve|transfer|allocate)|(?:may|shall) set aside)\b', financial_signal_text(p['text']), re.I)]
+
+    return [
+        f"{s['source_ref']}:{p['quote_id']}"
+        for s in sources
+        for p in citation_passages(s)
+        if p["quote_id"]
+        and (
+            s.get("review_quote_ids") is None or p["quote_id"] in s["review_quote_ids"]
+        )
+        and re.search(
+            r"\$|%|\b(?:percent|appropriat(?:ed|ing|ion|ions)|(?:shall|may|must) appropriate\s+(?:funds|money|sums)|tax credit|deduction|grant amounts|tariffs?|shall (?:reserve|transfer|allocate)|(?:may|shall) set aside)\b",
+            financial_signal_text(p["text"]),
+            re.I,
+        )
+    ]
 
 
 def discovery_schema(sources):
     quote_variants = []
     for s in sources:
-        ids = [p['quote_id'] for p in citation_passages(s) if p['quote_id']]
+        ids = [p["quote_id"] for p in citation_passages(s) if p["quote_id"]]
         if ids:
-            quote_variants.append({'type': 'object', 'additionalProperties': False,
-                'required': ['source_ref', 'quote_id'], 'properties': {
-                    'source_ref': {'type': 'string', 'enum': [s['source_ref']]},
-                    'quote_id': {'type': 'string', 'enum': ids}}})
-    quotes = {'type': 'array', 'minItems': 1, 'maxItems': 24,
-              'items': {'anyOf': quote_variants} if quote_variants else {'type': 'null'}}
-    financial = {'type': 'object', 'additionalProperties': False,
-        'required': ['label', 'amount_display', 'text', 'fiscal_years', 'source_quotes'],
-        'properties': {'label': {'type': 'string', 'minLength': 1, 'maxLength': 80},
-            'amount_display': {'type': 'string', 'minLength': 1, 'maxLength': 180},
-            'text': {'type': 'string', 'minLength': 1, 'maxLength': 1600},
-            'fiscal_years': {'type': 'array', 'items': {'type': 'integer', 'minimum': 1700, 'maximum': 9999}},
-            'source_quotes': quotes}}
-    change = {'type': 'object', 'additionalProperties': False,
-        'required': ['text', 'source_quotes'], 'properties': {
-            'text': {'type': 'string', 'minLength': 1, 'maxLength': 400}, 'source_quotes': quotes}}
+            quote_variants.append(
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["source_ref", "quote_id"],
+                    "properties": {
+                        "source_ref": {"type": "string", "enum": [s["source_ref"]]},
+                        "quote_id": {"type": "string", "enum": ids},
+                    },
+                }
+            )
+    quotes = {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 24,
+        "items": {"anyOf": quote_variants} if quote_variants else {"type": "null"},
+    }
+    financial = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "label",
+            "amount_display",
+            "text",
+            "fiscal_years",
+            "source_quotes",
+        ],
+        "properties": {
+            "label": {"type": "string", "minLength": 1, "maxLength": 80},
+            "amount_display": {"type": "string", "minLength": 1, "maxLength": 180},
+            "text": {"type": "string", "minLength": 1, "maxLength": 1600},
+            "fiscal_years": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 1700, "maximum": 9999},
+            },
+            "source_quotes": quotes,
+        },
+    }
+    change = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["text", "source_quotes"],
+        "properties": {
+            "text": {"type": "string", "minLength": 1, "maxLength": 400},
+            "source_quotes": quotes,
+        },
+    }
     candidates = money_candidates(sources)
-    schema = {'type': 'object', 'additionalProperties': False,
-        'required': ['financial_items', 'additional_changes', 'money_checks'], 'properties': {
-            'financial_items': {'type': 'array', 'maxItems': 60, 'items': financial},
-            'additional_changes': {'type': 'array', 'maxItems': 40, 'items': change},
-            'money_checks': {'type': 'object', 'additionalProperties': False, 'required': candidates,
-                'properties': {key: {'type': 'string', 'enum': ['financial', 'not_financial']} for key in candidates}}}}
-    if any(s.get('policy_review') for s in sources):
-        schema['required'] += ['policy_changes', 'policy_checks']
-        schema['properties']['additional_changes']['maxItems'] = 0
-        schema['properties']['policy_changes'] = {'type': 'array', 'items': {
-            'type': 'object', 'additionalProperties': False,
-            'required': ['title', 'text', 'source_quotes'], 'properties': {
-                'title': {'type': 'string', 'minLength': 1, 'maxLength': 90},
-'text': {'type': 'string', 'minLength': 1, 'maxLength': 420,
-    'description': 'One or two complete plain-English sentences, at most 65 words, ending with punctuation.',
-    'pattern': r'^(?:\S+\s+){0,64}\S*[.!?]$'},
-                'source_quotes': quotes}}}
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["financial_items", "additional_changes", "money_checks"],
+        "properties": {
+            "financial_items": {"type": "array", "maxItems": 60, "items": financial},
+            "additional_changes": {"type": "array", "maxItems": 40, "items": change},
+            "money_checks": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": candidates,
+                "properties": {
+                    key: {"type": "string", "enum": ["financial", "not_financial"]}
+                    for key in candidates
+                },
+            },
+        },
+    }
+    if any(s.get("policy_review") for s in sources):
+        schema["required"] += ["policy_changes", "policy_checks"]
+        schema["properties"]["additional_changes"]["maxItems"] = 0
+        schema["properties"]["policy_changes"] = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "text", "source_quotes"],
+                "properties": {
+                    "title": {"type": "string", "minLength": 1, "maxLength": 90},
+                    "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 420,
+                        "description": "One or two complete plain-English sentences, at most 65 words, ending with punctuation.",
+                        "pattern": r"^(?:\S+\s+){0,64}\S*[.!?]$",
+                    },
+                    "source_quotes": quotes,
+                },
+            },
+        }
         keys = policy_passages(sources)
-        schema['properties']['policy_checks'] = {'type': 'object', 'additionalProperties': False,
-            'required': keys, 'properties': {key: {'type': 'string', 'enum': ['explained', 'context']} for key in keys}}
+        schema["properties"]["policy_checks"] = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": keys,
+            "properties": {
+                key: {"type": "string", "enum": ["explained", "context"]}
+                for key in keys
+            },
+        }
     return schema
 
 
@@ -225,205 +360,331 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
     arabic_words = r"[\u0620-\u064a\u066e-\u06d3]+"
     generated = set(re.findall(arabic_words, json.dumps(output, ensure_ascii=False)))
     if generated:
-        source_words = set(re.findall(arabic_words, " ".join(s.get("quoted_text", "") for s in sources)))
+        source_words = set(
+            re.findall(
+                arabic_words, " ".join(s.get("quoted_text", "") for s in sources)
+            )
+        )
         if generated - source_words:
             raise output_error("unsupported_language_in_reader", ["source_review"])
 
     # Split requests include adjacent passages for context. A finding belongs
     # to this request only when it cites at least one passage it owns.
-    if any(s.get('review_quote_ids') is not None for s in sources):
+    if any(s.get("review_quote_ids") is not None for s in sources):
         output = copy.deepcopy(output)
-        owned = {(s['source_ref'], p['quote_id']) for s in sources
-                 for p in citation_passages(s) if p['quote_id']
-                 and (s.get('review_quote_ids') is None or p['quote_id'] in s['review_quote_ids'])}
-        for category in ('financial_items', 'policy_changes', 'additional_changes'):
+        owned = {
+            (s["source_ref"], p["quote_id"])
+            for s in sources
+            for p in citation_passages(s)
+            if p["quote_id"]
+            and (
+                s.get("review_quote_ids") is None
+                or p["quote_id"] in s["review_quote_ids"]
+            )
+        }
+        for category in ("financial_items", "policy_changes", "additional_changes"):
             rows = output.get(category)
             if not isinstance(rows, list):
                 continue
             kept = []
             for item in rows:
-                quotes = item.get('source_quotes', []) if isinstance(item, dict) else []
-                if not isinstance(quotes, list) or any(not isinstance(q, dict) for q in quotes):
+                quotes = item.get("source_quotes", []) if isinstance(item, dict) else []
+                if not isinstance(quotes, list) or any(
+                    not isinstance(q, dict) for q in quotes
+                ):
                     kept.append(item)
                     continue
-                local = [q for q in quotes if (q.get('source_ref'), q.get('quote_id')) in owned]
+                local = [
+                    q
+                    for q in quotes
+                    if (q.get("source_ref"), q.get("quote_id")) in owned
+                ]
                 if local:
-                    item['source_quotes'] = local + [q for q in quotes if q not in local]
+                    item["source_quotes"] = local + [
+                        q for q in quotes if q not in local
+                    ]
                     kept.append(item)
             output[category] = kept
     schema = discovery_schema(sources)
     if aggregate:
-        schema['properties']['financial_items'].pop('maxItems', None)
+        schema["properties"]["financial_items"].pop("maxItems", None)
         if retained_financial:
             # Only exact, server-reconstructed source rules can exceed the
             # generated-copy limits. Never relax those limits for model prose.
-            items = schema['properties']['financial_items']['items']
-            schema['properties']['financial_items']['items'] = {
-                'anyOf': [items, {'enum': list(retained_financial)}]}
-        if 'policy_changes' in schema['properties']:
-            schema['properties']['policy_changes']['items']['properties']['source_quotes'].pop('maxItems', None)
+            items = schema["properties"]["financial_items"]["items"]
+            schema["properties"]["financial_items"]["items"] = {
+                "anyOf": [items, {"enum": list(retained_financial)}]
+            }
+        if "policy_changes" in schema["properties"]:
+            schema["properties"]["policy_changes"]["items"]["properties"][
+                "source_quotes"
+            ].pop("maxItems", None)
     try:
         Draft202012Validator(schema).validate(output)
     except ValidationError as error:
         path = list(error.absolute_path)
         # Classify prose failures for the bounded correction pass, just like
         # validate_policy_copy below. Shape and citation errors stay strict.
-        if (len(path) == 3 and path[0] == 'policy_changes' and path[2] == 'text'
-                and error.validator in {'pattern', 'minLength', 'maxLength'}):
-            raise output_error('reader_policy_wording', path) from error
+        if (
+            len(path) == 3
+            and path[0] == "policy_changes"
+            and path[2] == "text"
+            and error.validator in {"pattern", "minLength", "maxLength"}
+        ):
+            raise output_error("reader_policy_wording", path) from error
         raise
-    financial_citations = {f"{q['source_ref']}:{q['quote_id']}"
-        for item in output['financial_items'] for q in item['source_quotes']}
-    if any(value == 'financial' and key not in financial_citations
-           for key, value in output['money_checks'].items()):
-        raise output_error('reader_coverage_incomplete', ['money_checks'])
-    if any(s.get('policy_review') for s in sources):
-        cited = {f"{q['source_ref']}:{q['quote_id']}" for item in output['policy_changes'] for q in item['source_quotes']}
-        if any(value == 'explained' and key not in cited for key, value in output['policy_checks'].items()) or any(
-                value == 'financial' and output['policy_checks'].get(key) != 'explained'
-                for key, value in output['money_checks'].items()):
-            raise output_error('reader_coverage_incomplete', ['policy_changes'])
-        for item in output['policy_changes']:
+    financial_citations = {
+        f"{q['source_ref']}:{q['quote_id']}"
+        for item in output["financial_items"]
+        for q in item["source_quotes"]
+    }
+    if any(
+        value == "financial" and key not in financial_citations
+        for key, value in output["money_checks"].items()
+    ):
+        raise output_error("reader_coverage_incomplete", ["money_checks"])
+    if any(s.get("policy_review") for s in sources):
+        cited = {
+            f"{q['source_ref']}:{q['quote_id']}"
+            for item in output["policy_changes"]
+            for q in item["source_quotes"]
+        }
+        if any(
+            value == "explained" and key not in cited
+            for key, value in output["policy_checks"].items()
+        ) or any(
+            value == "financial" and output["policy_checks"].get(key) != "explained"
+            for key, value in output["money_checks"].items()
+        ):
+            raise output_error("reader_coverage_incomplete", ["policy_changes"])
+        for item in output["policy_changes"]:
             validate_policy_copy(item)
-    catalogs = {s['source_ref']: {p['quote_id']: p['text'] for p in citation_passages(s)
-                                if p['quote_id']} for s in sources}
+    catalogs = {
+        s["source_ref"]: {
+            p["quote_id"]: p["text"] for p in citation_passages(s) if p["quote_id"]
+        }
+        for s in sources
+    }
     from .reader_integrity import validate_financial_coverage, validate_numbers
+
     validate_financial_coverage(output, catalogs)
     resolved = copy.deepcopy(output)
-    for category in ('financial_items', 'additional_changes', 'policy_changes'):
+    for category in ("financial_items", "additional_changes", "policy_changes"):
         for item in resolved.get(category, []):
-            first = item['source_quotes'][0]
-            source = next(s for s in sources if s['source_ref'] == first['source_ref'])
-            if source.get('review_quote_ids') is not None and first['quote_id'] not in source['review_quote_ids']:
-                raise output_error('reader_target_invalid', [category])
-            item['source_quotes'] = [{'source_ref': q['source_ref'],
-                'quote': catalogs[q['source_ref']][q['quote_id']]} for q in item['source_quotes']]
+            first = item["source_quotes"][0]
+            source = next(s for s in sources if s["source_ref"] == first["source_ref"])
+            if (
+                source.get("review_quote_ids") is not None
+                and first["quote_id"] not in source["review_quote_ids"]
+            ):
+                raise output_error("reader_target_invalid", [category])
+            item["source_quotes"] = [
+                {
+                    "source_ref": q["source_ref"],
+                    "quote": catalogs[q["source_ref"]][q["quote_id"]],
+                }
+                for q in item["source_quotes"]
+            ]
             validate_numbers(item, path=[category])
     return resolved
 
 
 def validate_policy_copy(item):
-    text = item['text']
-    if re.search(r'[,;:]\s*[.!?](?=\s|$)', text):
-        raise output_error('reader_policy_wording', ['policy_changes'])
-    if not re.search(r'[A-Za-z]', text) or len(text.split()) > 65 or not re.search(r'[.!?]$', text) or re.search(r'\b(?:and|or)\s*[.!?]$', text, re.I) or re.search(
-            r'\b(?:p\d{4}|src_\d{4})\b|\[\[|\b(?:amended by striking|inserting the following|subparagraph [A-Z] is amended)\b',
-            text, re.I):
-        raise output_error('reader_policy_wording', ['policy_changes'])
+    text = item["text"]
+    if re.search(r"[,;:]\s*[.!?](?=\s|$)", text):
+        raise output_error("reader_policy_wording", ["policy_changes"])
+    if (
+        not re.search(r"[A-Za-z]", text)
+        or len(text.split()) > 65
+        or not re.search(r"[.!?]$", text)
+        or re.search(r"\b(?:and|or)\s*[.!?]$", text, re.I)
+        or re.search(
+            r"\b(?:p\d{4}|src_\d{4})\b|\[\[|\b(?:amended by striking|inserting the following|subparagraph [A-Z] is amended)\b",
+            text,
+            re.I,
+        )
+    ):
+        raise output_error("reader_policy_wording", ["policy_changes"])
 
 
 def retain_missing_financial_rules(review, sources):
     """Keep source wording for known financial rules missed by discovery."""
     from .citations import citation_spans
-    scans = {s['source_ref']: s for s in sources if s.get('discovery_source')}
+
+    scans = {s["source_ref"]: s for s in sources if s.get("discovery_source")}
     covered = []
-    for item in review['financial_items']:
-        for q in item['source_quotes']:
-            source = scans[q['source_ref']]
-            for a, b in citation_spans(source['quoted_text'], q['quote']):
-                covered.append((source['start_char'] + a, source['start_char'] + b))
+    for item in review["financial_items"]:
+        for q in item["source_quotes"]:
+            source = scans[q["source_ref"]]
+            for a, b in citation_spans(source["quoted_text"], q["quote"]):
+                covered.append((source["start_char"] + a, source["start_char"] + b))
     seen = set()
     for source in sources:
-        for target in source.get('reader_targets', []):
-            if target['kind'] != 'financial_item' or target['target_id'] in seen:
+        for target in source.get("reader_targets", []):
+            if target["kind"] != "financial_item" or target["target_id"] in seen:
                 continue
-            seen.add(target['target_id'])
-            ranges = target['evidence_ranges']
-            if any(a < right and b > left for a, b in covered for left, right in ranges):
+            seen.add(target["target_id"])
+            ranges = target["evidence_ranges"]
+            if any(
+                a < right and b > left for a, b in covered for left, right in ranges
+            ):
                 continue
             fragments, quotes = [], []
             for left, right in ranges:
                 cursor = left
                 for scan in scans.values():
-                    offset = scan['start_char']
-                    if scan['end_char'] <= left or offset >= right:
+                    offset = scan["start_char"]
+                    if scan["end_char"] <= left or offset >= right:
                         continue
                     for passage in citation_passages(scan):
-                        end = offset + len(passage['text'])
+                        end = offset + len(passage["text"])
                         a, b = max(offset, left), min(end, right)
                         if a < b:
-                            if a != cursor or not passage['quote_id']:
-                                raise output_error('reader_coverage_incomplete', ['financial_items'])
-                            fragments.append(passage['text'][a-offset:b-offset])
-                            quote = {'source_ref': scan['source_ref'], 'quote': passage['text']}
+                            if a != cursor or not passage["quote_id"]:
+                                raise output_error(
+                                    "reader_coverage_incomplete", ["financial_items"]
+                                )
+                            fragments.append(passage["text"][a - offset : b - offset])
+                            quote = {
+                                "source_ref": scan["source_ref"],
+                                "quote": passage["text"],
+                            }
                             if quote not in quotes:
                                 quotes.append(quote)
                             cursor = b
                         offset = end
                 if cursor != right:
-                    raise output_error('reader_coverage_incomplete', ['financial_items'])
-                fragments.append(' ')
-            item = target['facts']['item']
-            review['financial_items'].append({
-                'text': ''.join(fragments).strip(), 'source_quotes': quotes,
-                'label': (item.get('financial_action') or 'Financial rule').replace('_', ' ').capitalize(),
-                'amount_display': 'See provision', 'fiscal_years': [],
-            })
+                    raise output_error(
+                        "reader_coverage_incomplete", ["financial_items"]
+                    )
+                fragments.append(" ")
+            item = target["facts"]["item"]
+            review["financial_items"].append(
+                {
+                    "text": "".join(fragments).strip(),
+                    "source_quotes": quotes,
+                    "label": (item.get("financial_action") or "Financial rule")
+                    .replace("_", " ")
+                    .capitalize(),
+                    "amount_display": "See provision",
+                    "fiscal_years": [],
+                }
+            )
 
 
 def validate_source_review(review, sources):
     from .reader_targets import _validate_quotes
-    scan_sources = [s for s in sources if s.get('discovery_source')]
-    source_map = {s['source_ref']: s for s in scan_sources}
+
+    scan_sources = [s for s in sources if s.get("discovery_source")]
+    source_map = {s["source_ref"]: s for s in scan_sources}
     expected = list(source_map)
-    if review.get('reviewed_sources') != expected:
-        raise output_error('reader_coverage_incomplete', ['source_review'])
-    policy = any(s.get('policy_review') for s in scan_sources)
-    fields = {'reviewed_sources', 'financial_items', 'additional_changes', 'money_checks'}
+    if review.get("reviewed_sources") != expected:
+        raise output_error("reader_coverage_incomplete", ["source_review"])
+    policy = any(s.get("policy_review") for s in scan_sources)
+    fields = {
+        "reviewed_sources",
+        "financial_items",
+        "additional_changes",
+        "money_checks",
+    }
     if policy:
-        fields |= {'policy_changes', 'policy_checks'}
-        if 'policy_drafts' in review:
-            fields.add('policy_drafts')
+        fields |= {"policy_changes", "policy_checks"}
+        if "policy_drafts" in review:
+            fields.add("policy_drafts")
     if set(review) != fields:
-        raise output_error('reader_target_invalid', ['source_review'])
+        raise output_error("reader_target_invalid", ["source_review"])
     # Revalidate the stored prose shape and every server-resolved citation.
-    for category in ('financial_items', 'additional_changes', *(['policy_changes'] if policy else []), *(['policy_drafts'] if 'policy_drafts' in review else [])):
+    for category in (
+        "financial_items",
+        "additional_changes",
+        *(["policy_changes"] if policy else []),
+        *(["policy_drafts"] if "policy_drafts" in review else []),
+    ):
         if not isinstance(review[category], list):
-            raise output_error('reader_target_invalid', ['source_review', category])
+            raise output_error("reader_target_invalid", ["source_review", category])
         for i, item in enumerate(review[category]):
-            _validate_quotes(item, source_map, ['source_review', category, i])
-            if category in {'policy_changes', 'policy_drafts'}:
+            _validate_quotes(item, source_map, ["source_review", category, i])
+            if category in {"policy_changes", "policy_drafts"}:
                 validate_policy_copy(item)
     if policy:
-        if 'policy_drafts' in review:
+        if "policy_drafts" in review:
             from types import SimpleNamespace
+
             from .policy_compilation import group_policy_drafts
-            if review['policy_changes'] != group_policy_drafts(SimpleNamespace(source_snapshot=sources), review['policy_drafts']):
-                raise output_error('reader_coverage_incomplete', ['source_review', 'policy_changes'])
+
+            if review["policy_changes"] != group_policy_drafts(
+                SimpleNamespace(source_snapshot=sources), review["policy_drafts"]
+            ):
+                raise output_error(
+                    "reader_coverage_incomplete", ["source_review", "policy_changes"]
+                )
     # Revalidate every stored inventory, including pre-policy results.
-    oversized = [item for item in review['financial_items']
-                 if len(item['text']) > 1600 or len(item['source_quotes']) > 24]
+    oversized = [
+        item
+        for item in review["financial_items"]
+        if len(item["text"]) > 1600 or len(item["source_quotes"]) > 24
+    ]
     retained_indices = []
     if oversized:
-        reconstruction = {'financial_items': [item for item in review['financial_items'] if item not in oversized]}
-        start = len(reconstruction['financial_items'])
+        reconstruction = {
+            "financial_items": [
+                item for item in review["financial_items"] if item not in oversized
+            ]
+        }
+        start = len(reconstruction["financial_items"])
         retain_missing_financial_rules(reconstruction, sources)
-        recovered = reconstruction['financial_items'][start:]
-        retained_indices = [i for i, item in enumerate(review['financial_items']) if item in recovered]
-    wire = copy.deepcopy({k: v for k, v in review.items() if k not in {'reviewed_sources', 'policy_drafts'}})
-    for category in ('financial_items', 'additional_changes', 'policy_changes'):
+        recovered = reconstruction["financial_items"][start:]
+        retained_indices = [
+            i for i, item in enumerate(review["financial_items"]) if item in recovered
+        ]
+    wire = copy.deepcopy(
+        {
+            k: v
+            for k, v in review.items()
+            if k not in {"reviewed_sources", "policy_drafts"}
+        }
+    )
+    for category in ("financial_items", "additional_changes", "policy_changes"):
         for item in wire.get(category, []):
-            for q in item['source_quotes']:
-                matches = [p['quote_id'] for p in citation_passages(source_map[q['source_ref']]) if p['text'] == q['quote'] and p['quote_id']]
+            for q in item["source_quotes"]:
+                matches = [
+                    p["quote_id"]
+                    for p in citation_passages(source_map[q["source_ref"]])
+                    if p["text"] == q["quote"] and p["quote_id"]
+                ]
                 if len(matches) != 1:
-                    raise output_error('citation_quote_not_found', ['source_review', category])
-                q['quote_id'] = matches[0]
-                del q['quote']
-    resolve_discovery(wire, scan_sources, aggregate=True,
-                      retained_financial=[wire['financial_items'][i] for i in retained_indices])
-    if set(review['money_checks']) != set(money_candidates(scan_sources)):
-        raise output_error('reader_coverage_incomplete', ['source_review', 'money_checks'])
+                    raise output_error(
+                        "citation_quote_not_found", ["source_review", category]
+                    )
+                q["quote_id"] = matches[0]
+                del q["quote"]
+    resolve_discovery(
+        wire,
+        scan_sources,
+        aggregate=True,
+        retained_financial=[wire["financial_items"][i] for i in retained_indices],
+    )
+    if set(review["money_checks"]) != set(money_candidates(scan_sources)):
+        raise output_error(
+            "reader_coverage_incomplete", ["source_review", "money_checks"]
+        )
     # A new full inventory must not silently drop a financial provision already
     # recognized by NLP. Require overlapping source evidence, not matching prose.
     from .citations import citation_spans
+
     ranges = []
-    for item in review['financial_items']:
-        for q in item['source_quotes']:
-            source = source_map[q['source_ref']]
-            a, b = citation_spans(source['quoted_text'], q['quote'])[0]
-            ranges.append((source['start_char'] + a, source['start_char'] + b))
+    for item in review["financial_items"]:
+        for q in item["source_quotes"]:
+            source = source_map[q["source_ref"]]
+            a, b = citation_spans(source["quoted_text"], q["quote"])[0]
+            ranges.append((source["start_char"] + a, source["start_char"] + b))
     for source in sources:
-        for target in source.get('reader_targets', []):
-            if target['kind'] == 'financial_item' and not any(
-                    a < right and b > left for a, b in ranges for left, right in target['evidence_ranges']):
-                raise output_error('reader_coverage_incomplete', ['source_review', 'financial_items'])
+        for target in source.get("reader_targets", []):
+            if target["kind"] == "financial_item" and not any(
+                a < right and b > left
+                for a, b in ranges
+                for left, right in target["evidence_ranges"]
+            ):
+                raise output_error(
+                    "reader_coverage_incomplete", ["source_review", "financial_items"]
+                )

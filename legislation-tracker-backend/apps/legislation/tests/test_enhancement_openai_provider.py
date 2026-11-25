@@ -8,8 +8,8 @@ import pytest
 
 from apps.legislation.enhancements.providers.base import ProviderError
 from apps.legislation.enhancements.providers.openai import OpenAIEnhancementProvider
-from apps.legislation.enhancements.schema import OUTPUT_SCHEMA
 from apps.legislation.enhancements.reader_citations import READER_PROMPT_VERSION
+from apps.legislation.enhancements.schema import OUTPUT_SCHEMA
 
 from .test_enhancement_schema import _valid_output
 
@@ -29,56 +29,75 @@ class FakeResponses:
 
 def test_reader_transmits_confirmed_bounded_schema_not_generic_schema():
     from apps.legislation.enhancements.reader_citations import bounded_reader_schema
+
     response = _completed_response()
-    response.output_text = json.dumps({'schema_version': '1.4', 'summary': [], 'explanations': {}})
+    response.output_text = json.dumps(
+        {"schema_version": "1.4", "summary": [], "explanations": {}}
+    )
     responses = FakeResponses(result=response)
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
-    request.output_schema_version = '1.4'
-    request.request_envelope.update(output_schema_version='1.4', prompt_version=READER_PROMPT_VERSION, max_output_tokens=8000,
-        output_schema=bounded_reader_schema([], [{'target_id': 'line_item:one', 'kind': 'line_item'}], {}))
-    provider.enhance_bill(api_key='test', request=request, timeout_seconds=30)
-    wire = responses.calls[0]['text']['format']['schema']['properties']
-    assert wire['summary']['maxItems'] == 2
-    assert wire['explanations']['required'] == ['line_item:one']
-    assert wire['explanations']['additionalProperties'] is False
+    request.output_schema_version = "1.4"
+    request.request_envelope.update(
+        output_schema_version="1.4",
+        prompt_version=READER_PROMPT_VERSION,
+        max_output_tokens=8000,
+        output_schema=bounded_reader_schema(
+            [], [{"target_id": "line_item:one", "kind": "line_item"}], {}
+        ),
+    )
+    provider.enhance_bill(api_key="test", request=request, timeout_seconds=30)
+    wire = responses.calls[0]["text"]["format"]["schema"]["properties"]
+    assert wire["summary"]["maxItems"] == 2
+    assert wire["explanations"]["required"] == ["line_item:one"]
+    assert wire["explanations"]["additionalProperties"] is False
 
 
 @pytest.mark.parametrize("prompt_version", ["reader-2", READER_PROMPT_VERSION])
 def test_reader_uses_confirmed_per_request_output_budget(prompt_version):
     response = _completed_response()
-    response.output_text = json.dumps({'schema_version': '1.4', 'summary': [], 'explanations': []})
+    response.output_text = json.dumps(
+        {"schema_version": "1.4", "summary": [], "explanations": []}
+    )
     responses = FakeResponses(result=response)
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
     request = _request()
-    request.output_schema_version = '1.4'
+    request.output_schema_version = "1.4"
     request.prompt_version = prompt_version
-    request.request_envelope['prompt_version'] = prompt_version
-    request.request_envelope['output_schema_version'] = '1.4'
-    request.request_envelope['max_output_tokens'] = 20000
-    provider.enhance_bill(api_key='test', request=request, timeout_seconds=30)
-    assert responses.calls[0]['max_output_tokens'] == 20000
+    request.request_envelope["prompt_version"] = prompt_version
+    request.request_envelope["output_schema_version"] = "1.4"
+    request.request_envelope["max_output_tokens"] = 20000
+    provider.enhance_bill(api_key="test", request=request, timeout_seconds=30)
+    assert responses.calls[0]["max_output_tokens"] == 20000
 
 
-@pytest.mark.parametrize("text,reason,position", [
-    ('{"secret": "private"\n "x": 1}', "missing_comma", 22),
-    ("", "empty_text", 0),
-    (None, "wrong_text_type", None),
-    ('{"x": "unfinished', "unterminated_string", 6),
-])
+@pytest.mark.parametrize(
+    "text,reason,position",
+    [
+        ('{"secret": "private"\n "x": 1}', "missing_comma", 22),
+        ("", "empty_text", 0),
+        (None, "wrong_text_type", None),
+        ('{"x": "unfinished', "unterminated_string", 6),
+    ],
+)
 def test_json_parser_diagnostics_preserve_location_not_content(text, reason, position):
     from apps.legislation.enhancements.diagnostics import provider_validation_diagnostic
+
     response = _completed_response()
     response.output_text = text
     provider = OpenAIEnhancementProvider(
         client_factory=FakeClientFactory(FakeResponses(result=response))
     )
     with pytest.raises(ProviderError) as caught:
-        provider.enhance_bill(api_key="secret-key", request=_request(), timeout_seconds=30)
+        provider.enhance_bill(
+            api_key="secret-key", request=_request(), timeout_seconds=30
+        )
     detail = provider_validation_diagnostic(caught.value)
     assert detail["parser"]["reason"] == reason
     assert detail["parser"].get("position") == position
-    assert detail["parser"]["text_length"] == (len(text) if isinstance(text, str) else 0)
+    assert detail["parser"]["text_length"] == (
+        len(text) if isinstance(text, str) else 0
+    )
     assert detail["parser"]["output_text_parts"] == 0
     assert caught.value.usage.total_tokens == 165
     assert "private" not in json.dumps(detail)
@@ -202,7 +221,9 @@ def test_source_first_transport_uses_server_schema(method):
 
 
 @pytest.mark.parametrize("planned,expected", [(None, 8000), (2048, 2048)])
-def test_source_first_caps_output_even_if_deployment_limit_is_higher(settings, planned, expected):
+def test_source_first_caps_output_even_if_deployment_limit_is_higher(
+    settings, planned, expected
+):
     settings.LLM_ENHANCEMENT_MAX_OUTPUT_TOKENS = 16000
     response = _completed_response()
     response.output_text = json.dumps({"provisions": []})
@@ -297,33 +318,49 @@ def _completed_response():
 
 
 def test_provider_derives_reference_ids_from_the_single_quoted_citation_field():
-    from .test_enhancement_glossary import output, packet
     from apps.legislation.enhancements.schema import validate_enhancement_output
+
+    from .test_enhancement_glossary import output, packet
+
     wire = output()
     del wire["glossary"][0]["source_refs"]
     response = _completed_response()
     response.output_text = json.dumps(wire)
     responses = FakeResponses(result=response)
     provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(responses))
-    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    result = provider.enhance_bill(
+        api_key="test", request=_request(), timeout_seconds=30
+    )
     validated = validate_enhancement_output(result.output, packet())
     assert validated["glossary"][0]["source_refs"] == ["src_0001"]
     schema = responses.calls[0]["text"]["format"]["schema"]
     assert "source_refs" not in schema["properties"]["glossary"]["items"]["properties"]
-    assert wire["glossary"][0]["source_quotes"] == result.output["glossary"][0]["source_quotes"]
+    assert (
+        wire["glossary"][0]["source_quotes"]
+        == result.output["glossary"][0]["source_quotes"]
+    )
 
 
 def test_deriving_reference_ids_does_not_accept_a_wrong_source_quote():
-    from .test_enhancement_glossary import output, packet
-    from apps.legislation.enhancements.schema import validate_enhancement_output
     from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.schema import validate_enhancement_output
+
+    from .test_enhancement_glossary import output, packet
+
     wire = output()
     del wire["glossary"][0]["source_refs"]
-    wire["glossary"][0]["source_quotes"][0]["quote"] = "Secretary means the Secretary of Labor."
+    wire["glossary"][0]["source_quotes"][0][
+        "quote"
+    ] = "Secretary means the Secretary of Labor."
     response = _completed_response()
     response.output_text = json.dumps(wire)
-    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
-    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
+    result = provider.enhance_bill(
+        api_key="test", request=_request(), timeout_seconds=30
+    )
     with pytest.raises(ValidationError) as error:
         validate_enhancement_output(result.output, packet())
     assert error.value.validator == "glossary_definition_unsupported"
@@ -369,8 +406,14 @@ def test_enhancement_uses_one_bounded_non_persistent_structured_request():
         ]["type"]
         == "string"
     )
-    assert "source_refs" not in provider_schema["properties"]["overview"]["items"]["properties"]
-    assert "source_quotes" in provider_schema["properties"]["overview"]["items"]["required"]
+    assert (
+        "source_refs"
+        not in provider_schema["properties"]["overview"]["items"]["properties"]
+    )
+    assert (
+        "source_quotes"
+        in provider_schema["properties"]["overview"]["items"]["required"]
+    )
     assert (
         OUTPUT_SCHEMA["properties"]["overview"]["items"]["properties"]["source_refs"][
             "uniqueItems"
@@ -447,7 +490,10 @@ def test_invalid_response_retains_sanitized_failure_stage(status, text, reason, 
         output_text=text,
         output=[],
         incomplete_details=SimpleNamespace(reason=reason),
-        usage={"output_tokens": 8000, "output_tokens_details": {"reasoning_tokens": 8000}},
+        usage={
+            "output_tokens": 8000,
+            "output_tokens_details": {"reasoning_tokens": 8000},
+        },
     )
     provider = OpenAIEnhancementProvider(
         client_factory=FakeClientFactory(FakeResponses(result=response))
@@ -542,7 +588,11 @@ def test_timeout_or_connection_loss_is_an_unknown_outcome(error_name):
     assert captured.value.category == "outcome_unknown"
     assert captured.value.outcome_unknown is True
     assert captured.value.retry_allowed is True
-    assert captured.value.validation_code == ("provider_timeout" if error_name == "APITimeoutError" else "provider_connection_lost")
+    assert captured.value.validation_code == (
+        "provider_timeout"
+        if error_name == "APITimeoutError"
+        else "provider_connection_lost"
+    )
     assert captured.value.validation_detail["timeout_seconds"] == 90
 
 
@@ -616,22 +666,40 @@ def test_malformed_completed_output_is_invalid_output():
 def test_parses_explicit_final_answer_without_concatenating_commentary():
     response = _completed_response()
     final_text = response.output_text
-    response.output = [SimpleNamespace(type="message", phase=phase, content=[
-        SimpleNamespace(type="output_text", text=text)
-    ]) for phase, text in [("commentary", '{"draft":true}'), ("final_answer", final_text)]]
+    response.output = [
+        SimpleNamespace(
+            type="message",
+            phase=phase,
+            content=[SimpleNamespace(type="output_text", text=text)],
+        )
+        for phase, text in [
+            ("commentary", '{"draft":true}'),
+            ("final_answer", final_text),
+        ]
+    ]
     response.output_text = '{"draft":true}' + final_text
-    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
-    result = provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
+    result = provider.enhance_bill(
+        api_key="test", request=_request(), timeout_seconds=30
+    )
     assert result.output == json.loads(final_text)
 
 
 def test_does_not_guess_between_multiple_final_json_objects():
     response = _completed_response()
-    response.output = [SimpleNamespace(type="message", phase="final_answer", content=[
-        SimpleNamespace(type="output_text", text=response.output_text)
-    ])] * 2
+    response.output = [
+        SimpleNamespace(
+            type="message",
+            phase="final_answer",
+            content=[SimpleNamespace(type="output_text", text=response.output_text)],
+        )
+    ] * 2
     response.output_text *= 2
-    provider = OpenAIEnhancementProvider(client_factory=FakeClientFactory(FakeResponses(result=response)))
+    provider = OpenAIEnhancementProvider(
+        client_factory=FakeClientFactory(FakeResponses(result=response))
+    )
     with pytest.raises(ProviderError) as caught:
         provider.enhance_bill(api_key="test", request=_request(), timeout_seconds=30)
     assert caught.value.category == "invalid_output"

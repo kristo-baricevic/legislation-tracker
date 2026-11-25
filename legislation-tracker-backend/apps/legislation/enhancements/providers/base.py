@@ -72,11 +72,17 @@ class EnhancementProvider(Protocol):
     provider_name: str
     capabilities: ProviderCapabilities
 
-    def generate_provisions(self, *, api_key: str, request, timeout_seconds: int) -> ProviderResult: ...
+    def generate_provisions(
+        self, *, api_key: str, request, timeout_seconds: int
+    ) -> ProviderResult: ...
 
-    def repair_provisions(self, *, api_key: str, request, timeout_seconds: int) -> ProviderResult: ...
+    def repair_provisions(
+        self, *, api_key: str, request, timeout_seconds: int
+    ) -> ProviderResult: ...
 
-    def generate_synopsis(self, *, api_key: str, request, timeout_seconds: int) -> ProviderResult: ...
+    def generate_synopsis(
+        self, *, api_key: str, request, timeout_seconds: int
+    ) -> ProviderResult: ...
 
     def validate_credential(
         self,
