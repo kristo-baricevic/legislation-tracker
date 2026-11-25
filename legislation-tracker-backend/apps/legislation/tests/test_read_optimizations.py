@@ -245,6 +245,87 @@ def test_enhanced_card_reads_are_batched(count):
     print(f"{count} enhanced cards: {len(queries)} summary queries")
 
 
+@pytest.mark.parametrize("other_result", ["stale", "partial"])
+def test_resolved_card_history_adds_no_queries_when_another_card_has_no_result(
+    other_result,
+):
+    from datetime import timedelta
+
+    from apps.accounts.dashboard_bill_cards import add_card_summaries
+    from apps.legislation.enhancements.shared import validation_key
+    from apps.legislation.models import BillProcessingCache
+
+    def make_bill(number):
+        bill = Bill.objects.create(
+            jurisdiction="federal", session=119, bill_number=number, summary="Original"
+        )
+        doc = BillDocument.objects.create(
+            bill=bill, raw_text="Bill text", is_active_version=True
+        )
+        return bill, {
+            "document_id": doc.pk,
+            "document_content_hash": doc.reader_text_hash,
+        }
+
+    first, first_manifest = make_bill("S 1")
+    second, second_manifest = make_bill("S 2")
+    output = {"summary": [{"text": "Enhanced"}]}
+    current = BillEnhancement.objects.create(
+        bill=first,
+        status="succeeded",
+        result_completeness="complete",
+        output_schema_version="1.3",
+        source_fingerprint="current",
+        source_manifest_json=first_manifest,
+        result_json=output,
+    )
+    BillProcessingCache.objects.create(
+        pk=validation_key(current),
+        kind="reader-validation",
+        result_json={"valid": True},
+    )
+    if other_result == "stale":
+        second_manifest["document_content_hash"] = "old"
+    BillEnhancement.objects.create(
+        bill=second,
+        status="succeeded",
+        result_completeness="partial" if other_result == "partial" else "complete",
+        output_schema_version="1.3",
+        source_fingerprint="other",
+        source_manifest_json=second_manifest,
+        result_json=output,
+    )
+
+    def read_cards():
+        rows = [{"bill": {"id": bill.pk}} for bill in (first, second)]
+        with CaptureQueriesContext(connection) as queries:
+            add_card_summaries(rows)
+        assert [
+            (r["bill"]["card_summary"], r["bill"]["enhancement_id"]) for r in rows
+        ] == [("Enhanced", current.pk), ("Original", None)]
+        return len(queries)
+
+    baseline = read_cards()
+    BillEnhancement.objects.bulk_create(
+        [
+            BillEnhancement(
+                bill=first,
+                status="succeeded",
+                result_completeness="complete",
+                output_schema_version="1.3",
+                source_fingerprint=f"old-{i}",
+                source_manifest_json=first_manifest,
+                result_json=output,
+            )
+            for i in range(1024)
+        ]
+    )
+    BillEnhancement.objects.filter(bill=first).exclude(pk=current.pk).update(
+        created_at=current.created_at - timedelta(days=1)
+    )
+    assert read_cards() == baseline
+
+
 def test_document_metadata_projection_avoids_transferring_stored_text():
     bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 88")
     text = "Bill provision " * 37000

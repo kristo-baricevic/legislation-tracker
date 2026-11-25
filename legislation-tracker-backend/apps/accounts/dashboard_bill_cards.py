@@ -86,7 +86,10 @@ def _enhanced_cards(bills):
         )
     )
     chosen = {}
-    for rows in batched(candidates.iterator(chunk_size=64), 64):
+    for batch in batched(candidates.iterator(chunk_size=64), 64):
+        rows = [row for row in batch if row.bill_id not in chosen]
+        if not rows:
+            continue
         validity = dict(
             BillProcessingCache.objects.filter(
                 pk__in=[
