@@ -362,3 +362,20 @@ def test_tracking_feed_includes_direct_topic_and_legislator_matches_for_current_
     }
     assert all(entry["change_type"] == "status_update" for entry in entries)
     assert all("created_at" in entry for entry in entries)
+
+
+@pytest.mark.django_db
+def test_membership_projection_reads_only_current_users_ids(django_assert_num_queries):
+    user = make_user()
+    bill = make_bill()
+    TrackedBill.objects.create(user=user, bill=bill)
+    other = make_user("other@example.com")
+    TrackedBill.objects.create(user=other, bill=make_bill(bill_number="S 101"))
+    client = authenticated_client(user)
+    with django_assert_num_queries(3):
+        response = client.get("/api/tracking/", {"view": "membership"})
+    assert response.json() == {
+        "bills": [{"bill": {"id": bill.pk}}],
+        "topics": [],
+        "legislators": [],
+    }

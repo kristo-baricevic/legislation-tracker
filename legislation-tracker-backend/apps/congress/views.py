@@ -13,8 +13,10 @@ from config.api import StrictQuerySerializer
 
 from .biography import (
     BiographyThrottle,
-    representative_biography,
     unavailable_biography,
+)
+from .biography import (
+    representative_biography as representative_biography,
 )
 from .insights import compare_representatives, representative_summary
 from .models import BillCosponsor, Committee, CommitteeMembership, Representative, Vote
@@ -34,7 +36,6 @@ from .serializers import (
     CommitteeDirectoryQuerySerializer,
     CommitteeDirectorySerializer,
     CommitteeMembershipSerializer,
-    CommitteeSerializer,
     RepresentativeBillQuerySerializer,
     RepresentativeCompareQuerySerializer,
     RepresentativeInsightQuerySerializer,

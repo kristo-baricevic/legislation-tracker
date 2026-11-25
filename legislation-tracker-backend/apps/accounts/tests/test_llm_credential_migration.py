@@ -13,6 +13,7 @@ def test_forward_and_single_key_rollback_preserve_envelope_and_selection():
     old = ("accounts", "0009_selected_enhancement_model")
     new = ("accounts", "0010_provider_credentials")
     executor = MigrationExecutor(connection)
+    latest = executor.loader.graph.leaf_nodes()
     executor.migrate([old])
     try:
         state = executor.loader.project_state([old]).apps
@@ -56,4 +57,4 @@ def test_forward_and_single_key_rollback_preserve_envelope_and_selection():
                 == envelope
             )
     finally:
-        MigrationExecutor(connection).migrate([new])
+        MigrationExecutor(connection).migrate(latest)

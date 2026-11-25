@@ -9,7 +9,6 @@ from apps.legislation.enhancements.providers.base import ProviderError
 from apps.legislation.enhancements.providers.openai_compatible import (
     OpenAICompatibleEnhancementProvider,
 )
-from apps.legislation.enhancements.schema import OUTPUT_SCHEMA, PROVIDER_OUTPUT_SCHEMA
 
 from .test_enhancement_openai_provider import _request, _valid_output
 
@@ -286,11 +285,6 @@ def test_multi_object():
 
 
 def test_distinct_codes():
-    codes = set()
-    for text in ["not-json", "[]", "```json\n{}\n```", '{"a":1}{"b":2}']:
-        # non-object returns provider_output_not_object; okay distinct
-        pass
-    # just ensure four different
     assert (
         len(
             {

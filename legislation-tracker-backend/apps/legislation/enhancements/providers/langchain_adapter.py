@@ -1,10 +1,12 @@
 """Experimental OpenRouter transport. Validation and recovery belong to the worker."""
 
 import asyncio
+from contextlib import nullcontext
 
 from openai import DefaultAsyncHttpxClient
 
 from .openai_compatible import OpenAICompatibleEnhancementProvider
+from .session import delivery_client, in_provider_session, run_async
 
 
 class LangChainOpenRouterProvider(OpenAICompatibleEnhancementProvider):
@@ -21,6 +23,10 @@ class LangChainOpenRouterProvider(OpenAICompatibleEnhancementProvider):
         self.model_factory = model_factory
         self.http_client_factory = http_client_factory
 
+    @delivery_client
+    def _transport(self):
+        return self.http_client_factory()
+
     def _send(self, *, api_key, timeout_seconds, model, messages, **options):
         from langsmith import tracing_context
 
@@ -32,7 +38,11 @@ class LangChainOpenRouterProvider(OpenAICompatibleEnhancementProvider):
             )
 
         async def invoke():
-            async with self.http_client_factory() as client:
+            async with (
+                nullcontext(self._transport())
+                if in_provider_session()
+                else self.http_client_factory()
+            ) as client:
                 chat = self.model_factory(
                     model=model,
                     api_key=api_key,
@@ -48,7 +58,7 @@ class LangChainOpenRouterProvider(OpenAICompatibleEnhancementProvider):
                         chat.ainvoke(messages, **options), timeout_seconds
                     )
 
-        reply = asyncio.run(invoke())
+        reply = run_async(invoke())
         metadata = reply.response_metadata
         return {
             "id": metadata.get("id", ""),

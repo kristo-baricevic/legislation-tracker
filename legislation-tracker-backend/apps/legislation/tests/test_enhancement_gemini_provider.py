@@ -5,7 +5,6 @@ import pytest
 
 from apps.legislation.enhancements.providers.base import ProviderError
 from apps.legislation.enhancements.providers.gemini import GeminiEnhancementProvider
-from apps.legislation.enhancements.schema import OUTPUT_SCHEMA
 
 from .test_enhancement_schema import _valid_output
 

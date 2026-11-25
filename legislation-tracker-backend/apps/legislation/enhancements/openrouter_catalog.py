@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
 import requests
@@ -26,7 +26,7 @@ def zero_price(prices):
 def refresh_catalog():
     response = requests.get(CATALOG_URL, timeout=10)
     response.raise_for_status()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     entries = {}
     for row in response.json()["data"]:
         model = row["id"]

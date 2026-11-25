@@ -30,9 +30,10 @@ from apps.ingestion.work_queue import enqueue_ingestion_work
 from apps.legislation.comparison import semantic_contracts_equal
 from apps.legislation.contract_json import contract_hash_from_dict
 from apps.legislation.enhancements.citations import resolve_citations
-from apps.legislation.enhancements.diagnostics import diagnostic, validation_diagnostic
+from apps.legislation.enhancements.diagnostics import validation_diagnostic
 from apps.legislation.enhancements.provider_registry import get_provider
 from apps.legislation.enhancements.providers.base import ProviderError, ProviderUsage
+from apps.legislation.enhancements.providers.session import provider_session
 from apps.legislation.enhancements.schema import validate_enhancement_output
 from apps.legislation.enhancements.source_packet import (
     PreflightUnavailable,
@@ -55,7 +56,6 @@ from apps.legislation.models import (
     BillDocument,
     BillEnhancement,
     BillEnhancementAttempt,
-    BillSimilarity,
     BillTopic,
     EvidenceSpan,
     ProcessingStatus,
@@ -1521,6 +1521,7 @@ def _selected_worker_preflight(attempt, cached_preflight=None):
 
 
 @shared_task(autoretry_for=())
+@provider_session()
 def run_bill_enhancement_attempt(attempt_id, dispatch_token):
     """Claim once: one generation and at most one bounded citation-only repair."""
     run_token = _claim_enhancement_attempt(attempt_id, dispatch_token)

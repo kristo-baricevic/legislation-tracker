@@ -93,6 +93,25 @@ def test_dashboard_revisions_change_only_for_relevant_data():
     assert read()["research_revision"] != changed["research_revision"]
 
 
+@pytest.mark.django_db
+def test_dashboard_clock_tracks_committed_bulk_changes_only():
+    from django.db import transaction
+
+    from apps.accounts.models import DashboardRevision
+    from apps.legislation.models import Bill, BillEnhancement
+
+    bill = Bill.objects.create(bill_number="S 9", jurisdiction="federal", session=119)
+    saved = BillEnhancement.objects.create(bill=bill)
+    before = DashboardRevision.objects.get(kind="reader").sequence
+    with transaction.atomic():
+        BillEnhancement.objects.filter(pk=saved.pk).update(status="running")
+        assert DashboardRevision.objects.get(kind="reader").sequence > before
+        transaction.set_rollback(True)
+    assert DashboardRevision.objects.get(kind="reader").sequence == before
+    BillEnhancement.objects.filter(pk=saved.pk).update(status="running")
+    assert DashboardRevision.objects.get(kind="reader").sequence > before
+
+
 def bootstrap_csrf(client):
     response = client.get("/api/auth/csrf/")
     assert response.status_code == 200

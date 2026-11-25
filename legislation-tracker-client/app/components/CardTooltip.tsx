@@ -7,13 +7,13 @@ export default function CardTooltip({ text, children }: { text: string; children
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number; host: Element; height: number } | null>(null);
   const cancel = () => { if (timer.current) clearTimeout(timer.current); };
   const close = () => { cancel(); setPosition(null); };
   const open = () => {
     cancel();
     const rect = trigger.current?.getBoundingClientRect();
-    if (rect) setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(280, window.innerWidth - 24) - 12)), top: rect.top });
+    if (rect) setPosition({ host: trigger.current?.closest("dialog") ?? document.body, height: rect.height, left: Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(280, window.innerWidth - 24) - 12)), top: rect.top });
   };
   const leave = () => { cancel(); timer.current = setTimeout(close, 120); };
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -28,6 +28,6 @@ export default function CardTooltip({ text, children }: { text: string; children
   }, [position]);
   return <span ref={trigger} className={styles.trigger} onMouseEnter={open} onMouseLeave={leave} onFocus={open} onBlur={close}>
     {React.cloneElement(children, { "aria-describedby": [children.props["aria-describedby"], position ? id : ""].filter(Boolean).join(" ") || undefined })}
-    {position && createPortal(<span id={id} role="tooltip" className={styles.tooltip} style={{ left: position.left, top: position.top < 160 ? position.top + (trigger.current?.offsetHeight ?? 32) + 8 : position.top - 8, transform: position.top < 160 ? undefined : "translateY(-100%)" }} onMouseEnter={cancel} onMouseLeave={leave}>{text}</span>, trigger.current?.closest("dialog") ?? document.body)}
+    {position && createPortal(<span id={id} role="tooltip" className={styles.tooltip} style={{ left: position.left, top: position.top < 160 ? position.top + position.height + 8 : position.top - 8, transform: position.top < 160 ? undefined : "translateY(-100%)" }} onMouseEnter={cancel} onMouseLeave={leave}>{text}</span>, position.host)}
   </span>;
 }

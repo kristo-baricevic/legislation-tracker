@@ -4,9 +4,11 @@ import React from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { BillListItem } from "@/lib/api";
 import { profileScopeKey, type ProfileScope } from "@/lib/legislator-profile";
-import BillDeckModal from "./BillDeckModal";
-import LegislatorProfileModal from "./LegislatorProfileModal";
+import dynamic from "next/dynamic";
 import { ModalStackProvider, useModalStack } from "./ModalStack";
+
+const BillDeckModal = dynamic(() => import("./BillDeckModal"));
+const LegislatorProfileModal = dynamic(() => import("./LegislatorProfileModal"));
 
 type ProfileContext = { enabled: boolean; open: (scope: ProfileScope) => boolean };
 const Context = React.createContext<ProfileContext | null>(null);
@@ -47,7 +49,7 @@ function ProfileDialogs({ children, renderActivity }: { children: React.ReactNod
     if (!enabled || !stack.canOpen() || stack.contains(`bill:${bill.id}`) || current.current.some(entry => entry.kind === "bill" && entry.bill.id === bill.id)) return false;
     current.current = [...current.current, { key: ++sequence.current, kind: "bill", bill }]; setEntries(current.current); return true;
   };
-  return <Context.Provider value={{ enabled, open }}><React.Suspense fallback={null}><RouteReset reset={reset} /></React.Suspense>{children}{entries.map(entry => entry.kind === "profile" ? <LegislatorProfileModal key={entry.key} scope={entry.scope} onClose={() => close(entry.key)} onOpenBill={openBill} renderActivity={renderActivity} /> : <BillDeckModal key={entry.key} bill={entry.bill} onClose={() => close(entry.key)} />)}</Context.Provider>;
+  return <Context.Provider value={{ enabled, open }}><React.Suspense fallback={null}><RouteReset reset={reset} /></React.Suspense>{children}{entries.map(entry => entry.kind === "profile" ? <LegislatorProfileModal key={entry.key} visible={entry === entries.at(-1)} scope={entry.scope} onClose={() => close(entry.key)} onOpenBill={openBill} renderActivity={renderActivity} /> : <BillDeckModal key={entry.key} bill={entry.bill} onClose={() => close(entry.key)} />)}</Context.Provider>;
 }
 
 export default function ProfileProvider(props: React.ComponentProps<typeof ProfileDialogs>) { return <ModalStackProvider><ProfileDialogs {...props} /></ModalStackProvider>; }

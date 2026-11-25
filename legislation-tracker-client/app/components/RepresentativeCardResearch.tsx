@@ -1,4 +1,5 @@
 "use client";
+import { useDocumentVisible } from "@/lib/use-document-visible";
 import { useEffect, useRef, useState } from "react";
 import { getRepresentativeCard, type TrackedLegislatorItem } from "@/lib/api";
 import { startResearch } from "@/lib/representative-research";
@@ -12,13 +13,14 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const action = useRef<AbortController | null>(null);
+  const visible = useDocumentVisible();
   const active = card?.research?.status === "queued" || card?.research?.status === "running";
   const hasResearch = Boolean(card?.research?.overview_ready || card?.biography || card?.research?.status === "succeeded");
   const idleLabel = hasResearch ? "Refresh research" : "Research";
   const researching = busy || (active && !error);
   useEffect(() => () => action.current?.abort(), []);
   useEffect(() => {
-    if (!active && !revision) return;
+    if (!visible || (!active && !revision)) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -33,7 +35,7 @@ export default function RepresentativeCardResearch({ id, name, card, onCard }: {
     // Saved cards need no lookup. Only active or newly requested research polls.
     timer = setTimeout(refresh, revision ? 0 : 10000);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [id, active, revision, onCard]);
+  }, [id, active, revision, onCard, visible]);
   async function research() {
     if (busy) return;
     const controller = new AbortController(); action.current = controller;

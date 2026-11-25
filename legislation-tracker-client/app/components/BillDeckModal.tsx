@@ -2,10 +2,9 @@
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import Link from "next/link";
 import React from "react";
-import { getBill, getBillEnhancement, type BillEnhancement, type BillListItem, type BillDetail } from "@/lib/api";
+import { getBill, getBillEnhancement, type BillEnhancement, type BillListItem, type BillDetailSummary } from "@/lib/api";
 import { dateLabel, ordinal, readable, topicColor } from "@/lib/bill-format";
 import { stageFor } from "@/lib/bill-stage";
-import { getContractSummary } from "@/lib/contracts";
 import styles from "./bill-deck.module.css";
 import StackDialog from "./ModalStack";
 import CardTooltip from "./CardTooltip";
@@ -14,13 +13,6 @@ import StageTrack from "./StageTrack";
 import DashboardBillReader from "./DashboardBillReader";
 import BillModalDetails from "./BillModalDetails";
 
-function generatedSynopsis(value: unknown, structuredOnly = false): string {
-  if (value && typeof value === "object" && "orientation" in value) {
-    const orientation = value.orientation;
-    if (orientation && typeof orientation === "object" && "purpose_clause" in orientation && typeof orientation.purpose_clause === "string") return orientation.purpose_clause.trim();
-  }
-  return structuredOnly ? "" : getContractSummary(value)?.trim() ?? "";
-}
 type BillModalProps = { bill: BillListItem; onClose: () => void; fallbackFocus?: () => void };
 
 export default function BillDeckModal(props: BillModalProps) {
@@ -31,7 +23,7 @@ export default function BillDeckModal(props: BillModalProps) {
 function BillModal({ bill, onClose, fallbackFocus, enhance, feedback }: BillModalProps & { enhance: React.ReactNode; feedback: React.ReactNode }) {
   const titleId = React.useId();
   const pagerId = React.useId();
-  const [detail, setDetail] = React.useState<BillDetail | null>(null);
+  const [detail, setDetail] = React.useState<BillDetailSummary | null>(null);
   const [enhancement, setEnhancement] = React.useState<BillEnhancement | null>(null);
   const expectsEnhancement = Boolean(bill.enhancement_id && bill.enhancement_status === "succeeded");
   const [enhancementLoading, setEnhancementLoading] = React.useState(expectsEnhancement);
@@ -41,7 +33,7 @@ function BillModal({ bill, onClose, fallbackFocus, enhance, feedback }: BillModa
   const [attempt, setAttempt] = React.useState(0);
   React.useEffect(() => {
     const controller = new AbortController();
-    void getBill(bill.id, { signal: controller.signal }).then(value => {
+    void getBill(bill.id, { contractView: "summary", signal: controller.signal }).then(value => {
       if (!controller.signal.aborted) { setDetail(value); setError(""); }
     }).catch(() => { if (!controller.signal.aborted) setError("Bill details could not be loaded. Please retry."); });
     return () => controller.abort();
@@ -59,8 +51,8 @@ function BillModal({ bill, onClose, fallbackFocus, enhance, feedback }: BillModa
   const contractDocument = detail?.documents.find(document => document.id === contract?.document);
   const source = detail?.documents.find(document => document.is_active_version) ?? contractDocument;
   const sameDocument = contractDocument?.id === source?.id;
-  const synopsis = (sameDocument ? generatedSynopsis(contract?.contract_json, true) : "") || source?.reader_summary || (sameDocument ? generatedSynopsis(contract?.contract_json) : "") || "";
-  const summary = detail?.summary?.replace(/<[^>]*>/g, " ").trim() ?? "";
+  const synopsis = (sameDocument ? contract?.orientation?.purpose_clause?.trim() : "") || source?.reader_summary || (sameDocument ? contract?.plain_summary?.trim() : "") || "";
+  const summary = detail?.summary_preview?.replace(/<[^>]*>/g, " ").trim() ?? "";
   const status = detail?.status ?? bill.status;
   const stage = stageFor(status);
   return <StackDialog identity={`bill:${bill.id}`} titleId={titleId} className={`${styles.deck} ${styles.dialog}`} onClose={onClose} fallbackFocus={fallbackFocus}>

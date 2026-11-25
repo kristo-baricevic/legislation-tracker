@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
 
 import httpx
-from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
@@ -19,6 +17,7 @@ from .base import (
     ProviderResult,
     ProviderUsage,
 )
+from .session import delivery_client
 
 
 def _value(obj: Any, name: str, default=None):
@@ -159,6 +158,7 @@ class GeminiEnhancementProvider:
             retry_options=types.HttpRetryOptions(attempts=1),
         )
 
+    @delivery_client
     def _client(self, *, api_key: str, timeout_seconds: int):
         return self._client_factory(
             api_key=api_key,
@@ -178,7 +178,7 @@ class GeminiEnhancementProvider:
         http_options = self._http_options(timeout_seconds=timeout_seconds)
         try:
             models = getattr(client, "models", client)
-            response = models.generate_content(
+            models.generate_content(
                 model=requested_model,
                 contents="Reply with OK.",
                 config=types.GenerateContentConfig(

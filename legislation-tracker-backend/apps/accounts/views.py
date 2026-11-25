@@ -183,35 +183,19 @@ class SessionStatusView(APIView):
             from django.db.models import Count, Max
 
             from apps.congress.current import current_congress
-            from apps.research.models import (
-                RepresentativeBiography,
-                RepresentativePortrait,
-                ResearchRun,
-            )
 
+            from .models import DashboardRevision
             from .recommendation_support import activity_day, activity_revision
 
             activity = activity_revision()
-            from apps.legislation.models import BillEnhancement
-
-            reader_revision = BillEnhancement.objects.aggregate(last=Max("updated_at"))[
-                "last"
-            ]
+            revisions = dict(DashboardRevision.objects.values_list("kind", "sequence"))
+            reader_revision = revisions.get("reader", 0)
+            research = revisions.get("research", 0)
             follows = [
                 model.objects.filter(user=request.user).aggregate(
                     n=Count("id"), last=Max("id")
                 )
                 for model in (TrackedBill, TrackedTopic, TrackedLegislator)
-            ]
-            runs = ResearchRun.objects.aggregate(
-                start=Max("created_at"), end=Max("finished_at")
-            )
-            research = [
-                *runs.values(),
-                *(
-                    m.objects.order_by("-pk").values_list("pk", flat=True).first()
-                    for m in (RepresentativeBiography, RepresentativePortrait)
-                ),
             ]
 
             def stamp(*parts):
@@ -493,6 +477,25 @@ class TrackingSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
+        if request.query_params.get("view") == "membership":
+
+            def ids(model, field, key):
+                return [
+                    {key: {"id": pk}}
+                    for pk in model.objects.filter(user=request.user).values_list(
+                        field, flat=True
+                    )
+                ]
+
+            return Response(
+                {
+                    "bills": ids(TrackedBill, "bill_id", "bill"),
+                    "topics": ids(TrackedTopic, "topic_id", "topic"),
+                    "legislators": ids(
+                        TrackedLegislator, "representative_id", "representative"
+                    ),
+                }
+            )
         bills = (
             TrackedBill.objects.filter(user=request.user)
             .select_related(

@@ -61,6 +61,7 @@ function BillsCatalog() {
   const [shownPage, setShownPage] = useState(() => parsePositiveIntegerFilter(searchParams.get("page") ?? "") ?? 1);
   const [error, setError] = useState<string | null>(null);
   const endOfResults = useRef<HTMLDivElement>(null);
+  const [firstShownPage, setFirstShownPage] = useState(1);
   const committedResults = useRef({key: "", filters: "", page: 0, start: 1, revision: 0});
   const [retryResults, setRetryResults] = useState(0);
 
@@ -108,6 +109,16 @@ function BillsCatalog() {
   const [pendingBills, setPendingBills] = useState<Set<number>>(new Set());
   const [trackingReady, setTrackingReady] = useState(false);
   const [trackingRefresh, setTrackingRefresh] = useState(0);
+  const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [savedSearches, setSavedSearches] = useState<SavedBillSearch[] | null>(null);
+  const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
+  const [isSaveSearchFormOpen, setIsSaveSearchFormOpen] = useState(false);
+  const [savedSearchName, setSavedSearchName] = useState("");
+  const [pendingSavedAck, setPendingSavedAck] = useState<{
+    searchId: number;
+    watermark: string;
+  } | null>(null);
   useEffect(() => subscribePersonalizedChanges(change => {
     if (change.kind === "session") {
       setCatalogVisible(false);
@@ -128,16 +139,6 @@ function BillsCatalog() {
     if (change.kind === "tracking" && trackingFilter) setResultsRevision(value => value + 1);
     setTrackingRefresh(value => value + 1);
   }), [trackingFilter]);
-  const [trackingTopicId, setTrackingTopicId] = useState<number | null>(null);
-  const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [savedSearches, setSavedSearches] = useState<SavedBillSearch[] | null>(null);
-  const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
-  const [isSaveSearchFormOpen, setIsSaveSearchFormOpen] = useState(false);
-  const [savedSearchName, setSavedSearchName] = useState("");
-  const [pendingSavedAck, setPendingSavedAck] = useState<{
-    searchId: number;
-    watermark: string;
-  } | null>(null);
   const currentCongressRef = useRef<number | null>(null);
   const queryInputRef = useRef(queryInput);
   const suppressNextQueryDebounceRef = useRef(true);
@@ -221,7 +222,7 @@ function BillsCatalog() {
         const signedIn = Boolean(session);
         setHasAccount(signedIn);
         if (!signedIn) return;
-        void getMyTracking()
+        void getMyTracking({membershipOnly: true})
           .then((summary) => {
             if (!cancelled && isPersonalizedScopeCurrent(scope)) {
               setTrackedTopicIds(summary.topics.map((item) => item.topic.id));
@@ -359,6 +360,7 @@ function BillsCatalog() {
             const ids = new Set(previous.results.map(bill => bill.id));
             return {...data, results: [...previous.results, ...data.results.filter(bill => !ids.has(bill.id))]};
           });
+          setFirstShownPage(committedResults.current.start);
           setShownPage(pageNum);
         }
       })
@@ -829,8 +831,8 @@ function BillsCatalog() {
 
         {page && (
           <>
-            {committedResults.current.start > 1 && <button type="button" disabled={loading}
-              onClick={() => setPageNum(committedResults.current.start - 1)}
+            {firstShownPage > 1 && <button type="button" disabled={loading}
+              onClick={() => setPageNum(firstShownPage - 1)}
               className="mb-3 rounded border border-control px-3 py-1 text-ink">Previous page</button>}
             <p className="mb-4 text-muted">
               {page.count} bill{page.count !== 1 ? "s" : ""}

@@ -331,7 +331,6 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
     summary_truncated = selected_envelope["source_packet"]["truncated"]
     main = envelope(main_sources, summary=True, truncated=summary_truncated)
     main["source_packet"]["coverage"] = selected_envelope["source_packet"]["coverage"]
-    main_bytes = canonical_json_bytes(main)
     if not fits(main) or not _output_fits(main_sources, summary=True):
         raise PreflightUnavailable(
             "Summary request exceeds configured limits", reason="request_too_large"
@@ -540,7 +539,9 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
             continue
         reused = {**(reused or {}), "source_review": review}
         kept = [
-            (s, e) for s, e in zip(batches, envelopes) if not e.get("source_review")
+            (s, e)
+            for s, e in zip(batches, envelopes, strict=False)
+            if not e.get("source_review")
         ]
         batches = [s for s, _ in kept]
         envelopes = [e for _, e in kept]
@@ -663,7 +664,7 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
                 estimated_input_tokens=len(canonical_json_bytes(e)),
                 truncated=False,
             )
-            for sources, e in zip(batches, envelopes)
+            for sources, e in zip(batches, envelopes, strict=False)
         ),
     )
 
@@ -722,7 +723,9 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                     combined.output["source_review"],
                     provider,
                     api_key,
-                    lambda: checkpoint(combined, completed),
+                    lambda combined=combined, completed=completed: checkpoint(
+                        combined, completed
+                    ),
                     maximum_calls if plan else maximum_calls - calls + 1,
                 )
                 if summarized is not None:

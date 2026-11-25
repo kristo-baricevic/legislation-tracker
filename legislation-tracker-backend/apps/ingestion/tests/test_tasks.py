@@ -927,7 +927,8 @@ def test_processing_work_dead_letters_after_the_last_persistent_retry(monkeypatc
 
 
 @pytest.mark.django_db
-def test_http_throttle_retains_work_and_honors_retry_after(monkeypatch):
+@pytest.mark.parametrize("provider", ["http", "congress"])
+def test_http_throttle_retains_work_and_honors_retry_after(monkeypatch, provider):
     import requests
 
     work = IngestionWorkItem.objects.create(
@@ -944,6 +945,10 @@ def test_http_throttle_retains_work_and_honors_retry_after(monkeypatch):
     response.headers["Retry-After"] = "7200"
 
     def throttled(*args):
+        if provider == "congress":
+            raise CongressAPIError(
+                "rate limited", status_code=429, retry_after_seconds=7200
+            )
         raise requests.HTTPError("429 Too Many Requests", response=response)
 
     monkeypatch.setattr(tasks, "_process_bill_impl", throttled)

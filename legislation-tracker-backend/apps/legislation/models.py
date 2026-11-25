@@ -126,6 +126,39 @@ class BillDocument(models.Model):
         output_field=models.CharField(max_length=64),
         db_persist=True,
     )
+    stored_text_summary = models.TextField(null=True, editable=False)
+    summary_text_hash = models.CharField(
+        max_length=64, blank=True, default="", editable=False
+    )
+
+    def save(self, *args, **kwargs):
+        import hashlib
+
+        from .source_summary import document_summary
+
+        fields = kwargs.get("update_fields")
+        if fields is None or {"extracted_text", "raw_text"}.intersection(fields):
+            # With a partial write the other field may have changed in memory.
+            text_fields = ("extracted_text", "raw_text")
+            values = {key: getattr(self, key) for key in text_fields}
+            if fields and self.pk:
+                missing = [key for key in text_fields if key not in fields]
+                if missing:
+                    values.update(
+                        type(self).objects.filter(pk=self.pk).values(*missing).get()
+                    )
+            text = values["extracted_text"] or values["raw_text"] or ""
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            if self.summary_text_hash != digest:
+                self.stored_text_summary = document_summary(text)
+                self.summary_text_hash = digest
+            if fields:
+                kwargs["update_fields"] = set(fields) | {
+                    "stored_text_summary",
+                    "summary_text_hash",
+                }
+        super().save(*args, **kwargs)
+
     # Exact version-specific official purpose from the original document form.
     # Kept separate so existing text offsets and source hashes never shift.
     source_purpose = models.TextField(blank=True, default="")

@@ -13,7 +13,9 @@ GRAD = "The period during which an eligible recipient who is a graduate student 
 def test_grant_payments_and_caps_survive_reader_rendering_with_complete_conditions():
     source = "SEC. 554. Grant program for school psychologists\n" + "\n".join(
         f"({label}) {text}"
-        for label, text in zip("abcd", [PAYMENT, ADVANCE, UNDERGRAD, GRAD])
+        for label, text in zip(
+            "abcd", [PAYMENT, ADVANCE, UNDERGRAD, GRAD], strict=False
+        )
     )
     result = extract(source)
     items = result.contract_json["financial_items"]
@@ -23,7 +25,7 @@ def test_grant_payments_and_caps_survive_reader_rendering_with_complete_conditio
         ("16000.00", "ceiling"),
         ("16000.00", "ceiling"),
     ]
-    for item, passage in zip(items, [PAYMENT, ADVANCE, UNDERGRAD, GRAD]):
+    for item, passage in zip(items, [PAYMENT, ADVANCE, UNDERGRAD, GRAD], strict=False):
         assert item["display_text"] == passage
     assert len({i["id"] for i in items}) == 4
 

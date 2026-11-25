@@ -1,3 +1,5 @@
+from datetime import UTC
+
 import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient
@@ -80,7 +82,7 @@ def test_committee_name_change_invalidates_projection():
 
 
 def test_edges_preserve_withdrawal_and_procedural_vote_context():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from apps.congress.models import BillCosponsor, Vote, VoteRecord
 
@@ -94,7 +96,7 @@ def test_edges_preserve_withdrawal_and_procedural_vote_context():
         jurisdiction="federal",
         introduced_at="2026-01-01",
     )
-    when = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    when = datetime(2026, 2, 1, tzinfo=UTC)
     BillCosponsor.objects.create(
         representative=rep, bill=bill, sponsorship_date="2026-01-02", withdrawn_at=when
     )

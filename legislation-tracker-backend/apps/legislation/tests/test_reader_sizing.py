@@ -1,6 +1,3 @@
-from dataclasses import replace
-from types import SimpleNamespace
-
 from django.test import override_settings
 
 from apps.legislation.enhancements.reader_targets import snapshot_targets

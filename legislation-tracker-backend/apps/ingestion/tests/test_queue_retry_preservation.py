@@ -131,3 +131,35 @@ def test_cleanup_preserves_previously_attempted_pending_work(cleanup):
     assert old.attempt_count == 3
     assert old.available_at == retry_at
     assert old.last_error == "provider unavailable"
+
+
+@pytest.mark.django_db
+def test_enqueue_reads_one_completed_revision_even_with_long_history():
+    from django.db.models.signals import post_init
+
+    latest = timezone.now()
+    key = dict(kind="bill", dedupe_key="119-hr-1")
+    IngestionWorkItem.objects.bulk_create(
+        [
+            IngestionWorkItem(
+                **key,
+                source_updated_at=latest - timedelta(minutes=i),
+                status="succeeded",
+            )
+            for i in range(500)
+        ]
+    )
+    loaded = []
+
+    def record(instance, **kwargs):
+        loaded.append(instance.pk)
+
+    post_init.connect(record, sender=IngestionWorkItem)
+    try:
+        item, created = persist_ingestion_work(
+            **key, source_updated_at=latest, payload_json={}
+        )
+    finally:
+        post_init.disconnect(record, sender=IngestionWorkItem)
+    assert not created and loaded == [item.pk]
+    assert IngestionWorkItem.objects.filter(**key).count() == 500

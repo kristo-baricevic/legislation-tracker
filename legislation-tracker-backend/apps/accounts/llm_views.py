@@ -311,11 +311,16 @@ class LLMSettingsValidateView(PrivateNoStoreMixin, APIView):
             )
 
         try:
-            check = get_provider(snapshot["provider"]).validate_credential(
-                api_key=api_key,
-                requested_model=credential_target(credential)[1],
-                timeout_seconds=settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS,
-            )
+            from apps.legislation.enhancements.providers.session import provider_session
+
+            with provider_session():
+                check = get_provider(snapshot["provider"]).validate_credential(
+                    api_key=api_key,
+                    requested_model=credential_target(credential)[1],
+                    timeout_seconds=min(
+                        10, settings.LLM_ENHANCEMENT_PROVIDER_TIMEOUT_SECONDS
+                    ),
+                )
         except ProviderError as exc:
             updated = LLMCredential.objects.filter(**snapshot).update(
                 validation_status=LLMCredential.ValidationStatus.UNVERIFIED,

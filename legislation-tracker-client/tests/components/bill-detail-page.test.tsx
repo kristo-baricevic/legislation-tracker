@@ -331,6 +331,19 @@ describe("BillDetailPage", () => {
     expect(await screen.findByRole("link", { name: "Voting Representative" })).toBeVisible();
   });
 
+  it("waits for the bill before fetching its contract history once", async () => {
+    const bill = await getBill(10);
+    let resolve!: (value: typeof bill) => void;
+    vi.mocked(getBill).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    render(<BillDetailPage />);
+    expect(getContracts).not.toHaveBeenCalled();
+    await act(async () => resolve({ ...bill, latest_contract: {
+      id: 4, schema_version: "1.1", contract_hash: "current", computed_at: "", document: null,
+      document_version_label: null, contract_json: { plain_summary: "Summary" }, evidence_spans: [],
+    } }));
+    await waitFor(() => expect(getContracts).toHaveBeenCalledTimes(1));
+  });
+
   it("does not treat different analysis runs as different bill text versions", async () => {
     vi.mocked(getContracts).mockResolvedValueOnce({
       count: 4,

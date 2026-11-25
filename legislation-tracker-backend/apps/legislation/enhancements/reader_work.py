@@ -105,7 +105,7 @@ class ReaderWorkPlan:
                 self._create(f"{key}.{i:04d}", index, child, parent=key)
                 for i, child in enumerate(children)
             ]
-            for row, output in zip(rows, validated_outputs or []):
+            for row, output in zip(rows, validated_outputs or [], strict=False):
                 if output is not None:
                     row.status, row.result_json = "validated", output
                     row.save(update_fields=["status", "result_json"])

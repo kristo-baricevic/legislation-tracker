@@ -202,3 +202,118 @@ def test_postgres_search_preserves_three_excerpts():
         )
         for h in results.hits[0].highlights
     )
+
+
+@pytest.mark.parametrize("count", [1, 6, 20])
+def test_enhanced_card_reads_are_batched(count):
+    from apps.accounts.dashboard_bill_cards import add_card_summaries
+    from apps.legislation.enhancements.shared import validation_key
+    from apps.legislation.models import BillProcessingCache
+
+    rows = []
+    for n in range(count):
+        bill = Bill.objects.create(
+            jurisdiction="federal", session=119, bill_number=f"S {n}"
+        )
+        doc = BillDocument.objects.create(
+            bill=bill, version_label="IH", raw_text="Bill text", is_active_version=True
+        )
+        saved = BillEnhancement.objects.create(
+            bill=bill,
+            status="succeeded",
+            result_completeness="complete",
+            output_schema_version="1.3",
+            source_fingerprint=f"source-{n}",
+            source_manifest_json={
+                "document_id": doc.pk,
+                "document_content_hash": doc.reader_text_hash,
+            },
+            result_json={"summary": [{"text": f"Saved summary {n}"}]},
+        )
+        BillProcessingCache.objects.create(
+            pk=validation_key(saved),
+            kind="reader-validation",
+            result_json={"valid": True},
+        )
+        rows.append({"bill": {"id": bill.pk}})
+    with CaptureQueriesContext(connection) as queries:
+        add_card_summaries(rows)
+    assert [row["bill"]["card_summary"] for row in rows] == [
+        f"Saved summary {n}" for n in range(count)
+    ]
+    assert len(queries) <= 7
+    print(f"{count} enhanced cards: {len(queries)} summary queries")
+
+
+def test_document_metadata_projection_avoids_transferring_stored_text():
+    bill = Bill.objects.create(jurisdiction="federal", session=119, bill_number="HR 88")
+    text = "Bill provision " * 37000
+    assert len(text.encode()) * 2 * 5 == 5_550_000
+    for n in range(5):
+        BillDocument.objects.create(
+            bill=bill, version_label=str(n), raw_text=text, extracted_text=text
+        )
+    bill.latest_contract = BillContract.objects.create(
+        bill=bill,
+        document=bill.documents.first(),
+        schema_version="1.1",
+        contract_json={"plain_summary": "Published summary."},
+        contract_hash="published",
+    )
+    bill.save(update_fields=["latest_contract"])
+    response = APIClient().get(f"/api/bills/{bill.pk}/?contract_view=summary")
+    assert len(response.data["documents"]) == 5
+    assert all(doc["text_url"] for doc in response.data["documents"])
+    from apps.legislation.views import BillViewSet
+
+    view = BillViewSet()
+    view.action = "retrieve"
+    from rest_framework.request import Request
+    from rest_framework.test import APIRequestFactory
+
+    view.request = Request(APIRequestFactory().get("/", {"contract_view": "summary"}))
+    loaded = view.get_queryset().get(pk=bill.pk)
+    assert {
+        "raw_text",
+        "extracted_text",
+    } <= loaded.latest_contract.document.get_deferred_fields()
+    docs = list(loaded.documents.all())
+    assert all(
+        {"raw_text", "extracted_text"} <= doc.get_deferred_fields()
+        and doc.fallback_text is None
+        for doc in docs
+    )
+
+
+def test_document_backfill_restores_digest_after_bulk_edit_and_can_resume():
+    from importlib import import_module
+    from types import SimpleNamespace
+
+    from django.apps import apps
+
+    bill = Bill.objects.create(
+        jurisdiction="federal", session=119, bill_number="S 1000"
+    )
+    document = BillDocument.objects.create(
+        bill=bill, version_label="IH", raw_text="First version."
+    )
+    BillDocument.objects.filter(pk=document.pk).update(
+        extracted_text="Amended version."
+    )
+    url = f"/api/bills/{bill.pk}/?contract_view=summary"
+    client = APIClient()
+    assert (
+        client.get(url).data["documents"][0]["reader_summary"]
+        == "Bill text: Amended version."
+    )
+    backfill = import_module(
+        "apps.legislation.migrations.0039_backfill_document_summaries"
+    ).backfill
+    editor = SimpleNamespace(connection=connection)
+    backfill(apps, editor)
+    document.refresh_from_db()
+    assert document.summary_text_hash == document.reader_text_hash
+    assert document.stored_text_summary == "Bill text: Amended version."
+    with CaptureQueriesContext(connection) as queries:
+        backfill(apps, editor)
+    assert not any(q["sql"].startswith("UPDATE") for q in queries)

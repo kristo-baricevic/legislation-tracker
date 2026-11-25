@@ -142,7 +142,7 @@ def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000
             boundaries.append(match.start())
     boundaries = sorted({0, len(text), *boundaries})
     ranges = []
-    for left, right in zip(boundaries, boundaries[1:]):
+    for left, right in zip(boundaries, boundaries[1:], strict=False):
         while (
             right - left > 12000
             if not xml_sections
@@ -194,7 +194,7 @@ def discovery_sources(text, first_ref, *, xml_sections=(), xml_batch_bytes=18000
         ).hexdigest()
         enclosing = [
             (a, b)
-            for a, b in zip(boundaries, boundaries[1:])
+            for a, b in zip(boundaries, boundaries[1:], strict=False)
             if a < source["end_char"] and b > source["start_char"]
         ]
         if enclosing and (

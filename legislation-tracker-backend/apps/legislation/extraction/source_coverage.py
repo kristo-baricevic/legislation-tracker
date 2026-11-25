@@ -94,7 +94,7 @@ def supplement_source_claims(source, sections, claims, clauses=None):
                 continue
             evidence = (*context, span)
 
-            def present(category):
+            def present(category, span=span):
                 return any(
                     s.start_char <= span.start_char and span.end_char <= s.end_char
                     for s in claimed[category]

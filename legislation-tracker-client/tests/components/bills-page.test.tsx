@@ -108,7 +108,7 @@ describe("BillsPage", () => {
 
   it("waits for login resolution before requesting a private bill filter", async () => {
     searchState.query = "session=119&tracking=tracked";
-    let resolveSession!: (value: any) => void;
+    let resolveSession!: (value: Awaited<ReturnType<typeof getSession>>) => void;
     vi.mocked(getSession).mockReturnValueOnce(new Promise(resolve => { resolveSession = resolve; }));
     render(<BillsPage />);
     await screen.findByRole("status", {name: "Loading bills"});

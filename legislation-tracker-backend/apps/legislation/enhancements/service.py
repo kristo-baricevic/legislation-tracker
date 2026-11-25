@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from dataclasses import asdict, dataclass
 
-from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -438,6 +437,13 @@ def retry_enhancement_attempt(
             reuse_publication=not enhancement.rerun_after,
         )
         base_fingerprint = preflight.request_fingerprint
+        if (
+            confirmed.get("source_fingerprint") != preflight.source_fingerprint
+            or enhancement.request_fingerprint != base_fingerprint
+            or (enhancement.provider, enhancement.requested_model)
+            != (preflight.provider, preflight.requested_model)
+        ):
+            raise EnhancementServiceError("preflight_changed")
         reused_result = reusable_publication(enhancement, credential)
         if reused_result:
             with planning_for(credential_target(credential), owned_target=owned_target):
@@ -446,11 +452,6 @@ def retry_enhancement_attempt(
                 )
         _validate_confirmation(preflight, credential, confirmed)
         _require_current_validation(credential)
-        if enhancement.request_fingerprint != base_fingerprint or (
-            enhancement.provider,
-            enhancement.requested_model,
-        ) != (preflight.provider, preflight.requested_model):
-            raise EnhancementServiceError("preflight_changed")
 
         if latest is not None and latest.status in ACTIVE_STATUSES:
             return AttemptCreation(enhancement, latest, False)

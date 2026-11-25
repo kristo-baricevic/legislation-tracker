@@ -172,7 +172,7 @@ def test_changed_source_policy_during_fetch_cannot_relabel_evidence(
         state="NY",
         official_website_url="https://jane.house.gov",
     )
-    policy = ResearchSourcePolicy.objects.create(
+    ResearchSourcePolicy.objects.create(
         representative=rep,
         kind="biography",
         url="https://jane.house.gov/about",

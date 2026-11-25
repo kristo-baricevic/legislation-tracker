@@ -27,7 +27,7 @@ def section_assignments(preflight, items):
         elif depth == 0:
             boundaries.append(match.start())
     boundaries = sorted({*boundaries, len(text)})
-    ranges = list(zip(boundaries, boundaries[1:]))
+    ranges = list(zip(boundaries, boundaries[1:], strict=False))
     grouped = {}
     for index, item in enumerate(items):
         weights = [0] * len(ranges)

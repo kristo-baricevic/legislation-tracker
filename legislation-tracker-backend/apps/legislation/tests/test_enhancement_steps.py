@@ -363,18 +363,41 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
             estimate = client.get(url + "estimate/").data
             assert estimate["matching_enhancement"]["id"] == enhancement.pk
         preflight = build_enhancement_preflight(source_bill, reuse_result=prior)
+        confirmed = {
+            "source_fingerprint": preflight.source_fingerprint,
+            "request_fingerprint": confirmation_fingerprint(
+                preflight, first.credential, enhancement.rerun_after
+            ),
+            **({"rerun_after": published} if rerun else {}),
+            "credential_revision": first.credential_revision,
+        }
+        if not rerun:
+            from apps.legislation.enhancements.service import EnhancementServiceError
+
+            original = doc.extracted_text
+            doc.extracted_text = original.replace(
+                "publish a report", "publish a notice"
+            )
+            doc.save()
+            with pytest.raises(EnhancementServiceError) as changed:
+                retry_enhancement_attempt(
+                    user=enhancement_owner,
+                    bill=source_bill,
+                    enhancement_id=enhancement.pk,
+                    confirmed=confirmed,
+                )
+            assert (changed.value.code, changed.value.http_status) == (
+                "preflight_changed",
+                409,
+            )
+            assert enhancement.attempts.count() == 1
+            doc.extracted_text = original
+            doc.save()
         second = retry_enhancement_attempt(
             user=enhancement_owner,
             bill=source_bill,
             enhancement_id=enhancement.pk,
-            confirmed={
-                "source_fingerprint": preflight.source_fingerprint,
-                "request_fingerprint": confirmation_fingerprint(
-                    preflight, first.credential, enhancement.rerun_after
-                ),
-                **({"rerun_after": published} if rerun else {}),
-                "credential_revision": first.credential_revision,
-            },
+            confirmed=confirmed,
         ).attempt
         if rerun:
             assert estimate["request_fingerprint"] == confirmation_fingerprint(

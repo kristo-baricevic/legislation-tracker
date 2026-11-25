@@ -263,6 +263,7 @@ def test_validation_updates_only_the_snapshotted_credential_revision(
 ):
     class ReplacingProvider:
         def validate_credential(self, **kwargs):
+            assert 0 < kwargs["timeout_seconds"] <= 10
             LLMCredential.objects.get(user=user).replace_key("sk-test-replacement")
             return CredentialCheck(valid=True)
 

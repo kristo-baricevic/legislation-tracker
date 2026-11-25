@@ -343,6 +343,12 @@ def run_analysis(plan, invoke, checkpoint):
                 call,
                 error,
             )
+            if (
+                call.stage == "synopsis"
+                and not error.outcome_unknown
+                and error.category in {"provider_unavailable", "provider_rate_limited"}
+            ):
+                return None
             if error.outcome_unknown or error.category != "invalid_output":
                 raise
             return None

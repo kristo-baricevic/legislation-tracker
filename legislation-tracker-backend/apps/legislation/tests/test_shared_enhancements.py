@@ -8,9 +8,6 @@ from apps.legislation.models import BillEnhancementAttempt
 from .test_enhancement_service import (
     _confirmation,
     _valid_credential,
-    enhancement_owner,
-    enhancement_settings,
-    source_bill,
 )
 
 

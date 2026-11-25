@@ -316,7 +316,6 @@ class DurableReaderProvider:
                     cached.delete()
                 raise ReaderBudgetPaused()
             from .reader_capacity import fits
-            from .source_packet import canonical_json_bytes
 
             if not fits(
                 request.request_envelope,

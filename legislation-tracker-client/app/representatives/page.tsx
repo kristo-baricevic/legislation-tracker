@@ -147,7 +147,7 @@ function RepresentativesDirectory() {
         const session = await getSession();
         if (cancelled) return;
         if (session) {
-          const summary = await getMyTracking();
+          const summary = await getMyTracking({membershipOnly: true});
           if (cancelled) return;
           setTrackedLegislatorIds(summary.legislators.map(item => item.representative.id));
         }

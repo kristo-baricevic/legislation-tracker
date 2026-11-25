@@ -266,12 +266,14 @@ def change_groups(payload):
         item = copy.deepcopy(lines[0])
         item["id"] = (
             "brief-"
-            + hashlib.sha256("|".join(l["id"] for l in lines).encode()).hexdigest()[:20]
+            + hashlib.sha256(
+                "|".join(line["id"] for line in lines).encode()
+            ).hexdigest()[:20]
         )
-        item["member_ids"] = [l["id"] for l in lines]
+        item["member_ids"] = [line["id"] for line in lines]
         # Compact immutable matching identity; complete text remains in the
         # source evidence and member facts rather than in the API preview.
-        item["member_texts"] = [l.get("display_text", "") for l in lines]
+        item["member_texts"] = [line.get("display_text", "") for line in lines]
         item["display_text"] = (
             "Grouped source "
             + hashlib.sha256("\n".join(item["member_texts"]).encode()).hexdigest()
@@ -286,7 +288,7 @@ def change_groups(payload):
             "definition_refs",
         ):
             item[field] = list(
-                dict.fromkeys(ref for l in lines for ref in l.get(field, []))
+                dict.fromkeys(ref for line in lines for ref in line.get(field, []))
             )
         item["actor"] = item["action"] = item["effect"] = None
         text = (
@@ -295,7 +297,7 @@ def change_groups(payload):
             else None
         )
         if not text:
-            statements = list(dict.fromkeys(concise_rule(l) for l in lines))
+            statements = list(dict.fromkeys(concise_rule(line) for line in lines))
             text = _group_overview(statements, group["heading"])
         if len(text) > 8000 and len(lines) > 1:
             # An unknown construction must not turn a whole page into a 400

@@ -7,6 +7,20 @@ from .fec_client import FECError, get_page
 from .models import CandidateIdentity, RepresentativeCandidate
 
 
+def saved_periods(rep):
+    mappings = RepresentativeCandidate.objects.filter(
+        representative=rep, verified=True, revoked=False
+    ).exclude(evidence_url="")
+    return {
+        period
+        for saved, rejected in mappings.values_list(
+            "candidate__reporting_periods", "rejected_periods"
+        )
+        for period in saved.get("periods", [])
+        if period not in rejected
+    }
+
+
 def discover_periods(rep, *, strict=False):
     year = timezone.now().year
     current = year + year % 2
@@ -53,5 +67,5 @@ def discover_periods(rep, *, strict=False):
                     raise
         if strict and saved.get("checked_cycle") != current:
             raise FECError("fec_period_discovery_pending", retry_after_seconds=60)
-        periods.update(saved.get("periods", []))
+        periods.update(set(saved.get("periods", [])) - set(mapping.rejected_periods))
     return sorted(periods, reverse=True)

@@ -15,6 +15,7 @@ from .base import (
     ProviderResult,
     ProviderUsage,
 )
+from .session import delivery_client
 
 
 def _value(obj: Any, name: str, default=None):
@@ -121,6 +122,7 @@ class AnthropicEnhancementProvider:
             client_factory = Anthropic
         self._client_factory = client_factory
 
+    @delivery_client
     def _client(self, *, api_key: str, timeout_seconds: int):
         return self._client_factory(
             api_key=api_key,

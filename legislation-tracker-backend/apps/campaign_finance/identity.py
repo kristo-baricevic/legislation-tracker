@@ -126,8 +126,11 @@ def resolve_candidate(representative_id: int, period: int) -> IdentityResolution
         for row in RepresentativeCandidate.objects.filter(
             representative_id=representative_id
         ).select_related("candidate")
-        if period in row.periods
-        or period in row.candidate.reporting_periods.get("periods", [])
+        if period not in row.rejected_periods
+        and (
+            period in row.periods
+            or period in row.candidate.reporting_periods.get("periods", [])
+        )
     ]
     verified = sorted(
         row.candidate_id for row in rows if row.verified and row.evidence_url
@@ -137,3 +140,16 @@ def resolve_candidate(representative_id: int, period: int) -> IdentityResolution
     if any(not row.verified or not row.evidence_url for row in rows):
         return IdentityResolution("needs_review", [])
     return IdentityResolution("verified" if verified else "not_found", verified)
+
+
+def excluded_candidates(representative_id, period):
+    mappings = RepresentativeCandidate.objects.filter(
+        representative_id=representative_id
+    )
+    return {
+        cid
+        for cid, revoked, rejected in mappings.values_list(
+            "candidate_id", "revoked", "rejected_periods"
+        )
+        if revoked or period in rejected
+    }

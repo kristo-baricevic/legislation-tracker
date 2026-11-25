@@ -143,3 +143,22 @@ def source_summary(text):
     ):
         return "Bill text: " + cleaned
     return None
+
+
+def document_summary(source):
+    statement = re.search(
+        r"The following sums in this Act are appropriated, out of any money "
+        r"in the Treasury not otherwise appropriated, for the fiscal year "
+        r"ending ([A-Za-z]+ \d{1,2}, \d{4})\.",
+        re.sub(r"\s+", " ", source),
+    )
+    scopes = re.findall(
+        r"^DIVISION [A-Z]+\.? ([^\n]+?) Appropriations\s*$", source, re.M
+    )
+    if statement and scopes:
+        names = list(dict.fromkeys(scopes))
+        scope = (
+            ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+        )
+        return f"This bill would provide funding for {scope} for the fiscal year ending {statement[1]}."
+    return source_summary(source)

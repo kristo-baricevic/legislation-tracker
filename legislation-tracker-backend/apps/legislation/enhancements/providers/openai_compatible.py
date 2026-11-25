@@ -3,11 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
-
-from django.conf import settings
 
 from apps.legislation.enhancements.citations import REPAIR_INSTRUCTIONS, REPAIR_SCHEMA
 from apps.legislation.enhancements.schema import PROVIDER_OUTPUT_SCHEMA
@@ -20,6 +16,7 @@ from .base import (
     ProviderResult,
     ProviderUsage,
 )
+from .session import delivery_client, in_provider_session, run_async
 
 _MODE_ALIASES = {
     "json_schema": "json_schema",
@@ -139,12 +136,12 @@ def _complete(client, timeout_seconds, **kwargs):
             return result  # synchronous test/client adapters
         finally:
             close = getattr(client, "close", None)
-            if close:
+            if close and not in_provider_session():
                 result = close()
                 if inspect.isawaitable(result):
                     await result
 
-    return asyncio.run(run())
+    return run_async(run())
 
 
 class OpenAICompatibleEnhancementProvider:
@@ -349,6 +346,7 @@ class OpenAICompatibleEnhancementProvider:
             return self._normalize_mode(val)
         return getattr(self, "_structured_output_mode_override", "json_schema")
 
+    @delivery_client
     def _client(self, *, api_key=None, timeout_seconds=None):
         key = api_key if api_key is not None else self.api_key
         timeout = timeout_seconds if timeout_seconds is not None else self.timeout

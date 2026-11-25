@@ -11,7 +11,7 @@ from .diagnostics import validation_diagnostic
 from .providers.base import ProviderError, ProviderResult, ProviderUsage
 from .reader_capacity import fits
 from .reader_citations import citation_passages, resolve_reader_citations
-from .source_packet import _within_limits, canonical_json_bytes
+from .source_packet import canonical_json_bytes
 
 SUMMARY_FALLBACK_CODES = {
     "citation_quote_not_found",

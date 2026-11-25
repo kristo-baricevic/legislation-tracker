@@ -43,9 +43,8 @@ def _source_first_inputs(saved, document):
         )
         aligned = cache.get(cache_key)
     if aligned is None:
-        text = document.extracted_text or document.raw_text or ""
         try:
-            sections = stored_xml_sections(document, text)
+            sections = stored_xml_sections(document, None)
         except PreflightUnavailable:
             return None
         aligned = (
@@ -92,16 +91,24 @@ def _source_first_result_valid(saved, inputs):
     return projected == result
 
 
+def validation_key(saved):
+    import hashlib
+
+    from .reader_cache import VALIDATOR_VERSION
+
+    return hashlib.sha256(
+        f"bill-validation:projection-10:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
+    ).hexdigest()
+
+
 def _reader_result_valid(saved, *, source_first_inputs=None):
     import copy
-    import hashlib
     from types import SimpleNamespace
 
     from jsonschema import ValidationError
 
     from apps.legislation.models import BillProcessingCache
 
-    from .reader_cache import VALIDATOR_VERSION
     from .schema import validate_enhancement_output
 
     if saved.output_schema_version == "2.0-source-first":
@@ -112,9 +119,7 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
             source_first_inputs = _source_first_inputs(saved, document)
             if source_first_inputs is None:
                 return False
-    fingerprint = hashlib.sha256(
-        f"bill-validation:projection-10:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
-    ).hexdigest()
+    fingerprint = validation_key(saved)
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
         return cached.result_json["valid"]
@@ -192,6 +197,13 @@ def source_compatible(enhancement, bill, *, identity=None):
             manifest.get("source_kind") in {"xml_full_review", "reader_targets"}
             and manifest.get("contract_id") is None
         ):
+            if contract is None or contract.document_id != document.pk:
+                return True
+            if hasattr(contract, "json_version"):
+                return (contract.schema_version, contract.json_version) != (
+                    "2.1-legal-nlp",
+                    "2.1-legal-nlp",
+                )
             from .reader_targets import reader_contract
 
             return reader_contract(document) is None

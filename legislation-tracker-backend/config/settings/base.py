@@ -8,6 +8,8 @@ from pathlib import Path
 
 import environ
 
+from apps.ingestion.queues import DIRECT_TASK_QUEUES
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
@@ -104,7 +106,6 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-from apps.ingestion.queues import DIRECT_TASK_QUEUES
 
 INGESTION_STAGE_IN_FLIGHT = max(1, env.int("INGESTION_STAGE_IN_FLIGHT", default=2))
 CELERY_TASK_ROUTES = {

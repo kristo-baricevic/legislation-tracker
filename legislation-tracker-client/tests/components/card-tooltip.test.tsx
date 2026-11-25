@@ -1,10 +1,11 @@
+import Link from "next/link";
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { expect, it } from "vitest";
 import CardTooltip from "@/app/components/CardTooltip";
 
 it("shows a styled, accessible tooltip on focus and dismisses it with Escape", () => {
-  render(<CardTooltip text="Similar to Melanie Stansbury"><a href="/representatives/242">MS</a></CardTooltip>);
+  render(<CardTooltip text="Similar to Melanie Stansbury"><Link href="/representatives/242">MS</Link></CardTooltip>);
   const link = screen.getByRole("link");
   expect(link).not.toHaveAttribute("title");
   expect(screen.queryByRole("tooltip")).toBeNull();

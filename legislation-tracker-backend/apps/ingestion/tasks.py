@@ -15,10 +15,10 @@ import requests
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, When
+from django.db.models import Case, IntegerField, When
 from django.utils import timezone
 
-from apps.accounts.models import TrackedBill, TrackedLegislator, TrackedTopic
+from apps.accounts.models import TrackedBill
 from apps.changelog.events import diff_bill_metadata, snapshot_bill_metadata
 from apps.changelog.services import lock_bill_activity, record_bill_change
 from apps.congress.current import current_congress, current_congress_session
@@ -1047,7 +1047,7 @@ def _http_throttle_delay(exc):
 
     from apps.campaign_finance.fec_client import FECError
 
-    if isinstance(exc, FECError) and exc.status_code == 429:
+    if isinstance(exc, (CongressAPIError, FECError)) and exc.status_code == 429:
         seconds = (
             exc.retry_after_seconds if exc.retry_after_seconds is not None else 900
         )

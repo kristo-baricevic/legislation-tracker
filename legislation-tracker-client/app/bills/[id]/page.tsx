@@ -113,7 +113,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
   }, [id, processing]);
 
   useEffect(() => {
-    if (Number.isNaN(id)) return;
+    if (bill?.id !== id) return;
     let cancelled = false;
     getContracts(id, { page: 1, view: "summary" })
       .then((contracts) => {
@@ -125,7 +125,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, bill?.latest_contract?.id]);
+  }, [id, bill?.id, bill?.latest_contract?.id]);
 
   useEffect(() => {
     if (Number.isNaN(id)) return;
@@ -166,7 +166,7 @@ function BillDetailInner({ routeId }: { routeId: string }) {
         setHasAccount(signedIn);
         if (!signedIn || Number.isNaN(id)) return;
         const saved = peekDashboardValue<TrackingSummary>("tracking");
-        void (saved ? Promise.resolve(saved) : getMyTracking())
+        void (saved ? Promise.resolve(saved) : getMyTracking({membershipOnly: true}))
           .then((summary) => {
             if (!cancelled) {
               setIsTracked(summary.bills.some((item) => item.bill.id === id));

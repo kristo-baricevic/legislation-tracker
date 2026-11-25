@@ -11,11 +11,6 @@ from apps.legislation.enhancements.reader_citations import (
     resolve_reader_citations,
 )
 from apps.legislation.tests.test_enhancement_reader_targets import packet
-from apps.legislation.tests.test_enhancement_service import (
-    enhancement_owner,
-    enhancement_settings,
-    source_bill,
-)
 
 
 def test_s4387_real_response_cannot_publish_or_reuse_period_only_text():

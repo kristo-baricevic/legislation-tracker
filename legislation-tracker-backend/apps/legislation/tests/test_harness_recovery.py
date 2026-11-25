@@ -21,9 +21,6 @@ from apps.legislation.models import BillEnhancementDiagnostic, BillEnhancementSt
 from apps.legislation.tests.test_enhancement_service import (
     _confirmation,
     _valid_credential,
-    enhancement_owner,
-    enhancement_settings,
-    source_bill,
 )
 from apps.legislation.tests.test_enhancement_tasks import _pending_attempt
 

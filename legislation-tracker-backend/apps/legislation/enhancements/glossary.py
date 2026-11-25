@@ -71,7 +71,7 @@ def attach_targets(sources, targets):
 
 def build_glossary_batches(bill, text, version_label, targets, *, source_ref_start=1):
     """Pack every complete definition; never truncate or silently drop one."""
-    from .model_selection import target
+    from .model_selection import target as model_target
     from .source_packet import (
         PreflightUnavailable,
         _request_envelope,
@@ -80,7 +80,7 @@ def build_glossary_batches(bill, text, version_label, targets, *, source_ref_sta
         legacy_token_limits,
     )
 
-    input_limit, output_limit = legacy_token_limits(*target())
+    input_limit, output_limit = legacy_token_limits(*model_target())
 
     def batch_for(sources):
         envelope = _request_envelope(

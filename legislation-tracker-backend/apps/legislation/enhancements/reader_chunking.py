@@ -59,7 +59,7 @@ def planned_sources(document, text, first_ref, target, xml_sections):
         {0, len(text), *(offset for span in by_span for offset in span)}
     )
     sources = []
-    for left, right in zip(boundaries, boundaries[1:]):
+    for left, right in zip(boundaries, boundaries[1:], strict=False):
         unit = by_span.get((left, right))
         for start, end in owned_spans(text, left, right, target):
             owned = text[start:end]

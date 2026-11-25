@@ -123,7 +123,7 @@ def get_page(path, params):
                     if len(body) > 4_000_000 or time.monotonic() > deadline:
                         raise FECError("fec_response_limit")
                 data = json.loads(body)
-        except (requests.RequestException, ValueError) as exc:
+        except (requests.RequestException, ValueError):
             raise FECError("fec_request_failed") from None
     if (
         not isinstance(data, dict)

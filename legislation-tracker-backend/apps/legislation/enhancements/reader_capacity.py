@@ -4,8 +4,6 @@ UTF-8 bytes are an upper-bound input estimate, not an exact tokenizer count.
 Unspecified reasoning means provider default, NOT disabled reasoning.
 """
 
-from django.conf import settings
-
 from .model_selection import target
 
 

@@ -11,6 +11,7 @@ def test_category_migration_preserves_legacy_totals_and_blocks_lossy_rollback():
     old = [("campaign_finance", "0010_outside_revision_triggers")]
     new = [("campaign_finance", "0012_communication_position_codes")]
     executor = MigrationExecutor(connection)
+    latest = executor.loader.graph.leaf_nodes()
     executor.migrate(old)
     try:
         apps = executor.loader.project_state(old).apps
@@ -53,4 +54,4 @@ def test_category_migration_preserves_legacy_totals_and_blocks_lossy_rollback():
             old
         )  # Safe rollback when only legacy data remains.
     finally:
-        MigrationExecutor(connection).migrate(new)
+        MigrationExecutor(connection).migrate(latest)

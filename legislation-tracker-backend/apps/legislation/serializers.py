@@ -1,4 +1,4 @@
-import re
+from hashlib import sha256
 
 from rest_framework import serializers
 
@@ -173,6 +173,9 @@ class BillTopicSerializer(serializers.ModelSerializer):
         fields = ["topic_id", "name", "slug", "confidence_score"]
 
 
+EMPTY_TEXT_HASH = sha256(b"").hexdigest()
+
+
 class BillDocumentSerializer(serializers.ModelSerializer):
     bill_title = serializers.CharField(source="bill.title", read_only=True)
     bill_number = serializers.CharField(source="bill.bill_number", read_only=True)
@@ -201,7 +204,7 @@ class BillDocumentSerializer(serializers.ModelSerializer):
         ]
 
     def get_download_url(self, obj):
-        if not (obj.object_storage_key or obj.raw_text or obj.extracted_text):
+        if not (obj.object_storage_key or self.get_text_url(obj)):
             return None
         return f"/api/documents/{obj.id}/download/"
 
@@ -211,31 +214,18 @@ class BillDocumentSerializer(serializers.ModelSerializer):
         purpose = purpose_summary(getattr(obj, "source_purpose", ""))
         if purpose:
             return purpose
-        # Use this document's operative statement, never its short title alone.
-        source = obj.extracted_text or obj.raw_text or ""
-        statement = re.search(
-            r"The following sums in this Act are appropriated, out of any money "
-            r"in the Treasury not otherwise appropriated, for the fiscal year "
-            r"ending ([A-Za-z]+ \d{1,2}, \d{4})\.",
-            re.sub(r"\s+", " ", source),
-        )
-        scopes = re.findall(
-            r"^DIVISION [A-Z]+\.? ([^\n]+?) Appropriations\s*$", source, re.M
-        )
-        if statement and scopes:
-            names = list(dict.fromkeys(scopes))
-            scope = (
-                ", ".join(names[:-1]) + " and " + names[-1]
-                if len(names) > 1
-                else names[0]
-            )
-            return f"This bill would provide funding for {scope} for the fiscal year ending {statement[1]}."
-        from .source_summary import source_summary
+        if hasattr(obj, "fallback_text"):
+            if obj.fallback_text is None:
+                return obj.stored_text_summary
+            source = obj.fallback_text
+        else:
+            source = obj.extracted_text or obj.raw_text or ""
+        from .source_summary import document_summary
 
-        return source_summary(source)
+        return document_summary(source)
 
     def get_text_url(self, obj):
-        if not (obj.raw_text or obj.extracted_text):
+        if obj.reader_text_hash == EMPTY_TEXT_HASH:
             return None
         return f"/api/documents/{obj.id}/text/"
 
@@ -471,6 +461,12 @@ class BillContractSerializer(serializers.ModelSerializer):
 
 
 class BillContractSummarySerializer(serializers.ModelSerializer):
+    plain_summary = serializers.SerializerMethodField()
+
+    def get_plain_summary(self, obj):
+        value = (obj.contract_json or {}).get("plain_summary")
+        return value if isinstance(value, str) else None
+
     reader_brief = serializers.SerializerMethodField()
     document_version_label = serializers.CharField(
         source="document.version_label", read_only=True, allow_null=True, default=None
@@ -492,6 +488,7 @@ class BillContractSummarySerializer(serializers.ModelSerializer):
             "orientation",
             "reader_stats",
             "reader_brief",
+            "plain_summary",
         ]
 
     @staticmethod

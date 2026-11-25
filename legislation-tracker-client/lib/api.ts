@@ -1162,8 +1162,15 @@ export interface TrackingFeed {
   entries: TrackingFeedEntry[];
 }
 
-export function getMyTracking(options: PersonalizedRequestOptions = {}): Promise<TrackingSummary> {
-  return authGet<TrackingSummary>("/api/tracking/", options);
+export type TrackingMembership = {
+  bills: { bill: {id: number} }[];
+  legislators: { representative: {id: number} }[];
+  topics: { topic: {id: number} }[];
+};
+export function getMyTracking(options: PersonalizedRequestOptions & {membershipOnly: true}): Promise<TrackingMembership>;
+export function getMyTracking(options?: PersonalizedRequestOptions): Promise<TrackingSummary>;
+export function getMyTracking(options: PersonalizedRequestOptions & {membershipOnly?: boolean} = {}): Promise<TrackingMembership> {
+  return authGet<TrackingMembership>(options.membershipOnly ? "/api/tracking/?view=membership" : "/api/tracking/", options);
 }
 
 export interface SavedBillSearch {

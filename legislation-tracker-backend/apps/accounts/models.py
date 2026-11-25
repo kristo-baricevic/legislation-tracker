@@ -327,3 +327,8 @@ class TrackedLegislator(models.Model):
 
     def __str__(self):
         return f"User {self.user_id} tracks representative {self.representative_id}"
+
+
+class DashboardRevision(models.Model):
+    kind = models.CharField(max_length=16, primary_key=True)
+    sequence = models.BigIntegerField(default=0)

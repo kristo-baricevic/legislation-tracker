@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.campaign_finance.models import FinanceSnapshot
-from apps.campaign_finance.periods import discover_periods
+from apps.campaign_finance.periods import saved_periods
 from apps.campaign_finance.progress import finance_progress, latest_preview
 from apps.congress.models import Representative
 from config.api import StrictQuerySerializer
@@ -134,7 +134,7 @@ def funding_periods(rep):
         )
         .prefetch_related("checkpoints")
     )
-    periods = set(discover_periods(rep))
+    periods = saved_periods(rep)
     for snapshot in snapshots:
         has_totals = any(
             cp.schedule == "totals" and cp.complete and cp.source_totals.get("records")
@@ -253,7 +253,11 @@ class ConfirmCandidateView(APIView):
 
     @transaction.atomic
     def post(self, request, representative_id, run_id):
-        from apps.campaign_finance.identity import resolve_candidate, review_choices
+        from apps.campaign_finance.identity import (
+            excluded_candidates,
+            resolve_candidate,
+            review_choices,
+        )
         from apps.campaign_finance.models import (
             CandidateIdentity,
             ConfirmedCandidate,
@@ -295,9 +299,7 @@ class ConfirmCandidateView(APIView):
             return Response(
                 {"detail": "Choose one of the suggested FEC records."}, status=400
             )
-        if RepresentativeCandidate.objects.filter(
-            representative=rep, candidate_id=choice["candidate_id"], revoked=True
-        ).exists():
+        if choice["candidate_id"] in excluded_candidates(rep.pk, run.period):
             return Response(
                 {"detail": "This mapping requires staff review."}, status=409
             )
@@ -597,15 +599,19 @@ class OutsideSpendingView(APIView):
             # Use saved provider periods; never perform source I/O on a read.
             expected_periods = set()
             year = timezone.now().year
-            for known, reporting in (
+            for known, reporting, rejected in (
                 RepresentativeCandidate.objects.filter(
                     representative_id=representative_id, verified=True
                 )
                 .exclude(evidence_url="")
-                .values_list("periods", "candidate__reporting_periods")
+                .values_list(
+                    "periods", "candidate__reporting_periods", "rejected_periods"
+                )
             ):
                 expected_periods.update(
-                    p for p in [*known, *reporting.get("periods", [])] if in_scope(p)
+                    p
+                    for p in [*known, *reporting.get("periods", [])]
+                    if in_scope(p) and p not in rejected
                 )
             periods = set(periods) | {run.period for run in runs}
             failed_periods.update(expected_periods - periods)

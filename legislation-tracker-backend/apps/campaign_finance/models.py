@@ -19,6 +19,7 @@ class RepresentativeCandidate(models.Model):
     candidate = models.ForeignKey(CandidateIdentity, on_delete=models.PROTECT)
     periods = models.JSONField(default=list)
     verified = models.BooleanField(default=False)
+    rejected_periods = models.JSONField(default=list, editable=False)
     revoked = models.BooleanField(default=False, editable=False)
     evidence_url = models.URLField(max_length=2048, blank=True)
 
@@ -61,6 +62,17 @@ class RepresentativeCandidate(models.Model):
                 .order_by("pk")
             )
             fields = kwargs.get("update_fields")
+            if old and (fields is None or "periods" in fields):
+                previous, rejected = (
+                    type(self)
+                    .objects.values_list("periods", "rejected_periods")
+                    .get(pk=self.pk)
+                )
+                self.rejected_periods = sorted(
+                    (set(rejected) | set(previous)) - set(self.periods)
+                )
+                if fields is not None:
+                    kwargs["update_fields"] = set(fields) | {"rejected_periods"}
             if fields is None or {"verified", "evidence_url"}.intersection(fields):
                 verified = (
                     self.verified
@@ -77,7 +89,7 @@ class RepresentativeCandidate(models.Model):
                 elif old and old["verified"] and old["evidence_url"]:
                     self.revoked = True
                 if fields is not None:
-                    kwargs["update_fields"] = set(fields) | {"revoked"}
+                    kwargs["update_fields"] = set(kwargs["update_fields"]) | {"revoked"}
             super().save(*args, **kwargs)
             if old is None or old != {k: getattr(self, k) for k in old}:
                 snapshots = FinanceSnapshot.objects.filter(

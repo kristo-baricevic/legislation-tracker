@@ -55,7 +55,8 @@ def test_tracking_filter_is_private_and_applies_before_pagination():
 
 def test_saved_tracking_filter_uses_search_owner():
     _, user = client()
-    first, second = bill(1), bill(2)
+    first = bill(1)
+    bill(2)
     TrackedBill.objects.create(user=user, bill=first)
     search = SavedBillSearch(user=user, query_json={"tracking": "tracked"})
     assert list(saved_search_queryset(search).values_list("id", flat=True)) == [

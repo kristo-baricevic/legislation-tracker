@@ -35,6 +35,7 @@ os.environ.update(
     LEGAL_NLP_V21_WRITE_ENABLED="False",
     LLM_ENHANCEMENTS_ENABLED="False",
 )
+# ruff: noqa: E402 -- configure the isolated database before importing Django models.
 import django
 
 django.setup()

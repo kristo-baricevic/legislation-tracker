@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/bills", useSearchParams
 const bill = { id: 463, jurisdiction: "federal", session: 119, bill_number: "HR 9300", title: "Postsecondary Student Success Act of 2026", status: "introduced", sponsor_name: "", introduced_at: null, last_action_at: null, topics: [] };
 const synopsis = "This bill aims to support participation, retention, and completion activities for high-need students.";
 const document = { id: 511, version_label: "Introduced in House", source_order: 1, is_active_version: true, content_type: "application/xml", file_size_bytes: 22755, source_url: null, downloaded_at: "2026-09-01", download_url: "/api/documents/511/download/", text_url: "/api/documents/511/text/" };
-const detail = { ...bill, summary: null, summary_source: "", summary_version_code: "", processing_status: "complete", sponsor: null, source_api_id: "119-hr-9300", congress_gov_url: null, documents: [document], latest_contract: { id: 4729, document: 511, document_version_label: "Introduced in House", schema_version: "2.1-legal-nlp", contract_json: { orientation: { purpose_clause: synopsis, purpose_line_item_id: "line-purpose-108-1" } }, contract_hash: "hash", computed_at: "2026-09-01", evidence_spans: [] }, created_at: "2026-09-01", updated_at: "2026-09-01" };
+const detail = { ...bill, summary_preview: null, summary_has_more: false, summary_action_date: null, summary_last_updated_at: null, summary_source: "", summary_version_code: "", processing_status: "complete", sponsor: null, source_api_id: "119-hr-9300", congress_gov_url: null, documents: [document], latest_contract: { id: 4729, document: 511, document_version_label: "Introduced in House", schema_version: "2.1-legal-nlp", orientation: { purpose_clause: synopsis, purpose_line_item_id: "line-purpose-108-1" }, coverage_note: "Available text", reader_stats: {line_item_count: 1, financial_item_count: 0, timeline_item_count: 0, definition_item_count: 0, section_group_count: 1}, contract_hash: "hash", computed_at: "2026-09-01" }, created_at: "2026-09-01", updated_at: "2026-09-01" };
 
 beforeEach(() => {
   if (!HTMLDialogElement.prototype.showModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value() {} });
@@ -85,7 +85,7 @@ it("does not refer to a summary above when neither summary source exists", async
 });
 
 it("keeps the official bill summary while using the matching document synopsis", async () => {
-  show({ ...detail, summary: "Official overview from an earlier version.", summary_source: "crs", summary_version_code: "earlier" });
+  show({ ...detail, summary_preview: "Official overview from an earlier version.", summary_source: "crs", summary_version_code: "earlier" });
   await screen.findByRole("heading", { name: "Summary" });
   expect(screen.getByText("Official overview from an earlier version.")).toBeInTheDocument();
   expect(selectedSection().queryByText(synopsis)).not.toBeInTheDocument();
@@ -99,7 +99,7 @@ it("uses a source-based document summary when no extracted purpose exists", asyn
 });
 
 it("prefers the document synopsis over a fragmentary legacy extraction", async () => {
-  show({ ...detail, latest_contract: { ...detail.latest_contract, contract_json: { plain_summary: "SEC." } }, documents: [{ ...document, reader_summary: "This bill would fund homeland security programs in fiscal year 2026." }] });
+  show({ ...detail, latest_contract: { ...detail.latest_contract, schema_version: "1.0", orientation: null, reader_stats: null, coverage_note: null, plain_summary: "SEC." }, documents: [{ ...document, reader_summary: "This bill would fund homeland security programs in fiscal year 2026." }] });
   await screen.findByRole("heading", { name: "Summary" });
   expect(selectedSection().getByText(/would fund homeland security/)).toBeVisible();
   expect(screen.queryByText("SEC.")).not.toBeInTheDocument();

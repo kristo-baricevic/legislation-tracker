@@ -1,11 +1,13 @@
 "use client";
+import { useDocumentVisible } from "@/lib/use-document-visible";
 import { Dropdown } from "@/app/components/FilterControls";
 import CandidateReview from "./CandidateReview";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getResearch, startResearch, getContributors, type Research, type Contributors, type FinanceProgress } from "@/lib/representative-research";
-import { dashboardValue, useDashboardRepVersion } from "@/lib/dashboard-cache";
+import { watchResearch } from "@/lib/research-poll";
+import { useDashboardRepVersion } from "@/lib/dashboard-cache";
 import styles from "./representative-research.module.css";
 import ContributorExplorer from "./ContributorExplorer";
 import CardTooltip from "./CardTooltip";
@@ -24,12 +26,14 @@ function SourceLink({ url, children, "aria-describedby": description }: { url: s
   return /^https:\/\//.test(url) ? <a href={url} aria-describedby={description} target="_blank" rel="noreferrer">{children}</a> : <span aria-describedby={description}>{children}</span>;
 }
 
-type ResearchProps = { representativeId: number; initialPeriod?: string | null; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; dashboardCard?: boolean; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
+type ResearchProps = { visible?: boolean; representativeId: number; initialPeriod?: string | null; compact?: boolean; profileView?: boolean; financeView?: boolean; modalView?: boolean; cardName?: string; dashboardCard?: boolean; onResearch?: (research: Research) => void; onPortrait?: (portrait: Research["portrait"]) => void };
 export default function RepresentativeResearch({ representativeId, compact = false, ...props }: ResearchProps) {
   return <ResearchPanel key={representativeId} representativeId={representativeId} compact={compact} {...props} />;
 }
 
-function ResearchPanel({ representativeId, initialPeriod, compact, profileView = false, financeView = false, modalView = false, cardName, dashboardCard = false, onResearch, onPortrait }: ResearchProps) {
+function ResearchPanel({ visible = true, representativeId, initialPeriod, compact, profileView = false, financeView = false, modalView = false, cardName, dashboardCard = false, onResearch, onPortrait }: ResearchProps) {
+  const tabVisible = useDocumentVisible();
+  const polling = visible && tabVisible;
   const year = new Date().getFullYear();
   const version = useDashboardRepVersion();
   const cardVersion = dashboardCard ? version : 0;
@@ -47,7 +51,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   const [showConnections, setShowConnections] = useState(false);
   const action = useRef<AbortController | null>(null);
   const actionFailed = useRef(false);
-  const initiatedRun = useRef<string | null>(null);
+  const [initiatedRun, setInitiatedRun] = useState<string | null>(null);
   useEffect(() => { onPortrait?.(data?.portrait ?? null); }, [data?.portrait, onPortrait]);
   useEffect(() => { if (data) onResearch?.(data); }, [data, onResearch]);
   const active = data?.status === "queued" || data?.status === "running";
@@ -66,16 +70,9 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     return () => window.removeEventListener("representative-research-updated", refresh);
   }, [representativeId]);
   useEffect(() => {
-    if (busy) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = async () => {
-      try {
-        const result = dashboardCard
-          ? await dashboardValue(`rep:${representativeId}:research:${period}`, () => getResearch(representativeId, period),
-              value => value.status !== "queued" && value.status !== "running")
-          : await getResearch(representativeId, period, controller.signal);
-        if (controller.signal.aborted) return;
+    if (busy || !polling) return;
+    return watchResearch(representativeId, period, dashboardCard, {
+      value(result) {
         const periods = result.available_periods ?? [];
         setAvailablePeriods(periods);
         if (!cardName && periods.length && !periods.includes(period) && !["queued", "running", "needs_review"].includes(result.status)) {
@@ -85,17 +82,10 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
         }
         setData(previous => JSON.stringify(previous) === JSON.stringify(result) ? previous : result);
         if (!actionFailed.current) setError("");
-        if (["queued", "running"].includes(result.status)) timer = setTimeout(load, 2500);
-      } catch (e) {
-        if (!controller.signal.aborted) {
-          setError(e instanceof Error ? e.message : "Research could not be loaded.");
-          timer = setTimeout(load, 5000);
-        }
-      }
-    };
-    void load();
-    return () => { controller.abort(); clearTimeout(timer); };
-  }, [representativeId, period, reload, cardName, dashboardCard, cardVersion, busy]);
+      },
+      error(e) { setError(e instanceof Error ? e.message : "Research could not be loaded."); },
+    });
+  }, [representativeId, period, reload, cardName, dashboardCard, cardVersion, busy, polling]);
   async function research() {
     if (busy) return;
     const controller = new AbortController();
@@ -105,7 +95,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     try {
       const run = await startResearch(representativeId, period, controller.signal, hasResearch);
       if (controller.signal.aborted) return;
-      initiatedRun.current = run.id;
+      setInitiatedRun(run.id);
       setData(old => ({ ...(old ?? { biography: null, portrait: null, snapshot: null }), period, status: run.status, run }));
       setReload(n => n + 1);
       window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: representativeId }));
@@ -143,7 +133,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     } finally { if (!controller.signal.aborted) setBusy(false); }
   }
   const review = data?.run?.sections?.finance?.candidates?.length && data.status === "needs_review"
-    ? <CandidateReview key={data.run.id} initiallyOpen={initiatedRun.current === data.run.id} representativeId={representativeId} run={data.run} period={data.period} onConfirmed={run => {
+    ? <CandidateReview key={data.run.id} initiallyOpen={initiatedRun === data.run.id} representativeId={representativeId} run={data.run} period={data.period} onConfirmed={run => {
         setData({ ...data, status: run.status, run });
         window.dispatchEvent(new CustomEvent("representative-research-updated", { detail: representativeId }));
       }} /> : null;
@@ -162,7 +152,7 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
     {error && <p role="alert">{error} <button onClick={() => void selectPeriod(period)}>Retry</button></p>}
     <div className={styles.fundingLoadStatus}><LoadingSpinner active={!data && !error} label="Loading funding…" />{overviewReady && active && <span role="status">Donations updating in background</span>}</div>
     <div className={styles.fundingContent} aria-label="Funding results" aria-busy={busy} inert={busy}>
-    {fundingView === "outside" ? <OutsideSpendingTable scope={outsideScope} setScope={setOutsideScope} representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? <AllYearsDonations representativeId={representativeId} modalView={modalView} refreshToken={`${reload}:${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : <>
+    {fundingView === "outside" ? <OutsideSpendingTable polling={polling} scope={outsideScope} setScope={setOutsideScope} representativeId={representativeId} collecting={active || busy} refreshToken={`${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : allYears ? data && <AllYearsDonations polling={polling} representativeId={representativeId} modalView={modalView} refreshToken={`${reload}:${data?.snapshot}:${data?.finance_progress?.pages_loaded}:${active}`} /> : <>
       {data?.finance_progress && <CampaignTotals progress={data.finance_progress} concise />}
       {data?.snapshot ? modalView ? <DonationPie initialData={preparedFunding?.snapshot === data.snapshot ? preparedFunding.sizes : undefined} refreshToken={`${data.finance_progress?.pages_loaded ?? 0}:${active}`} key={`${displayedPeriod}:${data.snapshot}`} representativeId={representativeId} period={displayedPeriod} snapshot={data.snapshot} /> : <ContributorTable initialData={preparedFunding?.snapshot === data.snapshot ? preparedFunding.contributors : undefined} concise refreshToken={`${data.finance_progress?.pages_loaded ?? 0}:${active}`} key={`${displayedPeriod}:${data.snapshot}`} representativeId={representativeId} period={displayedPeriod} snapshot={data.snapshot} /> : data && <p role="status">{active ? data.status === "queued" ? "Campaign research queued." : "Collecting campaign records…" : "No campaign records available for this period."}</p>}
     </>}
@@ -196,11 +186,12 @@ function ResearchPanel({ representativeId, initialPeriod, compact, profileView =
   </section>;
 }
 
-function AllYearsDonations({ representativeId, modalView, refreshToken }: { representativeId: number; modalView: boolean; refreshToken: string }) {
+function AllYearsDonations({ polling, representativeId, modalView, refreshToken }: { polling: boolean; representativeId: number; modalView: boolean; refreshToken: string }) {
   const [totals, setTotals] = useState<DonationSizes | null>(null);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (!polling) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     getDonationSizes(representativeId, 0, "", controller.signal).then(result => {
@@ -209,17 +200,17 @@ function AllYearsDonations({ representativeId, modalView, refreshToken }: { repr
       if (result.status === "collecting") timer = setTimeout(() => setRevision(value => value + 1), 5000);
     }).catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [representativeId, revision, refreshToken]);
+  }, [representativeId, revision, refreshToken, polling]);
   const dollars = (amount?: string) => amount == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(amount));
   return <>
     <CardTooltip text="Collected itemized records across available periods. These are not total campaign receipts; collection may be incomplete."><span tabIndex={0} className={styles.note}>Collected donations ⓘ</span></CardTooltip>
     {error && <p role="alert">Could not load totals. <button onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     <dl className={styles.fundingTotals}><div><dt>Donations</dt><dd>{dollars(totals?.total)}</dd></div><div><dt>Refunds</dt><dd>{dollars(totals?.refunds)}</dd></div></dl>
-    {modalView ? <DonationPie representativeId={representativeId} period={0} snapshot="" refreshToken={`${refreshToken}:${revision}`} /> : <ContributorTable concise representativeId={representativeId} period={0} snapshot="" refreshToken={`${refreshToken}:${revision}`} />}
+    {modalView ? <DonationPie supplied={totals} representativeId={representativeId} period={0} snapshot="" refreshToken={`${refreshToken}:${revision}`} /> : <ContributorTable concise representativeId={representativeId} period={0} snapshot="" refreshToken={`${refreshToken}:${revision}`} />}
   </>;
 }
 
-function OutsideSpendingTable({ representativeId, refreshToken, collecting = false, scope, setScope }: { representativeId: number; refreshToken: string; collecting?: boolean; scope: import("@/lib/representative-research").OutsideSpendingScope; setScope: (value: import("@/lib/representative-research").OutsideSpendingScope) => void }) {
+function OutsideSpendingTable({ polling, representativeId, refreshToken, collecting = false, scope, setScope }: { polling: boolean; representativeId: number; refreshToken: string; collecting?: boolean; scope: import("@/lib/representative-research").OutsideSpendingScope; setScope: (value: import("@/lib/representative-research").OutsideSpendingScope) => void }) {
   const [data, setData] = useState<OutsideSpending | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -252,6 +243,7 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
   const list = useRef<HTMLUListElement>(null);
   const end = useRef<HTMLLIElement>(null);
   useEffect(() => {
+    if (!polling) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     setLoading(true);
@@ -271,7 +263,7 @@ function OutsideSpendingTable({ representativeId, refreshToken, collecting = fal
       }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [representativeId, cursor, refreshToken, retry, scope]);
+  }, [representativeId, cursor, refreshToken, retry, scope, polling]);
   useEffect(() => {
     if (loading || error || data?.next_cursor == null || !end.current || !list.current) return;
     const observer = new IntersectionObserver(entries => {

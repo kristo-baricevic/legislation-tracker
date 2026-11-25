@@ -350,3 +350,30 @@ def test_one_bad_assignment_does_not_discard_other_valid_units(failure):
     result = run_analysis(plan_analysis(g), invoke, lambda *args: None)
     assert result.completeness == "complete"
     assert stages == ["generation", "repair", "synopsis"]
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_synopsis_failure_preserves_valid_provisions_unless_charge_unknown(unknown):
+    from apps.legislation.enhancements.providers.base import ProviderError
+
+    g = graph()
+
+    def invoke(call):
+        if call.stage == "synopsis":
+            raise ProviderError("provider_unavailable", outcome_unknown=unknown)
+        return {"provisions": [explanation(g), explanation(g, 1)]}
+
+    checkpoints = []
+
+    def record(state, *args):
+        checkpoints.append(state)
+
+    if unknown:
+        with pytest.raises(ProviderError):
+            run_analysis(plan_analysis(g), invoke, record)
+        assert checkpoints[-1] == "outcome_unknown"
+    else:
+        result = run_analysis(plan_analysis(g), invoke, record)
+        assert result.output["synopsis"]["status"] == "unavailable"
+        assert all(row["status"] == "explained" for row in result.output["provisions"])
+        assert checkpoints[-1] == "failed"

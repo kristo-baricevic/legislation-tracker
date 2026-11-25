@@ -615,3 +615,52 @@ def test_dead_job_does_not_expose_draft_as_success(scope):
         .status_code
         == 404
     )
+
+
+def test_removed_cycle_survives_discovery_and_research_reads(scope, monkeypatch):
+    from apps.campaign_finance.identity import resolve_candidate
+
+    rep, run, snapshot, committee = scope
+    mapping = RepresentativeCandidate.objects.get(representative=rep)
+    mapping.periods = [2024, 2026]
+    mapping.save(update_fields=["periods"])
+    mapping.candidate.reporting_periods = {"periods": [2022, 2024, 2026]}
+    mapping.candidate.save()
+    mapping.periods = [2026]
+    mapping.save(update_fields=["periods"])
+    monkeypatch.setattr(
+        "apps.campaign_finance.periods.get_page",
+        lambda *args: pytest.fail("external call during read"),
+    )
+    assert resolve_candidate(rep.pk, 2024).status != "verified"
+    assert resolve_candidate(rep.pk, 2022).status == "verified"
+    result = APIClient().get(f"/api/representatives/{rep.pk}/research/?period=2026")
+    assert result.data["available_periods"] == [2026, 2022]
+    old_run = request_research(rep.pk, 2024, run.requester_id, include_history=False)
+    work = old_run.work_item
+    work.status = "processing"
+    work.lease_expires_at = timezone.now() + timedelta(minutes=5)
+    work.save()
+
+    def search(path, params):
+        assert path == "candidates/search/"
+        return {
+            "results": [
+                {
+                    "candidate_id": mapping.candidate_id,
+                    "name": rep.name,
+                    "district": rep.district,
+                    "state": rep.state,
+                    "office": "H",
+                }
+            ],
+            "pagination": {"pages": 1},
+        }
+
+    monkeypatch.setattr("apps.campaign_finance.research.get_page", search)
+    process_finance(work)
+    assert not FinanceSnapshot.objects.filter(run=old_run).exists()
+    assert resolve_candidate(rep.pk, 2024).status != "verified"
+    mapping.periods.append(2024)
+    mapping.save(update_fields=["periods"])
+    assert resolve_candidate(rep.pk, 2024).status == "verified"

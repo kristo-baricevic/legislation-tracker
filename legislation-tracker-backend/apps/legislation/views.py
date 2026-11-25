@@ -2,7 +2,8 @@ import re
 from collections import Counter
 
 from django.core.files.storage import FileSystemStorage, default_storage
-from django.db.models import Q
+from django.db.models import Case, F, Prefetch, Q, TextField, Value, When
+from django.db.models.functions import Coalesce, NullIf
 from django.http import FileResponse, HttpResponse, HttpResponseRedirect
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -63,6 +64,21 @@ class TopicViewSet(viewsets.ReadOnlyModelViewSet):
         return super().get_queryset()
 
 
+def document_metadata(queryset):
+    return queryset.defer("raw_text", "extracted_text").annotate(
+        fallback_text=Case(
+            When(summary_text_hash=F("reader_text_hash"), then=Value(None)),
+            default=Coalesce(
+                NullIf("extracted_text", Value("")),
+                "raw_text",
+                Value(""),
+                output_field=TextField(),
+            ),
+            output_field=TextField(),
+        )
+    )
+
+
 class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     """Public access to the stored original and extracted text for a bill version."""
 
@@ -79,7 +95,12 @@ class BillDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         )
         query = query_serializer(data=self.request.query_params)
         query.is_valid(raise_exception=True)
-        return super().get_queryset()
+        queryset = super().get_queryset()
+        return (
+            document_metadata(queryset)
+            if self.action in {"list", "retrieve"}
+            else queryset
+        )
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
@@ -158,6 +179,8 @@ class BillContractViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(bill_id=bill)
         if query.validated_data.get("view", "full") == "full":
             qs = qs.prefetch_related("evidence_spans")
+        else:
+            qs = qs.defer("document__raw_text", "document__extracted_text")
         return qs
 
     @staticmethod
@@ -288,6 +311,14 @@ class BillViewSet(viewsets.ReadOnlyModelViewSet):
             )
             query_serializer = BillListQuerySerializer
         elif self.action == "retrieve":
+            documents = document_metadata(BillDocument.objects.all())
+            qs = qs.select_related("latest_contract__document").defer(
+                "latest_contract__document__raw_text",
+                "latest_contract__document__extracted_text",
+            )
+            qs = qs.prefetch_related(None).prefetch_related(
+                Prefetch("documents", queryset=documents), "bill_topics__topic"
+            )
             query_serializer = BillDetailQuerySerializer
         elif self.action == "related":
             query_serializer = BillRelatedQuerySerializer

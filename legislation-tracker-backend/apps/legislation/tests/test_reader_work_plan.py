@@ -7,11 +7,6 @@ from django.utils import timezone
 from apps.legislation.enhancements.providers.base import ProviderError
 from apps.legislation.enhancements.reader_sizing import split_reader_request
 from apps.legislation.enhancements.source_packet import build_enhancement_preflight
-from apps.legislation.tests.test_enhancement_service import (
-    enhancement_owner,
-    enhancement_settings,
-    source_bill,
-)
 from apps.legislation.tests.test_enhancement_tasks import _pending_attempt
 from apps.legislation.tests.test_reader_enhancement_pipeline import install_reader
 
@@ -158,8 +153,6 @@ def test_full_source_planning_accounts_for_every_owned_passage(
 
 
 def test_partial_review_keeps_only_valid_independent_ownership_groups():
-    from types import SimpleNamespace
-
     from apps.legislation.enhancements.reader_citations import citation_passages
     from apps.legislation.enhancements.reader_partial import validated_components
 
@@ -173,7 +166,10 @@ def test_partial_review_keeps_only_valid_independent_ownership_groups():
     }
     ids = [p["quote_id"] for p in citation_passages(source) if p["quote_id"]]
     assert len(ids) == 2
-    q = lambda i: {"source_ref": "src_0001", "quote_id": ids[i]}
+
+    def q(i):
+        return {"source_ref": "src_0001", "quote_id": ids[i]}
+
     output = {
         "financial_items": [],
         "additional_changes": [],
@@ -297,7 +293,7 @@ def test_mixed_recovery_retains_work_across_deliveries_and_confirmed_pause(
         a.save()
         provider = Provider()
         paused = False
-        for delivery in range(20):
+        for _delivery in range(20):
             try:
                 result = execute_reader_batches(
                     p,
@@ -604,7 +600,6 @@ def test_partial_cache_survives_checkpoint_crash_and_remaps_citations(
 def test_worker_pauses_and_keeps_plan_when_dispatch_budget_runs_out(
     source_bill, enhancement_owner, enhancement_settings, monkeypatch
 ):
-    from apps.legislation.enhancements.reader_steps import ReaderBudgetPaused
     from apps.legislation.enhancements.service import retry_allowed
     from apps.legislation.tasks import run_bill_enhancement_attempt
 

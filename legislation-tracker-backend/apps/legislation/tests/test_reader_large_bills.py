@@ -3,10 +3,6 @@ from django.test import override_settings
 
 from apps.legislation.enhancements.reader_discovery import discovery_sources
 from apps.legislation.enhancements.source_packet import build_enhancement_preflight
-from apps.legislation.tests.test_enhancement_service import (
-    enhancement_settings,
-    source_bill,
-)
 from apps.legislation.tests.test_reader_enhancement_pipeline import install_reader
 
 
@@ -154,7 +150,9 @@ def test_summary_includes_financial_and_additional_changes_alongside_policies(
         review = {
             key: [{"text": text, "source_quotes": [quote]}]
             for key, text in zip(
-                ["policy_changes", "financial_items", "additional_changes"], texts
+                ["policy_changes", "financial_items", "additional_changes"],
+                texts,
+                strict=False,
             )
         }
 
@@ -292,7 +290,7 @@ def test_hr3045_missing_final_citation_keeps_verified_sanctions_finding(
                     "test",
                 )
 
-        for durable in (
+        for durable in (  # noqa: B007 -- captured by the test provider above
             False,
             "citation_quote_not_found",
             "reader_amount_conflict",
@@ -682,6 +680,7 @@ def test_summary_output_limit_splits_work_within_confirmed_budget(
                         "Schools must report attendance at their institutions.",
                         "Libraries must report visits to their institutions.",
                     ],
+                    strict=False,
                 )
             ]
         }

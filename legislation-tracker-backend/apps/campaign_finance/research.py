@@ -14,6 +14,7 @@ from apps.research.tasks import continue_work, fenced_work, is_latest_run
 from .fec_client import get_page, receipt_parameters
 from .identity import (
     candidate_search_name,
+    excluded_candidates,
     resolve_candidate,
     review_choices,
     surname_query,
@@ -28,7 +29,6 @@ from .models import (
     FinanceResearchCheckpoint,
     FinanceSnapshot,
     FinanceTransaction,
-    OutsideSpendingScan,
     RepresentativeCandidate,
 )
 from .normalization import normalize_receipt, normalize_refund
@@ -84,7 +84,7 @@ def persist_page(checkpoint, page):
                     contributor=donor,
                     verified=by_identity[key]["verified"],
                 )
-                for key, donor in zip(missing, donors)
+                for key, donor in zip(missing, donors, strict=False)
             ],
             ignore_conflicts=True,
         )
@@ -241,11 +241,7 @@ def process_finance(work):
             .values_list("candidate_id", flat=True)
             .first()
         )
-        excluded = set(
-            RepresentativeCandidate.objects.filter(
-                representative=rep, revoked=True
-            ).values_list("candidate_id", flat=True)
-        )
+        excluded = excluded_candidates(rep.pk, run.period)
         if reviewed:
             excluded.add(reviewed)
         if matched in excluded:
@@ -342,7 +338,7 @@ def process_finance(work):
                         "evidence_url": f"https://www.fec.gov/data/candidate/{fec_id}/?cycle={run.period}",
                     },
                 )
-                if mapping.revoked:
+                if mapping.revoked or run.period in mapping.rejected_periods:
                     continue
                 if (
                     not created
