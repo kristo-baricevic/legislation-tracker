@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import BillCard from "@/app/components/BillCard";
@@ -23,7 +23,10 @@ it("marks only successfully enhanced cards for the purple edge treatment", () =>
 
 it("shows the sponsor as an avatar rather than a visible name", async () => {
   render(<BillCard bill={{ ...bill, sponsor_id: 12, sponsor_name: "Bruce Westerman", sponsor_party: "R", sponsor_bioguide_id: "W000821" }} onOpen={() => {}} footer={null} />);
-  expect(await screen.findByRole("img", { name: "Bruce Westerman" })).toBeVisible();
+  const portrait = await screen.findByRole("img", { name: "Bruce Westerman" });
+  expect(screen.getByText("BW")).toBeVisible();
+  fireEvent.load(portrait);
+  expect(portrait).toBeVisible();
   expect(screen.getByRole("link", { name: "Bruce Westerman" })).toHaveAttribute("href", "/representatives/12?congress=119");
   expect(screen.getByRole("link", { name: "Bruce Westerman" })).toHaveAttribute("data-party", "republican");
   expect(screen.queryByText("Bruce Westerman")).not.toBeInTheDocument();

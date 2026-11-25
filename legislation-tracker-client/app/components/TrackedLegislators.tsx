@@ -1,4 +1,5 @@
 "use client";
+import AvatarPortrait from "./AvatarPortrait";
 import React from "react";
 import { dashboardValue, useDashboardRepVersion } from "@/lib/dashboard-cache";
 import Link from "next/link";
@@ -10,7 +11,6 @@ import RepresentativeCardResearch from "./RepresentativeCardResearch";
 import { useDashboardCardLoading } from "./DashboardLoading";
 import CardTooltip from "./CardTooltip";
 import styles from "./tracked-legislators.module.css";
-import { representativeInitials } from "@/lib/representative-name";
 
 export function LegislatorCard({ representative: rep, facts, congress = null, renderName, children, activity, actions, headerAction }: {
   representative: Pick<TrackedLegislatorItem["representative"], "id" | "name" | "bioguide_id" | "chamber" | "state"> & Partial<TrackedLegislatorItem["representative"]>;
@@ -22,7 +22,6 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
   actions?: React.ReactNode;
   headerAction?: React.ReactNode;
 }) {
-  const [failedPhoto, setFailedPhoto] = React.useState("");
   const [loadedFacts, setLoadedFacts] = React.useState<TrackedLegislatorItem["card"]>();
   const [loadedActivity, setLoadedActivity] = React.useState<RepresentativeTopicActivity | null>(null);
   const [loadError, setLoadError] = React.useState(false);
@@ -50,7 +49,7 @@ export function LegislatorCard({ representative: rep, facts, congress = null, re
   const bill = cardFacts?.latest_bill;
   return <article className={styles.card} data-party={party}>
     <header>
-      <span className={styles.avatar}>{photo && photo !== failedPhoto ? <img src={photo} alt={name} onError={() => setFailedPhoto(photo)} /> : <span aria-hidden="true">{representativeInitials(rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : rep.name)}</span>}</span>
+      <span className={styles.avatar}><AvatarPortrait name={name} photo={photo} /></span>
       <div><h3>{renderName ? renderName({ id: rep.id, name, chamber: rep.chamber }) : congress ? <LegislatorName id={rep.id} name={name} congress={congress} /> : <Link href={`/representatives/${rep.id}`}>{name}</Link>}</h3>
         <p>{[partyLabel, rep.state, rep.district ? `District ${rep.district}` : ""].filter(Boolean).join(" · ")}</p>
         <p>{rep.chamber === "senate" ? "Senate" : rep.chamber === "house" ? "House" : rep.chamber}</p>

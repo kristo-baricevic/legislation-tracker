@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import AvatarPortrait from "../components/AvatarPortrait";
 import Link from "next/link";
 import { getApiBase, type RepresentativeItem } from "@/lib/api";
-import { representativeInitials } from "@/lib/representative-name";
 
 export default function RepresentativeAvatar({ rep, congress, children }: {
   rep: RepresentativeItem; congress: number | null; children?: React.ReactNode;
 }) {
-  const [failedPhoto, setFailedPhoto] = useState("");
   const plainName = rep.name.replace(/^(Rep\.|Sen\.|Del\.|Resident Commissioner)\s*/i, "").replace(/\s*\[[^\]]*\]\s*$/, "");
   const name = rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : plainName.includes(",") ? `${plainName.split(",").slice(1).join(",").trim()} ${plainName.split(",")[0].trim()}` : plainName;
   const party = /^(D|Democrat|Democratic)$/i.test(rep.party) ? "Democrat" : /^(R|Republican)$/i.test(rep.party) ? "Republican" : /^(I|ID|Independent)$/i.test(rep.party) ? "Independent" : rep.party || "Party unknown";
@@ -21,9 +19,8 @@ export default function RepresentativeAvatar({ rep, congress, children }: {
         : "border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300";
   const raw = rep.image_url || (/^[A-Z]\d{6}$/i.test(rep.bioguide_id) ? `https://www.congress.gov/img/member/${rep.bioguide_id.toLowerCase()}_200.jpg` : "");
   const photo = raw.startsWith(`/api/representatives/${rep.id}/portraits/`) ? getApiBase() + raw : /^https:\/\//.test(raw) ? raw : "";
-  const initials = representativeInitials(rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : rep.name);
-  const portrait = <span className={`flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-full border p-1.5 shadow-sm ${partyStyle}`}>
-      {photo && photo !== failedPhoto ? <img src={photo} alt={name} loading="lazy" onError={() => setFailedPhoto(photo)} className="h-full w-full rounded-full object-cover object-top" /> : <span aria-hidden="true" className="text-3xl font-semibold">{initials}</span>}
+  const portrait = <span className={`flex h-28 w-28 text-3xl font-semibold shrink-0 items-center justify-center overflow-hidden rounded-full border p-1.5 shadow-sm ${partyStyle}`}>
+      <AvatarPortrait name={name} photo={photo} lazy />
     </span>;
   const portraitClass = "rounded-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-current";
   const href = `/representatives/${rep.id}${congress ? `?congress=${congress}` : ""}`;

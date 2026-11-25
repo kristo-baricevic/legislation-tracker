@@ -29,6 +29,8 @@ const item: TrackedLegislatorItem = {
 };
 it("shows saved profile basics, top topics, party color, and the newest sponsored bill", async () => {
   render(<TrackedLegislators items={[item]} congress={119} />);
+  expect(screen.getByText("MS")).toBeVisible();
+  fireEvent.load(screen.getByRole("img", {name: "Melanie Stansbury"}));
   expect(screen.getByRole("img", {name: "Melanie Stansbury"})).toBeVisible();
   expect(screen.getByText("Works on education.")).toBeVisible();
   expect(screen.getByText(/Democrat/)).toBeVisible();
