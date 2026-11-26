@@ -586,9 +586,9 @@ def test_spanning_account_reaches_only_covered_projects(target):
     sources = planned_sources(
         SimpleNamespace(version_label="IH"), text, 1, target, sections
     )
-    for identity, phrase, covered in [
-        ("army", "Training center", True),
-        ("navy", "Shipyard", False),
+    for identity, phrase, amount, covered in [
+        ("army", "Training center", "200", True),
+        ("navy", "Shipyard", "300", False),
     ]:
         owner = next(s for s in sources if phrase in s["quoted_text"])
         assert "Army construction" not in owner["quoted_text"]
@@ -602,6 +602,27 @@ def test_spanning_account_reaches_only_covered_projects(target):
         assert not owner["unresolved_dependencies"]
         node = next(i for i, n in enumerate(index.nodes) if n.identity == identity)
         row = index.nodes[node]
+        # The project and its amount can land in separate chunks. Locate the
+        # amount in this row and verify the project can cite that exact source.
+        amount_start = text.index(amount, row.start, row.end)
+        amount_source = next(
+            s for s in sources if s["start_char"] <= amount_start < s["end_char"]
+        )
+        offset = amount_start - amount_source["start_char"]
+        cursor = 0
+        for quote in citation_passages(amount_source):
+            end = cursor + len(quote["text"])
+            if cursor <= offset and offset + len(amount) <= end:
+                assert quote["quote_id"]
+                assert (
+                    amount_source is owner
+                    or quote["quote_id"]
+                    in owner["context_quote_ids"][amount_source["source_ref"]]
+                )
+                break
+            cursor = end
+        else:
+            pytest.fail("No citable passage covers the project amount")
         ranges, missing = index.required(row.start, row.end, node)
         assert not missing
         cell = text.index("Army construction")

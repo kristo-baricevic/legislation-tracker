@@ -640,11 +640,13 @@ def test_source_first_distinguishes_grant_allocation_from_authorizing_account(
     [
         ("The bill appropriates $100 for grants.", False, False),
         ("There is appropriated $100 for grants.", False, False),
+        ("$100 is appropriated for grants.", False, False),
         ("The bill authorizes $100 for grants.", False, True),
         ("If Congress appropriates $100, grants may proceed.", False, True),
         ("If grants qualify, the bill appropriates $100.", False, False),
         ("The bill appropriates $100 for grants.", True, True),
         ("There is appropriated $100 for grants.", True, True),
+        ("$100 is appropriated for grants.", True, True),
     ],
 )
 def test_enacted_appropriation_requires_operative_evidence(
