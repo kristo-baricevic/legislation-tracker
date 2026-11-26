@@ -632,3 +632,89 @@ def test_source_first_distinguishes_grant_allocation_from_authorizing_account(
             ("spending_authority_conflict", "claims/0/money/0"),
         ]
     )
+
+
+@pytest.mark.parametrize("path", ["provision", "reader"])
+@pytest.mark.parametrize(
+    "statement,enacted,valid",
+    [
+        ("The bill appropriates $100 for grants.", False, False),
+        ("There is appropriated $100 for grants.", False, False),
+        ("The bill authorizes $100 for grants.", False, True),
+        ("If Congress appropriates $100, grants may proceed.", False, True),
+        ("If grants qualify, the bill appropriates $100.", False, False),
+        ("The bill appropriates $100 for grants.", True, True),
+        ("There is appropriated $100 for grants.", True, True),
+    ],
+)
+def test_enacted_appropriation_requires_operative_evidence(
+    path, statement, enacted, valid
+):
+    from hashlib import sha256
+
+    from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.reader_citations import resolve_reader_citations
+
+    evidence = (
+        "There is appropriated $100 for grants."
+        if enacted
+        else "There is authorized to be appropriated $100 for grants."
+    )
+    if path == "reader":
+        source = {
+            "source_ref": "src_0001",
+            "quoted_text": evidence,
+            "text_sha256": sha256(evidence.encode()).hexdigest(),
+        }
+        output = {
+            "schema_version": "1.4",
+            "explanations": [],
+            "summary": [
+                {
+                    "text": statement,
+                    "source_quotes": [{"source_ref": "src_0001", "quote_id": "p0001"}],
+                }
+            ],
+        }
+        if valid:
+            assert (
+                resolve_reader_citations(output, [], [source])["summary"][0][
+                    "source_quotes"
+                ][0]["quote"]
+                == evidence
+            )
+        else:
+            with pytest.raises(ValidationError) as error:
+                resolve_reader_citations(output, [], [source])
+            assert error.value.validator == "reader_amount_conflict"
+    else:
+        graph = build_source_graph("1", "IH", "SEC. 1. GRANTS\n" + evidence)
+        row = explanation(graph)
+        row["summary"] = statement
+        row["claims"][0].update(
+            action="Appropriate funds for grants.", modality="permitted"
+        )
+        row["claims"][0]["money"][0].update(measure="dollars")
+        findings = validate_provision(row, graph.units[0], graph)
+        assert [(f.code, f.path) for f in findings] == (
+            [] if valid else [("spending_authority_conflict", "explanations/0")]
+        )
+
+
+@pytest.mark.parametrize(
+    "action", ["Appropriates $100 for grants.", "$100 is appropriated for grants."]
+)
+def test_enacted_claim_cannot_hide_behind_authorization_summary(action):
+    graph = build_source_graph(
+        "1",
+        "IH",
+        "SEC. 1. GRANTS\nThere is authorized to be appropriated $100 for grants.",
+    )
+    row = explanation(graph)
+    row["summary"] = "The bill authorizes $100 for grants."
+    row["claims"][0].update(action=action, modality="required")
+    row["claims"][0]["money"][0].update(measure="dollars")
+    assert [
+        (f.code, f.path) for f in validate_provision(row, graph.units[0], graph)
+    ] == [("spending_authority_conflict", "claims/0/money/0")]

@@ -8,9 +8,9 @@ from jsonschema import ValidationError
 
 from .citations import citation_spans
 from .funding_roles import (
+    asserted_outlays,
     authorization_only_amounts,
     dollar_amounts,
-    mandatory_outlays,
     required_claim_conflicts,
 )
 from .percentage_bases import (
@@ -271,7 +271,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
     has_conditions = bool(required_conditions(unit, graph))
     prose = " ".join([explanation["summary"], *explanation["details"]])
     for index, sentence in enumerate([explanation["summary"], *explanation["details"]]):
-        if cited_authorizations and mandatory_outlays(sentence) & cited_authorizations:
+        if cited_authorizations and asserted_outlays(sentence) & cited_authorizations:
             add("spending_authority_conflict", path=f"explanations/{index}")
         if any(
             percentage_base_conflicts(rate, basis, cited_bases)

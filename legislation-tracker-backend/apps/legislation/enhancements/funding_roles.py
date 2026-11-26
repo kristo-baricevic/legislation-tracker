@@ -25,15 +25,14 @@ _AUTHORIZES_AMOUNT = re.compile(
     rf"\bauthorizes?\s+(?:the appropriation of\s+)?{_DOLLAR}", re.I
 )
 _ENACTED_OUTLAY = re.compile(
-    r"\b(?:allocates|appropriates|disburses|(?:is|are)\s+(?:hereby\s+)?(?:allocated|appropriated|disbursed))\b",
+    r"\b(?:allocates|appropriates|disburses|spends|(?:is|are)\s+(?:hereby\s+)?(?:allocated|appropriated|disbursed|spent))\b",
     re.I,
 )
 _OUTLAY = r"(?:allocate|spend|appropriate|disburse|be\s+(?:allocated|spent|appropriated|disbursed))"
 _REQUIRED_OUTLAY = re.compile(rf"\b(?:must|shall|will)\s+{_OUTLAY}\b", re.I)
 _FUNDING_PREDICATE = re.compile(
     rf"\b(?:(?:must|shall|will|may)\s+{_OUTLAY}|"
-    r"(?:is|are)\s+(?:hereby\s+)?(?:authorized|appropriated|spent|allocated|disbursed)|"
-    r"allocates|spends|appropriates|disburses|authorizes)\b",
+    rf"{_ENACTED_OUTLAY.pattern}|(?:is|are)\s+(?:hereby\s+)?authorized|authorizes)\b",
     re.I,
 )
 
@@ -75,6 +74,22 @@ _AUTH_SOURCE = re.compile(
 )
 
 
+_CONDITIONAL_SUBJECT = re.compile(
+    rf"\b(?:if|unless|whether)\s+(?:Congress|it|there|the (?:bill|Act|Secretary|agency)|{_DOLLAR})\s*$",
+    re.I,
+)
+
+
+def _asserts_outlay(text):
+    # "If Congress appropriates" describes a future prerequisite. A later
+    # independent assertion (after the comma) can still enact an outlay.
+    return any(
+        not _CONDITIONAL_SUBJECT.search(text[: match.start()])
+        for predicate in (_REQUIRED_OUTLAY, _ENACTED_OUTLAY)
+        for match in predicate.finditer(text)
+    )
+
+
 def _funding_roles(text):
     """Separate an allocation's amount from the authorized account it draws on."""
     if "$" not in text:
@@ -86,44 +101,45 @@ def _funding_roles(text):
             for amount in dollar_amounts(match[0])
         }
         decision = _AUTH_SOURCE.sub(" ", clause)
-        if _REQUIRED_OUTLAY.search(decision):
+        outlay = _asserts_outlay(decision)
+        if outlay:
             # "$2 million authorized to be appropriated ... shall be allocated"
             # retains its explicit mandate. The authorization modifies that sum.
             decision = _AUTHORIZED_SUM.sub(r"\g<amount>", decision)
-        yield decision, dollar_amounts(decision), source_amounts
+        yield decision, dollar_amounts(decision), source_amounts, outlay
 
 
 def authorization_only_amounts(texts):
     authorized, operative = set(), set()
     for text in texts:
-        for decision, amounts, source_amounts in _funding_roles(text):
+        for decision, amounts, source_amounts, outlay in _funding_roles(text):
             authorized.update(source_amounts)
             if _AUTHORIZATION.search(decision) or _AUTHORIZES_AMOUNT.search(decision):
                 authorized.update(amounts)
-            elif _REQUIRED_OUTLAY.search(decision) or _ENACTED_OUTLAY.search(decision):
+            elif outlay:
                 # A cost estimate repeating this amount supplies no authority to spend it.
                 operative.update(amounts)
     return authorized - operative
 
 
-def mandatory_outlays(text):
+def asserted_outlays(text):
     return {
         amount
-        for decision, amounts, _ in _funding_roles(text)
-        if _REQUIRED_OUTLAY.search(decision)
+        for _, amounts, _, outlay in _funding_roles(text)
+        if outlay
         for amount in amounts
     }
 
 
 def required_claim_conflicts(claim, amount, authorization_only):
+    action = claim.get("action", "")
     return (
         bool(authorization_only)
         and claim.get("modality") == "required"
-        and bool(
-            re.search(
-                r"\b(?:spend|allocate|appropriate|disburse)\b",
-                claim.get("action", ""),
-                re.I,
+        and (
+            _asserts_outlay(action)
+            or bool(
+                re.search(r"\b(?:spend|allocate|appropriate|disburse)\b", action, re.I)
             )
         )
         and bool(dollar_amounts(f"${amount}") & authorization_only)

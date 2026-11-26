@@ -7,7 +7,7 @@ Amounts stay attached to each item's cited evidence, never the entire bill.
 import re
 
 from .diagnostics import output_error
-from .funding_roles import authorization_only_amounts, dollar_amounts, mandatory_outlays
+from .funding_roles import asserted_outlays, authorization_only_amounts, dollar_amounts
 from .percentage_bases import (
     cited_percentage_bases,
     percentage_base_conflicts,
@@ -38,7 +38,7 @@ def validate_numbers(item, *, path):
         q["quote"] for q in item["source_quotes"]
     )
     if authorization_only and any(
-        mandatory_outlays(field) & authorization_only for field in fields
+        asserted_outlays(field) & authorization_only for field in fields
     ):
         raise output_error("reader_amount_conflict", path)
 
