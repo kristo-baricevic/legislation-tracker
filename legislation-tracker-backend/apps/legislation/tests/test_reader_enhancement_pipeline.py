@@ -569,15 +569,18 @@ def test_reader_checkpoint_reuses_plan_but_detects_changed_source(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "version",
+    ["reader_cache.VALIDATOR_VERSION", "reader_dependencies.CONTEXT_PLANNER_VERSION"],
+    ids=["output-validation", "source-ownership"],
+)
 def test_validation_upgrade_changes_confirmation_identity(
-    source_bill, enhancement_settings, monkeypatch
+    source_bill, enhancement_settings, monkeypatch, version
 ):
     install_reader(source_bill, count=0)
     with enhancement_settings:
         before = build_enhancement_preflight(source_bill)
-        monkeypatch.setattr(
-            "apps.legislation.enhancements.reader_cache.VALIDATOR_VERSION", 999
-        )
+        monkeypatch.setattr(f"apps.legislation.enhancements.{version}", 999)
         after = build_enhancement_preflight(source_bill)
     assert after.request_fingerprint != before.request_fingerprint
     assert after.worker_guard != before.worker_guard

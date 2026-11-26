@@ -22,7 +22,7 @@ from apps.ingestion.document_download import (
     extract_text_from_xml_or_html,
 )
 
-XML_SECTION_VERSION = 5  # Bump when section alignment or rendering changes.
+XML_SECTION_VERSION = 6  # Bump when section alignment or rendering changes.
 
 _BODIES = {"legis-body", "engrossed-amendment-body", "amendment-body"}
 _QUOTED = {"quoted-block", "quoted-text"}
@@ -73,141 +73,178 @@ class XmlSections(tuple):
 
 
 def _table_layout(root):
-    """Use CALS columns to identify nested table labels, never capitalization.
-
-    A service/account label in an earlier column governs later geographic
-    labels. A new label at the same column replaces that level and its children.
-    Header rows and amount-only rows are not category labels.
-    """
+    """Resolve CALS row labels and carried cells on one column grid per group."""
     levels, inherited = {}, {}
 
-    def walk(
-        element,
-        columns=None,
-        figure_columns=frozenset(),
-        in_header=False,
-        spans=None,
-        headings=None,
-    ):
+    def walk(element, columns, figure_columns, detail_columns):
         tag = _xml_tag(element)
+        if tag in {"thead", "tfoot"}:
+            return
         if tag in {"table", "tgroup"}:
-            columns = dict(columns or {})
-            figures = set(figure_columns)
+            columns = dict(columns)
+            figure_columns = set(figure_columns)
+            detail_columns = set(detail_columns)
+            detail_labels = {
+                "item",
+                "description",
+                "project",
+                "project title",
+                "project description",
+            }
             specs = [child for child in element if _xml_tag(child) == "colspec"]
             # OASIS colnum starts at one. Congress also publishes zero-based
             # tgroups. Use zero-based offsets internally in both dialects.
             origin = 0 if any(spec.get("colnum") == "0" for spec in specs) else 1
             next_column = 0
             for spec in specs:
-                name = spec.get("colname")
                 number = spec.get("colnum", "")
                 position = int(number) - origin if number.isdecimal() else next_column
                 next_column = position + 1
-                if name:
+                if name := spec.get("colname"):
                     columns[name] = position
+                    if name.casefold() in detail_labels:
+                        detail_columns.add(position)
                 if spec.get("coldef", "").startswith("fig"):
-                    figures.add(position)
-            figure_columns = frozenset(figures)
-        if tag in {"table", "tgroup", "thead", "tbody", "tfoot"}:
-            spans = {}
-            # In groups with populated vertical spans, resolve both persistent
-            # column headings and finite cells on the same column grid.
-            headings = (
-                {}
-                if any(
-                    entry.get("morerows", "").isdecimal()
-                    and int(entry.get("morerows"))
-                    and "".join(entry.itertext()).strip()
-                    for row in element
-                    if _xml_tag(row) == "row"
-                    for entry in row
-                    if _xml_tag(entry) == "entry"
-                )
-                else None
-            )
-        if tag in {"thead", "tfoot"}:
-            in_header = True
-        if tag == "row":
-            entries = [child for child in element if _xml_tag(child) == "entry"]
-            if in_header or spans is None:
-                return
-
-            def position(name, fallback):
-                if name in (columns or {}):
-                    return columns[name]
-                number = re.fullmatch(r"(?:col|column)(\d+)", name or "", re.I)
-                return max(0, int(number[1]) - 1) if number else fallback
-
-            cursor = 0
-            # A cell can span both rows and columns. Track occupied intervals
-            # without allocating one item per declared row or column.
-            occupied = sorted(spans)
-            covering = {}
-            expiring = []
-            for interval in occupied:
-                remaining, cell = spans[interval]
-                if cell is not None:
-                    covering[interval[0]] = cell
-                if remaining > 1:
-                    spans[interval] = remaining - 1, cell
-                else:
-                    del spans[interval]
-                    if cell is not None:
-                        expiring.append(interval[0])
-            filled = []
-            for entry in entries:
-                for left, right in occupied:
-                    if left <= cursor <= right:
-                        cursor = right + 1
-                namest = entry.get("namest")
-                start = position(namest or entry.get("colname"), cursor)
-                end = position(entry.get("nameend"), start) if namest else start
-                more = entry.get("morerows", "")
-                content = "".join(entry.itertext()).strip()
-                row_span = int(more) if more.isdecimal() else 0
-                if row_span:
-                    spans[start, end] = row_span, entry if content else None
-                cursor = end + 1
-                if content:
-                    filled.append((start, content, row_span, entry))
-            if headings is not None:
-
-                def replace_from(column):
-                    for level in list(headings):
-                        if level >= column:
-                            del headings[level]
-
-                for column, _, more, _ in filled:
-                    if more:
-                        replace_from(column)
-                labels = [
-                    (column, value, entry)
-                    for column, value, more, entry in filled
-                    if not more
-                ]
-                if len(labels) == 1:
-                    column, value, entry = labels[0]
-                    if column not in figure_columns and any(c.isalpha() for c in value):
-                        replace_from(column)
-                        headings[column] = entry
-                own = {entry for _, _, _, entry in filled}
-                inherited[element] = tuple(
-                    cell
-                    for cell in (*covering.values(), *headings.values())
-                    if cell not in own
-                )
-                if expiring:
-                    replace_from(min(expiring))
-            elif len(filled) == 1:
-                start, content, _, _ = filled[0]
-                if start not in figure_columns and any(c.isalpha() for c in content):
-                    levels[element] = start
-            return
+                    figure_columns.add(position)
+            for head in element:
+                if _xml_tag(head) == "thead":
+                    for entry in head.iter():
+                        if _xml_tag(entry) != "entry":
+                            continue
+                        name = entry.get("namest") or entry.get("colname")
+                        if (
+                            name in columns
+                            and " ".join("".join(entry.itertext()).split()).casefold()
+                            in detail_labels
+                        ):
+                            detail_columns.add(columns[name])
+        rows = []
         for child in element:
-            walk(child, columns, figure_columns, in_header, spans, headings)
+            if _xml_tag(child) == "row":
+                rows.append(child)
+            else:
+                walk(child, columns, figure_columns, detail_columns)
+        if rows:
+            _table_group_context(
+                rows, columns, figure_columns, detail_columns, levels, inherited
+            )
 
-    walk(root)
+    walk(root, {}, set(), set())
     return levels, inherited
+
+
+def _table_group_context(
+    rows, columns, figure_columns, detail_columns, levels, inherited
+):
+    def hierarchy_stub(entry):
+        return entry.get("stub-hierarchy") or entry.get("entry-modify", "").startswith(
+            "fl-hang-hier-"
+        )
+
+    def position(name, fallback):
+        if name in columns:
+            return columns[name]
+        number = re.fullmatch(r"(?:col|column)(\d+)", name or "", re.I)
+        return max(0, int(number[1]) - 1) if number else fallback
+
+    # Headings persist until a replacement at the same or a higher level.
+    # Populated vertical spans apply only to their own covered rows.
+    headings, spans, contexts = {}, {}, {}
+    needs_cell_context = False
+
+    def replace_from(column):
+        for other in list(headings):
+            if other >= column:
+                del headings[other]
+
+    for row in rows:
+        occupied = sorted(spans)
+        covering = []
+        expiring = []
+        for interval in occupied:
+            remaining, cell = spans[interval]
+            if cell is not None:
+                covering.append(cell)
+            if remaining > 1:
+                spans[interval] = remaining - 1, cell
+            else:
+                del spans[interval]
+                if cell is not None:
+                    expiring.append(interval[0])
+
+        cursor = 0
+        filled = []
+        for entry in row:
+            if _xml_tag(entry) != "entry":
+                continue
+            for left, right in occupied:
+                if left <= cursor <= right:
+                    cursor = right + 1
+            namest = entry.get("namest")
+            start = position(namest or entry.get("colname"), cursor)
+            end = position(entry.get("nameend"), start) if namest else start
+            cursor = end + 1
+            content = "".join(entry.itertext()).strip()
+            more = entry.get("morerows", "")
+            row_span = int(more) if more.isdecimal() else 0
+            if row_span:
+                spans[start, end] = row_span, entry if content else None
+                if content:
+                    needs_cell_context = True
+                    replace_from(start)
+            if content:
+                label = start not in figure_columns and any(
+                    c.isalpha() for c in content
+                )
+                filled.append((start, end, entry, row_span, label))
+
+        unspanned = [cell for cell in filled if not cell[3]]
+        if len(unspanned) == 1:
+            start, _, entry, _, label = unspanned[0]
+            if label:
+                replace_from(start)
+                headings[start] = entry
+                if len(filled) == 1:
+                    levels[row] = start
+        # A funding row may contain several descriptive coordinates, in any
+        # order. Congress also encodes hierarchical stubs (e.g. an installation
+        # indented beneath its state); those values refine the heading.
+        has_figure = any(not label for _, _, _, _, label in filled)
+        descriptions = [(a, b, cell) for a, b, cell, _, label in filled if label]
+        local = [
+            (a, b)
+            for a, b, entry in descriptions
+            if a not in detail_columns
+            and len(descriptions) > 1
+            and has_figure
+            and not hierarchy_stub(entry)
+        ]
+        # With a dedicated project column separated from active headings, the
+        # quantity belongs to its row even if the next project shares a heading.
+        if (
+            has_figure
+            and len(headings) > 1
+            and descriptions
+            and not any(map(hierarchy_stub, row))
+        ):
+            needs_cell_context = True
+        own = {cell for _, _, cell, _, _ in filled}
+        carried = list(covering)
+        for column, cell in headings.items():
+            if cell in own:
+                continue
+            if any(a <= column <= b for a, b in local):
+                needs_cell_context = True
+            else:
+                carried.append(cell)
+        contexts[row] = tuple(carried)
+        if expiring:
+            replace_from(min(expiring))
+
+    # Plain row headings already have a compact row-level dependency. Only
+    # groups with independent cell ownership need cell-level citation edges.
+    if needs_cell_context:
+        inherited.update(contexts)
 
 
 def _strip_markers(annotated, marker, *, normalize=False):

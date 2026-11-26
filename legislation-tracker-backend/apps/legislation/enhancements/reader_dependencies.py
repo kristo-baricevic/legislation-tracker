@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 10
+CONTEXT_PLANNER_VERSION = 11
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -393,7 +393,10 @@ class DependencyIndex:
         self.introduction_links = defaultdict(set)
         self.table_authorizations = defaultdict(set)
         self.tables_under = defaultdict(list)
+        self.cell_context_ancestors = set()
         for i, node in enumerate(self.nodes):
+            if node.inherited_cell_ranges is not None:
+                self.cell_context_ancestors.update(self.ancestors(i))
             if node.tag == "table":
                 for ancestor in self.ancestors(i):
                     self.tables_under[ancestor].append(i)
@@ -959,7 +962,9 @@ class DependencyIndex:
             node = self.nodes[index]
             size = len(self.text[node.start : node.end].encode())
             if node.tag in NAVIGATION or (
-                node.tag not in CONTAINERS and size <= UNIT_BYTES
+                index not in self.cell_context_ancestors
+                and node.tag not in CONTAINERS
+                and size <= UNIT_BYTES
             ):
                 pieces.append((node.start, node.end, index))
                 return

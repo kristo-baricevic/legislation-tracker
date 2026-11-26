@@ -82,10 +82,12 @@ Do not claim the guide is exhaustive when the source packet is truncated.
 
 def reader_execution_settings():
     from .reader_cache import VALIDATOR_VERSION
+    from .reader_dependencies import CONTEXT_PLANNER_VERSION
 
     return {
         "policy_grouping_version": 7,
         "reader_execution_version": 17,
+        "context_planner_version": CONTEXT_PLANNER_VERSION,
         "model_capacities": getattr(settings, "LLM_READER_MODEL_CAPACITIES", {}),
         **(
             {"owned_token_target": owned_token_target()} if owned_token_target() else {}

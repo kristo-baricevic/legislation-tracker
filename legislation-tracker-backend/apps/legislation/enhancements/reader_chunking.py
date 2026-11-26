@@ -106,10 +106,10 @@ def planned_sources(
                     unit == previous_unit
                     or (
                         index.nodes[unit].parent == index.nodes[previous_unit].parent
-                        # A chunk shares its citation context. Keep a covered
-                        # project separate from the row where a cell span ends.
-                        and index.nodes[unit].inherited_cell_ranges
-                        == index.nodes[previous_unit].inherited_cell_ranges
+                        # A project owns its amount even when the next project
+                        # is under exactly the same account and location.
+                        and index.nodes[unit].inherited_cell_ranges is None
+                        and index.nodes[previous_unit].inherited_cell_ranges is None
                     )
                 )
             )

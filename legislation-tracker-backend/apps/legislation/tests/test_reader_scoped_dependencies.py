@@ -728,3 +728,111 @@ def test_location_changes_inside_spanning_account(target, span_column):
         assert all(word in context for word in wanted), (project, wanted)
         assert not any(word in context for word in excluded), (project, excluded)
         assert not owner["unresolved_dependencies"]
+
+
+@pytest.mark.parametrize("target", [1000, 8000])
+@pytest.mark.parametrize(
+    "location,account_span",
+    [
+        ("heading", True),
+        ("project", True),
+        ("implicit", True),
+        ("trailing", True),
+        ("horizontal", True),
+        ("installation", True),
+        ("project", False),
+        ("heading", False),
+    ],
+)
+def test_each_project_owns_only_its_governing_table_values(
+    target, location, account_span
+):
+    from types import SimpleNamespace
+
+    from apps.legislation.enhancements.reader_chunking import planned_sources
+    from apps.legislation.enhancements.reader_citations import citation_passages
+
+    state = '<entry colname="location">Alaska</entry>'
+    if location == "implicit":
+        # The account span occupies column one. Skip the empty region column.
+        state = "<entry/><entry>Alaska</entry>"
+    if location == "horizontal":
+        state = '<entry namest="region" nameend="location">Alaska</entry>'
+    heading = f"<row>{state}</row>" if location in {"heading", "installation"} else ""
+    project_location = "" if heading else state
+    if location == "installation":
+        project_location = '<entry colname="location" entry-modify="fl-hang-hier-2">Fort Wainwright</entry>'
+    span = f' morerows="{3 if heading else 2}"' if account_span else ""
+    account = f'<row><entry colname="account"{span}>Army construction</entry>'
+    if not account_span:
+        account += "</row><row>"
+    filler = "Training specifications. " * 400
+    detail = f'<entry colname="project">Training center. {filler}</entry>'
+    project_cells = (
+        detail + project_location
+        if location == "trailing"
+        else project_location + detail
+    )
+    shipyard = '<entry colname="project">Shipyard project</entry>'
+    guam = '<entry colname="location">Guam</entry>'
+    navy_cells = shipyard + guam if location == "trailing" else guam + shipyard
+    columns = (
+        ["account", "region", "project", "location"]
+        if location == "trailing"
+        else ["account", "region", "location", "project"]
+    )
+    colspecs = "".join(f'<colspec colname="{name}"/>' for name in columns)
+    raw = f"""<bill><engrossed-amendment-body><section><enum>1.</enum><table><tgroup cols="5">
+      {colspecs}<colspec colname="amount" coldef="fig"/>
+      <tbody>{account}<entry colname="location">Alabama</entry></row>
+      <row><entry colname="project">Depot renovation</entry><entry colname="amount">100</entry></row>
+      {heading}
+      <row>{project_cells}<entry colname="amount">200</entry></row>
+      <row><entry colname="project">Inventory annex</entry><entry colname="amount">400</entry></row>
+      <row><entry colname="account">Navy construction</entry>{navy_cells}<entry colname="amount">300</entry></row>
+      </tbody></tgroup></table></section></engrossed-amendment-body></bill>""".encode()
+    text = extract_document_text(raw, "application/xml", "bill.xml")
+    sources = planned_sources(
+        SimpleNamespace(version_label="IH"), text, 1, target, xml_boundaries(raw, text)
+    )
+    values = {
+        "Army construction",
+        "Navy construction",
+        "Alabama",
+        "Alaska",
+        "Guam",
+        "100",
+        "200",
+        "300",
+        "400",
+    }
+    for project, expected in [
+        ("Training center", {"Army construction", "Alaska", "200"}),
+        ("Depot renovation", {"Army construction", "Alabama", "100"}),
+        (
+            "Inventory annex",
+            (
+                {"400"}
+                if account_span
+                else {"Army construction", "Alaska" if heading else "Alabama", "400"}
+            ),
+        ),
+        ("Shipyard project", {"Navy construction", "Guam", "300"}),
+    ]:
+        owner = next(s for s in sources if project in s["quoted_text"])
+        supplied = [
+            passage["text"]
+            for s in sources
+            for passage in citation_passages(s)
+            if passage["quote_id"]
+            and (
+                s is owner
+                or passage["quote_id"]
+                in owner["context_quote_ids"].get(s["source_ref"], ())
+            )
+        ]
+        assert {v for v in values if any(v in p for p in supplied)} == expected, project
+        assert any("Fort Wainwright" in p for p in supplied) == (
+            location == "installation" and project == "Training center"
+        )
+        assert not owner["unresolved_dependencies"]
