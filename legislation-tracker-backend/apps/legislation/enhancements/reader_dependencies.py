@@ -369,9 +369,7 @@ class DependencyIndex:
             self._quotes.append(
                 i
                 if node.tag in {"quoted-block", "quoted-text"}
-                else self._quotes[node.parent]
-                if node.parent is not None
-                else None
+                else self._quotes[node.parent] if node.parent is not None else None
             )
         self._required = {}
         self.by_identity = {

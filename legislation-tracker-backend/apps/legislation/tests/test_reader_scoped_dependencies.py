@@ -141,10 +141,12 @@ def test_text_section_heading_does_not_reinsert_its_entire_large_section():
 
 
 def test_external_decimal_section_is_not_rebound_to_bill_section_two():
-    index = _index("""
+    index = _index(
+        """
       <section id="pay"><enum>1.</enum><text>The term contract has the meaning
         given in section 2.101 of the Federal Acquisition Regulation.</text></section>
-      <section id="contents"><enum>2.</enum><text>UNRELATED BILL CONTENTS.</text></section>""")
+      <section id="contents"><enum>2.</enum><text>UNRELATED BILL CONTENTS.</text></section>"""
+    )
     context, unresolved = _context(index, "pay")
     assert "UNRELATED BILL CONTENTS" not in context
     assert unresolved
@@ -181,7 +183,8 @@ def test_specific_amendments_effective_date_is_not_an_act_wide_condition():
 
 
 def test_reference_to_this_act_does_not_widen_a_local_definition():
-    index = _index("""
+    index = _index(
+        """
       <section><enum>1.</enum>
         <subsection><enum>(a)</enum><text>For purposes of this subsection:</text>
           <paragraph><enum>(1)</enum><text>The term eligible person means a
@@ -189,14 +192,16 @@ def test_reference_to_this_act_does_not_widen_a_local_definition():
         </subsection>
       </section>
       <section id="pay"><enum>2.</enum><text>Pay each eligible person $100.</text></section>
-      <section><enum>3.</enum><text>The private district is the eastern district.</text></section>""")
+      <section><enum>3.</enum><text>The private district is the eastern district.</text></section>"""
+    )
     context, _ = _context(index, "pay")
     assert "PRIVATE DISTRICT" not in context
     assert "eastern district" not in context
 
 
 def test_repeal_list_keeps_the_inherited_external_statute_scope():
-    index = _index("""
+    index = _index(
+        """
       <section id="repeal"><enum>1.</enum><header>Repeals</header>
         <subsection><enum>(a)</enum><text>The following provisions are hereby repealed:</text>
           <paragraph><enum>(1)</enum><text>Of the Other Authorization Act
@@ -205,7 +210,8 @@ def test_repeal_list_keeps_the_inherited_external_statute_scope():
           </paragraph>
         </subsection>
       </section>
-      <section><enum>804.</enum><text>UNRELATED CURRENT BILL CONTRACTS.</text></section>""")
+      <section><enum>804.</enum><text>UNRELATED CURRENT BILL CONTRACTS.</text></section>"""
+    )
     context, unresolved = _context(index, "repeal")
     assert "Other Authorization Act" in context
     assert "UNRELATED CURRENT BILL CONTRACTS" not in context
@@ -420,10 +426,12 @@ def test_table_rows_inherit_only_the_active_service_and_location():
 def test_xml_reference_authority_overrides_colliding_section_label(
     tag, attributes, external
 ):
-    index = _index(f"""
+    index = _index(
+        f"""
       <section id="grant"><enum>1.</enum><text>Grants are subject to
         <{tag} {attributes}>section 2</{tag}>.</text></section>
-      <section id="restriction"><enum>2.</enum><text>Only hospitals in Alaska qualify.</text></section>""")
+      <section id="restriction"><enum>2.</enum><text>Only hospitals in Alaska qualify.</text></section>"""
+    )
     context, unresolved = _context(index, "grant")
     assert ("Only hospitals in Alaska qualify" in context) is not external
     assert bool(unresolved) is external
@@ -462,9 +470,11 @@ def test_declared_definition_scope_controls_sibling(inherited, scope):
 
 
 def test_missing_scope_cannot_apply_an_unrelated_restriction_to_the_entire_act():
-    index = _index("""
+    index = _index(
+        """
       <section id="grant"><enum>1.</enum><text>Award hospital grants.</text></section>
-      <section id="pilot"><enum>2.</enum><text>Only Alaska hospitals are eligible under this subparagraph.</text></section>""")
+      <section id="pilot"><enum>2.</enum><text>Only Alaska hospitals are eligible under this subparagraph.</text></section>"""
+    )
     grant, _ = _context(index, "grant")
     _, missing = _context(index, "pilot")
     assert "Alaska" not in grant

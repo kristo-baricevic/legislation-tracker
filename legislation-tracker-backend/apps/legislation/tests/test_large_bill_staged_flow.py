@@ -71,23 +71,27 @@ def _quote(record_id):
 def _claim(record_id, *, matching=False):
     return {
         "actor": "Grant recipients" if matching else "The Secretary",
-        "action": "Provide a non-Federal matching contribution"
-        if matching
-        else "Award grants to qualifying schools",
+        "action": (
+            "Provide a non-Federal matching contribution"
+            if matching
+            else "Award grants to qualifying schools"
+        ),
         "modality": "required",
-        "money": [
-            {
-                "amount": "50",
-                "currency": None,
-                "measure": "percent",
-                "comparator": None,
-                "purpose": "non-Federal matching contribution",
-                "period": None,
-                "base": "grant amount",
-            }
-        ]
-        if matching
-        else [],
+        "money": (
+            [
+                {
+                    "amount": "50",
+                    "currency": None,
+                    "measure": "percent",
+                    "comparator": None,
+                    "purpose": "non-Federal matching contribution",
+                    "period": None,
+                    "base": "grant amount",
+                }
+            ]
+            if matching
+            else []
+        ),
         "conditions": None,
         "exceptions": [],
         "affected_people": ["qualifying schools"],
@@ -129,12 +133,14 @@ class RecordedModel:
             raise ProviderError(
                 "outcome_unknown" if fault == "timeout" else "invalid_output",
                 outcome_unknown=fault == "timeout",
-                validation_code="provider_timeout"
-                if fault == "timeout"
-                else "provider_output_limit",
-                usage=ProviderUsage()
-                if fault == "timeout"
-                else ProviderUsage(10, 5, 15),
+                validation_code=(
+                    "provider_timeout"
+                    if fault == "timeout"
+                    else "provider_output_limit"
+                ),
+                usage=(
+                    ProviderUsage() if fault == "timeout" else ProviderUsage(10, 5, 15)
+                ),
             )
         return ProviderResult(
             output, ProviderUsage(10, 5, 15), f"offline-{len(self.calls)}", "test"
@@ -165,12 +171,16 @@ class RecordedModel:
                     record["claims"] = [_claim(record_id, matching=matching)]
                     record["references"] = [
                         {
-                            "text": "section 1 of this Act"
-                            if matching
-                            else "section 2 of this Act",
-                            "target": "section 1 of this Act"
-                            if matching
-                            else "section 2 of this Act",
+                            "text": (
+                                "section 1 of this Act"
+                                if matching
+                                else "section 2 of this Act"
+                            ),
+                            "target": (
+                                "section 1 of this Act"
+                                if matching
+                                else "section 2 of this Act"
+                            ),
                             "relation": "condition",
                             "evidence_ids": [record_id],
                         }
@@ -182,9 +192,11 @@ class RecordedModel:
                     )
                     policies.append(
                         {
-                            "title": "Match school grants"
-                            if matching
-                            else "Award school grants",
+                            "title": (
+                                "Match school grants"
+                                if matching
+                                else "Award school grants"
+                            ),
                             "text": text,
                             "source_quotes": [_quote(record_id)],
                         }
@@ -250,9 +262,9 @@ class RecordedModel:
                     "reason": None,
                 }
                 for item_id in targets:
-                    items[item_id]["text"] = (
-                        "The Secretary must award grants to qualifying schools, requiring a non-Federal matching contribution equal to 50 percent of the grant amount."
-                    )
+                    items[item_id][
+                        "text"
+                    ] = "The Secretary must award grants to qualifying schools, requiring a non-Federal matching contribution equal to 50 percent of the grant amount."
                     citation = _quote(record_id)
                     if citation not in items[item_id]["source_quotes"]:
                         items[item_id]["source_quotes"].append(citation)
@@ -265,9 +277,9 @@ class RecordedModel:
         return {"page_id": metadata["page_id"], "record_checks": checks, "items": items}
 
     def _summary(self, request):
-        assert any(call[0] == "dependency" for call in self.calls), (
-            "Summary preceded dependency review"
-        )
+        assert any(
+            call[0] == "dependency" for call in self.calls
+        ), "Summary preceded dependency review"
         assert self.attempt is not None
         pending_maps = [
             unit
@@ -428,6 +440,10 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
                 "retry_calls",
                 len(model.calls) - count,
             )
+            assert Counter(stage for stage, _, _ in model.calls) == {
+                "map": 84,
+                "dependency": 1,
+            }
             assert len(model.calls) == count
             return
         if mode in {"malformed", "unresolved"}:
@@ -521,14 +537,23 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
         assert not attempt.work_units.exclude(
             status__in=["validated", "expanded"]
         ).exists()
+        assert Counter(stages) == {
+            "map": 85 if mode == "malformed" else 84,
+            "dependency": {"unresolved": 20, "truncated": 21}.get(mode, 19),
+            "summary": 1,
+        }
+        if mode in {"malformed", "unresolved"}:
+            assert len(stages) - previous_count == (104 if mode == "malformed" else 20)
         print(
             "RECOVERY",
             mode,
             dict(Counter(stages)),
             "retry_calls",
-            len(stages) - previous_count
-            if mode in {"malformed", "unresolved"}
-            else None,
+            (
+                len(stages) - previous_count
+                if mode in {"malformed", "unresolved"}
+                else None
+            ),
         )
         if mode in {"malformed", "unresolved"}:
             assert len(model.calls) > previous_count
@@ -587,6 +612,8 @@ def test_pinned_pg_confirmation(tmp_path, enhancement_settings, enhancement_owne
         assert response.status_code == 202, response.data
         attempt = BillEnhancementAttempt.objects.get(enhancement_id=response.data["id"])
         budget = attempt.enhancement.source_manifest_json["budget"]
+        assert estimate.data["aggregate_budget"] == budget
+        assert attempt.status == "pending" and not attempt.steps.exists()
         assert 0 < budget["planned_calls"] < budget["maximum_calls"] < 20000
         assert (
             attempt.estimated_input_tokens
@@ -597,3 +624,30 @@ def test_pinned_pg_confirmation(tmp_path, enhancement_settings, enhancement_owne
         attempt.refresh_from_db()
         assert attempt.status == "running"
         print("S1071_AUTHORIZED", budget)
+
+
+@pytest.mark.django_db
+def test_aggregate_token_receipts_survive_attempt_completion(
+    source_bill, enhancement_owner, enhancement_settings
+):
+    from apps.legislation.tasks import _finish_enhancement_attempt
+
+    from .test_dependency_cache_identity import _running_attempt
+
+    with enhancement_settings:
+        attempt = _running_attempt(enhancement_owner, source_bill)
+        usage = ProviderUsage(2**31, 2**31, 2**32)
+        assert _finish_enhancement_attempt(
+            attempt_id=attempt.pk,
+            run_token=attempt.run_token,
+            attempt_status="failed",
+            failure_category="invalid_output",
+            usage=usage,
+        )
+        attempt.refresh_from_db()
+        for row in (attempt, attempt.enhancement):
+            assert (row.input_tokens, row.output_tokens, row.total_tokens) == (
+                2**31,
+                2**31,
+                2**32,
+            )

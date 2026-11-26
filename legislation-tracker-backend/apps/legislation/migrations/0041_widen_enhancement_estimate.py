@@ -14,4 +14,13 @@ class Migration(migrations.Migration):
             name="estimated_input_tokens",
             field=models.PositiveBigIntegerField(),
         ),
+        *[
+            migrations.AlterField(
+                model_name=model,
+                name=field,
+                field=models.PositiveBigIntegerField(null=True, blank=True),
+            )
+            for model in ("billenhancementattempt", "billenhancement")
+            for field in ("input_tokens", "output_tokens", "total_tokens")
+        ],
     ]

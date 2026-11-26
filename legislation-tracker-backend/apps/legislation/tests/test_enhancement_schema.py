@@ -117,18 +117,18 @@ def _precise_output():
 def test_precise_citations_are_exact_source_substrings():
     value = _precise_output()
     assert validate_enhancement_output(value, _source_snapshot()) == value
-    value["overview"][0]["source_quotes"][0]["quote"] = (
-        "The Secretary must do it in 90 days."
-    )
+    value["overview"][0]["source_quotes"][0][
+        "quote"
+    ] = "The Secretary must do it in 90 days."
     with pytest.raises(ValidationError, match="quote"):
         validate_enhancement_output(value, _source_snapshot())
 
 
 def test_precise_citations_accept_layout_but_reject_wrong_location_and_ambiguity():
     snapshot = _source_snapshot()
-    snapshot[0]["quoted_text"] = (
-        "The Secretary shall\n    issue a rule within 180 days."
-    )
+    snapshot[0][
+        "quoted_text"
+    ] = "The Secretary shall\n    issue a rule within 180 days."
     snapshot[0]["text_sha256"] = hashlib.sha256(
         snapshot[0]["quoted_text"].encode()
     ).hexdigest()
