@@ -732,20 +732,23 @@ def test_location_changes_inside_spanning_account(target, span_column):
 
 @pytest.mark.parametrize("target", [1000, 8000])
 @pytest.mark.parametrize(
-    "location,account_span",
+    "location,account_span,repetitions",
     [
-        ("heading", True),
-        ("project", True),
-        ("implicit", True),
-        ("trailing", True),
-        ("horizontal", True),
-        ("installation", True),
-        ("project", False),
-        ("heading", False),
+        ("heading", True, 400),
+        ("project", True, 400),
+        ("implicit", True, 400),
+        ("trailing", True, 400),
+        ("horizontal", True, 400),
+        ("installation", True, 400),
+        ("project", False, 400),
+        ("heading", False, 400),
+        ("heading", True, 1400),
+        ("project", True, 1400),
     ],
 )
+@pytest.mark.parametrize("body", ["engrossed-amendment-body", "legis-body"])
 def test_each_project_owns_only_its_governing_table_values(
-    target, location, account_span
+    target, location, account_span, repetitions, body
 ):
     from types import SimpleNamespace
 
@@ -766,7 +769,7 @@ def test_each_project_owns_only_its_governing_table_values(
     account = f'<row><entry colname="account"{span}>Army construction</entry>'
     if not account_span:
         account += "</row><row>"
-    filler = "Training specifications. " * 400
+    filler = "Training specifications. " * repetitions
     detail = f'<entry colname="project">Training center. {filler}</entry>'
     project_cells = (
         detail + project_location
@@ -782,7 +785,7 @@ def test_each_project_owns_only_its_governing_table_values(
         else ["account", "region", "location", "project"]
     )
     colspecs = "".join(f'<colspec colname="{name}"/>' for name in columns)
-    raw = f"""<bill><engrossed-amendment-body><section><enum>1.</enum><table><tgroup cols="5">
+    table = f"""<table><tgroup cols="5">
       {colspecs}<colspec colname="amount" coldef="fig"/>
       <tbody>{account}<entry colname="location">Alabama</entry></row>
       <row><entry colname="project">Depot renovation</entry><entry colname="amount">100</entry></row>
@@ -790,7 +793,10 @@ def test_each_project_owns_only_its_governing_table_values(
       <row>{project_cells}<entry colname="amount">200</entry></row>
       <row><entry colname="project">Inventory annex</entry><entry colname="amount">400</entry></row>
       <row><entry colname="account">Navy construction</entry>{navy_cells}<entry colname="amount">300</entry></row>
-      </tbody></tgroup></table></section></engrossed-amendment-body></bill>""".encode()
+      </tbody></tgroup></table>"""
+    if body == "legis-body":
+        table = f"<text>{table}</text>"
+    raw = f"<bill><{body}><section><enum>1.</enum>{table}</section></{body}></bill>".encode()
     text = extract_document_text(raw, "application/xml", "bill.xml")
     sources = planned_sources(
         SimpleNamespace(version_label="IH"), text, 1, target, xml_boundaries(raw, text)
@@ -806,6 +812,7 @@ def test_each_project_owns_only_its_governing_table_values(
         "300",
         "400",
     }
+    catalogs = {s["source_ref"]: citation_passages(s) for s in sources}
     for project, expected in [
         ("Training center", {"Army construction", "Alaska", "200"}),
         ("Depot renovation", {"Army construction", "Alabama", "100"}),
@@ -819,20 +826,36 @@ def test_each_project_owns_only_its_governing_table_values(
         ),
         ("Shipyard project", {"Navy construction", "Guam", "300"}),
     ]:
-        owner = next(s for s in sources if project in s["quoted_text"])
-        supplied = [
-            passage["text"]
+        owners = [
+            s
             for s in sources
-            for passage in citation_passages(s)
-            if passage["quote_id"]
-            and (
-                s is owner
-                or passage["quote_id"]
-                in owner["context_quote_ids"].get(s["source_ref"], ())
+            if project in s["quoted_text"]
+            or (
+                project == "Training center"
+                and "Training specifications" in s["quoted_text"]
             )
         ]
-        assert {v for v in values if any(v in p for p in supplied)} == expected, project
-        assert any("Fort Wainwright" in p for p in supplied) == (
-            location == "installation" and project == "Training center"
-        )
-        assert not owner["unresolved_dependencies"]
+        assert owners, project
+        if repetitions == 1400 and project == "Training center":
+            assert len(owners) > 1
+        for owner in owners:
+            supplied = [
+                p["text"]
+                for ref, ids in owner["context_quote_ids"].items()
+                for p in catalogs[ref]
+                if p["quote_id"] in ids
+            ]
+            supplied.extend(
+                p["text"] for p in catalogs[owner["source_ref"]] if p["quote_id"]
+            )
+            if repetitions == 1400 and project == "Training center":
+                # Each fragment gets the row's coordinates without sending the
+                # entire oversized description again with every mapping call.
+                assert sum(len(p.encode()) for p in supplied) < 2 * target
+            assert {
+                v for v in values if any(v in p for p in supplied)
+            } == expected, project
+            assert any("Fort Wainwright" in p for p in supplied) == (
+                location == "installation" and project == "Training center"
+            )
+            assert not owner["unresolved_dependencies"]

@@ -22,7 +22,9 @@ from apps.ingestion.document_download import (
     extract_text_from_xml_or_html,
 )
 
-XML_SECTION_VERSION = 6  # Bump when section alignment or rendering changes.
+from .reader_dependencies import UNIT_BYTES
+
+XML_SECTION_VERSION = 7  # Bump when section alignment or rendering changes.
 
 _BODIES = {"legis-body", "engrossed-amendment-body", "amendment-body"}
 _QUOTED = {"quoted-block", "quoted-text"}
@@ -61,6 +63,7 @@ class XmlProvision:
     table_label_level: int | None = None
     external_references: tuple[tuple[int, int, str], ...] = ()
     inherited_cell_ranges: tuple[tuple[int, int], ...] | None = None
+    row_cell_ranges: tuple[tuple[int, int], ...] = ()
 
 
 class XmlSections(tuple):
@@ -470,19 +473,47 @@ def xml_boundaries(raw, text, *, row_levels=None):
     # Observe only carried cells, without turning them into ownership units or
     # changing the identities of the provisions used by historical requests.
     cell_indices = {}
-    for row, *_ in nodes.copy():
-        for cell in inherited_cells.get(row, ()):
+
+    def observe_cells(cells):
+        for cell in cells:
             if cell not in cell_indices:
                 cell_indices[cell] = len(nodes)
                 nodes.append((cell, None, None, 0, []))
+
+    for cells in inherited_cells.values():
+        observe_cells(cells)
     marker = "XMLBOUNDARY" + sha256(raw).hexdigest() + ":"
     if marker in text:
         raise ValueError("xml_boundary_collision")
-    rendered, offsets = _rendered_spans(bodies, nodes, text, marker)
-    if rendered != text:
-        rendered, offsets = _flat_spans(raw, root, nodes, text, marker)
-    if rendered != text:
-        raise ValueError("xml_text_mismatch")
+
+    def aligned_offsets():
+        rendered, offsets = _rendered_spans(bodies, nodes, text, marker)
+        if rendered != text:
+            rendered, offsets = _flat_spans(raw, root, nodes, text, marker)
+        if rendered != text:
+            raise ValueError("xml_text_mismatch")
+        return offsets
+
+    offsets = aligned_offsets()
+    large_rows = {}
+    if row_levels is None:
+        # Ordinary rows are owned whole. Only oversized rows need additional
+        # verified boundaries to attach their sibling cells to each fragment.
+        for index, (row, *_) in enumerate(nodes.copy()):
+            if _xml_tag(row) != "row" or (index, "start") not in offsets:
+                continue
+            left, right = offsets[index, "start"], offsets[index, "end"]
+            if len(text[left:right].encode()) > UNIT_BYTES:
+                large_rows[row] = [
+                    cell
+                    for cell in row
+                    if _xml_tag(cell) == "entry"
+                    and any(s.strip() for s in cell.itertext())
+                ]
+        if large_rows:
+            for cells in large_rows.values():
+                observe_cells(cells)
+            offsets = aligned_offsets()
     cell_ranges = {}
     for cell, index in cell_indices.items():
         left, right = offsets.get((index, "start")), offsets.get((index, "end"))
@@ -556,6 +587,9 @@ def xml_boundaries(raw, text, *, row_levels=None):
                     tuple(cell_ranges[cell] for cell in inherited_cells[element])
                     if element in inherited_cells
                     else None
+                ),
+                row_cell_ranges=tuple(
+                    cell_ranges[cell] for cell in large_rows.get(element, ())
                 ),
             )
         )

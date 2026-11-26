@@ -94,6 +94,13 @@ def planned_sources(
         for start, end in owned_spans(text, left, right, target):
             owned = text[start:end]
             size = len(owned.encode())
+            # A long project description owns a bounded slice of its cell.
+            # Its amount and other coordinates come from separate row cells.
+            owner = (
+                (start, end, unit)
+                if unit is not None and index.nodes[unit].row_cell_ranges
+                else (left, right, unit)
+            )
             # Pack adjacent siblings, including their separating whitespace.
             # Keep reusable parent introductions separate: otherwise a short
             # governing lead-in would drag a whole neighboring chunk into every
@@ -110,6 +117,8 @@ def planned_sources(
                         # is under exactly the same account and location.
                         and index.nodes[unit].inherited_cell_ranges is None
                         and index.nodes[previous_unit].inherited_cell_ranges is None
+                        and not index.nodes[unit].row_cell_ranges
+                        and not index.nodes[previous_unit].row_cell_ranges
                     )
                 )
             )
@@ -130,10 +139,10 @@ def planned_sources(
                     source["quoted_text"].encode()
                 ).hexdigest()
                 if owned.strip():
-                    owners[-1].append((left, right, unit))
+                    owners[-1].append(owner)
                 source_sizes[-1] += size
                 continue
-            owners.append([(left, right, unit)])
+            owners.append([owner])
             source_sizes.append(size)
             sources.append(
                 {

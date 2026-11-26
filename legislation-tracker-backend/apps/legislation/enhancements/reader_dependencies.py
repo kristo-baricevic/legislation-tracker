@@ -9,11 +9,12 @@ of its unrelated siblings. XML ancestry takes precedence over text heuristics.
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from itertools import pairwise
 
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 11
+CONTEXT_PLANNER_VERSION = 12
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -103,6 +104,7 @@ class Node:
     table_label_level: int | None = None
     external_references: tuple = ()
     inherited_cell_ranges: tuple | None = None
+    row_cell_ranges: tuple = ()
 
 
 def _label(value):
@@ -353,6 +355,7 @@ class DependencyIndex:
                     getattr(p, "table_label_level", None),
                     getattr(p, "external_references", ()),
                     getattr(p, "inherited_cell_ranges", None),
+                    getattr(p, "row_cell_ranges", ()),
                 )
                 for p in xml
             ]
@@ -960,6 +963,16 @@ class DependencyIndex:
 
         def visit(index):
             node = self.nodes[index]
+            if node.row_cell_ranges:
+                edges = sorted(
+                    {
+                        node.start,
+                        node.end,
+                        *(edge for span in node.row_cell_ranges for edge in span),
+                    }
+                )
+                pieces.extend((a, b, index) for a, b in pairwise(edges))
+                return
             size = len(self.text[node.start : node.end].encode())
             if node.tag in NAVIGATION or (
                 index not in self.cell_context_ancestors
@@ -1051,6 +1064,9 @@ class DependencyIndex:
 
         node = self.nodes[index]
         add_range(start, end)
+        for a, b in node.row_cell_ranges:
+            if b <= start or a >= end:
+                add_range(a, b)
         if node.tag in NAVIGATION:
             # Navigation has no operative dependency on the thousands of
             # provision numbers it lists. Its own bytes are still reviewed.
