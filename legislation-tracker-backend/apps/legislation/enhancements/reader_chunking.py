@@ -28,7 +28,7 @@ def owned_spans(text, left, right, target):
         left = end
 
 
-def _citable_owners(sources, owners, first_ref):
+def _citable_owners(sources, owners, first_ref, cell_edges):
     """Give repeated nonblank passages their own exact, unambiguous source.
 
     Quote matching remains strict. A repeated passage cannot be selected inside
@@ -38,19 +38,25 @@ def _citable_owners(sources, owners, first_ref):
     """
     selected, ownership, sizes = [], [], []
     for source, structural in zip(sources, owners, strict=True):
-        passages = citation_passages(source)
-        split = any(
-            passage["quote_id"] is None and passage["text"].strip()
-            for passage in passages
-        )
-        if not split:
-            selected.append(source)
-            ownership.append(structural)
-            sizes.append(len(source["quoted_text"].encode()))
-            continue
+        # A citeable account must not include the neighboring location just
+        # because both cells fit in one 800-character provider passage.
+        start, stop = source["start_char"], source["end_char"]
+        edges = cell_edges[
+            bisect_right(cell_edges, start) : bisect_left(cell_edges, stop)
+        ]
+        pieces = []
+        for end in [*edges, stop]:
+            quoted = source["quoted_text"][
+                start - source["start_char"] : end - source["start_char"]
+            ]
+            passages = citation_passages({"quoted_text": quoted})
+            if any(p["quote_id"] is None and p["text"].strip() for p in passages):
+                pieces.extend(p["text"] for p in passages)
+            else:
+                pieces.append(quoted)
+            start = end
         start = source["start_char"]
-        for passage in passages:
-            quoted = passage["text"]
+        for quoted in pieces:
             end = start + len(quoted)
             selected.append(
                 {
@@ -143,7 +149,19 @@ def planned_sources(
                     "context_planner_version": CONTEXT_PLANNER_VERSION,
                 }
             )
-    sources, owners, source_sizes = _citable_owners(sources, owners, first_ref)
+    sources, owners, source_sizes = _citable_owners(
+        sources,
+        owners,
+        first_ref,
+        sorted(
+            {
+                edge
+                for node in index.nodes
+                for span in node.inherited_cell_ranges or ()
+                for edge in span
+            }
+        ),
+    )
     return _attach_context(index, sources, owners, source_sizes, input_ceiling)
 
 

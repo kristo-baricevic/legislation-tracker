@@ -659,3 +659,72 @@ def test_spanning_cell_missing_from_stored_text_fails_closed():
     stored = "SEC. 1."
     with pytest.raises(ValueError, match="xml_spanning_cell_unavailable"):
         xml_boundaries(raw, stored)
+
+
+@pytest.mark.parametrize("target", [1000, 8000])
+@pytest.mark.parametrize("span_column", ["account", "location"])
+def test_location_changes_inside_spanning_account(target, span_column):
+    from types import SimpleNamespace
+
+    from apps.legislation.enhancements.reader_chunking import planned_sources
+    from apps.legislation.enhancements.reader_citations import citation_passages
+
+    filler = "Project details. " * 600
+    raw = f"""<bill><engrossed-amendment-body><section><enum>1.</enum><table><tgroup cols="4">
+      <colspec colname="account"/><colspec colname="location"/><colspec colname="project"/><colspec colname="amount" coldef="fig"/>
+      <tbody>
+      <row><entry colname="account" morerows="3">Army construction</entry><entry colname="location">Alabama</entry></row>
+      <row><entry colname="project">Depot renovation. {filler}</entry><entry>100</entry></row>
+      <row><entry colname="location">Alaska</entry></row>
+      <row><entry colname="project">Training center. {filler}</entry><entry>200</entry></row>
+      <row><entry colname="account">Navy construction</entry></row>
+      <row><entry colname="project">Shipyard. {filler}</entry><entry>300</entry></row>
+      </tbody></tgroup></table></section></engrossed-amendment-body></bill>""".encode()
+    if span_column == "location":
+        raw = (
+            raw.replace(b'colname="account" morerows="3"', b'colname="account"')
+            .replace(
+                b'colname="location">Alabama',
+                b'colname="location" morerows="3">Alabama',
+            )
+            .replace(
+                b'colname="location">Alaska', b'colname="account">Marine construction'
+            )
+        )
+    middle = (
+        (("Army construction", "Alaska", "200"), ("Alabama", "Navy construction"))
+        if span_column == "account"
+        else (
+            ("Marine construction", "Alabama", "200"),
+            ("Army construction", "Navy construction"),
+        )
+    )
+    text = extract_document_text(raw, "application/xml", "bill.xml")
+    sources = planned_sources(
+        SimpleNamespace(version_label="IH"), text, 1, target, xml_boundaries(raw, text)
+    )
+    for project, wanted, excluded in [
+        ("Training center", *middle),
+        (
+            "Depot renovation",
+            ("Army construction", "Alabama", "100"),
+            ("Alaska", "Navy construction"),
+        ),
+        (
+            "Shipyard",
+            ("Navy construction", "300"),
+            ("Army construction", "Alabama", "Alaska", "Marine construction"),
+        ),
+    ]:
+        owner = next(s for s in sources if project in s["quoted_text"])
+        supplied = [owner["quoted_text"]] + [
+            p["text"]
+            for s in sources
+            for p in citation_passages(s)
+            if p["quote_id"]
+            and p["quote_id"] in owner["context_quote_ids"].get(s["source_ref"], [])
+        ]
+        context = "\n".join(supplied)
+        assert all(word in context for word in wanted), (project, wanted)
+        assert not any(word in context for word in excluded), (project, excluded)
+        assert not owner["unresolved_dependencies"]

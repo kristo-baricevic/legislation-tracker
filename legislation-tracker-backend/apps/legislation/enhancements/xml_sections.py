@@ -22,7 +22,7 @@ from apps.ingestion.document_download import (
     extract_text_from_xml_or_html,
 )
 
-XML_SECTION_VERSION = 4  # Bump when section alignment or rendering changes.
+XML_SECTION_VERSION = 5  # Bump when section alignment or rendering changes.
 
 _BODIES = {"legis-body", "engrossed-amendment-body", "amendment-body"}
 _QUOTED = {"quoted-block", "quoted-text"}
@@ -60,7 +60,7 @@ class XmlProvision:
     references: tuple[str, ...] = ()
     table_label_level: int | None = None
     external_references: tuple[tuple[int, int, str], ...] = ()
-    inherited_cell_ranges: tuple[tuple[int, int], ...] = ()
+    inherited_cell_ranges: tuple[tuple[int, int], ...] | None = None
 
 
 class XmlSections(tuple):
@@ -82,7 +82,12 @@ def _table_layout(root):
     levels, inherited = {}, {}
 
     def walk(
-        element, columns=None, figure_columns=frozenset(), in_header=False, spans=None
+        element,
+        columns=None,
+        figure_columns=frozenset(),
+        in_header=False,
+        spans=None,
+        headings=None,
     ):
         tag = _xml_tag(element)
         if tag in {"table", "tgroup"}:
@@ -105,6 +110,21 @@ def _table_layout(root):
             figure_columns = frozenset(figures)
         if tag in {"table", "tgroup", "thead", "tbody", "tfoot"}:
             spans = {}
+            # In groups with populated vertical spans, resolve both persistent
+            # column headings and finite cells on the same column grid.
+            headings = (
+                {}
+                if any(
+                    entry.get("morerows", "").isdecimal()
+                    and int(entry.get("morerows"))
+                    and "".join(entry.itertext()).strip()
+                    for row in element
+                    if _xml_tag(row) == "row"
+                    for entry in row
+                    if _xml_tag(entry) == "entry"
+                )
+                else None
+            )
         if tag in {"thead", "tfoot"}:
             in_header = True
         if tag == "row":
@@ -122,14 +142,18 @@ def _table_layout(root):
             # A cell can span both rows and columns. Track occupied intervals
             # without allocating one item per declared row or column.
             occupied = sorted(spans)
+            covering = {}
+            expiring = []
             for interval in occupied:
                 remaining, cell = spans[interval]
                 if cell is not None:
-                    inherited.setdefault(element, []).append(cell)
+                    covering[interval[0]] = cell
                 if remaining > 1:
                     spans[interval] = remaining - 1, cell
                 else:
                     del spans[interval]
+                    if cell is not None:
+                        expiring.append(interval[0])
             filled = []
             for entry in entries:
                 for left, right in occupied:
@@ -145,14 +169,42 @@ def _table_layout(root):
                     spans[start, end] = row_span, entry if content else None
                 cursor = end + 1
                 if content:
-                    filled.append((start, content, row_span))
-            if len(filled) == 1 and element not in inherited and not filled[0][2]:
-                start, content, _ = filled[0]
+                    filled.append((start, content, row_span, entry))
+            if headings is not None:
+
+                def replace_from(column):
+                    for level in list(headings):
+                        if level >= column:
+                            del headings[level]
+
+                for column, _, more, _ in filled:
+                    if more:
+                        replace_from(column)
+                labels = [
+                    (column, value, entry)
+                    for column, value, more, entry in filled
+                    if not more
+                ]
+                if len(labels) == 1:
+                    column, value, entry = labels[0]
+                    if column not in figure_columns and any(c.isalpha() for c in value):
+                        replace_from(column)
+                        headings[column] = entry
+                own = {entry for _, _, _, entry in filled}
+                inherited[element] = tuple(
+                    cell
+                    for cell in (*covering.values(), *headings.values())
+                    if cell not in own
+                )
+                if expiring:
+                    replace_from(min(expiring))
+            elif len(filled) == 1:
+                start, content, _, _ = filled[0]
                 if start not in figure_columns and any(c.isalpha() for c in content):
                     levels[element] = start
             return
         for child in element:
-            walk(child, columns, figure_columns, in_header, spans)
+            walk(child, columns, figure_columns, in_header, spans, headings)
 
     walk(root)
     return levels, inherited
@@ -301,7 +353,6 @@ def xml_boundaries(raw, text, *, row_levels=None):
     else:
         # Historical charge reconstruction uses the original row-label parser.
         table_row_levels, inherited_cells = row_levels(root), {}
-
 
     def outer_bodies(node):
         tag = _xml_tag(node)
@@ -464,8 +515,10 @@ def xml_boundaries(raw, text, *, row_levels=None):
                 references=tuple(dict.fromkeys(references)),
                 table_label_level=table_row_levels.get(element),
                 external_references=tuple(external.get(index, ())),
-                inherited_cell_ranges=tuple(
-                    cell_ranges[cell] for cell in inherited_cells.get(element, ())
+                inherited_cell_ranges=(
+                    tuple(cell_ranges[cell] for cell in inherited_cells[element])
+                    if element in inherited_cells
+                    else None
                 ),
             )
         )
