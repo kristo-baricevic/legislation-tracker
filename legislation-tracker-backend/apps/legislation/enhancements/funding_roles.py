@@ -37,6 +37,15 @@ _FUNDING_PREDICATE = re.compile(
     re.I,
 )
 
+# A second subject and finite verb start a new assertion, including a neutral
+# cost estimate. A coordinated amount list still shares its governing verb.
+_INDEPENDENT_PREDICATE = re.compile(
+    r"^(?:(?:and|but|while|whereas)\s+)?"
+    r"(?:(?:the|an?|its|their)\s+[\w-]+(?:\s+(?!(?:that|which|who)\b)[\w-]+)*?|it|CBO)\s+"
+    r"\b(?:is|are|was|were|has|have|estimates|projects|forecasts|reports|totals|equals|costs)\b",
+    re.I,
+)
+
 
 def _funding_clauses(text):
     """Split coordinated funding decisions, preserving amount lists under one verb."""
@@ -45,7 +54,9 @@ def _funding_clauses(text):
         for part in re.split(
             r"(?<=,)\s+|\s+(?=(?:and|but|while|whereas)\b)", sentence, flags=re.I
         ):
-            if parts and _FUNDING_PREDICATE.search(part):
+            if parts and (
+                _FUNDING_PREDICATE.search(part) or _INDEPENDENT_PREDICATE.match(part)
+            ):
                 yield " ".join(parts)
                 parts = []
             parts.append(part)
@@ -57,7 +68,8 @@ _AUTHORIZED_SUM = re.compile(
 )
 _AUTH_SOURCE = re.compile(
     rf"\b(?:of|from|using)\s+(?:(?:the|any|such)\s+)*"
-    rf"(?:(?:{_DOLLAR})\s+)?(?:amounts?|funds?|sums?|appropriations?)?\s*"
+    rf"(?:{_DOLLAR}|amounts?|funds?|sums?|appropriations?)\s+"
+    r"(?:(?:that|which)\s+(?:is|are|was|were)\s+)?"
     rf"(?:previously\s+)?{_AUTHORIZATION.pattern}",
     re.I,
 )

@@ -708,6 +708,48 @@ def _validate_cited_money(quote, statement, *, typed, amount, basis=None):
     "quote,amount,statement,valid",
     [
         (
+            "There are authorized to be appropriated $15 million for grants. The Secretary shall allocate $2 million for training and the cost estimate is $15 million.",
+            "15000000",
+            "The Secretary must spend $15 million for training.",
+            False,
+        ),
+        (
+            "There are authorized to be appropriated $15 million for grants. The Secretary shall allocate $2 million for training; the cost estimate is $15 million.",
+            "15000000",
+            "The Secretary must spend $15 million for training.",
+            False,
+        ),
+        (
+            "There are authorized to be appropriated $15 million for grants. The cost estimate is $15 million and the Secretary shall allocate $2 million for training.",
+            "15000000",
+            "The Secretary must spend $15 million for training.",
+            False,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the amounts that are authorized to be appropriated under section 3.",
+            "2000000",
+            None,
+            True,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the $15 million that is authorized to be appropriated under section 3.",
+            "2000000",
+            None,
+            True,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the $15 million that is authorized to be appropriated under section 3.",
+            "15000000",
+            "The Secretary must allocate $15 million.",
+            False,
+        ),
+        (
+            "There are authorized to be appropriated $15 million for grants. The Secretary shall allocate $2 million for hospitals and $15 million for training.",
+            "15000000",
+            "The Secretary must allocate $15 million for training.",
+            True,
+        ),
+        (
             "There are authorized to be appropriated $2 million for hospital grants. The estimated cost of training is also $2 million.",
             "2000000",
             "The Secretary shall allocate $2 million for hospital grants.",
