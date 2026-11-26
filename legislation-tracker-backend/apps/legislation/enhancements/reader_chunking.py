@@ -98,7 +98,13 @@ def planned_sources(
                 and previous_unit is not None
                 and (
                     unit == previous_unit
-                    or index.nodes[unit].parent == index.nodes[previous_unit].parent
+                    or (
+                        index.nodes[unit].parent == index.nodes[previous_unit].parent
+                        # A chunk shares its citation context. Keep a covered
+                        # project separate from the row where a cell span ends.
+                        and index.nodes[unit].inherited_cell_ranges
+                        == index.nodes[previous_unit].inherited_cell_ranges
+                    )
                 )
             )
             complete_unit = unit is not None and (left, right) == (

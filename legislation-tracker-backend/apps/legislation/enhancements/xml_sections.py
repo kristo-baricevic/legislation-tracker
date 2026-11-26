@@ -22,7 +22,7 @@ from apps.ingestion.document_download import (
     extract_text_from_xml_or_html,
 )
 
-XML_SECTION_VERSION = 3  # Bump when section alignment or rendering changes.
+XML_SECTION_VERSION = 4  # Bump when section alignment or rendering changes.
 
 _BODIES = {"legis-body", "engrossed-amendment-body", "amendment-body"}
 _QUOTED = {"quoted-block", "quoted-text"}
@@ -60,6 +60,7 @@ class XmlProvision:
     references: tuple[str, ...] = ()
     table_label_level: int | None = None
     external_references: tuple[tuple[int, int, str], ...] = ()
+    inherited_cell_ranges: tuple[tuple[int, int], ...] = ()
 
 
 class XmlSections(tuple):
@@ -71,14 +72,14 @@ class XmlSections(tuple):
         return result
 
 
-def _table_row_levels(root):
+def _table_layout(root):
     """Use CALS columns to identify nested table labels, never capitalization.
 
     A service/account label in an earlier column governs later geographic
     labels. A new label at the same column replaces that level and its children.
     Header rows and amount-only rows are not category labels.
     """
-    levels = {}
+    levels, inherited = {}, {}
 
     def walk(
         element, columns=None, figure_columns=frozenset(), in_header=False, spans=None
@@ -122,8 +123,12 @@ def _table_row_levels(root):
             # without allocating one item per declared row or column.
             occupied = sorted(spans)
             for interval in occupied:
-                spans[interval] -= 1
-                if not spans[interval]:
+                remaining, cell = spans[interval]
+                if cell is not None:
+                    inherited.setdefault(element, []).append(cell)
+                if remaining > 1:
+                    spans[interval] = remaining - 1, cell
+                else:
                     del spans[interval]
             filled = []
             for entry in entries:
@@ -134,14 +139,15 @@ def _table_row_levels(root):
                 start = position(namest or entry.get("colname"), cursor)
                 end = position(entry.get("nameend"), start) if namest else start
                 more = entry.get("morerows", "")
-                if more.isdecimal() and int(more):
-                    spans[start, end] = int(more)
-                cursor = end + 1
                 content = "".join(entry.itertext()).strip()
+                row_span = int(more) if more.isdecimal() else 0
+                if row_span:
+                    spans[start, end] = row_span, entry if content else None
+                cursor = end + 1
                 if content:
-                    filled.append((start, content))
-            if len(filled) == 1:
-                start, content = filled[0]
+                    filled.append((start, content, row_span))
+            if len(filled) == 1 and element not in inherited and not filled[0][2]:
+                start, content, _ = filled[0]
                 if start not in figure_columns and any(c.isalpha() for c in content):
                     levels[element] = start
             return
@@ -149,7 +155,7 @@ def _table_row_levels(root):
             walk(child, columns, figure_columns, in_header, spans)
 
     walk(root)
-    return levels
+    return levels, inherited
 
 
 def _strip_markers(annotated, marker, *, normalize=False):
@@ -208,7 +214,7 @@ def _rendered_spans(bodies, nodes, text, marker):
             node.insert(0, first)
             node.append(last)
             changes.append((node, first, last))
-        elif tag in _QUOTED | _CONTENTS | _TABLE | {"external-xref"}:
+        elif tag in _QUOTED | _CONTENTS | _TABLE | {"external-xref", "entry"}:
             changes.append((node, "text", node.text))
             node.text = f"{marker}{index}:start" + (node.text or "")
             tail_node, attribute = (node[-1], "tail") if len(node) else (node, "text")
@@ -288,9 +294,14 @@ def _flat_spans(raw, root, nodes, text, marker):
     return _strip_markers(annotated, marker, normalize=True)
 
 
-def xml_boundaries(raw, text, *, row_levels=_table_row_levels):
+def xml_boundaries(raw, text, *, row_levels=None):
     root = ElementTree.fromstring(raw)
-    table_row_levels = row_levels(root)
+    if row_levels is None:
+        table_row_levels, inherited_cells = _table_layout(root)
+    else:
+        # Historical charge reconstruction uses the original row-label parser.
+        table_row_levels, inherited_cells = row_levels(root), {}
+
 
     def outer_bodies(node):
         tag = _xml_tag(node)
@@ -368,6 +379,14 @@ def xml_boundaries(raw, text, *, row_levels=_table_row_levels):
 
     for body in bodies:
         collect_nodes(body)
+    # Observe only carried cells, without turning them into ownership units or
+    # changing the identities of the provisions used by historical requests.
+    cell_indices = {}
+    for row, *_ in nodes.copy():
+        for cell in inherited_cells.get(row, ()):
+            if cell not in cell_indices:
+                cell_indices[cell] = len(nodes)
+                nodes.append((cell, None, None, 0, []))
     marker = "XMLBOUNDARY" + sha256(raw).hexdigest() + ":"
     if marker in text:
         raise ValueError("xml_boundary_collision")
@@ -376,6 +395,12 @@ def xml_boundaries(raw, text, *, row_levels=_table_row_levels):
         rendered, offsets = _flat_spans(raw, root, nodes, text, marker)
     if rendered != text:
         raise ValueError("xml_text_mismatch")
+    cell_ranges = {}
+    for cell, index in cell_indices.items():
+        left, right = offsets.get((index, "start")), offsets.get((index, "end"))
+        if left is None or right is None or not 0 <= left < right <= len(text):
+            raise ValueError("xml_spanning_cell_unavailable")
+        cell_ranges[cell] = (left, right)
     external = {}
     for index, (element, parent, *_rest) in enumerate(nodes):
         if _xml_tag(element) == "external-xref" and (index, "start") in offsets:
@@ -409,7 +434,7 @@ def xml_boundaries(raw, text, *, row_levels=_table_row_levels):
     for index, (element, parent, section_id, quoted_depth, references) in enumerate(
         nodes
     ):
-        if _xml_tag(element) == "external-xref":
+        if _xml_tag(element) in {"external-xref", "entry"}:
             continue
         left, right = offsets.get((index, "start")), offsets.get((index, "end"))
         # Empty/unsupported nodes have no immutable stored text to invent.
@@ -439,6 +464,9 @@ def xml_boundaries(raw, text, *, row_levels=_table_row_levels):
                 references=tuple(dict.fromkeys(references)),
                 table_label_level=table_row_levels.get(element),
                 external_references=tuple(external.get(index, ())),
+                inherited_cell_ranges=tuple(
+                    cell_ranges[cell] for cell in inherited_cells.get(element, ())
+                ),
             )
         )
     return XmlSections(rows, provisions)
@@ -470,7 +498,7 @@ def read_stored_xml(document):
         ) from exc
 
 
-def aligned_xml_sections(raw, text, *, row_levels=_table_row_levels):
+def aligned_xml_sections(raw, text, *, row_levels=None):
     if raw is None:
         return ()
     from .source_packet import PreflightUnavailable
@@ -484,7 +512,7 @@ def aligned_xml_sections(raw, text, *, row_levels=_table_row_levels):
         ) from exc
 
 
-def stored_xml_sections(document, text, *, row_levels=_table_row_levels):
+def stored_xml_sections(document, text, *, row_levels=None):
     raw, digest = read_stored_xml(document)
     if raw is None:
         return ()

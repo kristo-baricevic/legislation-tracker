@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 8
+CONTEXT_PLANNER_VERSION = 9
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -102,6 +102,7 @@ class Node:
     references: tuple[str, ...] = ()
     table_label_level: int | None = None
     external_references: tuple = ()
+    inherited_cell_ranges: tuple = ()
 
 
 def _label(value):
@@ -351,6 +352,7 @@ class DependencyIndex:
                     getattr(p, "references", ()),
                     getattr(p, "table_label_level", None),
                     getattr(p, "external_references", ()),
+                    getattr(p, "inherited_cell_ranges", ()),
                 )
                 for p in xml
             ]
@@ -1079,6 +1081,8 @@ class DependencyIndex:
             include_restrictions(target)
         while pending:
             current = pending.pop()
+            for a, b in self.nodes[current].inherited_cell_ranges:
+                add_range(a, b)
             unresolved.update(self.unresolved[current])
             for linked in (
                 self.links[current] - incoming_targets[current]

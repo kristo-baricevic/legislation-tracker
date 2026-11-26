@@ -564,3 +564,77 @@ def test_missing_scope_cannot_apply_an_unrelated_restriction_to_the_entire_act()
     _, missing = _context(index, "pilot")
     assert "Alaska" not in grant
     assert "this subparagraph" in missing
+
+
+@pytest.mark.parametrize("target", [1000, 8000])
+def test_spanning_account_reaches_only_covered_projects(target):
+    from types import SimpleNamespace
+
+    from apps.legislation.enhancements.reader_chunking import planned_sources
+    from apps.legislation.enhancements.reader_citations import citation_passages
+
+    filler = "Depot improvements. " * 450
+    raw = f"""<bill><engrossed-amendment-body><section><enum>1.</enum><table><tgroup cols="3"><tbody>
+      <row><entry morerows="1">Army construction</entry><entry>{filler}</entry><entry>100</entry></row>
+      <row id="army"><entry>Training center. {filler}</entry><entry>200</entry></row>
+      <row id="navy"><entry>Navy construction</entry><entry>Shipyard</entry><entry>300</entry></row>
+      <row><entry>Other work</entry><entry>{filler}</entry><entry>400</entry></row>
+      </tbody></tgroup></table></section></engrossed-amendment-body></bill>""".encode()
+    text = extract_document_text(raw, "application/xml", "bill.xml")
+    sections = xml_boundaries(raw, text)
+    index = DependencyIndex(text, sections)
+    sources = planned_sources(
+        SimpleNamespace(version_label="IH"), text, 1, target, sections
+    )
+    for identity, phrase, covered in [
+        ("army", "Training center", True),
+        ("navy", "Shipyard", False),
+    ]:
+        owner = next(s for s in sources if phrase in s["quoted_text"])
+        assert "Army construction" not in owner["quoted_text"]
+        context = "".join(
+            p["text"]
+            for s in sources
+            for p in citation_passages(s)
+            if p["quote_id"] in owner["context_quote_ids"].get(s["source_ref"], [])
+        )
+        assert ("Army construction" in context) == covered
+        assert not owner["unresolved_dependencies"]
+        node = next(i for i, n in enumerate(index.nodes) if n.identity == identity)
+        row = index.nodes[node]
+        ranges, missing = index.required(row.start, row.end, node)
+        assert not missing
+        cell = text.index("Army construction")
+        assert (
+            any(a <= cell and cell + len("Army construction") <= b for a, b in ranges)
+            == covered
+        )
+        if covered:
+            assert [text[a:b] for a, b in row.inherited_cell_ranges] == [
+                "Army construction"
+            ]
+
+
+@pytest.mark.parametrize("body", ["legis-body", "engrossed-amendment-body"])
+def test_single_spanning_cell_expires_and_preserves_inline_text(body):
+    raw = f"""<bill><{body}><section><enum>1.</enum><text><table><tgroup><tbody>
+        <row><entry morerows="2">Army <italic>construction</italic></entry></row>
+        <row id="first"><entry>Depot</entry><entry>100</entry></row>
+        <row id="second"><entry>Training</entry><entry>200</entry></row>
+        <row id="expired"><entry>Shipyard</entry><entry>300</entry></row>
+        </tbody></tgroup></table></text></section></{body}></bill>""".encode()
+    text = extract_document_text(raw, "application/xml", "bill.xml")
+    index = DependencyIndex(text, xml_boundaries(raw, text))
+    for identity in ("first", "second", "expired"):
+        context, missing = _context(index, identity)
+        assert not missing
+        assert ("Army construction" in context) == (identity != "expired")
+
+
+def test_spanning_cell_missing_from_stored_text_fails_closed():
+    raw = b"""<bill><legis-body><section><enum>1.</enum><table><tgroup><tbody>
+    <row><entry morerows="1">Army</entry><entry>100</entry></row>
+    <row><entry>200</entry></row></tbody></tgroup></table></section></legis-body></bill>"""
+    stored = "SEC. 1."
+    with pytest.raises(ValueError, match="xml_spanning_cell_unavailable"):
+        xml_boundaries(raw, stored)
