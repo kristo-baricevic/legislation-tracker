@@ -890,3 +890,29 @@ def test_enacted_claim_cannot_hide_behind_authorization_summary(action):
     assert [
         (f.code, f.path) for f in validate_provision(row, graph.units[0], graph)
     ] == [("spending_authority_conflict", "claims/0/money/0")]
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+def test_punctuation_only_dollar_text_has_validation_outcome(path):
+    from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.funding_roles import dollar_amounts
+    from apps.legislation.enhancements.reader_integrity import validate_numbers
+
+    source = "The Secretary shall spend $100 for grants."
+    statement = "The Secretary shall spend $,, for grants."
+    assert dollar_amounts("The source includes $,, and $100.") == {100}
+    if path == "reader":
+        with pytest.raises(ValidationError) as error:
+            validate_numbers(
+                {"text": statement, "source_quotes": [{"quote": source}]},
+                path=["summary"],
+            )
+        assert error.value.validator == "reader_amount_conflict"
+    else:
+        graph = build_source_graph("1", "IH", "SEC. 1. GRANTS\n" + source)
+        row = explanation(graph)
+        row["summary"] = statement
+        assert "amount_conflict" in {
+            f.code for f in validate_provision(row, graph.units[0], graph)
+        }

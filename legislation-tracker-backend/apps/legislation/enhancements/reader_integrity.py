@@ -12,6 +12,7 @@ from .funding_roles import (
     dollar_amounts,
     funding_decisions,
     funding_statement_conflicts,
+    malformed_dollar_amount,
 )
 from .percentage_bases import (
     cited_percentage_bases,
@@ -27,9 +28,11 @@ def validate_numbers(item, *, path, factual_claim=None):
         str(item.get(key) or "") for key in ("text", "amount_display", "label", "title")
     ]
     prose = "\n".join(fields)
-    if dollar_amounts(prose) - dollar_amounts(evidence) or percentages(
-        prose
-    ) - percentages(evidence):
+    if (
+        malformed_dollar_amount(prose)
+        or dollar_amounts(prose) - dollar_amounts(evidence)
+        or percentages(prose) - percentages(evidence)
+    ):
         raise output_error("reader_amount_conflict", path)
     cited = cited_percentage_bases(q["quote"] for q in item["source_quotes"])
     for field in fields:

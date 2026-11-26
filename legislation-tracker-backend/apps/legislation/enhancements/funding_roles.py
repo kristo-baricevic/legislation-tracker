@@ -6,7 +6,11 @@ from decimal import Decimal
 
 from apps.legislation.extraction.federal_structure import STATUTORY_ABBREVIATION_RE
 
-_DOLLAR = r"\$\s*([\d,]+(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion)\b)?"
+_DOLLAR = r"\$\s*(\d[\d,]*(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion)\b)?"
+
+
+def malformed_dollar_amount(text):
+    return bool(re.search(r"\$\s*,", text))
 
 
 def dollar_amounts(text):

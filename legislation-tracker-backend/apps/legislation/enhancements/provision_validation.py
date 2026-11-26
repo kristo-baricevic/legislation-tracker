@@ -11,6 +11,7 @@ from .funding_roles import (
     dollar_amounts,
     funding_decisions,
     funding_statement_conflicts,
+    malformed_dollar_amount,
     required_claim_conflicts,
 )
 from .percentage_bases import (
@@ -311,7 +312,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
             add("external_qualification_omitted", "unresolved")
     # Compare only explicit currency amounts. Other numeric quantities need their
     # units and roles and cannot safely be classified by this lexical detector.
-    if dollar_amounts(prose) - dollar_amounts(source):
+    if malformed_dollar_amount(prose) or dollar_amounts(prose) - dollar_amounts(source):
         add("amount_conflict")
     if re.search(r"\bshall (?:be fined|impose a fine)\b", source, re.I) and re.search(
         r"\b(?:may|might|could) (?:be fined|impose a fine)\b", prose, re.I
