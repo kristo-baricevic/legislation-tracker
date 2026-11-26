@@ -121,7 +121,7 @@ _ENACTED_OUTLAY = re.compile(
     re.I,
 )
 _PROVIDED = re.compile(
-    rf"\b(?:provides|funds)\s+(?:(?:{_BOUND_PATTERN})\s+)?(?:{_DOLLAR}|{_MONEY_NOUN}|an? amount\b)|"
+    rf"\b(?:provides|funds)\s+(?:(?:an?\s+)?(?:total|sum|amount)\s+of\s+|an?\s+)?(?:(?:{_BOUND_PATTERN})\s+)?(?:{_DOLLAR}|{_MONEY_NOUN}|an? amount\b)|"
     r"\b(?:is|are)\s+(?:hereby\s+)?(?:provided|made available)\b|"
     r"\bmakes\s+(?:available\b|[^.;!?]*?\bavailable\b)",
     re.I,

@@ -58,8 +58,13 @@ def install_reader(bill, count=10):
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("asserts_duty_to_award", [False, True])
 def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
-    source_bill, enhancement_owner, enhancement_settings, monkeypatch
+    source_bill,
+    enhancement_owner,
+    enhancement_settings,
+    monkeypatch,
+    asserts_duty_to_award,
 ):
     c = install_reader(source_bill)
     document = source_bill.documents.get()
@@ -82,7 +87,7 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
                         {
                             "label": "Housing grants",
                             "amount_display": "$100 million",
-                            "text": "Provides a $100 million first housing grant.",
+                            "text": "The first housing grant must be $100 million.",
                             "fiscal_years": [],
                             "source_quotes": [quote],
                         }
@@ -92,7 +97,11 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
                     "policy_changes": [
                         {
                             "title": "Help build homes",
-                            "text": "The government must provide a $100 million first housing grant.",
+                            "text": (
+                                "The government must provide a $100 million first housing grant."
+                                if asserts_duty_to_award
+                                else "The bill sets the first housing grant at $100 million."
+                            ),
                             "source_quotes": [quote],
                         }
                     ],
@@ -102,7 +111,10 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
                 output = {
                     "schema_version": "1.4",
                     "summary": [
-                        {"text": "Provides housing grants.", "source_quotes": [quote]}
+                        {
+                            "text": "The bill sets the first housing grant at $100 million.",
+                            "source_quotes": [quote],
+                        }
                     ],
                     "explanations": [],
                 }
@@ -112,6 +124,11 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     with enhancement_settings:
         attempt = _pending_attempt(enhancement_owner, source_bill)
         outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+    if asserts_duty_to_award:
+        assert outcome["status"] == "failed"
+        attempt.enhancement.refresh_from_db()
+        assert attempt.enhancement.result_json is None
+        return
     assert outcome["status"] == "succeeded"
     attempt.enhancement.refresh_from_db()
     result = enhancement_payload(attempt.enhancement, detail=True)["result"]

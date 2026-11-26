@@ -88,3 +88,20 @@ def test_spelled_currency_preserves_amount_and_comparator(path, amount, bound, v
     source = "There is appropriated not more than $100 for grants."
     statement = f"The bill appropriates {bound} {amount} for grants."
     _check_funding_statement(path, source, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source_verb,valid",
+    [("appropriated", True), ("authorized to be appropriated", False)],
+)
+@pytest.mark.parametrize("object_phrase", ["a $100 payment", "a total of $100"])
+def test_provided_payment_needs_funding_authority(
+    path, source_verb, valid, object_phrase
+):
+    _check_funding_statement(
+        path,
+        f"There is {source_verb} $100 for grants.",
+        f"The bill provides {object_phrase} for grants.",
+        valid,
+    )
