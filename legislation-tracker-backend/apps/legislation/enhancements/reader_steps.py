@@ -1,6 +1,7 @@
 """Durable, fenced reader-call cache. Ambiguous dispatches are never replayed."""
 
 from dataclasses import replace
+from functools import cached_property
 
 from django.conf import settings
 from django.db import connection, transaction
@@ -123,6 +124,57 @@ class DurableReaderProvider:
         self.paid_calls = 0
         self.cache_hits = 0
 
+    @cached_property
+    def _confirmed_failure(self):
+        """Only the last terminal call may be paid again on a confirmed retry."""
+        if self.attempt.sequence <= 1:
+            return None
+        attempts = self.attempt.enhancement.attempts
+        previous = attempts.filter(
+            sequence=self.attempt.sequence - 1,
+            status=BillEnhancementAttempt.Status.FAILED,
+            failure_category="invalid_output",
+        ).first()
+        if previous is None:
+            return None
+        if key := previous.citation_resolution_json.get("failed_reader_call"):
+            return key
+        # Legacy retries could replay the same failure entirely from cache.
+        # Skip only those identical, zero-step failures. Stop at the first
+        # different outcome, explicit call key, or attempt with paid steps.
+        same_failure = Q(
+            status=previous.status,
+            failure_category=previous.failure_category,
+            failure_detail=previous.failure_detail,
+        )
+        anchor = (
+            attempts.filter(sequence__lte=previous.sequence)
+            .filter(
+                ~same_failure
+                | Q(citation_resolution_json__has_key="failed_reader_call")
+                | Exists(BillEnhancementStep.objects.filter(attempt_id=OuterRef("pk")))
+            )
+            .order_by("-sequence")
+            .first()
+        )
+        if (
+            not anchor
+            or anchor.status != previous.status
+            or anchor.failure_category != previous.failure_category
+            or anchor.failure_detail != previous.failure_detail
+        ):
+            return None
+        if key := anchor.citation_resolution_json.get("failed_reader_call"):
+            return key
+        last = anchor.steps.order_by("-step_index").first()
+        if (
+            last
+            and last.status == "failed"
+            and last.diagnostics.get("code") == previous.failure_detail.get("code")
+        ):
+            return last.request_fingerprint
+        return None
+
     def progress(self):
         from django.db.models import Count, Q
 
@@ -156,6 +208,7 @@ class DurableReaderProvider:
         ).update(pinned_model=resolved_model)
 
     def enhance_bill(self, *, api_key, request, timeout_seconds):
+        self._current_call_key = None
         try:
             return self._enhance_bill(
                 api_key=api_key, request=request, timeout_seconds=timeout_seconds
@@ -165,6 +218,15 @@ class DurableReaderProvider:
             # reservation transaction so its rollback does not discard the pin.
             if exc.resolved_model:
                 self._pin(request, exc.resolved_model)
+            if (
+                isinstance(exc, ProviderError)
+                and exc.category == "invalid_output"
+                and not exc.outcome_unknown
+                and self._current_call_key
+            ):
+                # This travels with the exception only if bounded recovery
+                # actually ends the attempt. Rejected ancestors remain cached.
+                exc.citation_resolution["failed_reader_call"] = self._current_call_key
             raise
 
     def _enhance_bill(self, *, api_key, request, timeout_seconds):
@@ -295,6 +357,7 @@ class DurableReaderProvider:
             cached = BillEnhancementCallCache.objects.select_for_update().get(
                 pk=fingerprint
             )
+            self._current_call_key = fingerprint
             if not created:
                 if cached.status == "partial":
                     partial = remap(
@@ -343,8 +406,12 @@ class DurableReaderProvider:
                             cached.response_id,
                             cached.resolved_model,
                         )
+                confirmed_failure = (
+                    cached.status == "failed" and fingerprint == self._confirmed_failure
+                )
                 if (
                     cached.status == "failed"
+                    and not confirmed_failure
                     and request.request_envelope.get("source_review")
                     and cached.diagnostic_code
                     in {
@@ -367,9 +434,13 @@ class DurableReaderProvider:
                             usage=ProviderUsage(0, 0, 0),
                             resolved_model=cached.resolved_model,
                         )
-                if cached.status == "failed" and request.request_envelope.get(
-                    "source_packet", {}
-                ).get("validated_changes"):
+                if (
+                    cached.status == "failed"
+                    and not confirmed_failure
+                    and request.request_envelope.get("source_packet", {}).get(
+                        "validated_changes"
+                    )
+                ):
                     from .reader_summary import SUMMARY_FALLBACK_CODES
 
                     if cached.diagnostic_code in SUMMARY_FALLBACK_CODES:
@@ -378,7 +449,10 @@ class DurableReaderProvider:
                             validation_code=cached.diagnostic_code,
                             usage=ProviderUsage(0, 0, 0),
                         )
-                if cached.diagnostic_code == "provider_output_limit":
+                if (
+                    cached.diagnostic_code == "provider_output_limit"
+                    and not confirmed_failure
+                ):
                     failure = ProviderError(
                         "invalid_output",
                         validation_code="provider_output_limit",

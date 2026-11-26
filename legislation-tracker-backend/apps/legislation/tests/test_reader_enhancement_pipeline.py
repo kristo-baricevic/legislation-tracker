@@ -261,6 +261,7 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(
         "summary_repair",
         "summary_repair_yield",
         "summary_bad",
+        "summary_truncated",
     ],
 )
 def test_reader_pipeline_publishes_only_complete_current_targets(
@@ -270,6 +271,7 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
 
     c = install_reader(source_bill)
     requests = []
+    confirmed_retry = False
 
     class Provider:
         def enhance_bill(self, *, request, **kwargs):
@@ -331,9 +333,23 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
             output = {"schema_version": "1.4", "summary": [], "explanations": []}
             if not targets:
                 s = request.source_snapshot[0]
-                invalid_summary = mode.startswith("summary_") and (
-                    mode == "summary_bad"
-                    or not request.request_envelope.get("summary_repair")
+                if mode == "summary_truncated" and not confirmed_retry:
+                    from apps.legislation.enhancements.providers.base import (
+                        ProviderError,
+                    )
+
+                    raise ProviderError(
+                        "invalid_output",
+                        validation_code="provider_output_limit",
+                        usage=ProviderUsage(10, 5, 15),
+                    )
+                invalid_summary = (
+                    not confirmed_retry
+                    and mode.startswith("summary_")
+                    and (
+                        mode == "summary_bad"
+                        or not request.request_envelope.get("summary_repair")
+                    )
                 )
                 output["summary"] = [
                     {
@@ -464,10 +480,65 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
     else:
         assert outcome["status"] != "succeeded"
         assert a.enhancement.result_json is None
-        assert len(requests) == (4 if mode == "summary_bad" else 1)
-        if mode == "summary_bad":
+        retry_summary = mode in {"summary_bad", "summary_truncated"}
+        assert len(requests) == (4 if retry_summary else 1)
+        if retry_summary:
+            from rest_framework.test import APIClient
+
+            from .test_large_bill_staged_flow import _confirmation
+
             assert a.steps.filter(status="validated").count() == 2
             assert a.steps.filter(status="failed").count() == 2
+            terminal = requests[-1].request_envelope
+            if mode == "summary_bad":
+                assert terminal["summary_repair"] == "reader_amount_conflict"
+            else:
+                assert (
+                    terminal["max_output_tokens"]
+                    > requests[-2].request_envelope["max_output_tokens"]
+                )
+            client = APIClient()
+            client.force_authenticate(enhancement_owner)
+            with (
+                enhancement_settings,
+                override_settings(LLM_READER_CALLS_PER_DELIVERY=8),
+            ):
+                if mode == "summary_truncated":
+                    from apps.legislation.enhancements.reader_steps import (
+                        DurableReaderProvider,
+                    )
+
+                    # Before the fix, each confirmed retry replayed both failed
+                    # cache rows, created no paid step and recorded no call key.
+                    a.citation_resolution_json.pop("failed_reader_call", None)
+                    a.save(update_fields=["citation_resolution_json"])
+                    legacy = _confirmation(client, source_bill, a.enhancement_id)
+                    with monkeypatch.context() as old:
+                        old.setattr(
+                            DurableReaderProvider,
+                            "_confirmed_failure",
+                            None,
+                            raising=False,
+                        )
+                        failed = run_bill_enhancement_attempt(
+                            legacy.pk, legacy.dispatch_token
+                        )
+                    legacy.refresh_from_db()
+                    assert failed["status"] == "failed"
+                    assert not legacy.steps.exists() and len(requests) == 4
+                    legacy.citation_resolution_json.pop("failed_reader_call", None)
+                    legacy.save(update_fields=["citation_resolution_json"])
+                retry = _confirmation(client, source_bill, a.enhancement_id)
+                confirmed_retry = True
+                result = run_bill_enhancement_attempt(retry.pk, retry.dispatch_token)
+            assert result["status"] == "succeeded"
+            retry.enhancement.refresh_from_db()
+            assert (
+                retry.enhancement.result_json["summary"][0]["text"]
+                == "Requires a report within 90 days."
+            )
+            assert len(requests) == 5 and requests[-1].request_envelope == terminal
+            assert list(retry.steps.values_list("status", flat=True)) == ["validated"]
 
 
 @pytest.mark.django_db
