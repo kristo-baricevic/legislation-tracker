@@ -8,9 +8,9 @@ from jsonschema import ValidationError
 
 from .citations import citation_spans
 from .funding_roles import (
-    asserted_outlays,
     dollar_amounts,
-    nonoperative_funding_amounts,
+    funding_decisions,
+    funding_statement_conflicts,
     required_claim_conflicts,
 )
 from .percentage_bases import (
@@ -264,14 +264,12 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
         for code, path, message in check_accounting(explanation, unit, graph):
             add(code, "unresolved", path, message)
     source = "\n".join(graph.passages[p].text for p in unit.own_passage_ids)
-    cited_nonoperative = nonoperative_funding_amounts(
-        graph.passages[pid].text for pid in ids
-    )
+    cited_funding = funding_decisions(graph.passages[pid].text for pid in ids)
     cited_bases = cited_percentage_bases(graph.passages[pid].text for pid in ids)
     has_conditions = bool(required_conditions(unit, graph))
     prose = " ".join([explanation["summary"], *explanation["details"]])
     for index, sentence in enumerate([explanation["summary"], *explanation["details"]]):
-        if cited_nonoperative and asserted_outlays(sentence) & cited_nonoperative:
+        if funding_statement_conflicts(sentence, cited_funding):
             add("spending_authority_conflict", path=f"explanations/{index}")
         if any(
             percentage_base_conflicts(rate, basis, cited_bases)
@@ -449,7 +447,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
                         )
                 else:
                     pending.extend(current["children"])
-        claim_nonoperative = nonoperative_funding_amounts(
+        claim_funding = funding_decisions(
             graph.passages[pid].text for pid in claim["evidence_ids"]
         )
         claim_bases = cited_percentage_bases(
@@ -500,7 +498,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
             ):
                 add("currency_conflict", path=f"claims/{claim_index}/money")
             if money["currency"] == "USD" and money["amount"] is not None:
-                if required_claim_conflicts(claim, money["amount"], claim_nonoperative):
+                if required_claim_conflicts(claim, money, claim_funding):
                     add(
                         "spending_authority_conflict",
                         path=f"claims/{claim_index}/money/{money_index}",

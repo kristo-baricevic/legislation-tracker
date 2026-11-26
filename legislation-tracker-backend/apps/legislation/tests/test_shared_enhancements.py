@@ -569,21 +569,37 @@ def test_old_cache_cannot_preserve_a_swapped_percentage_decision(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "source,prose,valid",
+    "source,prose,valid,projection",
     [
         (
             "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for hospital grants.",
             "The Secretary shall allocate $2 million for hospital grants.",
             True,
+            11,
         ),
         (
             "Reserve not less than 20 percent of the total amount appropriated to carry out this Act for a fiscal year and not reserved under section 4.",
             "Reserve 20% of the total appropriation.",
             False,
+            11,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "The bill appropriates $100 for grants.",
+            False,
+            14,
+        ),
+        (
+            "The Secretary shall spend $100 for grants only if Congress appropriates $100.",
+            "The Secretary shall spend $100 for grants.",
+            False,
+            14,
         ),
     ],
 )
-def test_old_cache_rechecks_financial_qualifiers(source_bill, source, prose, valid):
+def test_old_cache_rechecks_financial_qualifiers(
+    source_bill, source, prose, valid, projection
+):
     from hashlib import sha256
 
     from apps.legislation.enhancements.shared import _reader_result_valid
@@ -613,7 +629,7 @@ def test_old_cache_rechecks_financial_qualifiers(source_bill, source, prose, val
         },
     )
     previous = sha256(
-        f"bill-validation:projection-11:{saved.source_fingerprint}:1.4:2:{saved.validation_digest}".encode()
+        f"bill-validation:projection-{projection}:{saved.source_fingerprint}:1.4:2:{saved.validation_digest}".encode()
     ).hexdigest()
     BillProcessingCache.objects.create(
         pk=previous, kind="reader-validation", result_json={"valid": not valid}

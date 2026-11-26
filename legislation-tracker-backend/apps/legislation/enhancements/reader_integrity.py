@@ -8,9 +8,10 @@ import re
 
 from .diagnostics import output_error
 from .funding_roles import (
-    asserted_outlays,
+    claim_prerequisites,
     dollar_amounts,
-    nonoperative_funding_amounts,
+    funding_decisions,
+    funding_statement_conflicts,
 )
 from .percentage_bases import (
     cited_percentage_bases,
@@ -20,7 +21,7 @@ from .percentage_bases import (
 )
 
 
-def validate_numbers(item, *, path):
+def validate_numbers(item, *, path, factual_claim=None):
     evidence = "\n".join(q["quote"] for q in item["source_quotes"])
     fields = [
         str(item.get(key) or "") for key in ("text", "amount_display", "label", "title")
@@ -35,13 +36,17 @@ def validate_numbers(item, *, path):
         for number, basis in percentage_bases(field):
             if percentage_base_conflicts(number, basis, cited):
                 raise output_error("reader_amount_conflict", path)
-    # A matching dollar figure is not enough: authorization does not itself
-    # require spending. Keep this check amount-scoped so a separate mandatory
-    # allocation in the same evidence is not mistaken for an authorization.
-    nonoperative = nonoperative_funding_amounts(
-        q["quote"] for q in item["source_quotes"]
+    cited_funding = funding_decisions(q["quote"] for q in item["source_quotes"])
+    # Structured conditions qualify their own action. Never borrow them for a
+    # separate published summary or parse a concatenation of JSON fields as prose.
+    statements = [factual_claim["action"]] if factual_claim else fields
+    prerequisites = (
+        claim_prerequisites(factual_claim.get("conditions")) if factual_claim else set()
     )
-    if nonoperative and any(asserted_outlays(field) & nonoperative for field in fields):
+    if any(
+        funding_statement_conflicts(field, cited_funding, prerequisites)
+        for field in statements
+    ):
         raise output_error("reader_amount_conflict", path)
 
 

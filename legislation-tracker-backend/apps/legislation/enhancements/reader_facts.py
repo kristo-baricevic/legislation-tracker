@@ -144,7 +144,7 @@ def factual_records_schema(sources, *, aggregate=False):
 
 
 def _validate_detail_numbers(detail, evidence, path):
-    from .funding_roles import nonoperative_funding_amounts, required_claim_conflicts
+    from .funding_roles import funding_decisions, required_claim_conflicts
     from .percentage_bases import cited_percentage_bases, percentage_base_conflicts
     from .reader_integrity import validate_numbers
 
@@ -162,7 +162,7 @@ def _validate_detail_numbers(detail, evidence, path):
     text = " ".join(strings(detail))
     quotes = [evidence[pid] for pid in record_evidence_ids(detail)]
     cited = cited_percentage_bases(q["quote"] for q in quotes)
-    nonoperative = nonoperative_funding_amounts(quote["quote"] for quote in quotes)
+    cited_funding = funding_decisions(quote["quote"] for quote in quotes)
     for money in detail.get("money", []):
         amount = money.get("amount")
         if amount is not None:
@@ -175,7 +175,7 @@ def _validate_detail_numbers(detail, evidence, path):
                 "u.s. dollars",
             }:
                 text += f" ${amount}"
-                if required_claim_conflicts(detail, amount, nonoperative):
+                if required_claim_conflicts(detail, money, cited_funding):
                     raise output_error("reader_amount_conflict", path)
             if str(money.get("measure") or "").lower() in {
                 "%",
@@ -191,6 +191,7 @@ def _validate_detail_numbers(detail, evidence, path):
             "source_quotes": quotes,
         },
         path=path,
+        factual_claim=detail if "action" in detail else None,
     )
 
 

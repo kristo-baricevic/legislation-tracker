@@ -687,7 +687,7 @@ def _validate_cited_money(quote, statement, *, typed, amount, basis=None):
     (key,) = factual_record_ids(sources)
     claim = _claim(
         key,
-        "Reserve funding." if basis else "Allocate funding.",
+        "Reserve funding." if basis else statement,
         money=[
             dict(
                 amount=amount,
@@ -877,3 +877,98 @@ def test_post_reservation_modifier_stays_with_its_account(quote, expected):
     from apps.legislation.enhancements.percentage_bases import percentage_bases
 
     assert [(str(rate), base) for rate, base in percentage_bases(quote)] == expected
+
+
+@pytest.mark.parametrize(
+    "evidence,action,purpose,condition,valid",
+    [
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "Spend funds.",
+            "grants",
+            None,
+            False,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "Spend funds.",
+            "salaries",
+            None,
+            True,
+        ),
+        (
+            "The Secretary shall spend $100 for grants only if Congress appropriates $100.",
+            "Spend funds.",
+            "grants",
+            None,
+            False,
+        ),
+        (
+            "The Secretary shall spend $100 for grants only if Congress appropriates $100.",
+            "The Secretary shall spend $100 for grants.",
+            "grants",
+            "only if Congress appropriates $100",
+            True,
+        ),
+    ],
+)
+def test_typed_funding_decision_retains_purpose_and_condition(
+    evidence, action, purpose, condition, valid
+):
+    sources = _sources(evidence)
+    (key,) = factual_record_ids(sources)
+    money = dict(
+        amount="100",
+        currency="USD",
+        measure="dollars",
+        comparator=None,
+        base=None,
+        period=None,
+        purpose=purpose,
+    )
+    leaf = (
+        {"operator": "leaf", "text": condition, "evidence_ids": [key]}
+        if condition
+        else None
+    )
+    claim = _claim(key, action, conditions=leaf, money=[money])
+    with nullcontext() if valid else pytest.raises(ValidationError) as error:
+        resolve_factual_records([_record(key, claims=[claim])], sources)
+    if not valid:
+        assert error.value.validator == "reader_amount_conflict"
+
+
+@pytest.mark.parametrize(
+    "operator,empty", [("all", False), ("any", False), ("all", True)]
+)
+def test_typed_funding_decision_requires_condition_in_every_alternative(
+    operator, empty
+):
+    condition = "only if Congress appropriates $100"
+    sources = _sources(
+        "The Secretary shall spend $100 for grants "
+        + condition
+        + ". The agency publishes a report."
+    )
+    (key,) = factual_record_ids(sources)
+    children = [
+        {"operator": "leaf", "text": text, "evidence_ids": [key]}
+        for text in (condition, "The agency publishes a report.")
+    ]
+    tree = {"operator": operator, "children": [] if empty else children}
+    money = dict(
+        amount="100",
+        currency="USD",
+        measure="dollars",
+        comparator=None,
+        base=None,
+        period=None,
+        purpose="grants",
+    )
+    claim = _claim(key, "Spend funds.", conditions=tree, money=[money])
+    if operator == "all" and not empty:
+        resolve_factual_records([_record(key, claims=[claim])], sources)
+    else:
+        with pytest.raises(ValidationError) as error:
+            resolve_factual_records([_record(key, claims=[claim])], sources)
+        assert error.value.validator == ("anyOf" if empty else "reader_amount_conflict")
