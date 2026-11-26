@@ -71,8 +71,10 @@ def _citable_owners(sources, owners, first_ref):
     return selected, ownership, sizes
 
 
-def planned_sources(document, text, first_ref, target, xml_sections):
-    index = DependencyIndex(text, xml_sections)
+def planned_sources(
+    document, text, first_ref, target, xml_sections, *, index_class=DependencyIndex
+):
+    index = index_class(text, xml_sections)
     limits = capacity()
     input_ceiling = min(
         settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,

@@ -23,7 +23,7 @@ from .providers.base import ProviderError, ProviderResult, ProviderUsage
 from .reader_cache import (
     call_identity,
     dispatch_identity,
-    historical_dispatch_keys,
+    historical_dispatch_key_groups,
     remap,
 )
 from .reader_citations import recover_reader_items, resolve_reader_citations
@@ -228,17 +228,9 @@ class DurableReaderProvider:
                 )
                 legacy = ambiguous.filter(~Exists(modern))
                 if legacy.exists():
-                    for previous_context in (
-                        (False, True)
-                        if request.historical_dependency_sources
-                        else (False,)
+                    for keys in historical_dispatch_key_groups(
+                        request, adapter, dispatch_request.requested_model
                     ):
-                        keys = historical_dispatch_keys(
-                            request,
-                            adapter,
-                            dispatch_request.requested_model,
-                            previous_context=previous_context,
-                        )
                         blocked = (
                             legacy.filter(
                                 Q(fingerprint__in=keys) | Q(dispatch_identity__in=keys)

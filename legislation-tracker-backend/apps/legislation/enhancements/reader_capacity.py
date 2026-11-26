@@ -6,6 +6,9 @@ Unspecified reasoning means provider default, NOT disabled reasoning.
 
 from .model_selection import target
 
+ANTHROPIC_MAX_UNIONS = 16
+OPENAI_MAX_ENUM_VALUES = 1000
+
 
 def capacity(provider=None, model=None):
     provider, model = (provider, model) if provider and model else target()
@@ -36,9 +39,9 @@ def schema_fits(schema, provider):
         choices = node.get("enum", [])
         enums += len(choices)
         if provider == "anthropic":
-            if unions > 16 or optional > 24:
+            if unions > ANTHROPIC_MAX_UNIONS or optional > 24:
                 return False
-        elif properties > 5000 or enums > 1000 or depth > 10:
+        elif properties > 5000 or enums > OPENAI_MAX_ENUM_VALUES or depth > 10:
             return False
         pending.extend((v, depth + 1) for v in fields.values())
         if "items" in node:

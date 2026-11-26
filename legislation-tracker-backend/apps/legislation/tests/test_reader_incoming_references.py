@@ -109,6 +109,64 @@ def test_structural_incoming_reference_does_not_need_a_rendered_subsection_label
     assert "Recipients of these grants must be publicly owned hospitals." in context
 
 
+@pytest.mark.parametrize("target", [1000, 8000])
+@pytest.mark.parametrize("cyclic", [False, True], ids=["chain", "cycle"])
+def test_indirect_eligibility_includes_incoming_restrictions_only_for_reached_rules(
+    target, cyclic, offline_large_bill_settings
+):
+    grant = "The Secretary shall award grants to applicants eligible under section 2."
+    requirement = "An applicant must operate a hospital."
+    restriction = "Only public hospitals may qualify under section 2."
+    unrelated = "Only rural schools may qualify under section 4."
+    reports = "".join(
+        f"<paragraph><enum>({i})</enum><text>Publish administrative report {i} "
+        "on the department's annual operations.</text></paragraph>"
+        for i in range(1, 141)
+    )
+    cycle = " Section 6 also applies to these applications." if cyclic else ""
+    # Keep separate sections out of the same packed owner so assertions check
+    # legal dependencies, independent of citation-passage boundary padding.
+    sections = "".join(
+        f"<title><section><enum>{number}.</enum>{body}</section></title>"
+        for number, body in (
+            (1, f"<text>{grant}</text>"),
+            (100, reports),
+            (2, f"<text>{requirement}{cycle}</text>"),
+            (101, reports),
+            (3, f"<text>{restriction}</text>"),
+            (
+                4,
+                "<text>Fund school buildings near applicants described in section 2.</text>",
+            ),
+            (5, f"<text>{unrelated}</text>"),
+            (6, "<text>Process applications received under section 2.</text>"),
+        )
+    )
+    raw = f"<bill><legis-body>{sections}</legis-body></bill>".encode()
+    text = extract_document_text(raw, "application/xml", "bill.xml")
+    sources = planned_sources(
+        SimpleNamespace(version_label="Test"),
+        text,
+        1,
+        target,
+        xml_boundaries(raw, text),
+    )
+    owned = next(source for source in sources if grant in source["quoted_text"])
+    assert restriction not in owned["quoted_text"]
+    context = "\n".join(
+        passage["text"]
+        for source in sources
+        for passage in citation_passages(source)
+        if passage["quote_id"]
+        in owned["context_quote_ids"].get(source["source_ref"], [])
+    )
+    assert requirement in context
+    assert restriction in context
+    assert unrelated not in context
+    assert "administrative report 140" not in context
+    assert not owned["unresolved_dependencies"]
+
+
 @pytest.mark.django_db
 def test_oversized_incoming_context_becomes_a_required_mapped_dependency(
     tmp_path, offline_large_bill_settings, settings

@@ -463,7 +463,11 @@ def aligned_xml_sections(raw, text):
 
 
 def stored_xml_sections(document, text):
-    raw, _ = read_stored_xml(document)
-    if raw is not None and text is None:
+    raw, digest = read_stored_xml(document)
+    if raw is None:
+        return ()
+    if text is None:
         text = document.extracted_text or document.raw_text or ""
-    return aligned_xml_sections(raw, text)
+    sections = aligned_xml_sections(raw, text)
+    sections.xml_sha256 = digest
+    return sections

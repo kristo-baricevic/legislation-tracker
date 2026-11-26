@@ -6,11 +6,14 @@ This inventory is used only for matching a reservation, never for generation.
 """
 
 from bisect import bisect_right
+from functools import cached_property, partial
 
 from django.conf import settings
+from django.db.models import Q
 
+from .providers.base import ProviderError
 from .reader_capacity import capacity
-from .reader_chunking import _attach_context
+from .reader_chunking import _attach_context, planned_sources
 from .reader_dependencies import QUALIFICATION, DependencyIndex
 from .xml_sections import stored_xml_sections
 
@@ -33,22 +36,93 @@ class _PreviousIndex(DependencyIndex):
             self.links[target].add(origin)
 
 
-def historical_page_sources(preflight, page_sources):
-    from ..models import BillDocument
+class HistoricalReaderSources:
+    def __init__(self, preflight):
+        self.preflight = preflight
 
+    @cached_property
+    def saved_plans(self):
+        from ..models import BillEnhancement
+
+        manifest = self.preflight.source_manifest
+        if not manifest.get("document_id") or not manifest.get("document_content_hash"):
+            return None
+        # Surviving plans contain the exact source metadata under their
+        # original limits, including older parsers' interpretation of the XML.
+        bill_id = self.preflight.request_envelope.get("bill", {}).get("id")
+        plans = BillEnhancement.objects.filter(
+            provider=self.preflight.provider,
+            output_schema_version="1.4",
+            source_manifest_json__document_content_hash=manifest[
+                "document_content_hash"
+            ],
+        )
+        if bill_id:
+            # A re-import may assign the same rendered bill a new document ID.
+            # The envelope and selected passages still have to match exactly.
+            plans = plans.filter(bill_id=bill_id)
+        else:
+            plans = plans.filter(
+                source_manifest_json__document_id=manifest["document_id"]
+            )
+        return (
+            plans.filter(
+                Q(
+                    source_manifest_json__execution_settings__reader_execution_version__lt=15
+                )
+                | Q(
+                    source_manifest_json__execution_settings__reader_execution_version__isnull=True
+                )
+            )
+            .order_by("pk")
+            .values_list("source_snapshot_json", flat=True)
+        )
+
+    @cached_property
+    def rebuilt(self):
+        from ..models import BillDocument
+        from .reader_batches import build_reader_preflight
+        from .source_packet import PreflightUnavailable, _text_hash
+
+        manifest = self.preflight.source_manifest
+        doc = BillDocument.objects.filter(pk=manifest.get("document_id")).first()
+        text = (doc.extracted_text or doc.raw_text or "") if doc else ""
+        if doc and _text_hash(text) == manifest.get("document_content_hash"):
+            # The manifest identifies rendered text. The storage reader checks
+            # the *file* digest independently and aligns XML to that text.
+            pinned_xml = manifest.get("document_xml_sha256")
+            try:
+                sections = stored_xml_sections(doc, text)
+                if (
+                    manifest.get("source_kind") == "xml_full_review" and not sections
+                ) or (
+                    pinned_xml and getattr(sections, "xml_sha256", None) != pinned_xml
+                ):
+                    raise ProviderError("source_unavailable")
+                plan = build_reader_preflight(
+                    doc,
+                    xml_sections=sections,
+                    reuse_publication=False,
+                    source_planner=partial(planned_sources, index_class=_PreviousIndex),
+                )
+            except PreflightUnavailable as error:
+                # No usable original plan means no permission to dispatch.
+                raise ProviderError(error.reason) from error
+            return {s["source_ref"]: s for s in plan.source_snapshot}
+        if manifest.get("source_kind") == "xml_full_review":
+            raise ProviderError("source_unavailable")
+        # Older in-memory/text-only plans have no immutable XML to reopen.
+        return _rebuild_text_context(self.preflight)
+
+
+def _rebuild_text_context(preflight):
     scans = [
         s.copy() for s in preflight.source_snapshot if s.get("context_planner_version")
     ]
     if not scans:
-        return page_sources
+        return {}
     text = "".join(s["quoted_text"] for s in scans)
-    manifest = preflight.source_manifest
-    document = BillDocument.objects.filter(
-        pk=manifest.get("document_id"),
-        content_hash=manifest.get("document_content_hash"),
-    ).first()
-    sections = stored_xml_sections(document, text) if document else ()
-    index = _PreviousIndex(text, sections)
+    index = _PreviousIndex(text, ())
     ends = [s["end_char"] for s in scans]
     owners = [[] for _ in scans]
     for left, right, unit in index.ownership_units():
@@ -64,14 +138,59 @@ def historical_page_sources(preflight, page_sources):
         - min(limits["output_tokens"], settings.LLM_READER_MAX_OUTPUT_TOKENS)
         - 1024,
     )
-    selected = {s["source_ref"] for s in page_sources}
     rows = _attach_context(
         index,
         scans,
         owners,
         [len(s["quoted_text"].encode()) for s in scans],
         ceiling,
-        selected,
     )
-    historic = {s["source_ref"]: s for s in rows}
-    return [{**s, **historic.get(s["source_ref"], {})} for s in page_sources]
+    return {s["source_ref"]: s for s in rows}
+
+
+def _project(inventory, page_sources, *, summary):
+    from .reader_citations import citation_passages
+    from .reader_summary import summary_source
+
+    rows = []
+    for current in page_sources:
+        prior = inventory.get(current["source_ref"])
+        if prior is None:
+            return None
+        ids = current["allowed_quote_ids"]
+        if prior.get("quoted_text") != current.get("quoted_text"):
+            # A differently sized owner can still supply exactly the same
+            # selected passages. Source numbers alone do not identify evidence.
+            def quotes(source, ids):
+                return {
+                    p["quote_id"]: p["text"]
+                    for p in citation_passages(source)
+                    if p["quote_id"] in ids
+                }
+
+            before, now = quotes(prior, ids), quotes(current, ids)
+            if not ids or set(before) != set(ids) or before != now:
+                return None
+        row = summary_source(prior) if summary else prior
+        rows.append({**row, "allowed_quote_ids": ids})
+    return rows
+
+
+def historical_page_sources(preflight, page_sources, mode, *, summary=False):
+    history = preflight.historical_reader_sources
+    if mode == "saved":
+        plans = history.saved_plans
+        if plans is None:
+            return
+        refs = {s["source_ref"] for s in page_sources}
+        inventories = (
+            {s["source_ref"]: s for s in rows if s["source_ref"] in refs}
+            for rows in plans.iterator(chunk_size=1)
+            if rows
+        )
+    else:
+        inventories = [history.rebuilt]
+    for inventory in inventories:
+        projected = _project(inventory, page_sources, summary=summary)
+        if projected is not None:
+            yield projected

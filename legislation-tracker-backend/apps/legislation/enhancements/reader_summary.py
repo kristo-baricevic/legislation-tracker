@@ -21,6 +21,14 @@ SUMMARY_FALLBACK_CODES = {
 }
 
 
+def summary_source(source):
+    return {
+        k: v
+        for k, v in source.items()
+        if k not in {"discovery_source", "policy_review", "reader_targets"}
+    }
+
+
 def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_calls):
     catalog = {s["source_ref"]: s for s in preflight.source_snapshot}
     items, seen = [], set()
@@ -47,14 +55,11 @@ def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_c
 
     def request_for(group):
         refs = {q["source_ref"] for item in group for q in item["source_quotes"]}
-        sources = [
-            {
-                k: v
-                for k, v in catalog[ref].items()
-                if k not in {"discovery_source", "policy_review", "reader_targets"}
-            }
-            for ref in sorted(refs)
-        ]
+        from functools import partial
+
+        from .reader_legacy_context import historical_page_sources
+
+        sources = [summary_source(catalog[ref]) for ref in sorted(refs)]
         envelope = copy.deepcopy(base_envelope)
         envelope["source_packet"] = {
             "truncated": False,
@@ -160,6 +165,9 @@ def summarize_review(preflight, review, provider, api_key, checkpoint, maximum_c
             request_bytes=encoded,
             estimated_input_tokens=len(encoded),
             reader_batches=(),
+            historical_page_sources=partial(
+                historical_page_sources, preflight, sources, summary=True
+            ),
         )
 
     total = ProviderResult({}, ProviderUsage(0, 0, 0), "", "")

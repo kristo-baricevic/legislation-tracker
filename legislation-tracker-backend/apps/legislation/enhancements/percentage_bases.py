@@ -8,11 +8,12 @@ _PERCENTAGE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:%|percent\b)", re.I)
 # Stop before the purpose, where another rate or a different account can appear.
 _ACCOUNT = r"(?:appropriations?|(?:amounts?|sums?|funds?)\s+appropriated)"
 _BASIS = r"(?:total|entire|full|remaining|remainder)"
+_SHORTHAND = rf"{_BASIS}(?:\s+(?:annual\s+)?(?:amounts?|sums?|funds?))?"
 _DIRECT_BASE = re.compile(
     rf"\s+of\s+(?:the\s+)?(?P<base>"
     rf"(?:{_BASIS}\s+(?:of\s+(?:the\s+)?)?)?(?:annual\s+)?{_ACCOUNT}"
     rf"(?:\s+(?:remaining|not reserved|after (?:the |any )?(?:set[ -]aside|reservation)))?"
-    rf"|{_BASIS}(?=\s*(?:$|[,.;]|\b(?:and|or|for|to)\b)))\b",
+    rf"|{_SHORTHAND}(?=\s*(?:$|[,.;]|\b(?:and|or|for|to|is|are|shall|must|may)\b)))\b",
     re.I,
 )
 _OF = re.compile(r"\s+of\b", re.I)
@@ -28,7 +29,7 @@ def appropriation_base(text):
     # A standalone shorthand can refer back to the appropriations account.
     # A named, unrelated denominator (e.g. "total enrollment") cannot.
     if not re.search(_ACCOUNT, text, re.I) and not re.fullmatch(
-        rf"(?:the\s+)?{_BASIS}(?:\s+(?:amounts?|funds?))?", text.strip(), re.I
+        rf"(?:the\s+)?{_SHORTHAND}", text.strip(), re.I
     ):
         return None
     if re.search(

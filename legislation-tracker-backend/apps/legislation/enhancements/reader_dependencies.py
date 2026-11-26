@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 6
+CONTEXT_PLANNER_VERSION = 7
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -396,6 +396,10 @@ class DependencyIndex:
                     self.tables_under[ancestor].append(i)
         self.unresolved = defaultdict(set)
         self._index_dependencies()
+        self.incoming_descendants = defaultdict(list)
+        for target in self.incoming:
+            for ancestor in self.ancestors(target):
+                self.incoming_descendants[ancestor].append(target)
 
     def _direct(self, index):
         node = self.nodes[index]
@@ -1049,17 +1053,26 @@ class DependencyIndex:
         for a in (index, *self.ancestors(index), None):
             for qualifier in self.qualifications[a]:
                 include(qualifier)
-        # A referring restriction is supporting evidence. Following its edge
-        # back into the owned ancestor would pull every unrelated sibling in.
+        # A referring restriction is evidence about the target. Its reference
+        # back to a partially owned ancestor must not expand unrelated siblings.
         incoming_targets = defaultdict(set)
-        for owned in (
+        examined = set()
+
+        def include_restrictions(target):
+            if target in examined:
+                return
+            examined.add(target)
+            for origin in self.incoming[target]:
+                incoming_targets[origin].add(target)
+                if origin != index and origin not in self.ancestors(index):
+                    include(origin)
+
+        for target in (
             index,
             *self.ancestors(index),
             *[i for i in pending if self._descendant(i, index)],
         ):
-            for origin in self.incoming[owned]:
-                incoming_targets[origin].add(owned)
-                include(origin)
+            include_restrictions(target)
         while pending:
             current = pending.pop()
             unresolved.update(self.unresolved[current])
@@ -1067,6 +1080,16 @@ class DependencyIndex:
                 self.links[current] - incoming_targets[current]
             ) | self.definition_links[current]:
                 include(linked)
+                # Follow restrictions on provisions used by the current
+                # provision. A merely incoming citation may describe a
+                # separate program; its own incoming citations cannot make
+                # that program's restrictions govern this one.
+                for target in (
+                    linked,
+                    *self.ancestors(linked),
+                    *self.incoming_descendants[linked],
+                ):
+                    include_restrictions(target)
             for linked in self.introduction_links[current]:
                 include(linked, whole=False)
                 for table in self.tables_under[linked]:

@@ -548,8 +548,11 @@ def test_hr9300_reservations_cannot_swap_percentage_bases(
         ("20", "total", False),
     ],
 )
+@pytest.mark.parametrize(
+    "noun", ["appropriation", "funds", "amount", "amounts", "sums"]
+)
 def test_two_percentages_bind_to_their_own_appropriation(
-    reverse, validator, number, basis, supported
+    reverse, validator, number, basis, supported, noun
 ):
     from apps.legislation.enhancements.reader_integrity import validate_numbers
 
@@ -562,7 +565,7 @@ def test_two_percentages_bind_to_their_own_appropriation(
         + " and ".join(reversed(clauses) if reverse else clauses)
         + "."
     )
-    base = f"the {basis} appropriation"
+    base = f"the {basis} {noun}"
     with nullcontext() if supported else pytest.raises(ValidationError) as error:
         if validator == "typed":
             sources = _sources(source)
@@ -599,13 +602,17 @@ def test_two_percentages_bind_to_their_own_appropriation(
             [("2", "total"), ("20", "remaining")],
         ),
         (
-            "2% of enrollment is eligible and 20% of the remaining appropriation is reserved.",
+            "2% of total enrollment is eligible and 20% of the remaining appropriation is reserved.",
             [("20", "remaining")],
         ),
         (
             "Of the total amount appropriated and not reserved under section 4, use 20.5% "
             "for grants and 2% of total receipts for administration.",
             [("20.5", "remaining")],
+        ),
+        (
+            "Reserve 2% of total funds raised via donations and 20% of the remaining funds.",
+            [("20", "remaining")],
         ),
         (
             "Reserve 2% of the total and 20% of the remainder.",

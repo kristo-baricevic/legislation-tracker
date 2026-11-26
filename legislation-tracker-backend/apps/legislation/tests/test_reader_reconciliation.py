@@ -184,7 +184,9 @@ def test_pages_consume_every_typed_record_and_preserve_distant_condition(setting
         provider,
         "",
         lambda: checkpoints.append(True),
-        reconciliation_call_bound(preflight.source_snapshot),
+        reconciliation_call_bound(
+            preflight.source_snapshot, preflight.provider, preflight.requested_model
+        ),
     )
     assert calls == len(provider.requests) > 1
     assert len(checkpoints) == calls * 2
@@ -454,6 +456,32 @@ def test_policy_presentation_grouping_preserves_draft_receipt_positions(settings
         validate_reconciliation(result, preflight.source_snapshot)
 
 
+def test_dense_owner_budget_uses_selected_model_output_and_wire_limits(settings):
+    preflight, _ = _fixture(settings, count=150)
+    settings.LLM_READER_MAX_OUTPUT_TOKENS = 100000
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100000
+    settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 100000
+    settings.LLM_READER_MODEL_CAPACITIES = {
+        f"{provider}/{model}": {"context_tokens": 200000, "output_tokens": limit}
+        for provider, model, limit in [
+            ("openai", "standard", 24000),
+            ("openai", "small", 8000),
+            ("anthropic", "wide", 100000),
+        ]
+    }
+    sources = preflight.source_snapshot
+    # At 50% visible output, a full-length item leaves room for 10 checks
+    # on standard and one on small. Anthropic's grammar allows at most 15.
+    assert reconciliation_call_bound(sources, "openai", "standard") == 15 + 4
+    assert reconciliation_call_bound(sources, "openai", "small") == 150 + 4
+    assert reconciliation_call_bound(sources, "anthropic", "wide") == 10 + 4
+    settings.LLM_READER_MAX_OUTPUT_TOKENS = 8000
+    assert reconciliation_call_bound(sources, "openai", "standard") == 150 + 4
+    settings.LLM_READER_MAX_OUTPUT_TOKENS = 100000
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 2000
+    assert reconciliation_call_bound(sources, "openai", "standard") > 15 + 4
+
+
 def test_applicable_history_over_100kb_is_retained_without_resending_it(settings):
     preflight, review = _fixture(settings, count=300)
     settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100000
@@ -492,7 +520,9 @@ def test_applicable_history_over_100kb_is_retained_without_resending_it(settings
         provider,
         "",
         lambda: None,
-        reconciliation_call_bound(preflight.source_snapshot),
+        reconciliation_call_bound(
+            preflight.source_snapshot, preflight.provider, preflight.requested_model
+        ),
     )
     assert calls > 5
     assert result["factual_records"] == original_facts
@@ -619,7 +649,9 @@ def test_indivisible_dependency_output_recovery_is_bounded(settings, stop):
             return super().enhance_bill(request=request, **kwargs)
 
     provider = Truncated()
-    bound = reconciliation_call_bound(preflight.source_snapshot)
+    bound = reconciliation_call_bound(
+        preflight.source_snapshot, preflight.provider, preflight.requested_model
+    )
     if stop == "recover":
         result, response, calls = reconcile_review(
             preflight, review, provider, "", lambda: None, bound

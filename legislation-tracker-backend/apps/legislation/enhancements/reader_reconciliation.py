@@ -17,7 +17,12 @@ from jsonschema import Draft202012Validator, ValidationError
 from .citations import combine_usage
 from .diagnostics import output_error, validation_diagnostic
 from .providers.base import ProviderError, ProviderResult, ProviderUsage
-from .reader_capacity import capacity, fits
+from .reader_capacity import (
+    ANTHROPIC_MAX_UNIONS,
+    OPENAI_MAX_ENUM_VALUES,
+    capacity,
+    fits,
+)
 from .reader_facts import (
     factual_evidence,
     record_evidence_ids,
@@ -27,6 +32,8 @@ from .source_packet import canonical_json_bytes
 
 VERSION = 1
 MIN_OUTPUT_TOKENS = 4000
+PAGE_OVERHEAD = 1000
+CHECK_ALLOWANCE = 900
 CATEGORIES = ("policy_changes", "financial_items", "additional_changes")
 _RETAINED_CITATIONS = """Retain all earlier citations and qualifications. Earlier checked citations are
 listed as retained_evidence_ids; their source text is held by the server and is
@@ -74,9 +81,10 @@ def _object(properties):
     }
 
 
-def _deferred(sources):
+def _deferred(sources, evidence=None):
     catalog = {source["source_ref"]: source for source in sources}
-    evidence = factual_evidence(sources)
+    if evidence is None:
+        evidence = factual_evidence(sources)
     by_ref = {}
     for key in evidence:
         by_ref.setdefault(key.split(":", 1)[0], []).append(key)
@@ -102,21 +110,51 @@ def _deferred(sources):
     return pending
 
 
-def reconciliation_call_bound(sources):
+def reconciliation_call_bound(sources, provider, model):
     """Reserve initial dependency pages and four recovery calls per owner.
 
     A page checks the owner's items together. Item counts and generated prose
     sizes are unknown until mapping completes. The reservation is a spending
     ceiling, not a Cartesian product of hypothetical per-item retries.
     """
-    pending = _deferred(sources)
-    # Small owners can spend one call per record. For dense owners, budget
-    # one page per eight records. Larger generated items can still require
-    # a confirmed continuation, which reuses already validated pages.
-    return sum(
-        max(min(8, len(records)), (len(records) + 7) // 8) + 4
-        for records in pending.values()
+    evidence = factual_evidence(sources)
+    pending = _deferred(sources, evidence)
+    limits = capacity(provider, model)
+    # Forecast one full-length item using the same output model as _request.
+    # The worker measures the actual items, grammar and encoded input after mapping.
+    item_size = _prose_schema()["financial_items"]["items"]["properties"]["text"][
+        "maxLength"
+    ]
+    visible = int(limits["output_tokens"] * limits["visible_fraction"])
+    per_page = max(1, (visible - PAGE_OVERHEAD - item_size - 1) // CHECK_ALLOWANCE)
+    if provider == "anthropic":
+        # Each record adds a nullable reason. One item also needs a citation union.
+        per_page = min(per_page, ANTHROPIC_MAX_UNIONS - 1)
+    elif provider in {"openai", "openrouter"}:
+        # One item ID and three status choices per record, plus the page ID.
+        per_page = min(per_page, (OPENAI_MAX_ENUM_VALUES - 1) // 4)
+    input_bytes = max(
+        1,
+        min(
+            settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
+            settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
+            limits["context_tokens"] - limits["output_tokens"] - 1024,
+        ),
     )
+    quote_bytes = {key: len(value["quote"].encode()) for key, value in evidence.items()}
+    calls = 0
+    for records in pending.values():
+        if records:
+            size = sum(quote_bytes[key] for key in records)
+            calls += (
+                max(
+                    min(8, len(records)),
+                    (len(records) + per_page - 1) // per_page,
+                    (size + input_bytes - 1) // input_bytes,
+                )
+                + 4
+            )
+    return calls
 
 
 def _base_items(review, owners):
@@ -151,12 +189,6 @@ def _wire_items(items, evidence):
         value["source_quotes"] = quotes
         wire[item_id] = {"category": item["category"], "value": value}
     return wire
-
-
-def _historical_sources(preflight, page_sources):
-    from .reader_legacy_context import historical_page_sources
-
-    return historical_page_sources(preflight, page_sources)
 
 
 def _parts(
@@ -340,6 +372,8 @@ def _request(
     evidence=None,
     legacy=False,
 ):
+    from .reader_legacy_context import historical_page_sources
+
     descriptor, sources, packet = _parts(
         preflight.source_snapshot,
         records,
@@ -373,7 +407,11 @@ def _request(
             # A response can retain the original with null or write bounded
             # prose. It never needs to regenerate the complete source text.
             item["value"]["text"] = "x" * 1600
-    visible = 1000 + len(canonical_json_bytes(output_items)) + 900 * len(record_ids)
+    visible = (
+        PAGE_OVERHEAD
+        + len(canonical_json_bytes(output_items))
+        + CHECK_ALLOWANCE * len(record_ids)
+    )
     envelope["max_output_tokens"] = max(
         MIN_OUTPUT_TOKENS, int(visible / limits["visible_fraction"]) + 1
     )
@@ -386,7 +424,7 @@ def _request(
         estimated_input_tokens=len(encoded),
         reader_batches=(),
         prior_reader_items=items if descriptor["version"] == 2 else None,
-        historical_dependency_sources=partial(_historical_sources, preflight, sources),
+        historical_page_sources=partial(historical_page_sources, preflight, sources),
         legacy_dependency_request=(
             partial(
                 _request,

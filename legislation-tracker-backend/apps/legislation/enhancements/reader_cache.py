@@ -124,50 +124,56 @@ def dispatch_identity(request, adapter):
     ).hexdigest()
 
 
-def historical_dispatch_keys(
-    request, adapter, dispatched_model, *, previous_context=False
-):
-    """Versions 11–14 hashed the planner stamp on each server-side source."""
+def historical_dispatch_key_groups(request, adapter, dispatched_model):
+    """Try direct hashes and saved source inventories before rebuilding a plan."""
     candidates = [request]
     if request.legacy_dependency_request:
         candidates.append(request.legacy_dependency_request())
+    for mode in ("current", "saved", "rebuilt"):
+        for candidate in candidates:
+            if mode == "current":
+                inventories = [candidate.source_snapshot]
+            elif candidate.historical_page_sources:
+                inventories = candidate.historical_page_sources(mode)
+            else:
+                continue
+            for inventory in inventories:
+                yield _historical_keys(candidate, inventory, adapter, dispatched_model)
+
+
+def _historical_keys(candidate, inventory, adapter, dispatched_model):
+    # Versions 11–14 hashed the planner stamp on each server-side source.
+    stamps = [None]
+    if any("context_planner_version" in s for s in inventory):
+        stamps.extend(range(1, 6))
     keys = set()
-    for candidate in candidates:
-        inventory = (
-            candidate.historical_dependency_sources()
-            if previous_context and candidate.historical_dependency_sources
-            else candidate.source_snapshot
+    for stamp in stamps:
+        sources = (
+            inventory
+            if stamp is None
+            else [
+                (
+                    {**s, "context_planner_version": stamp}
+                    if "context_planner_version" in s
+                    else s
+                )
+                for s in inventory
+            ]
         )
-        inventories = [inventory]
-        if any("context_planner_version" in s for s in candidate.source_snapshot):
-            inventories.extend(
-                [
-                    (
-                        {**s, "context_planner_version": stamp}
-                        if "context_planner_version" in s
-                        else s
-                    )
-                    for s in inventory
-                ]
-                for stamp in range(1, 6)
+        prior = replace(candidate, source_snapshot=sources)
+        for model in {candidate.requested_model, dispatched_model}:
+            keys.add(
+                call_identity(replace(prior, requested_model=model), adapter=adapter)[0]
             )
-        for sources in inventories:
-            for model in {request.requested_model, dispatched_model}:
-                prior = replace(
-                    candidate, source_snapshot=sources, requested_model=model
+        if candidate.request_envelope.get("dependency_review") and (
+            sources is candidate.source_snapshot
+            or any(s.get("context_planner_version") == 1 for s in sources)
+        ):
+            keys.update(
+                legacy_dependency_identities(
+                    prior, adapter=adapter, dispatched_model=dispatched_model
                 )
-                keys.add(call_identity(prior, adapter=adapter)[0])
-            if candidate.request_envelope.get("dependency_review") and (
-                sources is candidate.source_snapshot
-                or any(s.get("context_planner_version") == 1 for s in sources)
-            ):
-                keys.update(
-                    legacy_dependency_identities(
-                        replace(candidate, source_snapshot=sources),
-                        adapter=adapter,
-                        dispatched_model=dispatched_model,
-                    )
-                )
+            )
     return keys
 
 

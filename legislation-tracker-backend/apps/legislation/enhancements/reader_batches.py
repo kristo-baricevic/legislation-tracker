@@ -85,7 +85,7 @@ def reader_execution_settings():
 
     return {
         "policy_grouping_version": 7,
-        "reader_execution_version": 16,
+        "reader_execution_version": 17,
         "model_capacities": getattr(settings, "LLM_READER_MODEL_CAPACITIES", {}),
         **(
             {"owned_token_target": owned_token_target()} if owned_token_target() else {}
@@ -126,6 +126,9 @@ def reader_input_guard(bill):
                     [
                         document.pk,
                         document.version_label,
+                        document.object_storage_key,
+                        document.content_hash,
+                        document.content_type,
                         document.extracted_text or document.raw_text,
                     ]
                     if document
@@ -195,7 +198,9 @@ def _output_fits(sources, *, summary=False):
 
 
 @cached_citations
-def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True):
+def build_reader_preflight(
+    document, *, xml_sections=(), reuse_publication=True, source_planner=None
+):
     from .reader_capacity import fits
     from .source_packet import (
         PreflightUnavailable,
@@ -474,7 +479,8 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
     if dependency_planning:
         from .reader_chunking import planned_sources
 
-        scans = planned_sources(
+        planner = source_planner or planned_sources
+        scans = planner(
             document, text, next_ref, owned_token_target() or 8000, xml_sections
         )
     if next_ref + len(scans) > 10000:
@@ -683,6 +689,11 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
     identity = {
         "document_id": document.pk,
         "document_content_hash": _text_hash(text),
+        **(
+            {"document_xml_sha256": xml_sections.xml_sha256}
+            if getattr(xml_sections, "xml_sha256", None)
+            else {}
+        ),
         "contract_id": contract.pk if contract else None,
         "contract_hash": contract.contract_hash if contract else None,
         "document_version_label": document.version_label,
@@ -765,7 +776,9 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
         )
     from .reader_reconciliation import reconciliation_call_bound
 
-    dependency_reserve = reconciliation_call_bound(scans) if staged else 0
+    dependency_reserve = (
+        reconciliation_call_bound(scans, p.provider, p.requested_model) if staged else 0
+    )
     planned = 1 + len(batches)
     if planned + dependency_reserve > settings.LLM_READER_MAX_CALLS:
         if settings.LLM_READER_MAX_CALLS > 0:

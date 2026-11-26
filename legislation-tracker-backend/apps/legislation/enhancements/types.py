@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any
 
 
@@ -62,4 +63,12 @@ class EnhancementPreflight:
     worker_guard: str | None = None
     prior_reader_items: dict[str, dict[str, Any]] | None = None
     legacy_dependency_request: Callable[[], EnhancementPreflight] | None = None
-    historical_dependency_sources: Callable[[], list[dict[str, Any]]] | None = None
+    historical_page_sources: Callable[[str], Iterable[list[dict[str, Any]]]] | None = (
+        None
+    )
+
+    @cached_property
+    def historical_reader_sources(self):
+        from .reader_legacy_context import HistoricalReaderSources
+
+        return HistoricalReaderSources(self)
