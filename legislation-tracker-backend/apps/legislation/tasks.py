@@ -1370,9 +1370,14 @@ def _finish_enhancement_attempt(
             and result_json.get("schema_version") == "2.0-source-first"
             and attempt_status == BillEnhancementAttempt.Status.SUCCEEDED
         ):
-            from .enhancements.source_first_worker import should_promote
+            from .enhancements.source_first_worker import (
+                replaces_invalid_publication,
+                should_promote,
+            )
 
-            if should_promote(enhancement.result_json, result_json):
+            if should_promote(
+                enhancement.result_json, result_json
+            ) or replaces_invalid_publication(enhancement, result_json):
                 enhancement.published_attempt = attempt
                 enhancement.result_json = result_json
                 enhancement.result_completeness = (

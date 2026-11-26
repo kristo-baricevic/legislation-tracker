@@ -148,6 +148,8 @@ def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
 
 
 def reusable_publication(enhancement, credential):
+    from .shared import _reader_result_valid
+
     published = enhancement.published_attempt
     if (
         enhancement.output_schema_version == "2.0-source-first"
@@ -155,6 +157,7 @@ def reusable_publication(enhancement, credential):
         and published
         and published.credential_id == credential.pk
         and published.credential_revision == credential.revision
+        and _reader_result_valid(enhancement)
     ):
         return enhancement.result_json
     return None

@@ -211,14 +211,7 @@ def enhancement_payload(
     if detail:
         from .shared import _reader_result_valid
 
-        eligible = (
-            enhancement.result_json is None
-            or (
-                enhancement.output_schema_version == "2.0-source-first"
-                and enhancement.result_completeness == "partial"
-            )
-            or _reader_result_valid(enhancement)
-        )
+        eligible = enhancement.result_json is None or _reader_result_valid(enhancement)
         payload["result"] = _expanded_result(enhancement) if eligible else None
         payload["attempts"] = [_attempt_payload(attempt) for attempt in attempts]
         payload["poll_after_seconds"] = (

@@ -278,9 +278,16 @@ def test_source_first_reuse_rechecks_stored_xml_without_realigning(
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("rerun", [False, True])
+@pytest.mark.parametrize(
+    ("rerun", "invalid_prior"), [(False, False), (True, False), (False, True)]
+)
 def test_partial_retry_promotes_without_regenerating_accepted_units(
-    enhancement_owner, enhancement_settings, source_bill, monkeypatch, rerun
+    enhancement_owner,
+    enhancement_settings,
+    source_bill,
+    monkeypatch,
+    rerun,
+    invalid_prior,
 ):
     from apps.legislation.enhancements.service import (
         retry_allowed,
@@ -389,6 +396,43 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
         assert enhancement.result_completeness == "partial"
         assert retry_allowed(first)
         prior = enhancement.result_json
+        # The detail endpoint must recheck an older partial publication too.
+        # Keep a faithful partial available for display and confirmed reuse.
+        from copy import deepcopy
+
+        from apps.legislation.enhancements.serializers import enhancement_payload
+        from apps.legislation.enhancements.service import reusable_publication
+
+        assert enhancement_payload(enhancement, detail=True)["result"] == prior
+        assert reusable_publication(enhancement, first.credential) == prior
+        corrupt = deepcopy(prior)
+        next(row for row in corrupt["provisions"] if row["status"] == "explained")[
+            "summary"
+        ] = "The bill appropriates $100 for grants."
+        enhancement.result_json = corrupt
+        enhancement.save(update_fields=["result_json"])
+        enhancement.refresh_from_db()
+        assert enhancement_payload(enhancement, detail=True)["result"] is None
+        assert reusable_publication(enhancement, first.credential) is None
+        if invalid_prior:
+            # A confirmed regeneration must be able to replace the invalid row.
+            phase[0] = 1
+            regenerated = retry_enhancement_attempt(
+                user=enhancement_owner,
+                bill=source_bill,
+                enhancement_id=enhancement.pk,
+                confirmed=_confirmation(source_bill, first.credential),
+            ).attempt
+            assert regenerated.reused_result_json is None
+            run_bill_enhancement_attempt(regenerated.pk, regenerated.dispatch_token)
+            enhancement.refresh_from_db()
+            assert enhancement.published_attempt_id == regenerated.pk
+            assert enhancement.result_completeness == "complete"
+            assert enhancement_payload(enhancement, detail=True)["result"] is not None
+            return
+        enhancement.result_json = prior
+        enhancement.save(update_fields=["result_json"])
+        enhancement.refresh_from_db()
         if rerun:
             latest = client.get(url + "latest/").data
             assert (latest["id"], latest["active_reader"]["id"]) == (

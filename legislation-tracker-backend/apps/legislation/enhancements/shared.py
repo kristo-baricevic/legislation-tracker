@@ -65,6 +65,8 @@ def _source_first_inputs(saved, document):
 
 
 def _source_first_result_valid(saved, inputs):
+    from dataclasses import replace
+
     from .provision_pipeline import _plan_built_graph, run_analysis
     from .source_graph import build_source_graph
 
@@ -75,10 +77,20 @@ def _source_first_result_valid(saved, inputs):
     )
     result = saved.result_json
     plan = _plan_built_graph(graph, reuse_result=result)
-    if plan.calls or plan.unresolved_unit_ids:
+    if saved.result_completeness == "partial":
+        # Replay the saved disposition of unresolved units locally. The planner
+        # has already checked each explained provision against the current source.
+        unresolved = tuple(
+            (row["unit_id"], row["unresolved_reason"])
+            for row in result["provisions"]
+            if row["status"] == "unresolved"
+        )
+        if not unresolved:
+            return False
+        plan = replace(plan, calls=(), unresolved_reasons=unresolved)
+    elif plan.calls or plan.unresolved_unit_ids:
         return False
     synopsis = result["synopsis"]
-    from dataclasses import replace
 
     projected = run_analysis(
         replace(plan, maximum_calls=1),
@@ -97,7 +109,7 @@ def validation_key(saved):
     from .reader_cache import VALIDATOR_VERSION
 
     return hashlib.sha256(
-        f"bill-validation:projection-14:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
+        f"bill-validation:projection-15:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
     ).hexdigest()
 
 
