@@ -1,4 +1,5 @@
 import copy
+from contextlib import nullcontext
 
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
@@ -532,3 +533,136 @@ def test_hr9300_reservations_cannot_swap_percentage_bases(
             path=["summary"],
         )
     assert failure.value.validator == "reader_amount_conflict"
+
+
+@pytest.mark.parametrize(
+    "reverse", [False, True], ids=["total-first", "remaining-first"]
+)
+@pytest.mark.parametrize("validator", ["typed", "prose"])
+@pytest.mark.parametrize(
+    "number,basis,supported",
+    [
+        ("2", "total", True),
+        ("20", "remaining", True),
+        ("2", "remaining", False),
+        ("20", "total", False),
+    ],
+)
+def test_two_percentages_bind_to_their_own_appropriation(
+    reverse, validator, number, basis, supported
+):
+    from apps.legislation.enhancements.reader_integrity import validate_numbers
+
+    clauses = [
+        "2 percent of the total appropriation for Tribal grants",
+        "20 percent of the remaining appropriation for implementation",
+    ]
+    source = (
+        "The Secretary shall reserve "
+        + " and ".join(reversed(clauses) if reverse else clauses)
+        + "."
+    )
+    base = f"the {basis} appropriation"
+    with nullcontext() if supported else pytest.raises(ValidationError) as error:
+        if validator == "typed":
+            sources = _sources(source)
+            (key,) = factual_record_ids(sources)
+            money = dict(
+                amount=number,
+                measure="percent",
+                currency=None,
+                base=base,
+                purpose=None,
+                period=None,
+                comparator=None,
+            )
+            claim = _claim(key, "Reserve funding.", money=[money])
+            resolve_factual_records([_record(key, claims=[claim])], sources)
+        else:
+            validate_numbers(
+                {
+                    "text": f"Reserve {number}% of {base}.",
+                    "source_quotes": [{"quote": source}],
+                },
+                path=["summary"],
+            )
+    if not supported:
+        assert error.value.validator == "reader_amount_conflict"
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        (
+            "From the total appropriation for the remaining counties, reserve 2% for grants "
+            "and 20% of the remaining appropriation for administration.",
+            [("2", "total"), ("20", "remaining")],
+        ),
+        (
+            "2% of enrollment is eligible and 20% of the remaining appropriation is reserved.",
+            [("20", "remaining")],
+        ),
+        (
+            "Of the total amount appropriated and not reserved under section 4, use 20.5% "
+            "for grants and 2% of total receipts for administration.",
+            [("20.5", "remaining")],
+        ),
+        (
+            "Reserve 2% of the total and 20% of the remainder.",
+            [("2", "total"), ("20", "remaining")],
+        ),
+    ],
+)
+def test_percentage_bases_follow_the_account_across_legal_word_orders(source, expected):
+    from apps.legislation.enhancements.percentage_bases import percentage_bases
+
+    assert [(str(rate), base) for rate, base in percentage_bases(source)] == expected
+
+
+def test_prose_basis_from_one_reader_field_does_not_qualify_another_field():
+    from apps.legislation.enhancements.reader_integrity import validate_numbers
+
+    validate_numbers(
+        {
+            "text": "From the total appropriation, reserve 2% for grants",
+            "amount_display": "20%",
+            "source_quotes": [
+                {
+                    "quote": "Reserve 2% of the total appropriation for grants and 20% of the remaining appropriation for implementation."
+                }
+            ],
+        },
+        path=["financial_items"],
+    )
+
+
+@pytest.mark.parametrize("reverse_source", [False, True])
+@pytest.mark.parametrize("amount,valid", [("2000000", True), ("15000000", False)])
+def test_mixed_authority_is_amount_scoped_in_typed_claims(
+    reverse_source, amount, valid
+):
+    parts = [
+        "there are authorized to be appropriated $15 million for grants",
+        "the Secretary shall allocate $2 million for training",
+    ]
+    sources = _sources(" and ".join(parts[::-1] if reverse_source else parts) + ".")
+    (key,) = factual_record_ids(sources)
+    claim = _claim(
+        key,
+        "Disburse funds.",
+        money=[
+            dict(
+                amount=amount,
+                currency="USD",
+                measure="dollars",
+                base=None,
+                purpose=None,
+                period=None,
+                comparator=None,
+            )
+        ],
+    )
+    with nullcontext() if valid else pytest.raises(ValidationError) as error:
+        resolve_factual_records([_record(key, claims=[claim])], sources)
+    if not valid:
+        assert error.value.validator == "reader_amount_conflict"

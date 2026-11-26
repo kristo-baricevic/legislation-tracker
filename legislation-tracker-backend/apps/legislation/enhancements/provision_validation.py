@@ -7,6 +7,11 @@ from decimal import Decimal, InvalidOperation
 from jsonschema import ValidationError
 
 from .citations import citation_spans
+from .percentage_bases import (
+    cited_percentage_bases,
+    percentage_base_conflicts,
+    percentage_bases,
+)
 from .source_first_schema import _evidence_ids, validate_source_first_schema
 from .source_graph import BARE_REFERENCE, REFERENCE, has_explainable_text
 
@@ -271,9 +276,15 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
         for code, path, message in check_accounting(explanation, unit, graph):
             add(code, "unresolved", path, message)
     source = "\n".join(graph.passages[p].text for p in unit.own_passage_ids)
+    cited_bases = cited_percentage_bases(graph.passages[pid].text for pid in ids)
     has_conditions = bool(required_conditions(unit, graph))
     prose = " ".join([explanation["summary"], *explanation["details"]])
     for index, sentence in enumerate([explanation["summary"], *explanation["details"]]):
+        if any(
+            percentage_base_conflicts(rate, basis, cited_bases)
+            for rate, basis in percentage_bases(sentence)
+        ):
+            add("percentage_base_conflict", path=f"explanations/{index}")
         if re.search(
             r"\bassigned\s+(?:items|units|blocks|passages)\b|\btext\s+does\s+not\s+establish\s+the\s+contents\b",
             sentence,
@@ -445,7 +456,21 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
                         )
                 else:
                     pending.extend(current["children"])
-        for money in claim["money"]:
+        claim_bases = cited_percentage_bases(
+            graph.passages[pid].text for pid in claim["evidence_ids"]
+        )
+        for money_index, money in enumerate(claim["money"]):
+            if (
+                money["base"]
+                and re.search(r"percent|%", money["measure"] or "", re.I)
+                and percentage_base_conflicts(
+                    money["amount"], money["base"], claim_bases
+                )
+            ):
+                add(
+                    "percentage_base_conflict",
+                    path=f"claims/{claim_index}/money/{money_index}/base",
+                )
             if money["currency"] is None and re.match(
                 r"(?:calendar |business |consecutive |aggregate )?(?:days?|months?|years?|hours?|students?|persons?|people)\b",
                 (money["measure"] or "").strip(),

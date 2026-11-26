@@ -146,10 +146,10 @@ def factual_records_schema(sources, *, aggregate=False):
 def _validate_detail_numbers(detail, evidence, path):
     import re
 
+    from .percentage_bases import cited_percentage_bases, percentage_base_conflicts
     from .provision_validation import _amounts
     from .reader_integrity import (
         authorization_only_amounts,
-        check_percentage_base,
         validate_numbers,
     )
 
@@ -166,6 +166,7 @@ def _validate_detail_numbers(detail, evidence, path):
 
     text = " ".join(strings(detail))
     quotes = [evidence[pid] for pid in record_evidence_ids(detail)]
+    cited = cited_percentage_bases(q["quote"] for q in quotes)
     required_outlay = detail.get("modality") == "required" and re.search(
         r"\b(?:spend|allocate|appropriate|disburse)\b", detail.get("action", ""), re.I
     )
@@ -183,16 +184,15 @@ def _validate_detail_numbers(detail, evidence, path):
                 text += f" ${amount}"
                 if required_outlay and _amounts(
                     f"${amount}"
-                ) & authorization_only_amounts(
-                    "\n".join(quote["quote"] for quote in quotes)
-                ):
+                ) & authorization_only_amounts(quotes):
                     raise output_error("reader_amount_conflict", path)
             if str(money.get("measure") or "").lower() in {
                 "%",
                 "percent",
                 "percentage",
             }:
-                check_percentage_base(amount, money.get("base"), quotes, path)
+                if percentage_base_conflicts(amount, money.get("base"), cited):
+                    raise output_error("reader_amount_conflict", path)
                 text += f" {amount}%"
     validate_numbers(
         {

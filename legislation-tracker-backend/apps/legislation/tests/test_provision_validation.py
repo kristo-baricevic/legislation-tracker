@@ -557,3 +557,44 @@ def test_percentage_in_section_with_dollars_does_not_require_usd_currency():
     assert "currency_conflict" in {
         f.code for f in validate_provision(row, graph.units[0], graph)
     }
+
+
+@pytest.mark.parametrize("swapped", [None, "prose", "claim"])
+def test_source_first_checks_each_appropriation_percentage_basis(swapped):
+    source = (
+        "The Secretary shall reserve 2 percent of the total appropriation for Tribal "
+        "grants and 20 percent of the remaining appropriation for implementation."
+    )
+    graph = build_source_graph("1", "IH", "SEC. 1. FUNDING\n" + source)
+    row = explanation(graph)
+    row["summary"] = (
+        source.replace("the total", "the remaining") if swapped == "prose" else source
+    )
+    claim = row["claims"][0]
+    claim["action"] = "Reserve funding."
+    claim["money"] = [
+        dict(
+            amount=rate,
+            currency=None,
+            measure="percent",
+            comparator="exact",
+            purpose=None,
+            period=None,
+            base=base + " appropriation",
+        )
+        for rate, base in [
+            ("2", "remaining" if swapped == "claim" else "total"),
+            ("20", "remaining"),
+        ]
+    ]
+    findings = validate_provision(row, graph.units[0], graph)
+    assert [(f.code, f.path) for f in findings] == (
+        []
+        if swapped is None
+        else [
+            (
+                "percentage_base_conflict",
+                "explanations/0" if swapped == "prose" else "claims/0/money/0/base",
+            )
+        ]
+    )

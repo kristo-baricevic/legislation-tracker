@@ -5,90 +5,77 @@ Amounts stay attached to each item's cited evidence, never the entire bill.
 """
 
 import re
-from decimal import Decimal, InvalidOperation
 
 from .diagnostics import output_error
+from .percentage_bases import (
+    cited_percentage_bases,
+    percentage_base_conflicts,
+    percentage_bases,
+    percentages,
+)
 from .provision_validation import _amounts
 
-
-def percentages(text):
-    return {
-        Decimal(value.replace(",", ""))
-        for value in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*(?:%|percent\b)", text, re.I)
-    }
-
-
-def appropriation_base(text):
-    """Recognize an explicit gross or post-reservation appropriations base."""
-    if re.search(
-        r"\b(?:remaining|remainder|not reserved|after (?:the |any )?(?:set.aside|reservation))\b",
-        text,
-        re.I,
-    ):
-        return "remaining"
-    if re.search(r"\b(?:total|entire|full)\b", text, re.I) and re.search(
-        r"\bappropriat\w*\b", text, re.I
-    ):
-        return "total"
-    return None
+_AUTHORIZATION = re.compile(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", re.I)
+_OUTLAY = r"(?:allocate|spend|appropriate|disburse|be\s+(?:allocated|spent|appropriated|disbursed))"
+_REQUIRED_OUTLAY = re.compile(rf"\b(?:must|shall|will)\s+{_OUTLAY}\b", re.I)
+_FUNDING_PREDICATE = re.compile(
+    rf"\b(?:(?:must|shall|will|may)\s+{_OUTLAY}|"
+    r"(?:is|are)\s+(?:hereby\s+)?(?:authorized|appropriated|spent|allocated|disbursed)|"
+    r"allocates|spends|appropriates|disburses|authorizes)\b",
+    re.I,
+)
 
 
-def check_percentage_base(amount, base, quotes, path):
-    try:
-        number = Decimal(str(amount).replace(",", ""))
-    except InvalidOperation:
-        return
-    expected = {
-        basis
-        for quote in quotes
-        for clause in re.split(r"(?<=[.;])\s+", quote["quote"])
-        if number in percentages(clause)
-        and (basis := appropriation_base(clause))
-        and re.search(r"\bappropriat\w*\b", clause, re.I)
-    }
-    if len(expected) == 1 and appropriation_base(base or "") not in expected:
-        raise output_error("reader_amount_conflict", path)
+def _funding_clauses(text):
+    """Split coordinated funding decisions, preserving amount lists under one verb."""
+    for sentence in re.split(r"(?<=[.;])\s+", text):
+        parts = []
+        for part in re.split(
+            r"(?<=,)\s+|\s+(?=(?:and|but|while|whereas)\b)", sentence, flags=re.I
+        ):
+            if parts and _FUNDING_PREDICATE.search(part):
+                yield " ".join(parts)
+                parts = []
+            parts.append(part)
+        yield " ".join(parts)
 
 
-def authorization_only_amounts(evidence):
+def authorization_only_amounts(quotes):
     authorized, other = set(), set()
-    for clause in re.split(r"(?<=[.;])\s+", evidence):
-        bucket = (
-            authorized
-            if re.search(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", clause, re.I)
-            else other
-        )
-        bucket.update(_amounts(clause))
+    for quote in quotes:
+        for clause in _funding_clauses(quote["quote"]):
+            bucket = authorized if _AUTHORIZATION.search(clause) else other
+            bucket.update(_amounts(clause))
     return authorized - other
 
 
 def validate_numbers(item, *, path):
     evidence = "\n".join(q["quote"] for q in item["source_quotes"])
-    prose = "\n".join(
+    fields = [
         str(item.get(key) or "") for key in ("text", "amount_display", "label", "title")
-    )
+    ]
+    prose = "\n".join(fields)
     if _amounts(prose) - _amounts(evidence) or percentages(prose) - percentages(
         evidence
     ):
         raise output_error("reader_amount_conflict", path)
+    cited = cited_percentage_bases(q["quote"] for q in item["source_quotes"])
+    for field in fields:
+        for number, basis in percentage_bases(field):
+            if percentage_base_conflicts(number, basis, cited):
+                raise output_error("reader_amount_conflict", path)
     # A matching dollar figure is not enough: authorization does not itself
     # require spending. Keep this check amount-scoped so a separate mandatory
     # allocation in the same evidence is not mistaken for an authorization.
-    for match in re.finditer(
-        r"(\d[\d,]*(?:\.\d+)?)\s*(?:%|percent)\s+of\s+(?:the\s+)?"
-        r"((?:total|remaining|full|entire)\s+(?:annual\s+)?appropriat\w*)",
-        prose,
-        re.I,
-    ):
-        check_percentage_base(match[1], match[2], item["source_quotes"], path)
-    authorization_only = authorization_only_amounts(evidence)
-    for match in re.finditer(
-        r"\b(?:must|shall|will)\s+(?:allocate|spend|appropriate|disburse)\b[^.;]{0,160}",
-        prose,
-        re.I,
-    ):
-        if _amounts(match.group()) & authorization_only:
-            raise output_error("reader_amount_conflict", path)
+    authorization_only = authorization_only_amounts(item["source_quotes"])
+    if authorization_only:
+        for field in fields:
+            for clause in _funding_clauses(field):
+                if (
+                    _REQUIRED_OUTLAY.search(clause)
+                    and _amounts(clause) & authorization_only
+                ):
+                    raise output_error("reader_amount_conflict", path)
 
 
 def financial_signal_text(text):
