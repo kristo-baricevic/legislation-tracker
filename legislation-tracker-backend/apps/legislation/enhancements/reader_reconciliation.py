@@ -18,7 +18,6 @@ from .citations import combine_usage
 from .diagnostics import output_error, validation_diagnostic
 from .providers.base import ProviderError, ProviderResult, ProviderUsage
 from .reader_capacity import capacity, fits
-from .reader_citations import citation_passages
 from .reader_facts import (
     factual_evidence,
     record_evidence_ids,
@@ -104,23 +103,14 @@ def _deferred(sources):
 
 
 def reconciliation_call_bound(sources):
-    """Reserve bounded split/growth recovery for each fact and owned passage.
+    """Authorize up to eight initial pages and four recovery calls per owner.
 
-    The execution limit is still enforced if generated item fan-out needs more
-    groups. A bound is a reservation, never permission for an unmetered retry.
+    A page checks the owner's items together. Item counts and generated prose
+    sizes are unknown until mapping completes. The reservation is a spending
+    ceiling, not a Cartesian product of hypothetical per-item retries.
     """
     pending = _deferred(sources)
-    edges = sum(
-        max(1, sum(bool(p["quote_id"]) for p in citation_passages(source)))
-        * len(pending[source["source_ref"]])
-        for source in sources
-        if source["source_ref"] in pending
-    )
-    # A binary split tree has fewer than two nodes per atomic edge. At a leaf,
-    # output growth doubles a positive allowance until the configured ceiling.
-    # Reserve those finite retries before confirmation, including failed calls.
-    growth = max(0, (settings.LLM_READER_MAX_OUTPUT_TOKENS - 1) // MIN_OUTPUT_TOKENS)
-    return edges * (2 + growth.bit_length())
+    return sum(min(8, len(records)) + 4 for records in pending.values())
 
 
 def _base_items(review, owners):
@@ -155,6 +145,12 @@ def _wire_items(items, evidence):
         value["source_quotes"] = quotes
         wire[item_id] = {"category": item["category"], "value": value}
     return wire
+
+
+def _historical_sources(preflight, page_sources):
+    from .reader_legacy_context import historical_page_sources
+
+    return historical_page_sources(preflight, page_sources)
 
 
 def _parts(
@@ -384,6 +380,7 @@ def _request(
         estimated_input_tokens=len(encoded),
         reader_batches=(),
         prior_reader_items=items if descriptor["version"] == 2 else None,
+        historical_dependency_sources=partial(_historical_sources, preflight, sources),
         legacy_dependency_request=(
             partial(
                 _request,
@@ -763,7 +760,10 @@ def reconcile_review(preflight, review, provider, api_key, checkpoint, maximum_c
                     break
                 split = False
                 while True:
-                    if calls >= maximum_calls:
+                    if (
+                        calls >= maximum_calls
+                        and getattr(provider, "durable", False) is not True
+                    ):
                         raise ProviderError("request_too_large", usage=total.usage)
                     checkpoint()
                     calls += 1

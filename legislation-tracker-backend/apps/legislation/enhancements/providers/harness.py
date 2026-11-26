@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import replace
 from typing import Any
@@ -99,7 +100,46 @@ def select_bill_schema(request, input_payload) -> Any:
         from ..coverage_contract import provision_schema
 
         schema = provision_schema(input_payload["source_packet"]["coverage_checklist"])
+    if "condition" in schema.get("$defs", {}) and "factual_records" in schema.get(
+        "properties", {}
+    ):
+        schema = copy.deepcopy(schema)
+        del schema["$defs"]["condition"]
+        if not schema["$defs"]:
+            del schema["$defs"]
+        fields = schema["properties"]["factual_records"]["items"]["properties"][
+            "claims"
+        ]["items"]["properties"]
+        tree = 'A leaf is {"operator":"leaf","text":"...","evidence_ids":["source_ref:quote_id"]}. A group has operator all or any and children containing nodes.'
+        fields["conditions"] = {
+            "type": "string",
+            "description": "JSON-encoded condition node or null. " + tree,
+        }
+        fields["exceptions"] = {
+            "type": "string",
+            "description": "JSON-encoded array of exception nodes. Use [] for none. "
+            + tree,
+        }
     return schema
+
+
+def decode_bill_result(result, schema):
+    if "factual_records" not in schema.get("properties", {}):
+        return result
+    try:
+        for record in result.output["factual_records"]:
+            for claim in record["claims"]:
+                for field in ("conditions", "exceptions"):
+                    claim[field] = json.loads(claim[field])
+    except (KeyError, ValueError, TypeError, RecursionError) as error:
+        raise ProviderError(
+            "invalid_output",
+            validation_code="reader_target_invalid",
+            usage=result.usage,
+            response_id=result.response_id,
+            resolved_model=result.resolved_model,
+        ) from error
+    return result
 
 
 def resolve_max_output_tokens(request, schema_name: str) -> int:

@@ -464,7 +464,7 @@ class BillEnhancementAttempt(models.Model):
     dispatch_lease_expires_at = models.DateTimeField(null=True, blank=True)
     run_token = models.CharField(max_length=64, blank=True, default="")
     lease_expires_at = models.DateTimeField(null=True, blank=True)
-    estimated_input_tokens = models.PositiveIntegerField()
+    estimated_input_tokens = models.PositiveBigIntegerField()
     input_tokens = models.PositiveIntegerField(null=True, blank=True)
     output_tokens = models.PositiveIntegerField(null=True, blank=True)
     total_tokens = models.PositiveIntegerField(null=True, blank=True)

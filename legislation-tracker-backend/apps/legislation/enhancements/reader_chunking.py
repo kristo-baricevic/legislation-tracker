@@ -136,9 +136,13 @@ def planned_sources(document, text, first_ref, target, xml_sections):
                 }
             )
     sources, owners, source_sizes = _citable_owners(sources, owners, first_ref)
+    return _attach_context(index, sources, owners, source_sizes, input_ceiling)
+
+
+def _attach_context(index, sources, owners, sizes, input_ceiling, selected_refs=None):
+    text = index.text
     starts = [s["start_char"] for s in sources]
     ends = [s["end_char"] for s in sources]
-    sizes = source_sizes
     catalogs = []
     for source in sources:
         cursor, entries = source["start_char"], []
@@ -148,6 +152,8 @@ def planned_sources(document, text, first_ref, target, xml_sections):
             cursor = stop
         catalogs.append(entries)
     for number, (source, owned_units) in enumerate(zip(sources, owners, strict=True)):
+        if selected_refs is not None and source["source_ref"] not in selected_refs:
+            continue
         required, unresolved = set(), set()
         for owner in set(owned_units):
             if not text[owner[0] : owner[1]].strip():

@@ -25,6 +25,7 @@ from apps.legislation.tests.test_large_bill_planning_regression import (
 
 GRANT = "The Secretary shall award grants to hospitals."
 RESTRICTIONS = [
+    "Only public hospitals are eligible for grants under this section.",
     "Only public hospitals may receive a grant under subsection (a).",
     "A grant under subsection (a) may be used only for construction of public hospitals.",
     "No grant under subsection (a) may be awarded to private hospitals.",

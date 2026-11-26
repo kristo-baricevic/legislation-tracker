@@ -5,15 +5,24 @@ reservations, worker recovery, citation validation and publication are real.
 """
 
 import copy
+import hashlib
+import os
+import subprocess
 from collections import Counter
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
+from django.db import connection
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.legislation.enhancements.providers.base import ProviderResult, ProviderUsage
+from apps.legislation.enhancements.providers.base import (
+    ProviderError,
+    ProviderResult,
+    ProviderUsage,
+)
 from apps.legislation.enhancements.reader_cache import call_identity
 from apps.legislation.enhancements.reader_capacity import fits
 from apps.legislation.enhancements.reader_citations import citation_passages
@@ -93,13 +102,15 @@ class RecordedModel:
         self.unresolved = unresolved
         self.calls = []
         self.attempt = None
+        self.invalid_calls = set()
+        self.fault = None
 
     def enhance_bill(self, *, request, **kwargs):
         assert fits(request.request_envelope), "Worker dispatched an oversized request"
         key, _ = call_identity(request)
-        assert key not in [call[1] for call in self.calls], (
-            "A validated request was charged twice"
-        )
+        assert key in self.invalid_calls or key not in [
+            call[1] for call in self.calls
+        ], "A validated request was charged twice"
         envelope = request.request_envelope
         if envelope.get("dependency_review"):
             kind, output = "dependency", self._dependency(request)
@@ -107,7 +118,24 @@ class RecordedModel:
             kind, output = "map", self._map(request)
         else:
             kind, output = "summary", self._summary(request)
+        self.invalid_calls.discard(key)
+        if (kind == "map" and self.malformed) or (
+            kind == "dependency" and self.unresolved
+        ):
+            self.invalid_calls.add(key)
         self.calls.append((kind, key, request))
+        if self.fault and kind == "dependency":
+            fault, self.fault = self.fault, None
+            raise ProviderError(
+                "outcome_unknown" if fault == "timeout" else "invalid_output",
+                outcome_unknown=fault == "timeout",
+                validation_code="provider_timeout"
+                if fault == "timeout"
+                else "provider_output_limit",
+                usage=ProviderUsage()
+                if fault == "timeout"
+                else ProviderUsage(10, 5, 15),
+            )
         return ProviderResult(
             output, ProviderUsage(10, 5, 15), f"offline-{len(self.calls)}", "test"
         )
@@ -295,15 +323,18 @@ class SimulatedWorkerCrash(BaseException):
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("mode", ["complete", "crash", "malformed", "unresolved"])
+@pytest.mark.parametrize(
+    "mode", ["complete", "crash", "malformed", "unresolved", "truncated", "timeout"]
+)
 def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
-    tmp_path, enhancement_owner, enhancement_settings, monkeypatch, mode
+    tmp_path, enhancement_owner, enhancement_settings, monkeypatch, mode, request
 ):
     from apps.legislation.enhancements.reader_work import ReaderWorkPlan
 
     model = RecordedModel(
         malformed=mode == "malformed", unresolved=mode == "unresolved"
     )
+    model.fault = mode if mode in {"timeout", "truncated"} else None
     monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: model)
 
     def forbid_network(*args, **kwargs):
@@ -373,6 +404,32 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
         outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
         attempt.refresh_from_db()
         attempt.enhancement.refresh_from_db()
+        if mode == "timeout":
+            assert outcome["status"] == "outcome_unknown"
+            assert (
+                BillEnhancementCallCache.objects.filter(status="dispatching").count()
+                == 1
+            )
+            assert sum(stage == "dependency" for stage, _, _ in model.calls) == 1
+            count = len(model.calls)
+            url = f"/api/bills/{document.bill_id}/enhancements/"
+            estimate = client.get(url + "estimate/").data
+            assert estimate["unavailable_reason"] == "reconciliation_required"
+            assert (
+                run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)[
+                    "status"
+                ]
+                == "not_claimed"
+            )
+            print(
+                "RECOVERY",
+                mode,
+                dict(Counter(stage for stage, _, _ in model.calls)),
+                "retry_calls",
+                len(model.calls) - count,
+            )
+            assert len(model.calls) == count
+            return
         if mode in {"malformed", "unresolved"}:
             assert outcome["status"] == "failed", attempt.failure_detail
             assert attempt.enhancement.result_json is None
@@ -387,7 +444,19 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
                     "schema_minItems",
                     "reader_coverage_incomplete",
                 }
-            return
+            completed = [key for stage, key, _ in model.calls if stage == "map"]
+            model.unresolved = model.malformed = False
+            previous_count = len(model.calls)
+            attempt = _confirmation(client, document.bill, attempt.enhancement_id)
+            model.attempt = attempt
+            outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+            attempt.refresh_from_db()
+            attempt.enhancement.refresh_from_db()
+            if mode == "unresolved":
+                assert all(
+                    key not in completed
+                    for stage, key, _ in model.calls[previous_count:]
+                )
 
         assert outcome["status"] == "succeeded", attempt.failure_detail
         result = attempt.enhancement.result_json
@@ -403,6 +472,45 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
             "matching contribution equal to 50 percent" in quote["quote"]
             for quote in grant["source_quotes"]
         )
+        latest = client.get(f"/api/bills/{document.bill_id}/enhancements/latest/")
+        assert latest.status_code == 200
+        assert [
+            (s["text"], s["source_quotes"])
+            for s in latest.data["active_reader"]["result"]["summary"]
+        ] == [(s["text"], s["source_quotes"]) for s in result["summary"]]
+        if mode == "complete" and os.environ.get("STAGED_READER_CLIENT"):
+            server = request.getfixturevalue("live_server")
+            login = APIClient().post(
+                "/api/auth/session/",
+                {"email": enhancement_owner.email, "password": "password123"},
+                format="json",
+            )
+            assert login.status_code == 200
+            cookies = "; ".join(
+                f"{name}={cookie.value}" for name, cookie in login.cookies.items()
+            )
+            script = (
+                Path(__file__).resolve().parents[4]
+                / "legislation-tracker-client"
+                / "scripts"
+                / "check-staged-reader.cjs"
+            )
+            subprocess.run(
+                ["node", str(script), server.url, str(document.bill_id)],
+                check=True,
+                env={**os.environ, "STAGED_READER_SESSION": cookies},
+                timeout=90,
+            )
+        if mode == "truncated":
+            assert (
+                attempt.steps.filter(
+                    status="failed", diagnostics__code="provider_output_limit"
+                ).count()
+                == 1
+            )
+        assert sum(1 for _ in model.calls) == sum(
+            a.steps.count() for a in attempt.enhancement.attempts.all()
+        )
         stages = [call[0] for call in model.calls]
         assert stages.index("dependency") > max(
             i for i, stage in enumerate(stages) if stage == "map"
@@ -413,8 +521,79 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
         assert not attempt.work_units.exclude(
             status__in=["validated", "expanded"]
         ).exists()
+        print(
+            "RECOVERY",
+            mode,
+            dict(Counter(stages)),
+            "retry_calls",
+            len(stages) - previous_count
+            if mode in {"malformed", "unresolved"}
+            else None,
+        )
+        if mode in {"malformed", "unresolved"}:
+            assert len(model.calls) > previous_count
+            return
         assert all(
             count == 1 for count in Counter(call[1] for call in model.calls).values()
         )
         if mode == "crash":
             assert sum(call[1] == first_key for call in model.calls) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_pinned_pg_confirmation(tmp_path, enhancement_settings, enhancement_owner):
+    from apps.legislation.tasks import _claim_enhancement_attempt
+
+    if connection.vendor != "postgresql" or not os.environ.get("LARGE_BILL_XML_PATH"):
+        pytest.skip("requires PostgreSQL and pinned S.1071 XML")
+    client = APIClient()
+    client.force_authenticate(enhancement_owner)
+    with (
+        enhancement_settings,
+        override_settings(
+            STORAGES={
+                "default": {
+                    "BACKEND": "django.core.files.storage.FileSystemStorage",
+                    "OPTIONS": {"location": tmp_path},
+                }
+            },
+            LLM_READER_OWNED_TOKEN_TARGET=0,
+            LLM_READER_MAX_CALLS=0,
+            LLM_ENHANCEMENT_MAX_REQUEST_BYTES=120000,
+            LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=100000,
+            LLM_READER_MAX_OUTPUT_TOKENS=24000,
+        ),
+    ):
+        raw = Path(os.environ["LARGE_BILL_XML_PATH"]).read_bytes()
+        assert (
+            hashlib.sha256(raw).hexdigest()
+            == "69702b764640a8bd86dbc23717cd3161b091668792d6b066a55a42d8e3a64299"
+        )
+        doc = _stored_document(raw, tmp_path)
+        _valid_credential(enhancement_owner)
+        url = f"/api/bills/{doc.bill_id}/enhancements/"
+        estimate = client.get(url + "estimate/")
+        assert estimate.status_code == 200
+        assert estimate.data["can_enhance"]
+        body = {
+            key: estimate.data[key]
+            for key in (
+                "source_fingerprint",
+                "request_fingerprint",
+                "credential_revision",
+            )
+        }
+        response = client.post(url, body, format="json")
+        assert response.status_code == 202, response.data
+        attempt = BillEnhancementAttempt.objects.get(enhancement_id=response.data["id"])
+        budget = attempt.enhancement.source_manifest_json["budget"]
+        assert 0 < budget["planned_calls"] < budget["maximum_calls"] < 20000
+        assert (
+            attempt.estimated_input_tokens
+            == budget["maximum_input"]
+            == estimate.data["estimated_input_tokens"]
+        )
+        assert _claim_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+        attempt.refresh_from_db()
+        assert attempt.status == "running"
+        print("S1071_AUTHORIZED", budget)

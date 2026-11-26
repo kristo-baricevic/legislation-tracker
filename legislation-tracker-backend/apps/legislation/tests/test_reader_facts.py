@@ -425,3 +425,110 @@ def test_repeated_eligibility_passages_remain_citable_in_a_staged_plan(
     )
     assert deferred <= set(mapped)
     assert all(count == 1 for count in mapped.values())
+
+
+@pytest.mark.parametrize(
+    "mandatory,source_is_authorization", [(True, True), (False, True), (True, False)]
+)
+def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
+    mandatory, source_is_authorization
+):
+    import json
+    from pathlib import Path
+
+    pinned = json.loads(
+        (Path(__file__).parent / "fixtures/harness/119s4387is.json").read_text()
+    )
+    quote = pinned["evidence"][0]["quote"]
+    if not source_is_authorization:
+        quote = quote.replace("authorized to be appropriated", "appropriated")
+    sources = _sources(quote)
+    (key,) = factual_record_ids(sources)
+    output = _output(sources)
+    claim = _claim(
+        key,
+        "Spend the grant funding." if mandatory else "Authorize appropriations.",
+        modality="required" if mandatory else "permitted",
+    )
+    claim["money"] = [
+        dict(
+            amount="15000000",
+            currency="USD",
+            measure="dollars",
+            comparator=None,
+            purpose="grant funding",
+            period="each of fiscal years 2027 through 2029",
+            base=None,
+        )
+    ]
+    output["factual_records"][0]["claims"] = [claim]
+    policy = output["policy_changes"][0]
+    policy["text"] = quote
+    output["money_checks"][key] = "financial"
+    output["financial_items"] = [
+        dict(
+            label="Grant funding",
+            amount_display="$15 million annually",
+            fiscal_years=[],
+            text=quote,
+            source_quotes=policy["source_quotes"],
+        )
+    ]
+    if mandatory and source_is_authorization:
+        with pytest.raises(ValidationError) as failure:
+            resolve_discovery(output, sources)
+        assert failure.value.validator == "reader_amount_conflict"
+        return
+    resolved = resolve_discovery(output, sources)
+    validate_source_review(
+        {**resolved, "reviewed_sources": [sources[0]["source_ref"]]}, sources
+    )
+    assert resolved["factual_records"][0]["claims"][0] == claim
+
+
+@pytest.mark.parametrize(
+    "source_index,number,basis,wrong",
+    [(2, "2", "total", "remaining"), (3, "20", "remaining", "total")],
+)
+def test_hr9300_reservations_cannot_swap_percentage_bases(
+    source_index, number, basis, wrong
+):
+    import json
+    from pathlib import Path
+
+    from apps.legislation.enhancements.reader_integrity import validate_numbers
+
+    quote = json.loads(
+        (Path(__file__).parent / "fixtures/harness/119hr9300ih.json").read_text()
+    )["evidence"][source_index]["quote"]
+    sources = _sources(quote)
+    (key,) = factual_record_ids(sources)
+    claim = _claim(
+        key,
+        "Reserve funding.",
+        money=[
+            dict(
+                amount=number,
+                currency=None,
+                measure="percent",
+                purpose="grant funding",
+                period="annual",
+                comparator=None,
+                base=basis + " annual appropriation",
+            )
+        ],
+    )
+    resolve_factual_records([_record(key, claims=[claim])], sources)
+    claim["money"][0]["base"] = wrong + " annual appropriation"
+    with pytest.raises(ValidationError) as failure:
+        resolve_factual_records([_record(key, claims=[claim])], sources)
+    assert failure.value.validator == "reader_amount_conflict"
+    with pytest.raises(ValidationError) as failure:
+        validate_numbers(
+            {
+                "text": f"Reserve {number} percent of the {wrong} annual appropriation.",
+                "source_quotes": [{"quote": quote}],
+            },
+            path=["summary"],
+        )
+    assert failure.value.validator == "reader_amount_conflict"

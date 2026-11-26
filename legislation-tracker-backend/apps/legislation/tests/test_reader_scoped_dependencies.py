@@ -408,3 +408,54 @@ def test_table_rows_inherit_only_the_active_service_and_location():
     assert all(old not in navy for old in ("Army account", "Alabama", "Alaska"))
     for context in (army, navy_first, navy):
         assert "Amounts in thousands of dollars" in context
+
+
+@pytest.mark.parametrize(
+    "tag,attributes,external",
+    [
+        ("external-xref", 'legal-doc="usc" parsable-cite="usc/10/2"', True),
+        ("internal-xref", 'idref="restriction"', False),
+    ],
+)
+def test_xml_reference_authority_overrides_colliding_section_label(
+    tag, attributes, external
+):
+    index = _index(f"""
+      <section id="grant"><enum>1.</enum><text>Grants are subject to
+        <{tag} {attributes}>section 2</{tag}>.</text></section>
+      <section id="restriction"><enum>2.</enum><text>Only hospitals in Alaska qualify.</text></section>""")
+    context, unresolved = _context(index, "grant")
+    assert ("Only hospitals in Alaska qualify" in context) is not external
+    assert bool(unresolved) is external
+    if external:
+        assert any("usc/10/2" in ref for ref in unresolved)
+
+
+@pytest.mark.parametrize("target", ["1", "2"])
+def test_cross_section_incoming_rule_governs_only_referenced_grant(target):
+    index = _index(f"""
+      <section id="grant"><enum>1.</enum><text>Award hospital grants.</text></section>
+      <section><enum>2.</enum><text>Award school grants.</text></section>
+      <section><enum>3.</enum><text>Only public hospitals may receive grants
+        under section {target} of this Act.</text></section>""")
+    context, _ = _context(index, "grant")
+    assert ("Only public hospitals" in context) == (target == "1")
+
+
+@pytest.mark.parametrize("inherited", [True, False])
+@pytest.mark.parametrize("scope", ["subparagraph", "paragraph"])
+def test_declared_definition_scope_controls_sibling(inherited, scope):
+    intro = f"For purposes of this {scope}, "
+    meaning = "the term eligible hospital means a hospital in Alaska."
+    content = (
+        f"<text>{intro}</text><clause><enum>(i)</enum><text>{meaning}</text></clause>"
+        if inherited
+        else f"<text>{intro}{meaning}</text>"
+    )
+    index = _index(f"""
+      <section><enum>1.</enum><paragraph><enum>(1)</enum>
+      <subparagraph><enum>(A)</enum>{content}</subparagraph>
+      <subparagraph id="applicant"><enum>(B)</enum><text>Award grants to each eligible hospital.</text></subparagraph>
+      </paragraph></section>""")
+    context, _ = _context(index, "applicant")
+    assert ("hospital in Alaska" in context) == (scope == "paragraph")

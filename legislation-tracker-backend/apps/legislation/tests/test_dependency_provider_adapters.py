@@ -229,3 +229,209 @@ def test_legacy_reader_schema_routing_remains_compatible(settings):
 
     envelope["output_schema_version"] = "1.3"
     assert select_bill_schema(request, {}) is PROVIDER_OUTPUT_SCHEMA
+
+
+@pytest.mark.parametrize(
+    "provider_name", ["openai", "anthropic", "gemini", "openrouter", "langchain"]
+)
+@pytest.mark.parametrize("stage", ["map", "dependency", "summary"])
+def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
+    import socket
+
+    import httpx
+    import httpx2
+
+    from apps.legislation.enhancements.provider_registry import get_provider
+
+    adapter = "langchain" if provider_name == "langchain" else "existing"
+    provider_name = "openrouter" if adapter == "langchain" else provider_name
+    from apps.legislation.enhancements.reader_discovery import (
+        discovery_schema,
+        resolve_discovery,
+    )
+
+    from .test_dependency_cache_migration import _stage_request
+    from .test_reader_facts import _output, _sources
+
+    base = dependency_request(settings, provider_name)
+    env = dict(base.request_envelope)
+    env.pop("dependency_review")
+    env.update(prompt_version=READER_PROMPT_VERSION, output_schema_version="1.4")
+    if stage == "map":
+        sources = _sources(
+            "The agency must publish an annual report only while the program operates."
+        )
+        output = _output(sources)
+        record = output["factual_records"][0]
+        claim = record["claims"][0]
+        leaf = {
+            "operator": "leaf",
+            "text": "The program operates.",
+            "evidence_ids": [record["record_id"]],
+        }
+        claim.update(
+            conditions={
+                "operator": "all",
+                "children": [{"operator": "any", "children": [leaf]}],
+            },
+            exceptions=[],
+        )
+        wire_output = copy.deepcopy(output)
+        wire_claim = wire_output["factual_records"][0]["claims"][0]
+        for field in ("conditions", "exceptions"):
+            wire_claim[field] = json.dumps(wire_claim[field])
+        env.update(
+            source_review=True,
+            output_schema=discovery_schema(sources),
+            source_packet={"sources": sources},
+        )
+    elif stage == "dependency":
+        env = base.request_envelope
+        sources = base.source_snapshot
+        wire_output = output = Provider().enhance_bill(request=base).output
+    else:
+        summary = _stage_request(settings, "summary")
+        env.update(summary.request_envelope)
+        sources = summary.source_snapshot
+        source = env["source_packet"]["sources"][0]
+        quote = {
+            "source_ref": source["source_ref"],
+            "quote_id": source["citation_passages"][0]["quote_id"],
+        }
+        wire_output = output = {
+            "schema_version": "1.4",
+            "explanations": [],
+            "summary": [
+                {"text": "Public hospitals qualify.", "source_quotes": [quote]}
+            ],
+        }
+    request = replace(base, source_snapshot=sources, request_envelope=env)
+    calls = []
+    provider = get_provider(provider_name, adapter=adapter)
+
+    def respond(http_request):
+        call = json.loads(http_request.content)
+        calls.append(call)
+        content = json.dumps(wire_output)
+        if provider_name == "openai":
+            body = {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1,
+                "status": "completed",
+                "model": "model",
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg_123",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {"type": "output_text", "text": content, "annotations": []}
+                        ],
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 120,
+                    "output_tokens": 45,
+                    "total_tokens": 165,
+                },
+            }
+        elif provider_name == "anthropic":
+            body = {
+                "id": "msg_123",
+                "role": "assistant",
+                "type": "message",
+                "model": "model",
+                "stop_reason": "end_turn",
+                "content": [{"type": "text", "text": content}],
+                "usage": {"input_tokens": 120, "output_tokens": 45},
+            }
+        elif provider_name == "gemini":
+            body = {
+                "candidates": [
+                    {
+                        "content": {"role": "model", "parts": [{"text": content}]},
+                        "finishReason": "STOP",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 120,
+                    "candidatesTokenCount": 45,
+                    "totalTokenCount": 165,
+                },
+            }
+        else:
+            body = {
+                "id": "chatcmpl-123",
+                "model": "model",
+                "object": "chat.completion",
+                "created": 1,
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": content},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 45,
+                    "total_tokens": 165,
+                },
+            }
+        transport = httpx2 if isinstance(http_request, httpx2.Request) else httpx
+        return transport.Response(200, json=body, request=http_request)
+
+    async def async_send(client, http_request, **kwargs):
+        return respond(http_request)
+
+    for transport in (httpx, httpx2):
+        monkeypatch.setattr(
+            transport.Client, "send", lambda client, request, **kwargs: respond(request)
+        )
+        monkeypatch.setattr(transport.AsyncClient, "send", async_send)
+    monkeypatch.setattr(
+        socket.socket,
+        "connect",
+        lambda *args: pytest.fail("Offline contract attempted a network connection"),
+    )
+    result = provider.enhance_bill(
+        api_key="offline", request=request, timeout_seconds=5
+    )
+    (call,) = calls
+    if provider_name == "openai":
+        schema = call["text"]["format"]["schema"]
+    elif provider_name == "anthropic":
+        schema = call["output_config"]["format"]["schema"]
+    elif provider_name == "gemini":
+        schema = call["generationConfig"]["responseJsonSchema"]
+    else:
+        schema = call["response_format"]["json_schema"]["schema"]
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema).validate(wire_output)
+
+    def inspect(node):
+        if isinstance(node, list):
+            for child in node:
+                inspect(child)
+        elif isinstance(node, dict):
+            assert not (set(node) & provider.capabilities.unsupported_schema_keywords)
+            if (
+                provider_name in {"openai", "openrouter", "anthropic"}
+                and node.get("type") == "object"
+            ):
+                assert node["additionalProperties"] is False
+                assert set(node["required"]) == set(node["properties"])
+            for child in node.values():
+                inspect(child)
+
+    inspect(schema)
+    assert "#/$defs/condition" not in json.dumps(schema)
+    assert result.output == output
+    assert result.usage.total_tokens == 165
+    if stage == "map":
+        assert (
+            resolve_discovery(result.output, sources)["factual_records"]
+            == output["factual_records"]
+        )

@@ -59,7 +59,10 @@ def validated_components(output, sources):
             ):
                 return [], owned
             quotes = item["source_quotes"]
-            if any(not isinstance(q, dict) for q in quotes):
+            if any(
+                not isinstance(q, dict) or not isinstance(q.get("quote_id"), str)
+                for q in quotes
+            ):
                 return [], owned
             ids = {
                 q.get("quote_id") for q in quotes if q.get("source_ref") == ref
@@ -76,7 +79,8 @@ def validated_components(output, sources):
         for record in output["factual_records"]:
             if (
                 not isinstance(record, dict)
-                or record.get("record_id") not in owned_keys
+                or not isinstance(record.get("record_id"), str)
+                or record["record_id"] not in owned_keys
             ):
                 return [], owned
             try:

@@ -36,7 +36,13 @@ def _validate_response(output, request):
     if request.request_envelope.get("dependency_review"):
         from .reader_reconciliation import validate_dependency_review
 
-        return validate_dependency_review(output, request)
+        validated = validate_dependency_review(output, request)
+        if any(
+            check["status"] == "unresolved"
+            for check in validated["record_checks"].values()
+        ):
+            raise output_error("reader_coverage_incomplete", ["source_review"])
+        return validated
     if request.request_envelope.get("source_review"):
         return resolve_discovery(output, request.source_snapshot)
     targets = snapshot_targets(request.source_snapshot)
@@ -214,6 +220,21 @@ class DurableReaderProvider:
                     .values_list("pk", flat=True)
                     .first()
                 )
+                if not blocked and request.historical_dependency_sources:
+                    legacy_keys = historical_dispatch_keys(
+                        request,
+                        adapter,
+                        dispatch_request.requested_model,
+                        previous_context=True,
+                    )
+                    blocked = (
+                        ambiguous.filter(
+                            Q(fingerprint__in=legacy_keys)
+                            | Q(dispatch_identity__in=legacy_keys)
+                        )
+                        .values_list("pk", flat=True)
+                        .first()
+                    )
                 if blocked:
                     raise unresolved_reservation(blocked)
             rerun = self.attempt.enhancement.rerun_after
@@ -513,10 +534,24 @@ class DurableReaderProvider:
                 and request.request_envelope.get("source_review")
                 and "response" in locals()
             ):
-                parts, pending = validated_components(
-                    response.output, request.source_snapshot
-                )
+                # Salvage is optional. A malformed component must never prevent
+                # recording a completed upstream request and its known usage.
+                try:
+                    parts, pending = validated_components(
+                        response.output, request.source_snapshot
+                    )
+                except (
+                    ValidationError,
+                    TypeError,
+                    ValueError,
+                    KeyError,
+                    RecursionError,
+                ):
+                    parts, pending = [], []
             # Store no unvalidated prose or raw exception bodies.
+            step.response_id = getattr(exc, "response_id", "") or (
+                response.response_id if "response" in locals() else ""
+            )
             step.status = "failed"
             code = (
                 validation_diagnostic(exc)["code"]
@@ -551,6 +586,7 @@ class DurableReaderProvider:
                     isinstance(exc, ProviderError) and not exc.outcome_unknown
                 ):
                     cached.status = "partial" if parts else "failed"
+                    cached.response_id = step.response_id
                     cached.diagnostic_code = code
                     cached.resolved_model = getattr(exc, "resolved_model", "") or (
                         response.resolved_model if "response" in locals() else ""
@@ -568,6 +604,7 @@ class DurableReaderProvider:
                         update_fields=[
                             "status",
                             "diagnostic_code",
+                            "response_id",
                             "result_json",
                             "resolved_model",
                             "updated_at",

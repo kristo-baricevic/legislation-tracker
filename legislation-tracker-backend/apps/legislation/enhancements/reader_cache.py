@@ -124,14 +124,21 @@ def dispatch_identity(request, adapter):
     ).hexdigest()
 
 
-def historical_dispatch_keys(request, adapter, dispatched_model):
+def historical_dispatch_keys(
+    request, adapter, dispatched_model, *, previous_context=False
+):
     """Versions 11–14 hashed the planner stamp on each server-side source."""
     candidates = [request]
     if request.legacy_dependency_request:
         candidates.append(request.legacy_dependency_request())
     keys = set()
     for candidate in candidates:
-        inventories = [candidate.source_snapshot]
+        inventory = (
+            candidate.historical_dependency_sources()
+            if previous_context and candidate.historical_dependency_sources
+            else candidate.source_snapshot
+        )
+        inventories = [inventory]
         if any("context_planner_version" in s for s in candidate.source_snapshot):
             inventories.extend(
                 [
@@ -140,9 +147,9 @@ def historical_dispatch_keys(request, adapter, dispatched_model):
                         if "context_planner_version" in s
                         else s
                     )
-                    for s in candidate.source_snapshot
+                    for s in inventory
                 ]
-                for stamp in range(1, 5)
+                for stamp in range(1, 6)
             )
         for sources in inventories:
             for model in {request.requested_model, dispatched_model}:

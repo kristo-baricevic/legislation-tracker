@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 5
+CONTEXT_PLANNER_VERSION = 6
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -101,6 +101,7 @@ class Node:
     quoted_depth: int = 0
     references: tuple[str, ...] = ()
     table_label_level: int | None = None
+    external_references: tuple = ()
 
 
 def _label(value):
@@ -327,6 +328,10 @@ def _text_nodes(text, sections):
 
 
 class DependencyIndex:
+    definition_levels = inherited_definition_levels = SCOPE_NAMES
+    scope_candidate = SCOPE
+    use_external_markup = True
+
     def __init__(self, text, sections):
         self.text = text
         xml = getattr(sections, "provisions", ())
@@ -343,6 +348,7 @@ class DependencyIndex:
                     p.quoted_depth,
                     getattr(p, "references", ()),
                     getattr(p, "table_label_level", None),
+                    getattr(p, "external_references", ()),
                 )
                 for p in xml
             ]
@@ -362,7 +368,9 @@ class DependencyIndex:
             self._quotes.append(
                 i
                 if node.tag in {"quoted-block", "quoted-text"}
-                else self._quotes[node.parent] if node.parent is not None else None
+                else self._quotes[node.parent]
+                if node.parent is not None
+                else None
             )
         self._required = {}
         self.by_identity = {
@@ -378,6 +386,7 @@ class DependencyIndex:
                 self.sections[self.quote_scope(i), node.label.casefold()].append(i)
         self.definitions = defaultdict(list)
         self.qualifications = defaultdict(list)
+        self.incoming = defaultdict(set)
         self.links = defaultdict(set)
         self.introduction_links = defaultdict(set)
         self.table_authorizations = defaultdict(set)
@@ -424,7 +433,7 @@ class DependencyIndex:
 
     def _definition_scope(self, index, raw):
         declaration = re.search(
-            r"\b(?:in|for purposes of|as used in)\s+this\s+(Act|division|title|subtitle|chapter|section|subsection|paragraph)\b",
+            rf"\b(?:in|for purposes of|as used in)\s+this\s+({self.definition_levels})\b",
             raw,
             re.I,
         )
@@ -433,7 +442,7 @@ class DependencyIndex:
         for ancestor in self.ancestors(index):
             introduction = self.direct_text[ancestor]
             declaration = re.search(
-                r"\b(?:in|for purposes of|as used in)\s+this\s+(Act|division|title|subtitle|chapter|section|subsection)\b",
+                rf"\b(?:in|for purposes of|as used in)\s+this\s+({self.inherited_definition_levels})\b",
                 introduction,
                 re.I,
             )
@@ -654,12 +663,8 @@ class DependencyIndex:
         # establishes a local relationship, not whether it is legally relevant;
         # retain it for interpretation (or bounded dependency review) instead of
         # treating a failed wording match as proof that it does not apply.
-        if (
-            origin != target
-            and self.quote_scope(origin) == self.quote_scope(target)
-            and self.scope(origin, "section") == self.scope(target, "section")
-        ):
-            self.links[target].add(origin)
+        if origin != target and self.quote_scope(origin) == self.quote_scope(target):
+            self.incoming[target].add(origin)
 
     def _index_dependencies(self):
         for i, node in enumerate(self.nodes):
@@ -674,11 +679,13 @@ class DependencyIndex:
                         self.definitions[term].append(
                             (self._definition_scope(i, normalized), i)
                         )
-            if QUALIFICATION.search(normalized):
+            if self.scope_candidate.search(normalized):
                 for match in SCOPE.finditer(normalized):
                     scope = self.scope(i, match[1])
                     level = match[1].casefold()
                     if level not in LEVELS:
+                        if not QUALIFICATION.search(normalized):
+                            continue
                         # Mere mentions of enactment, authorization or an
                         # amendment by "this Act" do not make a local rule a
                         # restriction on every other provision of the bill.
@@ -707,6 +714,22 @@ class DependencyIndex:
                     target = self.by_identity[identity]
                     self.links[i].add(target)
                     self._retain_incoming_reference(i, target)
+            if self.use_external_markup and node.external_references:
+                # Keep immutable evidence; mask only external labels in the local
+                # reference parser, preserving independently marked local links.
+                fragments = []
+                for left, right in self.direct[i]:
+                    fragment = self.text[left:right]
+                    for start, end, citation in node.external_references:
+                        if left <= start < end <= right:
+                            self.unresolved[i].add(citation)
+                            fragment = (
+                                fragment[: start - left]
+                                + " " * (end - start)
+                                + fragment[end - left :]
+                            )
+                    fragments.append(fragment)
+                normalized = " ".join(" ".join(fragments).split())
             consumed = 0
             for match in REFERENCE.finditer(normalized):
                 if match.start() < consumed:
@@ -1018,10 +1041,23 @@ class DependencyIndex:
         for a in (index, *self.ancestors(index), None):
             for qualifier in self.qualifications[a]:
                 include(qualifier)
+        # A referring restriction is supporting evidence. Following its edge
+        # back into the owned ancestor would pull every unrelated sibling in.
+        incoming_targets = defaultdict(set)
+        for owned in (
+            index,
+            *self.ancestors(index),
+            *[i for i in pending if self._descendant(i, index)],
+        ):
+            for origin in self.incoming[owned]:
+                incoming_targets[origin].add(owned)
+                include(origin)
         while pending:
             current = pending.pop()
             unresolved.update(self.unresolved[current])
-            for linked in self.links[current] | self.definition_links[current]:
+            for linked in (
+                self.links[current] - incoming_targets[current]
+            ) | self.definition_links[current]:
                 include(linked)
             for linked in self.introduction_links[current]:
                 include(linked, whole=False)

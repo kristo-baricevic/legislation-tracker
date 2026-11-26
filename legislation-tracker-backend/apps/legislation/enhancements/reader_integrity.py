@@ -5,7 +5,7 @@ Amounts stay attached to each item's cited evidence, never the entire bill.
 """
 
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from .diagnostics import output_error
 from .provision_validation import _amounts
@@ -16,6 +16,50 @@ def percentages(text):
         Decimal(value.replace(",", ""))
         for value in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*(?:%|percent\b)", text, re.I)
     }
+
+
+def appropriation_base(text):
+    """Recognize an explicit gross or post-reservation appropriations base."""
+    if re.search(
+        r"\b(?:remaining|remainder|not reserved|after (?:the |any )?(?:set.aside|reservation))\b",
+        text,
+        re.I,
+    ):
+        return "remaining"
+    if re.search(r"\b(?:total|entire|full)\b", text, re.I) and re.search(
+        r"\bappropriat\w*\b", text, re.I
+    ):
+        return "total"
+    return None
+
+
+def check_percentage_base(amount, base, quotes, path):
+    try:
+        number = Decimal(str(amount).replace(",", ""))
+    except InvalidOperation:
+        return
+    expected = {
+        basis
+        for quote in quotes
+        for clause in re.split(r"(?<=[.;])\s+", quote["quote"])
+        if number in percentages(clause)
+        and (basis := appropriation_base(clause))
+        and re.search(r"\bappropriat\w*\b", clause, re.I)
+    }
+    if len(expected) == 1 and appropriation_base(base or "") not in expected:
+        raise output_error("reader_amount_conflict", path)
+
+
+def authorization_only_amounts(evidence):
+    authorized, other = set(), set()
+    for clause in re.split(r"(?<=[.;])\s+", evidence):
+        bucket = (
+            authorized
+            if re.search(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", clause, re.I)
+            else other
+        )
+        bucket.update(_amounts(clause))
+    return authorized - other
 
 
 def validate_numbers(item, *, path):
@@ -30,20 +74,20 @@ def validate_numbers(item, *, path):
     # A matching dollar figure is not enough: authorization does not itself
     # require spending. Keep this check amount-scoped so a separate mandatory
     # allocation in the same evidence is not mistaken for an authorization.
-    authorized, other = set(), set()
-    for clause in re.split(r"(?<=[.;])\s+", evidence):
-        bucket = (
-            authorized
-            if re.search(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", clause, re.I)
-            else other
-        )
-        bucket.update(_amounts(clause))
+    for match in re.finditer(
+        r"(\d[\d,]*(?:\.\d+)?)\s*(?:%|percent)\s+of\s+(?:the\s+)?"
+        r"((?:total|remaining|full|entire)\s+(?:annual\s+)?appropriat\w*)",
+        prose,
+        re.I,
+    ):
+        check_percentage_base(match[1], match[2], item["source_quotes"], path)
+    authorization_only = authorization_only_amounts(evidence)
     for match in re.finditer(
         r"\b(?:must|shall|will)\s+(?:allocate|spend|appropriate|disburse)\b[^.;]{0,160}",
         prose,
         re.I,
     ):
-        if _amounts(match.group()) & (authorized - other):
+        if _amounts(match.group()) & authorization_only:
             raise output_error("reader_amount_conflict", path)
 
 

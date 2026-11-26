@@ -193,3 +193,56 @@ def test_map_call_identity_keeps_exact_pre_dependency_fix_format(settings, adapt
 
     assert fingerprint == _old_identity(normalized, adapter=adapter)
     assert references == {"src_0042": "src_0001"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("record_id", [[], {"bad": "id"}])
+def test_malformed_record_id_is_a_known_paid_response(
+    settings, enhancement_owner, source_bill, enhancement_settings, record_id
+):
+    from unittest.mock import Mock
+
+    from apps.legislation.enhancements.providers.base import (
+        ProviderResult,
+        ProviderUsage,
+    )
+    from apps.legislation.enhancements.reader_discovery import discovery_schema
+
+    from .test_dependency_cache_migration import _stage_request
+    from .test_reader_facts import _output, _sources
+
+    with enhancement_settings:
+        attempt = _running_attempt(enhancement_owner, source_bill)
+        base = _stage_request(settings, "map")
+        sources = _sources("The agency shall publish an annual report.")
+        request = replace(
+            base,
+            source_snapshot=sources,
+            request_envelope={
+                **base.request_envelope,
+                "source_review": True,
+                "output_schema": discovery_schema(sources),
+            },
+        )
+        output = _output(sources)
+        output["factual_records"][0]["record_id"] = record_id
+        provider = Mock()
+        provider.enhance_bill.return_value = ProviderResult(
+            output, ProviderUsage(100, 50, 150), "known-response", "model"
+        )
+        wrapper = DurableReaderProvider(provider, attempt, attempt.run_token, 4)
+        for _ in range(2):
+            with pytest.raises(ProviderError) as failure:
+                wrapper.enhance_bill(
+                    request=request, api_key="offline", timeout_seconds=1
+                )
+            assert not failure.value.outcome_unknown
+        step = attempt.steps.get()
+        assert (step.status, step.total_tokens, step.response_id) == (
+            "failed",
+            150,
+            "known-response",
+        )
+        cache = BillEnhancementCallCache.objects.get(pk=step.request_fingerprint)
+        assert cache.status == "failed" and cache.response_id == step.response_id
+        assert provider.enhance_bill.call_count == 1

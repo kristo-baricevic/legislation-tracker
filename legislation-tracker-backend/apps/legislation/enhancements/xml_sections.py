@@ -22,7 +22,7 @@ from apps.ingestion.document_download import (
     extract_text_from_xml_or_html,
 )
 
-XML_SECTION_VERSION = 2  # Bump when section alignment or rendering changes.
+XML_SECTION_VERSION = 3  # Bump when section alignment or rendering changes.
 
 _BODIES = {"legis-body", "engrossed-amendment-body", "amendment-body"}
 _QUOTED = {"quoted-block", "quoted-text"}
@@ -59,6 +59,7 @@ class XmlProvision:
     identity: str = ""
     references: tuple[str, ...] = ()
     table_label_level: int | None = None
+    external_references: tuple[tuple[int, int, str], ...] = ()
 
 
 class XmlSections(tuple):
@@ -185,7 +186,7 @@ def _rendered_spans(bodies, nodes, text, marker):
             node.insert(0, first)
             node.append(last)
             changes.append((node, first, last))
-        elif tag in _QUOTED | _CONTENTS | _TABLE:
+        elif tag in _QUOTED | _CONTENTS | _TABLE | {"external-xref"}:
             changes.append((node, "text", node.text))
             node.text = f"{marker}{index}:start" + (node.text or "")
             tail_node, attribute = (node[-1], "tail") if len(node) else (node, "text")
@@ -318,6 +319,9 @@ def xml_boundaries(raw, text):
         tag = _xml_tag(element)
         quoted_depth += int(tag in _QUOTED)
         section_id = section_ids.get(element, section_id)
+        if tag == "external-xref":
+            nodes.append((element, parent, section_id, quoted_depth, []))
+            return
         if tag in _PROVISIONS:
             index = len(nodes)
             nodes.append((element, parent, section_id, quoted_depth, []))
@@ -333,6 +337,9 @@ def xml_boundaries(raw, text):
                     for child in element.iter()
                     if _xml_tag(child) == "internal-xref" and child.get("idref")
                 )
+                for child in element.iter():
+                    if _xml_tag(child) == "external-xref":
+                        nodes.append((child, parent, section_id, quoted_depth, []))
             return
         for child in element:
             collect_nodes(child, parent, section_id, quoted_depth)
@@ -347,6 +354,15 @@ def xml_boundaries(raw, text):
         rendered, offsets = _flat_spans(raw, root, nodes, text, marker)
     if rendered != text:
         raise ValueError("xml_text_mismatch")
+    external = {}
+    for index, (element, parent, *_rest) in enumerate(nodes):
+        if _xml_tag(element) == "external-xref" and (index, "start") in offsets:
+            left, right = offsets[index, "start"], offsets[index, "end"]
+            if right > left:
+                citation = element.get("parsable-cite") or " ".join(
+                    text[left:right].split()
+                )
+                external.setdefault(parent, []).append((left, right, citation))
     by_element = {node: index for index, (node, *_) in enumerate(nodes)}
     rows, previous, seen = [], 0, set()
     for element in elements:
@@ -371,6 +387,8 @@ def xml_boundaries(raw, text):
     for index, (element, parent, section_id, quoted_depth, references) in enumerate(
         nodes
     ):
+        if _xml_tag(element) == "external-xref":
+            continue
         left, right = offsets.get((index, "start")), offsets.get((index, "end"))
         # Empty/unsupported nodes have no immutable stored text to invent.
         if left is None or right is None or left >= right:
@@ -398,6 +416,7 @@ def xml_boundaries(raw, text):
                 identity=element.get("id") or f"provision:{index}",
                 references=tuple(dict.fromkeys(references)),
                 table_label_level=table_row_levels.get(element),
+                external_references=tuple(external.get(index, ())),
             )
         )
     return XmlSections(rows, provisions)

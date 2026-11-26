@@ -432,7 +432,7 @@ class OpenAICompatibleEnhancementProvider:
         )
         if schema is PROVIDER_OUTPUT_SCHEMA:
             result = harness.apply_derived_source_refs(result)
-        return result
+        return harness.decode_bill_result(result, schema)
 
     def repair_citations(
         self, *, api_key=None, request=None, payload=None, timeout_seconds=None

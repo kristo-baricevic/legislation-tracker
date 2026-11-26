@@ -62,3 +62,4 @@ class EnhancementPreflight:
     worker_guard: str | None = None
     prior_reader_items: dict[str, dict[str, Any]] | None = None
     legacy_dependency_request: Callable[[], EnhancementPreflight] | None = None
+    historical_dependency_sources: Callable[[], list[dict[str, Any]]] | None = None
