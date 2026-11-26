@@ -10,6 +10,7 @@ from .citations import citation_spans
 from .funding_roles import (
     dollar_amounts,
     funding_decisions,
+    funding_scopes,
     funding_statement_conflicts,
     malformed_dollar_amount,
     required_claim_conflicts,
@@ -265,18 +266,17 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
         for code, path, message in check_accounting(explanation, unit, graph):
             add(code, "unresolved", path, message)
     source = "\n".join(graph.passages[p].text for p in unit.own_passage_ids)
-    cited_funding = funding_decisions(graph.passages[pid].text for pid in ids)
-    cited_bases = cited_percentage_bases(graph.passages[pid].text for pid in ids)
+    primary_ids = dict.fromkeys(
+        pid for claim in explanation["claims"] for pid in claim["evidence_ids"]
+    )
+    primary_texts = [graph.passages[pid].text for pid in primary_ids]
+    cited_funding = funding_decisions(primary_texts)
     has_conditions = bool(required_conditions(unit, graph))
-    prose = " ".join([explanation["summary"], *explanation["details"]])
-    for index, sentence in enumerate([explanation["summary"], *explanation["details"]]):
+    sentences = [explanation["summary"], *explanation["details"]]
+    prose = " ".join(sentences)
+    for index, sentence in enumerate(sentences):
         if funding_statement_conflicts(sentence, cited_funding):
             add("spending_authority_conflict", path=f"explanations/{index}")
-        if any(
-            percentage_base_conflicts(rate, basis, cited_bases)
-            for rate, basis in percentage_bases(sentence)
-        ):
-            add("percentage_base_conflict", path=f"explanations/{index}")
         if re.search(
             r"\bassigned\s+(?:items|units|blocks|passages)\b|\btext\s+does\s+not\s+establish\s+the\s+contents\b",
             sentence,
@@ -511,6 +511,29 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
                 else:
                     if amount not in dollar_amounts(source):
                         add("amount_conflict", path="claims.money.amount")
+    if "%" in prose or "percent" in prose.casefold():
+        # An exception's passage can also contain an independent rule. Only
+        # the quoted leaf is evidence for the qualification, and neither can
+        # supply a different denominator for the principal action.
+        actions, qualifiers = [], list(condition_leaves)
+        for text in primary_texts:
+            for scope, _, conditional in funding_scopes(text):
+                (qualifiers if conditional else actions).append(scope)
+        action_bases = cited_percentage_bases(actions)
+        qualifier_bases = cited_percentage_bases(qualifiers)
+        for index, sentence in enumerate(sentences):
+            for scope, _, conditional in funding_scopes(sentence):
+                expected, other = (
+                    (qualifier_bases, action_bases)
+                    if conditional
+                    else (action_bases, qualifier_bases)
+                )
+                if any(
+                    (rate not in expected and rate in other)
+                    or percentage_base_conflicts(rate, basis, expected)
+                    for rate, basis in percentage_bases(scope)
+                ):
+                    add("percentage_base_conflict", path=f"explanations/{index}")
     if has_conditions and condition_leaves:
         # Require the full governing tail in one leaf. Splitting a conjunction
         # into fragments cannot establish its Boolean scope. Complex sources

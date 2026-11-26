@@ -1,11 +1,14 @@
 import pytest
 from jsonschema import ValidationError
 
+from apps.legislation.enhancements.provision_validation import validate_provision
 from apps.legislation.enhancements.reader_facts import (
     factual_record_ids,
     resolve_factual_records,
 )
+from apps.legislation.enhancements.source_graph import build_source_graph
 from apps.legislation.tests.test_reader_facts import _claim, _record, _sources
+from apps.legislation.tests.test_source_first_schema import explanation
 
 
 def test_exception_citation_cannot_supply_the_claims_spending_authority():
@@ -88,3 +91,48 @@ def test_a_conditional_appropriation_is_not_an_enacted_appropriation():
     )
     records = [_record(owner, claims=[claim])]
     assert resolve_factual_records(records, sources) == records
+
+
+@pytest.mark.parametrize(
+    "summary,conflict",
+    [
+        ("The Secretary must spend $100 for grants.", "spending_authority_conflict"),
+        ("Reserve 20% of the remaining appropriation.", "percentage_base_conflict"),
+        ("The bill authorizes $100 for grants.", None),
+        (
+            "Reserve 20% of the total appropriation if the balance exceeds 20% of the remaining appropriation.",
+            None,
+        ),
+        (
+            "Reserve 20% of the remaining appropriation if the balance exceeds 20% of the remaining appropriation.",
+            "percentage_base_conflict",
+        ),
+    ],
+)
+def test_source_first_prose_separates_action_and_qualification(summary, conflict):
+    text = (
+        "SEC. 1. AUTHORIZATION\nThere is authorized to be appropriated $100 for grants. "
+        "Reserve 20% of the total appropriation. See section 2 of this Act for emergency procedures.\n"
+        "SEC. 2. EMERGENCY\nEmergency procedures apply if the balance exceeds 20% of the remaining appropriation. "
+        "Under a separate program, the Secretary must spend $100 for grants."
+    )
+    graph = build_source_graph("1", "IH", text)
+    unit, other = graph.units
+    assert other.own_passage_ids[0] in unit.context_passage_ids
+    row = explanation(graph)
+    row["summary"] = summary
+    claim = row["claims"][0]
+    claim.update(
+        action="Authorize appropriations.",
+        modality="permitted",
+        exceptions=[
+            {
+                "operator": "leaf",
+                "text": "if the balance exceeds 20% of the remaining appropriation.",
+                "evidence_ids": list(other.own_passage_ids),
+            }
+        ],
+    )
+    claim["money"][0].update(purpose="grants", measure="dollars")
+    findings = validate_provision(row, unit, graph, require_coverage=True)
+    assert [finding.code for finding in findings] == ([conflict] if conflict else [])
