@@ -410,8 +410,13 @@ def resolve_discovery(
             for item in rows:
                 quotes = item.get("source_quotes", []) if isinstance(item, dict) else []
                 if not isinstance(quotes, list) or any(
-                    not isinstance(q, dict) for q in quotes
+                    not isinstance(q, dict)
+                    or not isinstance(q.get("source_ref"), str)
+                    or not isinstance(q.get("quote_id"), str)
+                    for q in quotes
                 ):
+                    # Leave malformed identifiers for schema validation before
+                    # using them as hash keys or dropping a context-only finding.
                     kept.append(item)
                     continue
                 local = [

@@ -196,9 +196,10 @@ def test_map_call_identity_keeps_exact_pre_dependency_fix_format(settings, adapt
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("field", ["record_id", "quote_id", "source_ref"])
 @pytest.mark.parametrize("record_id", [[], {"bad": "id"}])
 def test_malformed_record_id_is_a_known_paid_response(
-    settings, enhancement_owner, source_bill, enhancement_settings, record_id
+    settings, enhancement_owner, source_bill, enhancement_settings, field, record_id
 ):
     from unittest.mock import Mock
 
@@ -215,6 +216,7 @@ def test_malformed_record_id_is_a_known_paid_response(
         attempt = _running_attempt(enhancement_owner, source_bill)
         base = _stage_request(settings, "map")
         sources = _sources("The agency shall publish an annual report.")
+        sources[0]["review_quote_ids"] = ["p0001"]
         request = replace(
             base,
             source_snapshot=sources,
@@ -225,7 +227,10 @@ def test_malformed_record_id_is_a_known_paid_response(
             },
         )
         output = _output(sources)
-        output["factual_records"][0]["record_id"] = record_id
+        if field == "record_id":
+            output["factual_records"][0][field] = record_id
+        else:
+            output["policy_changes"][0]["source_quotes"][0][field] = record_id
         provider = Mock()
         provider.enhance_bill.return_value = ProviderResult(
             output, ProviderUsage(100, 50, 150), "known-response", "model"
