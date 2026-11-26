@@ -429,16 +429,17 @@ def test_repeated_eligibility_passages_remain_citable_in_a_staged_plan(
 
 
 @pytest.mark.parametrize(
-    "mandatory,source_is_authorization,purpose",
+    "mandatory,source_authority,purpose,valid",
     [
-        (True, True, None),
-        (False, True, None),
-        (True, False, None),
-        (True, False, "grant funding"),
+        (True, "authorized", None, False),
+        (False, "authorized", None, True),
+        (True, "appropriated", None, False),
+        (True, "appropriated", "grant funding", False),
+        (True, "required", None, True),
     ],
 )
 def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
-    mandatory, source_is_authorization, purpose
+    mandatory, source_authority, purpose, valid
 ):
     import json
     from pathlib import Path
@@ -447,8 +448,12 @@ def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
         (Path(__file__).parent / "fixtures/harness/119s4387is.json").read_text()
     )
     quote = pinned["evidence"][0]["quote"]
-    if not source_is_authorization:
+    if source_authority == "appropriated":
         quote = quote.replace("authorized to be appropriated", "appropriated")
+    elif source_authority == "required":
+        quote = quote.replace(
+            "there is authorized to be appropriated", "the Secretary shall spend"
+        )
     sources = _sources(quote)
     (key,) = factual_record_ids(sources)
     output = _output(sources)
@@ -485,7 +490,7 @@ def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
             source_quotes=policy["source_quotes"],
         )
     ]
-    if mandatory and (source_is_authorization or purpose):
+    if not valid:
         with pytest.raises(ValidationError) as failure:
             resolve_discovery(output, sources)
         assert failure.value.validator == "reader_amount_conflict"
@@ -910,6 +915,13 @@ def test_post_reservation_modifier_stays_with_its_account(quote, expected):
             "Spend funds.",
             "salaries",
             None,
+            False,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. The Secretary must spend $100 for salaries.",
+            "Spend funds.",
+            "salaries",
+            None,
             True,
         ),
         (
@@ -1020,3 +1032,26 @@ def test_typed_funding_decision_requires_condition_in_every_alternative(
         with pytest.raises(ValidationError) as error:
             resolve_factual_records([_record(key, claims=[claim])], sources)
         assert error.value.validator == ("anyOf" if empty else "reader_amount_conflict")
+
+
+@pytest.mark.parametrize(
+    "bound,valid",
+    [("at least", False), ("exact", False), ("at most", True), (None, False)],
+)
+def test_funding_amount_comparator_in_mapped_money(bound, valid):
+    sources = _sources("The Secretary must spend not more than $100 for grants.")
+    (key,) = factual_record_ids(sources)
+    money = dict(
+        amount="100",
+        currency="USD",
+        measure="dollars",
+        comparator=bound,
+        base=None,
+        period=None,
+        purpose="grants",
+    )
+    claim = _claim(key, "Spend funds.", money=[money])
+    with nullcontext() if valid else pytest.raises(ValidationError) as error:
+        resolve_factual_records([_record(key, claims=[claim])], sources)
+    if not valid:
+        assert error.value.validator == "reader_amount_conflict"

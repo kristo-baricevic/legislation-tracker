@@ -607,6 +607,24 @@ def test_old_cache_cannot_preserve_a_swapped_percentage_decision(
             False,
             15,
         ),
+        (
+            "There is appropriated $100 for grants.",
+            "The Secretary must spend $100 for grants.",
+            False,
+            16,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants.",
+            "The bill provides $100 for grants.",
+            False,
+            16,
+        ),
+        (
+            "There is appropriated at most $100 for grants.",
+            "The bill appropriates exactly $100 for grants.",
+            False,
+            16,
+        ),
     ],
 )
 def test_old_cache_rechecks_financial_qualifiers(

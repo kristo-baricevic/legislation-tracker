@@ -27,22 +27,83 @@ def dollar_amounts(text):
     }
 
 
+# Bind a qualifier to its own dollar token. In particular, the next
+# amount's comparator must never qualify the preceding purpose.
+_COMPARATORS = {
+    "ceiling": (
+        "not more than",
+        "no more than",
+        "not to exceed",
+        "not exceeding",
+        "at most",
+        "up to",
+        "maximum of",
+        "a maximum of",
+        "maximum",
+        "ceiling",
+        "<=",
+        "≤",
+    ),
+    "floor": (
+        "not less than",
+        "no less than",
+        "at least",
+        "minimum of",
+        "a minimum of",
+        "minimum",
+        "floor",
+        ">=",
+        "≥",
+    ),
+    "exclusive ceiling": ("less than", "under", "<"),
+    "exclusive floor": ("more than", "over", ">"),
+    "approximate": ("approximately", "about"),
+    "exact": ("exactly", "equal to", "exact", "="),
+}
+_BOUND_NAMES = {
+    phrase: bound for bound, phrases in _COMPARATORS.items() for phrase in phrases
+}
+_BOUND_PATTERN = "|".join(
+    re.escape(phrase) for phrase in sorted(_BOUND_NAMES, key=len, reverse=True)
+)
+_BOUND_PREFIX = re.compile(rf"(?<!\w)({_BOUND_PATTERN})\s*$", re.I)
+_BOUND_SUFFIX = re.compile(r"^\s*(or less|or more|at most|at least|exactly)\b", re.I)
+
+
+def _amount_comparator(prefix, suffix):
+    if match := _BOUND_PREFIX.search(prefix):
+        return _BOUND_NAMES[match[1].casefold()]
+    if match := _BOUND_SUFFIX.match(suffix):
+        phrase = match[1].casefold()
+        return {"or less": "ceiling", "or more": "floor"}.get(phrase) or _BOUND_NAMES[
+            phrase
+        ]
+    return "exact"
+
+
 _AUTHORIZATION = re.compile(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", re.I)
 _AUTHORIZES_AMOUNT = re.compile(
-    rf"\bauthorizes?\s+(?:the appropriation of\s+)?{_DOLLAR}", re.I
+    rf"\bauthorizes?\s+(?:the appropriation of\s+)?(?:(?:{_BOUND_PATTERN})\s+)?{_DOLLAR}",
+    re.I,
 )
 _ENACTED_APPROPRIATION = re.compile(
     r"\b(?:appropriates|(?:is|are)\s+(?:hereby\s+)?appropriated)\b", re.I
 )
 _ENACTED_OUTLAY = re.compile(
-    r"\b(?:allocates|appropriates|disburses|spends|(?:is|are)\s+(?:hereby\s+)?(?:allocated|appropriated|disbursed|spent))\b",
+    r"\b(?:allocates|appropriates|disburses|spends|pays|obligates|(?:is|are)\s+(?:hereby\s+)?(?:allocated|appropriated|disbursed|spent|paid|obligated))\b",
     re.I,
 )
-_OUTLAY = r"(?:allocate|spend|appropriate|disburse|be\s+(?:allocated|spent|appropriated|disbursed))"
+_PROVIDED = re.compile(
+    rf"\b(?:provides|funds)\s+(?:(?:{_BOUND_PATTERN})\s+)?(?:{_DOLLAR}|funding\b|an? amount\b)|"
+    r"\b(?:is|are)\s+(?:hereby\s+)?(?:provided|made available)\b|"
+    r"\bmakes\s+(?:available\b|[^.;!?]*?\bavailable\b)",
+    re.I,
+)
+_OUTLAY = r"(?:allocate|spend|appropriate|disburse|pay|obligate|provide|be\s+(?:allocated|spent|appropriated|disbursed|paid|obligated|provided))"
 _REQUIRED_OUTLAY = re.compile(rf"\b(?:must|shall|will)\s+(?:both\s+)?{_OUTLAY}\b", re.I)
 _FUNDING_PREDICATE = re.compile(
     rf"\b(?:(?:must|shall|will|may)\s+(?:both\s+)?{_OUTLAY}|"
-    rf"{_ENACTED_OUTLAY.pattern}|(?:is|are)\s+(?:hereby\s+)?authorized|authorizes)\b",
+    rf"{_ENACTED_OUTLAY.pattern}|{_PROVIDED.pattern}|(?:is|are)\s+(?:hereby\s+)?authorized|authorizes)\b",
     re.I,
 )
 
@@ -157,7 +218,11 @@ def _words(text):
 
 
 def _asserts_outlay(text):
-    return bool(_REQUIRED_OUTLAY.search(text) or _ENACTED_OUTLAY.search(text))
+    return bool(
+        _REQUIRED_OUTLAY.search(text)
+        or _ENACTED_OUTLAY.search(text)
+        or _PROVIDED.search(text)
+    )
 
 
 @dataclass(frozen=True)
@@ -167,6 +232,7 @@ class FundingDecision:
     authority: str
     prerequisites: frozenset[str]
     wording: str
+    comparator: str = "exact"
 
 
 def _purpose(text):
@@ -226,12 +292,18 @@ def _outlay_authority(text):
         re.I,
     ):
         return "obligation to appropriate"
+    if re.search(r"\b(?:must|shall|will)\s+(?:provide|be provided)\b", text, re.I):
+        return "mandatory provision"
+    if _PROVIDED.search(text):
+        return "provided"
+    if _REQUIRED_OUTLAY.search(text):
+        return "mandatory outlay"
     return "outlay"
 
 
 _NEGATIVE_SUBJECT = re.compile(
     r"\b(?:no\s+(?:(?:such|federal|additional|public)\s+)*(?:funds?|money|amounts?|sums?|part|portion)|none)\b"
-    r"[^.;!?]*?\b(?:is|are|may|must|shall|will)\s+(?:(?:hereby|be)\s+)*(?:authorized|appropriated|allocated|disbursed|spent)\b",
+    r"[^.;!?]*?\b(?:is|are|may|must|shall|will)\s+(?:(?:hereby|be)\s+)*(?:authorized|appropriated|allocated|disbursed|spent|provided|paid|obligated|made available)\b",
     re.I,
 )
 
@@ -260,6 +332,13 @@ def _clause_decisions(clause, prerequisites, subordinate):
     matches = list(re.finditer(_DOLLAR, decision, re.I))
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(decision)
+        comparator = _amount_comparator(
+            decision[: match.start()], decision[match.end() : end]
+        )
+        if index + 1 < len(matches):
+            following = _BOUND_PREFIX.search(decision, match.end(), end)
+            if following:
+                end = following.start()
         (amount,) = dollar_amounts(match[0])
         yield FundingDecision(
             amount,
@@ -267,6 +346,7 @@ def _clause_decisions(clause, prerequisites, subordinate):
             authority,
             prerequisites,
             wording,
+            comparator,
         )
 
 
@@ -281,7 +361,20 @@ def funding_decisions(texts):
     ]
 
 
-def _unsupported(amount, purpose, authority, prerequisites, wording, cited):
+# An appropriation supplies funds. A requirement to spend them needs its
+# own operative predicate, even when both decisions have the same amount.
+_SUPPORTED_AUTHORITIES = {
+    "authorization": {"authorization"},
+    "appropriated": {"appropriated"},
+    "provided": {"provided", "appropriated", "mandatory provision"},
+    "mandatory provision": {"mandatory provision"},
+    "obligation to appropriate": {"obligation to appropriate"},
+    "mandatory outlay": {"mandatory outlay", "mandatory provision"},
+    "outlay": {"outlay", "mandatory outlay"},
+}
+
+
+def _unsupported(amount, purpose, authority, comparator, prerequisites, wording, cited):
     candidates = [rule for rule in cited if rule.amount == amount]
     if not candidates:
         return True
@@ -295,11 +388,10 @@ def _unsupported(amount, purpose, authority, prerequisites, wording, cited):
             or decision.prerequisites != prerequisites
         ):
             continue
-        if (authority == "authorization") != (decision.authority == "authorization"):
-            continue
-        if authority == "appropriated" and decision.authority != "appropriated":
-            continue
-        if authority == "obligation to appropriate" and decision.authority == "outlay":
+        if (
+            decision.authority not in _SUPPORTED_AUTHORITIES[authority]
+            or decision.comparator != comparator
+        ):
             continue
         if purpose and decision.purpose and decision.purpose != purpose:
             continue
@@ -330,6 +422,7 @@ def funding_statement_conflicts(text, cited, prerequisites=frozenset()):
             d.amount,
             d.purpose,
             d.authority,
+            d.comparator,
             prerequisites | d.prerequisites,
             d.wording,
             cited,
@@ -366,9 +459,15 @@ def required_claim_conflicts(claim, money, cited):
             authority = "authorization"
         elif claim.get("modality") == "required" and (
             _asserts_outlay(scope)
-            or re.search(r"\b(?:spend|allocate|appropriate|disburse)\b", scope, re.I)
+            or re.search(
+                r"\b(?:spend|allocate|appropriate|disburse|pay|obligate|provide)\b",
+                scope,
+                re.I,
+            )
         ):
             authority = _outlay_authority(scope)
+            if authority == "outlay" and not _ENACTED_OUTLAY.search(scope):
+                authority = "mandatory outlay"
         else:
             continue
         purposes = {_words(money.get("purpose")), _purpose(scope)} - {""}
@@ -377,6 +476,9 @@ def required_claim_conflicts(claim, money, cited):
                 amount,
                 purpose,
                 authority,
+                _BOUND_NAMES.get(
+                    (money.get("comparator") or "exact").strip().casefold(), "unknown"
+                ),
                 prerequisites | prerequisite,
                 _words(scope),
                 cited,
