@@ -13,7 +13,7 @@ The reader now handles that case through the saved plan's stages:
 
 All generation stays inside the existing pinned provider/model, durable reservation, shared cache, retry, and delivery mechanisms. Preflight reserves map, dependency, recovery, and synthesis work. Each actual dispatch must fit the complete serialized request and its output allowance. No SDK retry loop or automatic model/provider change was added.
 
-Internal factual maps and reconciliation receipts remain in saved validation state; the public presentation returns reader prose and its original cited sources. Existing schema-1.4 presentation and small-bill compatibility are retained. There are no database migrations.
+Internal factual maps and reconciliation receipts remain in saved validation state; the public presentation returns reader prose and its original cited sources. Existing schema-1.4 presentation and small-bill compatibility are retained. Migration `0041_widen_enhancement_estimate` stores the confirmed input estimate and aggregate attempt and enhancement token counts in 64-bit columns. Apply it before starting the updated API and workers.
 
 ## Source-pinned large-bill check
 
@@ -90,7 +90,7 @@ The second review advanced the reader execution version to **13** and the contex
 
 Thirteen maintained regressions use actual ingestion, XML boundaries, source planning, and scoped context selection. They cover the reported 37,233-character source at both 1,000-byte and default 8,000-byte ownership targets; equivalent fully expanded wording; compound lists and ranges; deeper continuations; Roman/item numbering; quoted and external laws; and missing targets. Independent probes also verify numeric, suffixed, decimal, and hyphenated section identifiers. The original review reproduction and all thirteen new cases pass.
 
-That correction used reader execution version **14** and context planner version **4**, so confirmations and published-output freshness checks recognize this change. The historical reservation boundary remains **below version 13** because it belongs to the earlier transport migration; it is not a moving latest-version lock. There are no database migrations or provider-limit changes.
+That correction used reader execution version **14** and context planner version **4**, so confirmations and published-output freshness checks recognize this change. The historical reservation boundary remains **below version 13** because it belongs to the earlier transport migration; it is not a moving latest-version lock. The version 14 correction itself changed neither the database columns nor provider limits.
 
 ### Fourth review
 
@@ -102,7 +102,7 @@ All reader stages identify ambiguous provider dispatches independently of planne
 
 ## Verification boundary and rollout
 
-These checks establish executable bounded planning for the real source and successful staged orchestration for the annotated offline cases. They do **not** establish the factual quality of a live model's complete S.1071 enhancement. No new live model request, paid API call, production data change, or deployment was made for this implementation.
+These checks establish executable bounded planning for the real source and successful staged orchestration for the annotated offline cases. They do **not** establish the factual quality of a live model's complete S.1071 enhancement. The final provider matrix intercepts serialized requests at the HTTP boundary. The acceptance results cover offline adapter contracts and deterministic publication. Live model quality and billing are outside these checks.
 
 The existing provider adapter remains the default. The reader execution version changes, so newly built confirmations and work identities include the new behavior. Existing published results and unrelated working-tree changes are preserved. Deploy through the ordinary reviewed backend release process; do not rewrite active attempts or regenerate all bills automatically.
 
@@ -116,5 +116,9 @@ LARGE_BILL_XML_PATH=/path/to/BILLS-119s1071eah.xml .venv/bin/python -m pytest \
 
 .venv/bin/python -m pytest apps/legislation/tests -q
 ```
+
+For the PostgreSQL estimate and worker-claim check, set `DATABASE_URL` to a disposable PostgreSQL database on an existing instance and set `LARGE_BILL_XML_PATH` to the same XML. Run `apps/legislation/tests/test_large_bill_staged_flow.py::test_pinned_pg_confirmation` with `-s` to print the exact confirmed ceilings. The test compares the API budget with the stored manifest and claims the attempt without calling a provider.
+
+The other staged-flow cases use a deterministic provider. To include the browser assertion, point `STAGED_READER_CLIENT` to a local test build of the client and install its Playwright Chromium browser. The test starts its own API against the isolated test database, logs in, and checks the published summary, policy and money tab.
 
 The XML is deliberately not bundled into the application. The fixture verifies its pinned hashes before the full-source tests run.
