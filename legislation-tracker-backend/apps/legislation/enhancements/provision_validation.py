@@ -331,7 +331,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
 
     def bounds(text):
         result = {}
-        pattern = r"\b(not more than|no more than|at most|up to|not less than|no less than|at least|minimum of)\s+(\$\s*)?([\d,]+(?:\.\d+)?)"
+        pattern = r"\b(not more than|no more than|at most|up to|not less than|no less than|at least|minimum of)\s+(\$\s*)?(\d[\d,]*(?:\.\d+)?)"
         for match in re.finditer(pattern, text, re.I):
             direction = (
                 "lower"
@@ -479,7 +479,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
             percentage_values = {
                 Decimal(value.replace(",", ""))
                 for value in re.findall(
-                    r"([\d,]+(?:\.\d+)?)\s*(?:percent\b|%)", source, re.I
+                    r"(\d[\d,]*(?:\.\d+)?)\s*(?:percent\b|%)", source, re.I
                 )
             }
             try:

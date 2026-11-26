@@ -1145,14 +1145,15 @@ def test_enacted_claim_cannot_hide_behind_authorization_summary(action):
 
 
 @pytest.mark.parametrize("path", ["reader", "provision"])
-def test_punctuation_only_dollar_text_has_validation_outcome(path):
+@pytest.mark.parametrize("bound", ["", "at most "])
+def test_punctuation_only_dollar_text_has_validation_outcome(path, bound):
     from jsonschema import ValidationError
 
     from apps.legislation.enhancements.funding_roles import dollar_amounts
     from apps.legislation.enhancements.reader_integrity import validate_numbers
 
     source = "The Secretary shall spend $100 for grants."
-    statement = "The Secretary shall spend $,, for grants."
+    statement = f"The Secretary shall spend {bound}$,, for grants."
     assert dollar_amounts("The source includes $,, and $100.") == {100}
     if path == "reader":
         with pytest.raises(ValidationError) as error:
@@ -1168,3 +1169,10 @@ def test_punctuation_only_dollar_text_has_validation_outcome(path):
         assert "amount_conflict" in {
             f.code for f in validate_provision(row, graph.units[0], graph)
         }
+
+
+def test_punctuation_before_percentage_in_source_is_not_a_number():
+    source = "The Secretary shall pay $100. Reports list the amount, percent of total, and date."
+    graph = build_source_graph("1", "IH", "SEC. 1. PAYMENT\n" + source)
+    row = explanation(graph)
+    assert not validate_provision(row, graph.units[0], graph)
