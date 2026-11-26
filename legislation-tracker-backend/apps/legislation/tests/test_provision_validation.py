@@ -812,11 +812,6 @@ def test_repeated_amount_retains_source_wording_when_accounts_are_unresolved(
         "The bill appropriates $100 for grants.",
         "The Secretary must spend $100 for grants.",
         None,
-        (
-            "There is appropriated $100.",
-            "The bill appropriates $100 to fund grants.",
-            False,
-        ),
     ],
 )
 def test_repeated_amount_retains_neutral_or_negated_authority(
@@ -832,6 +827,11 @@ def test_repeated_amount_retains_neutral_or_negated_authority(
         (
             "There is appropriated $100.",
             "The bill appropriates $100 for grants.",
+            False,
+        ),
+        (
+            "There is appropriated $100.",
+            "The bill appropriates $100 to fund grants.",
             False,
         ),
         ("There is appropriated $100.", "The bill appropriates $100.", True),
