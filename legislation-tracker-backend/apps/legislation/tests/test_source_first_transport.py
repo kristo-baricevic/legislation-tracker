@@ -165,3 +165,30 @@ def test_condition_reference_expands_to_exact_server_source_without_model_copyin
     response["provisions"][0]["claims"][0]["conditions"]["condition_id"] = "c2"
     with pytest.raises(ValidationError):
         wire.decode(response)
+
+
+def test_source_first_schema_limit_preserves_provider_receipt(monkeypatch):
+    from apps.legislation.enhancements.providers.base import (
+        ProviderError,
+        ProviderResult,
+        ProviderUsage,
+    )
+    from apps.legislation.enhancements.providers.harness import (
+        decode_source_first_output,
+    )
+
+    wire = prepare_transport("generation", payload())
+    response = ProviderResult(
+        output(), ProviderUsage(120, 45, 165), "known-response", "model"
+    )
+
+    def exhausted(*args, **kwargs):
+        raise RecursionError()
+
+    monkeypatch.setattr(Draft202012Validator, "validate", exhausted)
+    with pytest.raises(ProviderError) as failure:
+        decode_source_first_output(wire, response)
+    assert failure.value.category == "invalid_output"
+    assert not failure.value.outcome_unknown
+    assert failure.value.usage.total_tokens == 165
+    assert failure.value.response_id == "known-response"

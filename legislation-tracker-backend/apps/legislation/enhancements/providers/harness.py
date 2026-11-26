@@ -227,7 +227,7 @@ def decode_source_first_output(transport, result: ProviderResult) -> ProviderRes
 
     try:
         return replace(result, output=transport.decode(result.output))
-    except (ValidationError, KeyError, TypeError) as error:
+    except (ValidationError, KeyError, TypeError, RecursionError) as error:
         fields = {
             "provisions",
             "unit_id",
