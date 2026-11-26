@@ -47,7 +47,7 @@ _ITEM_RANK = 170
 _SUBITEM_RANK = 180
 _HEADING_SEPARATOR_RE = re.compile(r"^(?P<heading>[^\n]{1,160}?)(?:\.—|\. -|\.―)")
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?=\s|$)")
-_STATUTORY_ABBREVIATION_RE = re.compile(
+STATUTORY_ABBREVIATION_RE = re.compile(
     r"\b(?:U\.S\.C|U\.S|D\.C|Stat|Sec|No|e\.g|i\.e)\.$",
     re.IGNORECASE,
 )
@@ -360,7 +360,7 @@ def sentence_spans(
 
     for boundary in _SENTENCE_BOUNDARY_RE.finditer(source_text, start, end):
         preceding_text = source_text[max(start, boundary.end() - 16) : boundary.end()]
-        if _STATUTORY_ABBREVIATION_RE.search(preceding_text):
+        if STATUTORY_ABBREVIATION_RE.search(preceding_text):
             continue
         sentence_start = cursor
         sentence_end = boundary.end()

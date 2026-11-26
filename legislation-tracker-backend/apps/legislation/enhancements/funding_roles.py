@@ -3,6 +3,8 @@
 import re
 from decimal import Decimal
 
+from apps.legislation.extraction.federal_structure import STATUTORY_ABBREVIATION_RE
+
 _DOLLAR = r"\$\s*([\d,]+(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion)\b)?"
 
 
@@ -48,18 +50,17 @@ _INDEPENDENT_PREDICATE = re.compile(
 
 def _funding_clauses(text):
     """Split coordinated funding decisions, preserving amount lists under one verb."""
-    for sentence in re.split(r"(?<=[.;])\s+", text):
-        parts = []
-        for part in re.split(
-            r"(?<=,)\s+|\s+(?=(?:and|but|while|whereas)\b)", sentence, flags=re.I
+    parts = []
+    for part in re.split(
+        r"(?<=,)\s+|\s+(?=(?:and|but|while|whereas)\b)", text, flags=re.I
+    ):
+        if parts and (
+            _FUNDING_PREDICATE.search(part) or _INDEPENDENT_PREDICATE.match(part)
         ):
-            if parts and (
-                _FUNDING_PREDICATE.search(part) or _INDEPENDENT_PREDICATE.match(part)
-            ):
-                yield " ".join(parts)
-                parts = []
-            parts.append(part)
-        yield " ".join(parts)
+            yield " ".join(parts)
+            parts = []
+        parts.append(part)
+    yield " ".join(parts)
 
 
 _AUTHORIZED_SUM = re.compile(
@@ -74,73 +75,114 @@ _AUTH_SOURCE = re.compile(
 )
 
 
-_CONDITIONAL_SUBJECT = re.compile(
-    rf"\b(?:if|unless|whether)\s+(?:Congress|it|there|the (?:bill|Act|Secretary|agency)|{_DOLLAR})\s*$",
+# Mark subordinate clauses before splitting coordinated funding decisions.
+# Qualifiers inside a condition (amount comparators, subjects, adverbs and
+# coordinated verbs) cannot turn its predicate into an independent enactment.
+_CONDITION = re.compile(
+    r"\b(?:if|unless|whether|when|provided that|on condition that|in the event that)\b",
+    re.I,
+)
+_MAIN_CLAUSE = re.compile(
+    rf"(?:,\s+(?=(?:there|Congress|the|an?|this|it|{_DOLLAR})\b)|\bthen\s+)",
     re.I,
 )
 
 
+def _funding_scopes(text):
+    start = 0
+    for boundary in re.finditer(r"(?<=[.;!?])\s+|$", text):
+        end = boundary.start()
+        if end < len(text) and STATUTORY_ABBREVIATION_RE.search(
+            text[max(start, end - 16) : end]
+        ):
+            continue
+        sentence = text[start:end]
+        start = boundary.end()
+        while condition := _CONDITION.search(sentence):
+            main = sentence[: condition.start()]
+            yield main, False
+            tail = sentence[condition.end() :]
+            # A trailing prerequisite scopes the remainder of this statement,
+            # including commas and coordinated verbs inside the prerequisite.
+            # A leading condition can instead introduce a separate main clause.
+            resume = _MAIN_CLAUSE.search(tail) if not main.strip() else None
+            if resume is None:
+                yield tail, True
+                break
+            yield tail[: resume.start()], True
+            sentence = tail[resume.end() :]
+        else:
+            yield sentence, False
+
+
 def _asserts_outlay(text):
-    # "If Congress appropriates" describes a future prerequisite. A later
-    # independent assertion (after the comma) can still enact an outlay.
-    return any(
-        not _CONDITIONAL_SUBJECT.search(text[: match.start()])
-        for predicate in (_REQUIRED_OUTLAY, _ENACTED_OUTLAY)
-        for match in predicate.finditer(text)
-    )
+    return bool(_REQUIRED_OUTLAY.search(text) or _ENACTED_OUTLAY.search(text))
 
 
 def _funding_roles(text):
     """Separate an allocation's amount from the authorized account it draws on."""
     if "$" not in text:
         return
-    for clause in _funding_clauses(text):
-        source_amounts = {
-            amount
-            for match in _AUTH_SOURCE.finditer(clause)
-            for amount in dollar_amounts(match[0])
-        }
-        decision = _AUTH_SOURCE.sub(" ", clause)
-        outlay = _asserts_outlay(decision)
-        if outlay:
-            # "$2 million authorized to be appropriated ... shall be allocated"
-            # retains its explicit mandate. The authorization modifies that sum.
-            decision = _AUTHORIZED_SUM.sub(r"\g<amount>", decision)
-        yield decision, dollar_amounts(decision), source_amounts, outlay
+    for scope, conditional in _funding_scopes(text):
+        for clause in _funding_clauses(scope):
+            source_amounts = {
+                amount
+                for match in _AUTH_SOURCE.finditer(clause)
+                for amount in dollar_amounts(match[0])
+            }
+            decision = _AUTH_SOURCE.sub(" ", clause)
+            outlay = _asserts_outlay(decision)
+            if outlay:
+                # "$2 million authorized to be appropriated ... shall be allocated"
+                # retains its explicit mandate. The authorization modifies that sum.
+                decision = _AUTHORIZED_SUM.sub(r"\g<amount>", decision)
+            yield (
+                decision,
+                dollar_amounts(decision),
+                source_amounts,
+                outlay,
+                conditional,
+            )
 
 
-def authorization_only_amounts(texts):
-    authorized, operative = set(), set()
+def nonoperative_funding_amounts(texts):
+    nonoperative, operative = set(), set()
     for text in texts:
-        for decision, amounts, source_amounts, outlay in _funding_roles(text):
-            authorized.update(source_amounts)
-            if _AUTHORIZATION.search(decision) or _AUTHORIZES_AMOUNT.search(decision):
-                authorized.update(amounts)
+        for decision, amounts, source_amounts, outlay, conditional in _funding_roles(
+            text
+        ):
+            nonoperative.update(source_amounts)
+            if (
+                (conditional and outlay)
+                or _AUTHORIZATION.search(decision)
+                or _AUTHORIZES_AMOUNT.search(decision)
+            ):
+                nonoperative.update(amounts)
             elif outlay:
                 # A cost estimate repeating this amount supplies no authority to spend it.
                 operative.update(amounts)
-    return authorized - operative
+    return nonoperative - operative
 
 
 def asserted_outlays(text):
     return {
         amount
-        for _, amounts, _, outlay in _funding_roles(text)
-        if outlay
+        for _, amounts, _, outlay, conditional in _funding_roles(text)
+        if outlay and not conditional
         for amount in amounts
     }
 
 
-def required_claim_conflicts(claim, amount, authorization_only):
+def required_claim_conflicts(claim, amount, nonoperative):
     action = claim.get("action", "")
     return (
-        bool(authorization_only)
+        bool(nonoperative)
         and claim.get("modality") == "required"
-        and (
-            _asserts_outlay(action)
-            or bool(
-                re.search(r"\b(?:spend|allocate|appropriate|disburse)\b", action, re.I)
-            )
+        and any(
+            _asserts_outlay(scope)
+            or re.search(r"\b(?:spend|allocate|appropriate|disburse)\b", scope, re.I)
+            for scope, conditional in _funding_scopes(action)
+            if not conditional
         )
-        and bool(dollar_amounts(f"${amount}") & authorization_only)
+        and bool(dollar_amounts(f"${amount}") & nonoperative)
     )

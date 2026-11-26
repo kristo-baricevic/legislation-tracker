@@ -652,17 +652,50 @@ def test_source_first_distinguishes_grant_allocation_from_authorizing_account(
 def test_enacted_appropriation_requires_operative_evidence(
     path, statement, enacted, valid
 ):
+    evidence = (
+        "There is appropriated $100 for grants."
+        if enacted
+        else "There is authorized to be appropriated $100 for grants."
+    )
+    _check_funding_statement(path, evidence, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["provision", "reader"])
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "unless at least $100 is appropriated",
+        "unless $100 is appropriated",
+        "only if Congress later appropriates $100",
+        "unless Congress approves the plan and appropriates $100",
+        "unless the U.S. Congress, after review, appropriates at least $100",
+    ],
+)
+@pytest.mark.parametrize(
+    "case", ["unsupported", "faithful", "independent", "condition-only"]
+)
+def test_conditional_funding_is_not_enacted(path, condition, case):
+    rule = "No grant may be awarded " + condition + "."
+    evidence = (
+        rule
+        if case == "condition-only"
+        else "There is authorized to be appropriated $100 for grants. " + rule
+    )
+    if case == "independent":
+        evidence += " The bill appropriates $100 for grants."
+    statement = rule if case == "faithful" else "The bill appropriates $100 for grants."
+    _check_funding_statement(
+        path, evidence, statement, case in {"faithful", "independent"}, condition
+    )
+
+
+def _check_funding_statement(path, evidence, statement, valid, condition=None):
     from hashlib import sha256
 
     from jsonschema import ValidationError
 
     from apps.legislation.enhancements.reader_citations import resolve_reader_citations
 
-    evidence = (
-        "There is appropriated $100 for grants."
-        if enacted
-        else "There is authorized to be appropriated $100 for grants."
-    )
     if path == "reader":
         source = {
             "source_ref": "src_0001",
@@ -697,6 +730,12 @@ def test_enacted_appropriation_requires_operative_evidence(
         row["claims"][0].update(
             action="Appropriate funds for grants.", modality="permitted"
         )
+        if condition:
+            row["claims"][0]["conditions"] = {
+                "operator": "leaf",
+                "text": condition + ".",
+                "evidence_ids": list(graph.units[0].own_passage_ids),
+            }
         row["claims"][0]["money"][0].update(measure="dollars")
         findings = validate_provision(row, graph.units[0], graph)
         assert [(f.code, f.path) for f in findings] == (

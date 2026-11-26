@@ -7,7 +7,11 @@ Amounts stay attached to each item's cited evidence, never the entire bill.
 import re
 
 from .diagnostics import output_error
-from .funding_roles import asserted_outlays, authorization_only_amounts, dollar_amounts
+from .funding_roles import (
+    asserted_outlays,
+    dollar_amounts,
+    nonoperative_funding_amounts,
+)
 from .percentage_bases import (
     cited_percentage_bases,
     percentage_base_conflicts,
@@ -34,12 +38,10 @@ def validate_numbers(item, *, path):
     # A matching dollar figure is not enough: authorization does not itself
     # require spending. Keep this check amount-scoped so a separate mandatory
     # allocation in the same evidence is not mistaken for an authorization.
-    authorization_only = authorization_only_amounts(
+    nonoperative = nonoperative_funding_amounts(
         q["quote"] for q in item["source_quotes"]
     )
-    if authorization_only and any(
-        asserted_outlays(field) & authorization_only for field in fields
-    ):
+    if nonoperative and any(asserted_outlays(field) & nonoperative for field in fields):
         raise output_error("reader_amount_conflict", path)
 
 
