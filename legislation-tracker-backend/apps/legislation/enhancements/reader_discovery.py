@@ -374,6 +374,9 @@ def discovery_schema(sources, *, aggregate=False):
 def resolve_discovery(
     output, sources, *, aggregate=False, retained_financial=(), reconciled=False
 ):
+    from .reader_facts import record_evidence_ids
+
+    record_evidence_ids(output)
     # Source quotations and names can legitimately contain Arabic. Generated
     # prose must not introduce an unrelated Arabic word into an English rule.
     arabic_words = r"[\u0620-\u064a\u066e-\u06d3]+"
@@ -661,8 +664,10 @@ def retained_financial_indices(items, sources):
 
 
 def validate_source_review(review, sources):
+    from .reader_facts import record_evidence_ids
     from .reader_targets import _validate_quotes
 
+    record_evidence_ids(review.get("factual_records", []))
     scan_sources = [s for s in sources if s.get("discovery_source")]
     source_map = {s["source_ref"]: s for s in scan_sources}
     expected = list(source_map)

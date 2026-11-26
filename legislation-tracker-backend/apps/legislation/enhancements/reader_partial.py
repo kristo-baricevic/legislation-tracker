@@ -17,6 +17,9 @@ class PartialReviewReady(Exception):
 def validated_components(output, sources):
     if not sources or not isinstance(output, dict):
         return [], []
+    from .reader_facts import record_evidence_ids
+
+    record_evidence_ids(output)
     # A review still has one owner, but it may cite definitions or governing
     # conditions in other sources. Those sources must be explicitly contextual.
     if any(source.get("review_quote_ids") != [] for source in sources[1:]):
@@ -73,8 +76,6 @@ def validated_components(output, sources):
             merged = set().union(*linked)
             groups = [g for g in groups if not g & ids] + [merged]
     if mapped:
-        from .reader_facts import record_evidence_ids
-
         owned_keys = {f"{ref}:{quote_id}": quote_id for quote_id in owned}
         for record in output["factual_records"]:
             if (

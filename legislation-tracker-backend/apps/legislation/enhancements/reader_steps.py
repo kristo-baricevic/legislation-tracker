@@ -24,8 +24,10 @@ from .providers.base import ProviderError, ProviderResult, ProviderUsage
 from .reader_cache import (
     call_identity,
     dispatch_identity,
+    envelope_dispatch_identity,
     historical_dispatch_key_groups,
     remap,
+    router_alias_request,
 )
 from .reader_citations import recover_reader_items, resolve_reader_citations
 from .reader_discovery import resolve_discovery
@@ -57,6 +59,20 @@ def unresolved_reservation(fingerprint):
     error = ProviderError("outcome_unknown", outcome_unknown=True)
     error.citation_resolution["blocked_reservation"] = fingerprint
     return error
+
+
+def _different_router_model(model):
+    # A surviving step recorded the actual model submitted, even when its
+    # reservation only stored a hash of the logical alias. Older steps may
+    # lack this diagnostic but their attempt still carries an established pin.
+    return (
+        Q(diagnostics__requested_model__endswith=":free")
+        & ~Q(diagnostics__requested_model=model)
+    ) | (
+        ~Q(diagnostics__has_key="requested_model")
+        & Q(attempt__pinned_model__endswith=":free")
+        & ~Q(attempt__pinned_model=model)
+    )
 
 
 def _document_reservation(current, request, dispatch_request):
@@ -98,6 +114,10 @@ def _document_reservation(current, request, dispatch_request):
             )
         )
     )
+    if request.provider == "openrouter" and dispatch_request.requested_model.endswith(
+        ":free"
+    ):
+        steps = steps.exclude(_different_router_model(dispatch_request.requested_model))
     return (
         BillEnhancementCallCache.objects.filter(
             status="dispatching", pk__in=steps.values("request_fingerprint")
@@ -255,13 +275,25 @@ class DurableReaderProvider:
                 blocked = _document_reservation(current, request, dispatch_request)
                 if blocked:
                     raise unresolved_reservation(blocked)
-            stable_key = dispatch_identity(request, adapter)
-            pinned_key = dispatch_identity(dispatch_request, adapter)
+            stable_key = dispatch_identity(dispatch_request, adapter, self.provider)
+            legacy_key = envelope_dispatch_identity(dispatch_request, adapter)
+            keys = {stable_key, legacy_key}
+            # A pinned request can arrive under either spelling. Before this
+            # fix, both a salted rerun and an ordinary reservation stored only
+            # the alias envelope; the primary key cannot reliably reveal its pin.
+            concrete_router = (
+                request.provider == "openrouter"
+                and dispatch_request.requested_model.endswith(":free")
+            )
+            if concrete_router:
+                alias = router_alias_request(request)
+                alias_key = envelope_dispatch_identity(alias, adapter)
+            lock_keys = keys | {alias_key} if concrete_router else keys
             # Serialize overlapping generations without creating a second permanent
             # cache row per paid call. SQLite serializes writes at the database.
             if connection.vendor == "postgresql":
                 with connection.cursor() as cursor:
-                    for key in sorted({stable_key, pinned_key}):
+                    for key in sorted(lock_keys):
                         lock_id = int.from_bytes(
                             bytes.fromhex(key[:16]), "big", signed=True
                         )
@@ -273,7 +305,7 @@ class DurableReaderProvider:
             if ambiguous.exists():
                 blocked = (
                     ambiguous.filter(
-                        Q(dispatch_identity__in={stable_key, pinned_key})
+                        Q(dispatch_identity__in=keys)
                         | Q(fingerprint__in={logical_fingerprint, fingerprint})
                     )
                     .values_list("pk", flat=True)
@@ -281,6 +313,19 @@ class DurableReaderProvider:
                 )
                 if blocked:
                     raise unresolved_reservation(blocked)
+                if concrete_router:
+                    other_model = BillEnhancementStep.objects.filter(
+                        _different_router_model(dispatch_request.requested_model),
+                        request_fingerprint=OuterRef("pk"),
+                    )
+                    possible_alias = ambiguous.filter(~Exists(other_model))
+                    blocked = (
+                        possible_alias.filter(dispatch_identity=alias_key)
+                        .values_list("pk", flat=True)
+                        .first()
+                    )
+                    if blocked:
+                        raise unresolved_reservation(blocked)
                 # Modern steps already carry the stable wire identity checked
                 # above. Only legacy or orphaned reservations need historical
                 # source metadata reconstructed while holding the billing lock.
@@ -290,18 +335,23 @@ class DurableReaderProvider:
                 )
                 legacy = ambiguous.filter(~Exists(modern))
                 if legacy.exists():
-                    for keys in historical_dispatch_key_groups(
-                        request, adapter, dispatch_request.requested_model
-                    ):
-                        blocked = (
-                            legacy.filter(
-                                Q(fingerprint__in=keys) | Q(dispatch_identity__in=keys)
+                    candidates = [(request, legacy)]
+                    if concrete_router and request.requested_model != "openrouter/free":
+                        candidates.append((alias, legacy.filter(~Exists(other_model))))
+                    for candidate, reservations in candidates:
+                        for group in historical_dispatch_key_groups(
+                            candidate, adapter, dispatch_request.requested_model
+                        ):
+                            blocked = (
+                                reservations.filter(
+                                    Q(fingerprint__in=group)
+                                    | Q(dispatch_identity__in=group)
+                                )
+                                .values_list("pk", flat=True)
+                                .first()
                             )
-                            .values_list("pk", flat=True)
-                            .first()
-                        )
-                        if blocked:
-                            raise unresolved_reservation(blocked)
+                            if blocked:
+                                raise unresolved_reservation(blocked)
             rerun = self.attempt.enhancement.rerun_after
             if rerun:
                 import hashlib
@@ -598,18 +648,31 @@ class DurableReaderProvider:
                     usage=response.usage,
                 )
             self._pin(request, response.resolved_model)
-            if not request.request_envelope.get(
-                "source_review"
-            ) and not request.request_envelope.get("dependency_review"):
-                response = replace(
-                    response,
-                    output=recover_reader_items(
-                        response.output,
-                        snapshot_targets(request.source_snapshot),
-                        request.source_snapshot,
-                    ),
-                )
-            _validate_response(response.output, request)
+            try:
+                if not request.request_envelope.get(
+                    "source_review"
+                ) and not request.request_envelope.get("dependency_review"):
+                    response = replace(
+                        response,
+                        output=recover_reader_items(
+                            response.output,
+                            snapshot_targets(request.source_snapshot),
+                            request.source_snapshot,
+                        ),
+                    )
+                _validate_response(response.output, request)
+            except (ValidationError, ProviderError):
+                raise
+            except Exception as error:
+                # The provider returned a receipt. A local validator limit cannot
+                # turn that completed operation into an ambiguous dispatch.
+                raise ProviderError(
+                    "invalid_output",
+                    validation_code="reader_local_validation_failed",
+                    usage=response.usage,
+                    response_id=response.response_id,
+                    resolved_model=response.resolved_model,
+                ) from error
         except Exception as exc:
             if isinstance(exc, ProviderError) and exc.resolved_model:
                 self._pin(request, exc.resolved_model)
@@ -632,13 +695,7 @@ class DurableReaderProvider:
                     parts, pending = validated_components(
                         response.output, request.source_snapshot
                     )
-                except (
-                    ValidationError,
-                    TypeError,
-                    ValueError,
-                    KeyError,
-                    RecursionError,
-                ):
+                except Exception:
                     parts, pending = [], []
             # Store no unvalidated prose or raw exception bodies.
             step.response_id = getattr(exc, "response_id", "") or (

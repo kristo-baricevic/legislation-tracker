@@ -3,6 +3,7 @@
 from jsonschema import ValidationError
 
 MESSAGES = {
+    "reader_local_validation_failed": "The provider returned a response that the reader could not validate.",
     "unsupported_language_in_reader": "The explanation contains an Arabic word absent from the supplied bill text.",
     "reader_amount_conflict": "A financial amount or percentage does not match its cited source.",
     "reader_policy_wording": "A policy explanation contains drafting instructions, an incomplete sentence, or wording that needs simplification.",

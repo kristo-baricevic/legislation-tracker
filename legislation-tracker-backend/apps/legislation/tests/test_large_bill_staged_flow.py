@@ -336,7 +336,16 @@ class SimulatedWorkerCrash(BaseException):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    "mode", ["complete", "crash", "malformed", "unresolved", "truncated", "timeout"]
+    "mode",
+    [
+        "complete",
+        "crash",
+        "malformed",
+        "unresolved",
+        "truncated",
+        "timeout",
+        "local_depth",
+    ],
 )
 def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
     tmp_path, enhancement_owner, enhancement_settings, monkeypatch, mode, request
@@ -348,6 +357,21 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
     )
     model.fault = mode if mode in {"timeout", "truncated"} else None
     monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: model)
+
+    if mode == "local_depth":
+        from apps.legislation.enhancements import reader_steps
+
+        validate = reader_steps._validate_response
+
+        def fail_first_validation(output, request):
+            if not model.invalid_calls:
+                key, _ = call_identity(request)
+                model.invalid_calls.add(key)
+                monkeypatch.setattr(reader_steps, "_validate_response", validate)
+                raise RecursionError("local schema validation exhausted")
+            return validate(output, request)
+
+        monkeypatch.setattr(reader_steps, "_validate_response", fail_first_validation)
 
     def forbid_network(*args, **kwargs):
         pytest.fail("The staged integration test attempted a real HTTP request")
@@ -446,7 +470,7 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
             }
             assert len(model.calls) == count
             return
-        if mode in {"malformed", "unresolved"}:
+        if mode in {"malformed", "unresolved", "local_depth"}:
             assert outcome["status"] == "failed", attempt.failure_detail
             assert attempt.enhancement.result_json is None
             assert not any(call[0] == "summary" for call in model.calls)
@@ -454,6 +478,12 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
             if mode == "unresolved":
                 assert any(call[0] == "dependency" for call in model.calls)
                 assert attempt.failure_detail["code"] == "reader_coverage_incomplete"
+            elif mode == "local_depth":
+                step = attempt.steps.get()
+                row = BillEnhancementCallCache.objects.get(pk=step.request_fingerprint)
+                assert (step.status, row.status) == ("failed", "failed")
+                assert step.response_id == row.response_id == "offline-1"
+                assert step.total_tokens == 15
             else:
                 assert not any(call[0] == "dependency" for call in model.calls)
                 assert attempt.failure_detail["code"] in {
@@ -538,12 +568,12 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
             status__in=["validated", "expanded"]
         ).exists()
         assert Counter(stages) == {
-            "map": 85 if mode == "malformed" else 84,
+            "map": 85 if mode in {"malformed", "local_depth"} else 84,
             "dependency": {"unresolved": 20, "truncated": 21}.get(mode, 19),
             "summary": 1,
         }
-        if mode in {"malformed", "unresolved"}:
-            assert len(stages) - previous_count == (104 if mode == "malformed" else 20)
+        if mode in {"malformed", "unresolved", "local_depth"}:
+            assert len(stages) - previous_count == (20 if mode == "unresolved" else 104)
         print(
             "RECOVERY",
             mode,
@@ -551,11 +581,11 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
             "retry_calls",
             (
                 len(stages) - previous_count
-                if mode in {"malformed", "unresolved"}
+                if mode in {"malformed", "unresolved", "local_depth"}
                 else None
             ),
         )
-        if mode in {"malformed", "unresolved"}:
+        if mode in {"malformed", "unresolved", "local_depth"}:
             assert len(model.calls) > previous_count
             return
         assert all(
