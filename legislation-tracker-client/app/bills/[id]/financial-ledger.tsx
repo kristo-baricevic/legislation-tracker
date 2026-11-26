@@ -107,9 +107,8 @@ function OriginalFinancialLedger({
   const [filters, setFilters] = useState<{ action: FinancialAction | ""; year: number | null }>({ action: "", year: null });
   const requestId = useRef(0);
   const requestedPage = useRef(1);
-  const heading = useRef<HTMLHeadingElement>(null);
 
-  async function load(targetPage: number, _navigate = false) {
+  async function load(targetPage: number) {
     requestedPage.current = targetPage;
     const activeRequest = ++requestId.current;
     setLoading(true);
@@ -166,7 +165,7 @@ function OriginalFinancialLedger({
     <section className="mb-6 overflow-hidden rounded-lg border border-slate-400/80 bg-white/85 shadow-sm dark:border-green-800/80 dark:bg-green-950/20 dark:shadow-none" aria-labelledby={`money-${contractId}`}>
       <header className="border-b border-slate-300 bg-slate-100/80 px-4 py-4 dark:border-green-900 dark:bg-black/20">
         <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-green-700">Financial provisions</p>
-        <h2 ref={heading} tabIndex={-1} id={`money-${contractId}`} className="mt-1 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">{lineItemId ? "Money in this provision" : "Money in this bill"}</h2>
+        <h2 id={`money-${contractId}`} className="mt-1 scroll-mt-4 text-xl font-semibold text-slate-950 dark:text-green-400">{lineItemId ? "Money in this provision" : "Money in this bill"}</h2>
       </header>
 
       <div className="p-4">
@@ -199,7 +198,7 @@ function OriginalFinancialLedger({
         {error && (
           <div role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
             <p>{error}</p>
-            <button type="button" disabled={loading} onClick={() => void load(requestedPage.current, true)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
+            <button type="button" disabled={loading} onClick={() => void load(requestedPage.current)} className="mt-2 cursor-pointer border border-current px-2 py-1 font-semibold">Retry money provisions</button>
           </div>
         )}
         <LoadingSpinner active={loading && items.length === 0} label="Loading money provisions…" />
@@ -224,9 +223,9 @@ function OriginalFinancialLedger({
         )}
         </StableResults>
         {filteredCount > 0 && <nav aria-label="Financial provision pages" className="mt-5 flex items-center justify-center gap-4">
-          <button type="button" disabled={loading || page <= 1} onClick={() => void load(page - 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Prev</button>
+          <button type="button" aria-disabled={loading || page <= 1} onClick={() => { if (!loading && page > 1) void load(page - 1); }} className="rounded border px-3 py-2 aria-disabled:opacity-40">Prev</button>
           <span aria-live="polite">Page {page} of {Math.max(page, Math.ceil(filteredCount / 25))}</span>
-          <button type="button" disabled={loading || !hasMore} onClick={() => void load(page + 1, true)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button>
+          <button type="button" aria-disabled={loading || !hasMore} onClick={() => { if (!loading && hasMore) void load(page + 1); }} className="rounded border px-3 py-2 aria-disabled:opacity-40">Next</button>
         </nav>}
       </div>
     </section>

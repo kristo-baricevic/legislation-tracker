@@ -29,7 +29,7 @@ export default function RepresentativeRecommendations({ renderName, filters }: R
     restoreFocus.current = false;
   }, []);
   const state = useRecommendations(`rep-recommendations${filterQuery ? `:${filterQuery}` : ""}`, load, invalidate, true);
-  const dashboardLoading = useDashboardLoading("representatives", state.loading);
+  const dashboardLoading = useDashboardLoading("representatives", state.loading && !state.data);
   const [followed, setFollowed] = React.useState<Set<number>>(new Set());
   const [followedProfiles, setFollowedProfiles] = React.useState<import("@/lib/api").TrackedLegislatorItem[]>([]);
   React.useEffect(() => {

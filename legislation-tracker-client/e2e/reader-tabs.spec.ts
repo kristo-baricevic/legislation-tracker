@@ -12,10 +12,13 @@ test("reader tabs retain the summary, page all money, and open exact source popo
   const ledger = page.getByRole("region", { name: "Money in this bill", exact: true });
   await expect(ledger.getByText("25 of 101 provisions shown")).toBeVisible();
   for (let n = 2; n <= 5; n++) {
-    await ledger.getByRole("button", { name: "Next", exact: true }).click();
+    const next = ledger.getByRole("button", { name: "Next", exact: true });
+    await next.scrollIntoViewIfNeeded();
+    const scrollY = await page.evaluate(() => window.scrollY);
+    await next.click();
     await expect(ledger.getByText(`Page ${n} of 5`, { exact: true })).toBeVisible();
-    await expect(ledger.getByRole("heading", { name: "Money in this bill", exact: true })).toBeFocused();
-    await expect(ledger.getByRole("heading", { name: "Money in this bill", exact: true })).toBeInViewport();
+    await expect(next).toBeFocused();
+    expect(Math.abs(await page.evaluate(() => window.scrollY) - scrollY)).toBeLessThanOrEqual(1);
   }
   await expect(ledger.locator("ol > li")).toHaveCount(1);
   await expect(ledger.getByText("$101,000", { exact: true })).toBeVisible();
@@ -36,7 +39,7 @@ test("reader tabs retain the summary, page all money, and open exact source popo
   await page.getByRole("tab", { name: "Votes & sponsor" }).click();
   await expect(page.getByRole("heading", { name: "Voting record" })).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
-  await expect(page.getByRole("heading", { name: "Bill documents" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bill versions" })).toBeVisible();
   await page.getByRole("tab", { name: "What this bill does" }).click();
   await page.screenshot({ path: testInfo.outputPath("reader-tabs-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -58,7 +61,7 @@ test("nested glossary citations allow document navigation on a small screen", as
   await expect(source.getByTestId("source-evidence-text")).toContainText("covered hospital");
   await source.getByRole("link", { name: "Read full text" }).click();
   await expect(page).toHaveURL(/\/documents\/\d+$/);
-  await expect(page.getByText("Full bill text, not a summary. Wording is preserved from the stored source.")).toBeVisible();
+  await expect(page.getByRole("article", { name: "Full bill text" })).toContainText("covered hospital");
 });
 
 test("a keyboard reader can jump to scoped money and return to the changes tab", async ({ page, request }) => {

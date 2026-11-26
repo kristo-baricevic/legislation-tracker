@@ -17,7 +17,10 @@ async function fixtures(page: Page) {
     else if (path === "/api/tracking/recommendations/") response = { ...recommendations, results: recommendations.results.filter(item => !followed || item.bill.id !== 1) };
     else if (path === "/api/tracking/representative-recommendations/") response = { algorithm: "explicit-representative-topics-mmr-v1", generated_at: "2026-10-10T00:00:00Z", activity_as_of: null, count: 0, results: [], empty_reason: "insufficient_metadata", unsupported_follow_types: [], policy_version: null, coverage: { status: "ingested_subset", service_exposure: "unknown", bill_families: "unavailable", votes_used_for_ranking: false } };
     else if (path === "/api/representatives/") response = { count: 0, next: null, previous: null, results: [] };
-    else if (path === "/api/bills/1/") response = { ...bill, documents: [], summary: null, latest_contract: null };
+    else if (path === "/api/bills/1/") response = { ...bill, documents: [], latest_contract: null,
+      sponsor: null, processing_status: "complete", summary_preview: null, summary_has_more: false,
+      summary_source: null, summary_action_date: null, summary_version_code: null, summary_last_updated_at: null,
+      source_api_id: null, congress_gov_url: null, created_at: "2025-01-10", updated_at: "2025-01-10" };
     else if (path === "/api/bills/filter-options/") response = { jurisdictions: ["federal"], current_congress: 119 };
     else if (path === "/api/tracking/feed/") response = { entries: [] };
     else response = {};
@@ -75,7 +78,7 @@ test("error, retry, no-match and logout clear private cards", async ({ page }) =
   await page.getByRole("button", { name: "Refresh bill recommendations" }).click();
   await refresh;
   await expect(page.getByText("No other ingested legislation matches your followed interests yet.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Bills to discover" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Refresh bill recommendations" })).toBeFocused();
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Bills to discover" })).toBeVisible();
   await expect(bills).toHaveCount(0);
