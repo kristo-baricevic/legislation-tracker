@@ -35,6 +35,7 @@ def _card_candidate_batches(bill_ids, status, chosen, documents):
         "source_manifest_json",
         "source_fingerprint",
         "validation_digest",
+        "result_completeness",
         "output_schema_version",
     ).annotate(
         clauses=F("result_json__summary"),

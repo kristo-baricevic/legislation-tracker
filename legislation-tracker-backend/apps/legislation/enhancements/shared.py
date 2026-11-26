@@ -116,36 +116,39 @@ def source_first_reuse(saved):
 
 
 def _source_first_result_valid(saved, inputs):
-    from dataclasses import replace
-
-    from .provision_pipeline import _plan_built_graph, run_analysis
+    from .provision_pipeline import _publication, verified_reuse_row
+    from .provision_validation import validate_combined
+    from .source_graph import audit_graph
 
     graph = _source_first_graph(inputs)
+    if audit_graph(graph, graph.source_text):
+        return False
     result = saved.result_json
-    plan = _plan_built_graph(graph, reuse_result=result)
-    if saved.result_completeness == "partial":
-        # Replay the saved disposition of unresolved units locally. The planner
-        # has already checked each explained provision against the current source.
-        unresolved = tuple(
-            (row["unit_id"], row["unresolved_reason"])
-            for row in result["provisions"]
-            if row["status"] == "unresolved"
-        )
-        if not unresolved:
+    units = {unit.id: unit for unit in graph.units}
+    accepted, unresolved = {}, {}
+    for row in result["provisions"]:
+        if not isinstance(row, dict):
             return False
-        plan = replace(plan, calls=(), unresolved_reasons=unresolved)
-    elif plan.calls or plan.unresolved_unit_ids:
+        uid = row["unit_id"]
+        if row["status"] == "explained":
+            accepted[uid] = verified_reuse_row(row, units, graph)
+        elif row["status"] == "unresolved":
+            unresolved[uid] = row["unresolved_reason"]
+        else:
+            return False
+    completeness = "partial" if unresolved else "complete"
+    if saved.result_completeness != completeness or validate_combined(
+        list(accepted.values())
+    ):
         return False
     synopsis = result["synopsis"]
-
-    projected = run_analysis(
-        replace(plan, maximum_calls=1),
-        lambda call: {k: synopsis[k] for k in ("text", "explanation_ids")},
-        lambda *args: None,
-    ).output
-    # Replanning reused units changes the plan fingerprint. The published result
-    # binds to the original confirmed plan, whose fingerprint the worker stored.
-    projected["plan_fingerprint"] = result.get("plan_fingerprint")
+    projected = _publication(
+        graph,
+        result["plan_fingerprint"],
+        accepted,
+        unresolved,
+        {k: synopsis[k] for k in ("text", "explanation_ids")},
+    )
     return projected == result
 
 
@@ -154,9 +157,10 @@ def validation_key(saved):
 
     from .reader_cache import VALIDATOR_VERSION
 
-    return hashlib.sha256(
-        f"bill-validation:projection-16:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
-    ).hexdigest()
+    identity = f"bill-validation:projection-17:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}"
+    if saved.output_schema_version == "2.0-source-first":
+        identity += f":{saved.result_completeness}"
+    return hashlib.sha256(identity.encode()).hexdigest()
 
 
 def _reader_result_valid(saved, *, source_first_inputs=None):
