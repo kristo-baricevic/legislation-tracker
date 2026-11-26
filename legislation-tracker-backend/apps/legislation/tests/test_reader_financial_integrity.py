@@ -137,6 +137,9 @@ def test_summary_cannot_cite_a_passage_not_sent_to_provider():
     "display,valid",
     [
         ("up to $100", True),
+        ("up to 100 dollars", True),
+        ("exactly USD 100", False),
+        ("at least 100 USD", False),
         ("exactly $100", False),
         ("at least $100", False),
         ("$100", False),

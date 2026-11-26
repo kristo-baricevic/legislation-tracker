@@ -24,12 +24,14 @@ from .percentage_bases import (
 
 def _display_bound_conflicts(item, cited):
     display = item.get("amount_display") or ""
-    if "$" not in display:
+    if not display:
         return False
     # A compact amount label often omits the governing verb. Bind it to the item's
     # separately validated decision so another account cannot supply its bound.
     described = funding_decisions([item.get("text") or ""])
     for label in funding_decisions([display]):
+        if label.amount is None:
+            continue
         candidates = [
             d
             for d in described
