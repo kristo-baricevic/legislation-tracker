@@ -155,7 +155,7 @@ def validation_key(saved):
     from .reader_cache import VALIDATOR_VERSION
 
     return hashlib.sha256(
-        f"bill-validation:projection-15:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
+        f"bill-validation:projection-16:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
     ).hexdigest()
 
 

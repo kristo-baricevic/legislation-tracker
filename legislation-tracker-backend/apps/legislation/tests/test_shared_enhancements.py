@@ -595,6 +595,18 @@ def test_old_cache_cannot_preserve_a_swapped_percentage_decision(
             False,
             14,
         ),
+        (
+            "The bill appropriates $100 for salaries, and the Secretary shall spend $200 for grants only if Congress appropriates $200.",
+            "The bill appropriates $100 for salaries.",
+            True,
+            15,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "The bill authorizes $100 for travel.",
+            False,
+            15,
+        ),
     ],
 )
 def test_old_cache_rechecks_financial_qualifiers(
