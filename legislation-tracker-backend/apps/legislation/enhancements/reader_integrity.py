@@ -22,6 +22,26 @@ from .percentage_bases import (
 )
 
 
+def _display_bound_conflicts(item, cited):
+    display = item.get("amount_display") or ""
+    if "$" not in display:
+        return False
+    # A compact amount label often omits the governing verb. Bind it to the item's
+    # separately validated decision so another account cannot supply its bound.
+    described = funding_decisions([item.get("text") or ""])
+    for label in funding_decisions([display]):
+        candidates = [
+            d
+            for d in described
+            if d.amount == label.amount and d.authority != "nonoperative"
+        ] or [d for d in cited if d.amount == label.amount]
+        if label.purpose:
+            candidates = [d for d in candidates if d.purpose == label.purpose]
+        if {d.comparator for d in candidates} != {label.comparator}:
+            return True
+    return False
+
+
 def validate_numbers(item, *, path, factual_claim=None):
     evidence = "\n".join(q["quote"] for q in item["source_quotes"])
     fields = [
@@ -40,6 +60,8 @@ def validate_numbers(item, *, path, factual_claim=None):
             if percentage_base_conflicts(number, basis, cited):
                 raise output_error("reader_amount_conflict", path)
     cited_funding = funding_decisions(q["quote"] for q in item["source_quotes"])
+    if _display_bound_conflicts(item, cited_funding):
+        raise output_error("reader_amount_conflict", path)
     # Structured conditions qualify their own action. Never borrow them for a
     # separate published summary or parse a concatenation of JSON fields as prose.
     statements = [factual_claim["action"]] if factual_claim else fields
