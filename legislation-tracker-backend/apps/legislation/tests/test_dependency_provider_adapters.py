@@ -232,10 +232,19 @@ def test_legacy_reader_schema_routing_remains_compatible(settings):
 
 
 @pytest.mark.parametrize(
-    "provider_name", ["openai", "anthropic", "gemini", "openrouter", "langchain"]
+    "provider_name,stage,mode",
+    [
+        (provider, stage, "json_schema")
+        for provider in ("openai", "anthropic", "gemini", "openrouter", "langchain")
+        for stage in ("map", "dependency", "summary")
+    ]
+    + [
+        (adapter, "map", mode)
+        for adapter in ("openrouter", "langchain")
+        for mode in ("json_object", "prompt_json")
+    ],
 )
-@pytest.mark.parametrize("stage", ["map", "dependency", "summary"])
-def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
+def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage, mode):
     import socket
 
     import httpx
@@ -246,9 +255,12 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
     adapter = "langchain" if provider_name == "langchain" else "existing"
     provider_name = "openrouter" if adapter == "langchain" else provider_name
     from apps.legislation.enhancements.reader_discovery import (
+        INSTRUCTIONS,
+        POLICY_INSTRUCTIONS,
         discovery_schema,
         resolve_discovery,
     )
+    from apps.legislation.enhancements.reader_facts import FACTUAL_MAP_INSTRUCTIONS
 
     from .test_dependency_cache_migration import _stage_request
     from .test_reader_facts import _output, _sources
@@ -259,7 +271,7 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
     env.update(prompt_version=READER_PROMPT_VERSION, output_schema_version="1.4")
     if stage == "map":
         sources = _sources(
-            "The agency must publish an annual report only while the program operates."
+            "The agency must publish an annual report while the program operates unless the agency closes."
         )
         output = _output(sources)
         record = output["factual_records"][0]
@@ -274,14 +286,19 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
                 "operator": "all",
                 "children": [{"operator": "any", "children": [leaf]}],
             },
-            exceptions=[],
+            exceptions=[{**leaf, "text": "The agency closes."}],
         )
         wire_output = copy.deepcopy(output)
         wire_claim = wire_output["factual_records"][0]["claims"][0]
-        for field in ("conditions", "exceptions"):
-            wire_claim[field] = json.dumps(wire_claim[field])
+        if mode == "json_schema":
+            for field in ("conditions", "exceptions"):
+                wire_claim[field] = json.dumps(wire_claim[field])
         env.update(
             source_review=True,
+            instructions=INSTRUCTIONS
+            + POLICY_INSTRUCTIONS
+            + "\n"
+            + FACTUAL_MAP_INSTRUCTIONS,
             output_schema=discovery_schema(sources),
             source_packet={"sources": sources},
         )
@@ -308,6 +325,9 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
     request = replace(base, source_snapshot=sources, request_envelope=env)
     calls = []
     provider = get_provider(provider_name, adapter=adapter)
+
+    if provider_name == "openrouter":
+        provider.structured_output_mode = mode
 
     def respond(http_request):
         call = json.loads(http_request.content)
@@ -400,37 +420,45 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
         api_key="offline", request=request, timeout_seconds=5
     )
     (call,) = calls
-    if provider_name == "openai":
-        schema = call["text"]["format"]["schema"]
-    elif provider_name == "anthropic":
-        schema = call["output_config"]["format"]["schema"]
-    elif provider_name == "gemini":
-        schema = call["generationConfig"]["responseJsonSchema"]
+    if mode != "json_schema":
+        assert call.get("response_format") == (
+            {"type": "json_object"} if mode == "json_object" else None
+        )
+        assert call["messages"][0]["content"] == env["instructions"]
     else:
-        schema = call["response_format"]["json_schema"]["schema"]
-    Draft202012Validator.check_schema(schema)
-    Draft202012Validator(schema).validate(wire_output)
+        if provider_name == "openai":
+            schema = call["text"]["format"]["schema"]
+        elif provider_name == "anthropic":
+            schema = call["output_config"]["format"]["schema"]
+        elif provider_name == "gemini":
+            schema = call["generationConfig"]["responseJsonSchema"]
+        else:
+            schema = call["response_format"]["json_schema"]["schema"]
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(schema).validate(wire_output)
 
-    def inspect(node):
-        if isinstance(node, list):
-            for child in node:
-                inspect(child)
-        elif isinstance(node, dict):
-            assert not (set(node) & provider.capabilities.unsupported_schema_keywords)
-            if (
-                provider_name in {"openai", "openrouter", "anthropic"}
-                and node.get("type") == "object"
-            ):
-                assert node["additionalProperties"] is False
-                assert set(node["required"]) == set(node["properties"])
-            for child in node.values():
-                inspect(child)
+        def inspect(node):
+            if isinstance(node, list):
+                for child in node:
+                    inspect(child)
+            elif isinstance(node, dict):
+                assert not (
+                    set(node) & provider.capabilities.unsupported_schema_keywords
+                )
+                if (
+                    provider_name in {"openai", "openrouter", "anthropic"}
+                    and node.get("type") == "object"
+                ):
+                    assert node["additionalProperties"] is False
+                    assert set(node["required"]) == set(node["properties"])
+                for child in node.values():
+                    inspect(child)
 
-    inspect(schema)
-    from apps.legislation.enhancements.reader_capacity import schema_fits
+        inspect(schema)
+        from apps.legislation.enhancements.reader_capacity import schema_fits
 
-    assert schema_fits(schema, provider_name)
-    assert "#/$defs/condition" not in json.dumps(schema)
+        assert schema_fits(schema, provider_name)
+        assert "#/$defs/condition" not in json.dumps(schema)
     assert result.output == output
     assert result.usage.total_tokens == 165
     if stage == "map":
@@ -489,6 +517,7 @@ def test_fallback_map_uses_native_condition_contract(settings, mode, payload_kin
         resolve_discovery,
     )
     from apps.legislation.enhancements.reader_facts import FACTUAL_MAP_INSTRUCTIONS
+
     from .test_reader_facts import _output, _sources
 
     base = dependency_request(settings, "openrouter")
