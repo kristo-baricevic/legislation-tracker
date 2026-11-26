@@ -43,7 +43,7 @@ The pinned test also checks the source evidence governing sections 8805 and 8806
 
 ## Behavioral verification
 
-After all review corrections, the complete legislation backend suite completed **1,664 passed, 10 skipped, zero failures/errors**, with two passing subtests, in 230.94 seconds. Four skips were the full pinned S.1071 cases, which passed separately with the XML path supplied. The other six require PostgreSQL: two full-text/headline search tests and four concurrency/row-lock tests. Those six were not run in this SQLite environment. The four source-sized tests are additional to the 1,664 passing cases; repeated diagnostic runs are not counted as additional tests. Django system checks, the migration dry-run, Black, Ruff, and Git whitespace checks pass.
+In the November 25 SQLite run, the complete legislation backend suite completed **1,664 passed, 10 skipped, zero failures/errors**, with two passing subtests, in 230.94 seconds. Four skips were the full pinned S.1071 cases, which passed separately with the XML path supplied. The other six require PostgreSQL: two full-text/headline search tests and four concurrency/row-lock tests. Those six were not run in this SQLite environment. The four source-sized tests are additional to the 1,664 passing cases; repeated diagnostic runs are not counted as additional tests. Django system checks, the migration dry-run, Black, Ruff, and Git whitespace checks pass.
 
 The staged worker tests use real temporary XML storage, database models, estimate and confirmation APIs, durable reservations, worker execution, cache validation, final synthesis, and publication. Only the upstream model is simulated; network generation is prohibited.
 
