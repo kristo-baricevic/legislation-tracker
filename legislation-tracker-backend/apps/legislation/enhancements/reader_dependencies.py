@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 3
+CONTEXT_PLANNER_VERSION = 4
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -51,6 +51,10 @@ REFERENCE_MEMBER = re.compile(
 )
 REFERENCE_SEPARATOR = re.compile(
     r"\s*(?:(?P<range>through\b|to\b|[-–—])\s*|(?:,\s*(?:(?:and|or)\s+)?|(?:and|or)\s+))",
+    re.I,
+)
+ROMAN_LABEL = re.compile(
+    r"(?=[ivxlcdm]+$)m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})",
     re.I,
 )
 SCOPE = re.compile(
@@ -97,30 +101,52 @@ def _normalize(value):
 
 
 def _reference_parts(match):
-    if match["kind"].casefold() == "section":
-        return [match["label"], *re.findall(r"\([A-Za-z0-9]+\)", match["suffix"])]
-    return re.findall(r"\([A-Za-z0-9]+\)", match["label"] + match["suffix"])
+    # An abbreviated section label can hold several levels, e.g. (2)(B).
+    # Preserve the numeric section identifier only when the path includes one.
+    parts = re.findall(r"\([A-Za-z0-9]+\)", match["label"] + match["suffix"])
+    if match["kind"].casefold() == "section" and not match["label"].startswith("("):
+        parts.insert(0, match["label"])
+    return parts
 
 
 def _continued_reference(kind, value, previous):
     """Retain a shared path in 'section 2(a)(1) through (3)' lists."""
     member = REFERENCE.fullmatch(kind + " " + value)
     parts, prior = _reference_parts(member), _reference_parts(previous)
-    if value.startswith("(") and len(parts) < len(prior):
+    if value.startswith("("):
 
-        def style(label):
+        def style(label, depth):
             token = label.strip("()")
+            level = LEVELS.index(kind.casefold()) + depth
+            # Roman clauses and repeated-letter items share case, not level.
             return (
-                "number" if token.isdigit() else "upper" if token.isupper() else "lower"
+                (
+                    "number"
+                    if token.isdigit()
+                    else "upper" if token.isupper() else "lower"
+                ),
+                level < len(LEVELS)
+                and LEVELS[level] in {"clause", "subclause"}
+                and ROMAN_LABEL.fullmatch(token) is not None,
             )
 
         # Match the abbreviated label to its legal level, not merely the
         # last component: '2(a)(1)(A) and (b)' means '2(b)', not '2(a)(1)(B)'.
         minimum = int(kind.casefold() == "section")
-        for depth in range(len(prior) - len(parts), minimum - 1, -1):
+        # Prefer a complete matching suffix before allowing a continuation to
+        # descend further than the earlier member, e.g. 2(a) and (b)(2)(B).
+        # A lone matching final label must not hide a longer shared legal path.
+        depths = sorted(
+            range(minimum, len(prior)),
+            key=lambda depth: (min(len(parts), len(prior) - depth), depth),
+            reverse=True,
+        )
+        for depth in depths:
             if all(
-                style(value) == style(prior[depth + offset])
-                for offset, value in enumerate(parts)
+                style(value, depth + offset) == style(previous, depth + offset)
+                for offset, (value, previous) in enumerate(
+                    zip(parts, prior[depth:], strict=False)
+                )
             ):
                 member = REFERENCE.fullmatch(
                     kind + " " + "".join(prior[:depth] + parts)
@@ -193,11 +219,7 @@ def _reference_group(match, raw):
 def _label_ordinal(node):
     """Comparable ordinal families; unknown enumerations stay unresolved."""
     label = node.label.strip("()")
-    if node.tag in {"clause", "subclause"} and re.fullmatch(
-        r"(?=[ivxlcdm]+$)m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})",
-        label,
-        re.I,
-    ):
+    if node.tag in {"clause", "subclause"} and ROMAN_LABEL.fullmatch(label):
         values = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
         total = largest = 0
         for letter in reversed(label.casefold()):
