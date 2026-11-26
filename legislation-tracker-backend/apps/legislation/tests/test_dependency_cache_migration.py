@@ -273,7 +273,14 @@ def test_genuine_legacy_orphan_reservation_blocks_corrected_adapter(
         request = _current_request(settings, name, provider)
         old = CAPTURE["cases"][name]["request"]["request_envelope"]
         assert request.request_envelope["instructions"] != old["instructions"]
-        assert request.request_envelope["dependency_review"] == old["dependency_review"]
+        historical = (
+            request.legacy_dependency_request()
+            if request.legacy_dependency_request
+            else request
+        )
+        assert (
+            historical.request_envelope["dependency_review"] == old["dependency_review"]
+        )
         reservation = _legacy_cache(
             name, provider, adapter, version, salted=salted, pinned=pinned
         )
@@ -417,3 +424,147 @@ def test_genuine_legacy_map_identity_remains_unchanged(adapter):
             call_identity(request, execution_version=version, adapter=adapter)[0]
             == expected
         )
+
+
+def _stage_request(settings, stage):
+    from unittest.mock import Mock
+
+    from apps.legislation.enhancements.reader_citations import (
+        READER_ID_SCHEMA,
+        citation_passages,
+    )
+    from apps.legislation.enhancements.reader_summary import summarize_review
+
+    if stage == "dependency":
+        return _current_request(settings, "planned", replan=True)
+    request = _decode(CAPTURE["map_request"])
+    if stage == "map":
+        return request
+    source = request.source_snapshot[0]
+    passage = citation_passages(source)[0]
+    item = {
+        "text": "Public hospitals qualify.",
+        "source_quotes": [
+            {"source_ref": source["source_ref"], "quote": passage["text"]}
+        ],
+    }
+    preflight = replace(
+        request,
+        request_envelope={
+            "source_packet": {},
+            "instructions": "",
+            "max_output_tokens": 4000,
+            "output_schema": READER_ID_SCHEMA,
+        },
+    )
+    provider = Mock(durable=False)
+    provider.enhance_bill.side_effect = RuntimeError("captured summary request")
+    with pytest.raises(RuntimeError, match="captured summary request"):
+        summarize_review(
+            preflight, {"policy_changes": [item]}, provider, "", lambda: None, 1
+        )
+    return provider.enhance_bill.call_args.kwargs["request"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stage", ["map", "dependency", "summary"])
+@pytest.mark.parametrize("revision", ["563c64c", "1365612", "acf4eba", "2327c54"])
+@pytest.mark.parametrize("status", ["dispatching", "ready", "failed", "validated"])
+def test_only_ambiguous_historical_dispatches_block_an_identical_wire_request(
+    settings,
+    source_bill,
+    enhancement_owner,
+    enhancement_settings,
+    stage,
+    revision,
+    status,
+):
+    from unittest.mock import Mock
+
+    with enhancement_settings:
+        attempt = _running_attempt(enhancement_owner, source_bill)
+        request = _stage_request(settings, stage)
+
+        request = replace(
+            request,
+            source_snapshot=[
+                {**source, "context_planner_version": 5}
+                for source in request.source_snapshot
+            ],
+        )
+        # Captured using each revision's planner, request builders and cache code.
+        history = json.loads(
+            (
+                Path(__file__).parent / "fixtures/reader_dispatch_history.json"
+            ).read_text()
+        )
+        old_key = history[revision][stage]
+        reservation = BillEnhancementCallCache.objects.create(
+            fingerprint=old_key,
+            dispatch_identity=old_key,
+            status=status,
+        )
+        provider = Mock()
+        provider.enhance_bill.side_effect = ProviderError("test_dispatch")
+        wrapper = DurableReaderProvider(provider, attempt, attempt.run_token, 4)
+        with pytest.raises(ProviderError) as failure:
+            wrapper.enhance_bill(api_key="offline", request=request, timeout_seconds=1)
+        if status == "dispatching":
+            assert (
+                failure.value.citation_resolution["blocked_reservation"]
+                == reservation.pk
+            )
+            provider.enhance_bill.assert_not_called()
+        else:
+            assert failure.value.category == "test_dispatch"
+            provider.enhance_bill.assert_called_once()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stage", ["map", "dependency", "summary"])
+def test_unknown_dispatch_survives_future_planners_but_allows_a_different_page(
+    settings,
+    source_bill,
+    enhancement_owner,
+    enhancement_settings,
+    stage,
+):
+    from unittest.mock import Mock
+
+    with enhancement_settings:
+        attempt = _running_attempt(enhancement_owner, source_bill)
+        request = _stage_request(settings, stage)
+        provider = Mock()
+        provider.enhance_bill.side_effect = ProviderError(
+            "outcome_unknown", outcome_unknown=True
+        )
+        wrapper = DurableReaderProvider(provider, attempt, attempt.run_token, 4)
+        with pytest.raises(ProviderError) as first:
+            wrapper.enhance_bill(api_key="offline", request=request, timeout_seconds=1)
+        assert first.value.outcome_unknown
+        key = attempt.steps.get().request_fingerprint
+        replanned = replace(
+            request,
+            source_snapshot=[
+                {**source, "context_planner_version": 999}
+                for source in request.source_snapshot
+            ],
+        )
+        assert call_identity(request)[0] != call_identity(replanned)[0]
+        with pytest.raises(ProviderError) as retry:
+            wrapper.enhance_bill(
+                api_key="offline", request=replanned, timeout_seconds=1
+            )
+        assert retry.value.citation_resolution["blocked_reservation"] == key
+        provider.enhance_bill.assert_called_once()
+        other = replace(
+            replanned,
+            request_envelope={
+                **request.request_envelope,
+                "instructions": "Different page.",
+            },
+        )
+        with pytest.raises(ProviderError) as independent:
+            wrapper.enhance_bill(api_key="offline", request=other, timeout_seconds=1)
+        assert independent.value.outcome_unknown
+        assert provider.enhance_bill.call_count == 2

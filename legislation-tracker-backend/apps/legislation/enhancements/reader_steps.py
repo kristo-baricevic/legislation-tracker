@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 from jsonschema import ValidationError
@@ -20,7 +20,12 @@ from .diagnostics import (
     validation_diagnostic,
 )
 from .providers.base import ProviderError, ProviderResult, ProviderUsage
-from .reader_cache import call_identity, legacy_dependency_identities, remap
+from .reader_cache import (
+    call_identity,
+    dispatch_identity,
+    historical_dispatch_keys,
+    remap,
+)
 from .reader_citations import recover_reader_items, resolve_reader_citations
 from .reader_discovery import resolve_discovery
 from .reader_partial import PartialReviewReady, validated_components
@@ -182,40 +187,35 @@ class DurableReaderProvider:
                 blocked = _document_reservation(current, request, dispatch_request)
                 if blocked:
                     raise unresolved_reservation(blocked)
-                # Correcting the schema invalidates known failed calls, but an
-                # old ambiguous dispatch must still fence new paid requests.
-                # Check logical identities as well as keys to include pinned
-                # models and salted reruns from other attempts/users.
-                old_identities = legacy_dependency_identities(
-                    request,
-                    adapter=adapter,
-                    dispatched_model=dispatch_request.requested_model,
+            stable_key = dispatch_identity(request, adapter)
+            pinned_key = dispatch_identity(dispatch_request, adapter)
+            # Serialize overlapping generations without creating a second permanent
+            # cache row per paid call. SQLite serializes writes at the database.
+            if connection.vendor == "postgresql":
+                with connection.cursor() as cursor:
+                    for key in sorted({stable_key, pinned_key}):
+                        lock_id = int.from_bytes(
+                            bytes.fromhex(key[:16]), "big", signed=True
+                        )
+                        cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_id])
+            BillEnhancementCallCache.objects.select_for_update().get_or_create(
+                fingerprint=logical_fingerprint, defaults={"status": "ready"}
+            )
+            ambiguous = BillEnhancementCallCache.objects.filter(status="dispatching")
+            if ambiguous.exists():
+                keys = historical_dispatch_keys(
+                    request, adapter, dispatch_request.requested_model
                 )
+                keys.update((stable_key, pinned_key))
                 blocked = (
-                    BillEnhancementCallCache.objects.filter(status="dispatching")
-                    .filter(
-                        Q(fingerprint__in=old_identities)
-                        | Q(dispatch_identity__in=old_identities)
+                    ambiguous.filter(
+                        Q(fingerprint__in=keys) | Q(dispatch_identity__in=keys)
                     )
                     .values_list("pk", flat=True)
                     .first()
                 )
                 if blocked:
                     raise unresolved_reservation(blocked)
-            # Serialize all generations on the unsalted logical call, including
-            # reruns paid for by another user. The fence survives owner deletion.
-            BillEnhancementCallCache.objects.select_for_update().get_or_create(
-                fingerprint=logical_fingerprint, defaults={"status": "ready"}
-            )
-            blocked = (
-                BillEnhancementCallCache.objects.filter(
-                    dispatch_identity=logical_fingerprint, status="dispatching"
-                )
-                .values_list("pk", flat=True)
-                .first()
-            )
-            if blocked:
-                raise unresolved_reservation(blocked)
             rerun = self.attempt.enhancement.rerun_after
             if rerun:
                 import hashlib
@@ -461,7 +461,7 @@ class DurableReaderProvider:
                 ],
             )
             cached.status = "dispatching"
-            cached.dispatch_identity = logical_fingerprint
+            cached.dispatch_identity = stable_key
             cached.save(update_fields=["status", "dispatch_identity", "updated_at"])
         try:
             self.paid_calls += 1

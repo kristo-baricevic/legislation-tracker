@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -59,3 +60,5 @@ class EnhancementPreflight:
     reader_batches: tuple = ()
     reader_reuse: Any = None
     worker_guard: str | None = None
+    prior_reader_items: dict[str, dict[str, Any]] | None = None
+    legacy_dependency_request: Callable[[], EnhancementPreflight] | None = None

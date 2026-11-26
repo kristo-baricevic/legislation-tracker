@@ -234,3 +234,101 @@ def test_missing_multicomponent_member_remains_unresolved_without_borrowing():
     assert "REQUIRED SECOND SUBSECTION" not in context
     assert "MATCHING CONDITION" not in context
     assert unresolved
+
+
+@pytest.mark.parametrize(
+    "continuation,marker",
+    [
+        ("(b)", "SUBSECTION"),
+        ("(2)", "PARAGRAPH"),
+        ("(B)", "SUBPARAGRAPH"),
+        ("(iv)", "CLAUSE"),
+        ("(IV)", "SUBCLAUSE"),
+        ("(bb)", "ITEM"),
+        ("(BB)", "SUBITEM"),
+        ("(iv)(IV)", "DEEP"),
+    ],
+)
+def test_shorthand_can_ascend_from_each_numbering_family(continuation, marker):
+    index = _index(
+        f"""
+      <section id="grant"><enum>1.</enum><text>Apply section 2(a)(1)(A)(i)(I)(aa)(AA) and {continuation} of this Act.</text></section>
+      <section><enum>2.</enum><subsection><enum>(a)</enum><paragraph><enum>(1)</enum><subparagraph><enum>(A)</enum>
+      <clause><enum>(i)</enum><subclause><enum>(I)</enum><item><enum>(aa)</enum>
+      <subitem><enum>(AA)</enum><text>Primary condition.</text></subitem>
+      <subitem><enum>(BB)</enum><text>Required SUBITEM.</text></subitem></item>
+      <item><enum>(bb)</enum><text>Required ITEM.</text></item></subclause>
+      <subclause><enum>(IV)</enum><text>Required SUBCLAUSE.</text></subclause></clause>
+      <clause><enum>(iv)</enum><text>Required CLAUSE.</text>
+      <subclause><enum>(IV)</enum><text>Required DEEP.</text></subclause></clause></subparagraph>
+      <subparagraph><enum>(B)</enum><text>Required SUBPARAGRAPH.</text></subparagraph></paragraph>
+      <paragraph><enum>(2)</enum><text>Required PARAGRAPH.</text></paragraph></subsection>
+      <subsection><enum>(b)</enum><text>Required SUBSECTION.</text></subsection></section>"""
+    )
+    context, unresolved = _context(index, "grant")
+    assert not unresolved
+    assert "Primary condition." in context
+    assert f"Required {marker}." in context
+
+
+def test_repeated_kind_starts_a_new_path_in_the_same_explicit_scope():
+    index = _index(
+        """
+      <section><enum>2.</enum><subsection id="grant"><enum>(z)</enum>
+      <text>Apply subsection (a)(1)(A)(i) and subsection (i) of this section.</text></subsection>
+      <subsection><enum>(a)</enum><paragraph><enum>(1)</enum><subparagraph><enum>(A)</enum>
+      <clause><enum>(i)</enum><text>Applicants must be public hospitals.</text></clause>
+      </subparagraph></paragraph></subsection>
+      <subsection><enum>(i)</enum><text>Applicants must provide a 50 percent match.</text></subsection></section>"""
+    )
+    context, unresolved = _context(index, "grant")
+    assert not unresolved
+    assert "public hospitals" in context and "50 percent match" in context
+
+
+@pytest.mark.parametrize("qualification", ["", " of this item", " of the Other Act"])
+def test_subitem_qualifiers_respect_the_enclosing_item(qualification):
+    index = _index(f"""
+      <section><enum>2.</enum><item><enum>(aa)</enum>
+      <subitem id="grant"><enum>(CC)</enum><text>Apply subitems (AA) and (BB){qualification}.</text></subitem>
+      <subitem><enum>(AA)</enum><text>Applicants must be public hospitals.</text></subitem>
+      <subitem><enum>(BB)</enum><text>Applicants must provide a 50 percent match.</text></subitem>
+      </item></section>""")
+    context, unresolved = _context(index, "grant")
+    local = qualification != " of the Other Act"
+    assert ("50 percent match" in context) == local
+    assert bool(unresolved) != local
+
+
+def test_large_section_supplies_both_explicit_subsections_at_default_ownership():
+    grant = "The Secretary shall award grants only to applicants that satisfy subsection (a)(1)(A)(i) and subsection (i) of this section."
+    unrelated = "".join(
+        f"<paragraph><enum>({i})</enum><text>The Secretary shall publish administrative report number {i} about program operations.</text></paragraph>"
+        for i in range(1, 401)
+    )
+    raw = f"""<bill><legis-body><section><enum>2.</enum>
+      <subsection><enum>(a)</enum><paragraph><enum>(1)</enum><subparagraph><enum>(A)</enum>
+      <clause><enum>(i)</enum><text>{PUBLIC_HOSPITAL}</text></clause>
+      </subparagraph></paragraph></subsection>
+      <subsection><enum>(d)</enum>{unrelated}</subsection>
+      <subsection><enum>(i)</enum><text>{MATCHING}</text></subsection>
+      <subsection><enum>(z)</enum><text>{grant}</text></subsection>
+      </section></legis-body></bill>""".encode()
+    text = extract_document_text(raw, "application/xml", "bill.xml")
+    assert len(text) > 35000
+    with override_settings(
+        LLM_ENHANCEMENT_PROVIDER="openai",
+        LLM_ENHANCEMENT_MODEL="gpt-5.6-luna",
+        LLM_ENHANCEMENT_REASONING_EFFORT="none",
+    ):
+        sources = planned_sources(
+            SimpleNamespace(version_label="Test"),
+            text,
+            1,
+            8000,
+            xml_boundaries(raw, text),
+        )
+    owner = next(source for source in sources if grant in source["quoted_text"])
+    context = _selected_context(sources, owner)
+    assert PUBLIC_HOSPITAL in context and MATCHING in context
+    assert not owner["unresolved_dependencies"]

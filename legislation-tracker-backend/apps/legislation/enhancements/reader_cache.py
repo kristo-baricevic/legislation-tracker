@@ -109,6 +109,61 @@ def call_identity(
     return hashlib.sha256(canonical_json_bytes(key)).hexdigest(), references
 
 
+def dispatch_identity(request, adapter):
+    """Identify the provider operation independently of our planner and validator."""
+    return hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "dispatch": request.request_envelope,
+                "provider": request.provider,
+                "model": request.requested_model,
+                "reasoning": request.reasoning_effort,
+                "adapter": adapter,
+            }
+        )
+    ).hexdigest()
+
+
+def historical_dispatch_keys(request, adapter, dispatched_model):
+    """Versions 11–14 hashed the planner stamp on each server-side source."""
+    candidates = [request]
+    if request.legacy_dependency_request:
+        candidates.append(request.legacy_dependency_request())
+    keys = set()
+    for candidate in candidates:
+        inventories = [candidate.source_snapshot]
+        if any("context_planner_version" in s for s in candidate.source_snapshot):
+            inventories.extend(
+                [
+                    (
+                        {**s, "context_planner_version": stamp}
+                        if "context_planner_version" in s
+                        else s
+                    )
+                    for s in candidate.source_snapshot
+                ]
+                for stamp in range(1, 5)
+            )
+        for sources in inventories:
+            for model in {request.requested_model, dispatched_model}:
+                prior = replace(
+                    candidate, source_snapshot=sources, requested_model=model
+                )
+                keys.add(call_identity(prior, adapter=adapter)[0])
+            if candidate.request_envelope.get("dependency_review") and (
+                sources is candidate.source_snapshot
+                or any(s.get("context_planner_version") == 1 for s in sources)
+            ):
+                keys.update(
+                    legacy_dependency_identities(
+                        replace(candidate, source_snapshot=sources),
+                        adapter=adapter,
+                        dispatched_model=dispatched_model,
+                    )
+                )
+    return keys
+
+
 def legacy_dependency_identities(request, *, adapter="existing", dispatched_model=None):
     """Recognize known old wire keys when a reservation has no surviving step.
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 4
+CONTEXT_PLANNER_VERSION = 5
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -57,10 +57,21 @@ ROMAN_LABEL = re.compile(
     r"(?=[ivxlcdm]+$)m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})",
     re.I,
 )
-SCOPE = re.compile(
-    r"\bthis\s+(Act|division|title|subtitle|chapter|subchapter|part|subpart|section|subsection|paragraph|subparagraph)\b",
-    re.I,
+SCOPE_NAMES = "|".join(
+    (
+        "Act",
+        "division",
+        "title",
+        "subtitle",
+        "chapter",
+        "subchapter",
+        "part",
+        "subpart",
+        *LEVELS,
+    )
 )
+SCOPE = re.compile(rf"\bthis\s+({SCOPE_NAMES})\b", re.I)
+LOCAL_SCOPE = re.compile(rf"\s+of\s+this\s+({SCOPE_NAMES})\b", re.I)
 QUALIFICATION = re.compile(
     r"\b(?:except|unless|only if|may not|shall not|must not|notwithstanding|"
     r"no (?:funds|amounts)|nothing in|prohibit\w*|limitation\w*|"
@@ -109,53 +120,51 @@ def _reference_parts(match):
     return parts
 
 
-def _continued_reference(kind, value, previous):
-    """Retain a shared path in 'section 2(a)(1) through (3)' lists."""
+def _level_accepts(level, label):
+    token = label.strip("()")
+    if level == "paragraph":
+        return token.isdigit()
+    if level in {"clause", "subclause"}:
+        return bool(ROMAN_LABEL.fullmatch(token)) and (
+            token.isupper() == (level == "subclause")
+        )
+    if level in {"item", "subitem"}:
+        return bool(re.fullmatch(r"([a-zA-Z])\1+", token)) and (
+            token.isupper() == (level == "subitem")
+        )
+    return bool(re.fullmatch(r"([a-zA-Z])\1*", token)) and (
+        token.isupper() == (level == "subparagraph")
+    )
+
+
+def _continued_reference(kind, value, previous, exists):
     member = REFERENCE.fullmatch(kind + " " + value)
     parts, prior = _reference_parts(member), _reference_parts(previous)
-    if value.startswith("("):
-
-        def style(label, depth):
-            token = label.strip("()")
-            level = LEVELS.index(kind.casefold()) + depth
-            # Roman clauses and repeated-letter items share case, not level.
-            return (
-                (
-                    "number"
-                    if token.isdigit()
-                    else "upper" if token.isupper() else "lower"
-                ),
-                level < len(LEVELS)
-                and LEVELS[level] in {"clause", "subclause"}
-                and ROMAN_LABEL.fullmatch(token) is not None,
+    levels = LEVELS[LEVELS.index(kind.casefold()) :]
+    candidates = []
+    for depth in reversed(
+        range(int(kind.casefold() == "section"), min(len(prior) + 1, len(levels)))
+    ):
+        suffix = levels[depth : depth + len(parts)]
+        if len(suffix) == len(parts) and all(
+            _level_accepts(level, part)
+            for level, part in zip(suffix, parts, strict=True)
+        ):
+            candidates.append(
+                REFERENCE.fullmatch(kind + " " + "".join(prior[:depth] + parts))
             )
-
-        # Match the abbreviated label to its legal level, not merely the
-        # last component: '2(a)(1)(A) and (b)' means '2(b)', not '2(a)(1)(B)'.
-        minimum = int(kind.casefold() == "section")
-        # Prefer a complete matching suffix before allowing a continuation to
-        # descend further than the earlier member, e.g. 2(a) and (b)(2)(B).
-        # A lone matching final label must not hide a longer shared legal path.
-        depths = sorted(
-            range(minimum, len(prior)),
-            key=lambda depth: (min(len(parts), len(prior) - depth), depth),
-            reverse=True,
-        )
-        for depth in depths:
-            if all(
-                style(value, depth + offset) == style(previous, depth + offset)
-                for offset, (value, previous) in enumerate(
-                    zip(parts, prior[depth:], strict=False)
-                )
-            ):
-                member = REFERENCE.fullmatch(
-                    kind + " " + "".join(prior[:depth] + parts)
-                )
-                break
-    return member
+    if len(candidates) > 1:
+        # A single i/I can be either an alphabetic label or a Roman numeral.
+        # Consult the scoped source tree before accepting either interpretation.
+        found = [candidate for candidate in candidates if exists(candidate)]
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            return None
+    return candidates[0] if candidates else member
 
 
-def _reference_group(match, raw):
+def _reference_group(match, raw, exists):
     """Parse a complete list/range before applying its shared qualification.
 
     Each member retains its relation to the preceding member, so a successful
@@ -183,7 +192,8 @@ def _reference_group(match, raw):
             break
         start = separator.end()
         repeated = re.match(r"([A-Za-z]+)\s+", raw[start:])
-        if repeated and repeated[1].casefold().rstrip("s") == kind.casefold():
+        explicit = repeated and repeated[1].casefold().rstrip("s") == kind.casefold()
+        if explicit:
             start += repeated.end()
         value = REFERENCE_MEMBER.match(raw, start)
         if value is None:
@@ -195,7 +205,7 @@ def _reference_group(match, raw):
                 incomplete = True
                 cursor = separator.end()
             break
-        member = _continued_reference(kind, value[0], members[-1][1])
+        member = REFERENCE.fullmatch(kind + " " + value[0]) if explicit else value[0]
         compact = re.fullmatch(r"(\d+)-(\d+)", value[0])
         if compact:
             compact_literals.append(REFERENCE.fullmatch(kind + " " + value[0]))
@@ -213,7 +223,26 @@ def _reference_group(match, raw):
         cursor = value.end()
     if re.match(r"\s+(?:et\s+seq\b|thru\b)", raw[cursor:], re.I):
         incomplete = True
-    return members, cursor, incomplete, compact_literals
+    expanded = []
+    previous = None
+    for is_range, member in members:
+        if isinstance(member, str):
+            if member.startswith("("):
+                member = (
+                    _continued_reference(
+                        kind, member, previous, lambda m: exists(m, cursor)
+                    )
+                    if previous is not None
+                    else None
+                )
+            else:
+                member = REFERENCE.fullmatch(kind + " " + member)
+        previous = member
+        if member is None:
+            incomplete = True
+        else:
+            expanded.append((is_range, member))
+    return expanded, cursor, incomplete, compact_literals
 
 
 def _label_ordinal(node):
@@ -473,6 +502,18 @@ class DependencyIndex:
                 break
         return False
 
+    def _scoped_group(self, index, match, raw):
+        def exists(candidate, end):
+            return self._reference_targets(
+                index,
+                candidate,
+                raw,
+                after=raw[end : end + 100],
+                before=raw[: match.start()],
+            )
+
+        return _reference_group(match, raw, exists)
+
     def _reference_targets(self, index, match, raw, *, after=None, before=None):
         kind, label = match["kind"].casefold(), match["label"]
         suffix = re.findall(r"\([A-Za-z0-9]+\)", match["suffix"])
@@ -482,11 +523,7 @@ class DependencyIndex:
         # silently treat 'section 2 (as amended) of the Other Act' as local.
         if after.lstrip().startswith("("):
             return []
-        local = re.match(
-            r"\s+of\s+this\s+(Act|division|title|subtitle|chapter|subchapter|part|subpart|section|subsection|paragraph|subparagraph|clause|subclause)\b",
-            after,
-            re.I,
-        )
+        local = LOCAL_SCOPE.match(after)
         if re.match(r"\s+of\s+", after, re.I) and not local:
             return []
         if (
@@ -684,8 +721,8 @@ class DependencyIndex:
                 # Lists and ranges share their final qualification. Keep an
                 # obligation for the entire expression if any member, scope,
                 # or intervening ordinal cannot be resolved unambiguously.
-                members, cursor, incomplete, compact_literals = _reference_group(
-                    match, normalized
+                members, cursor, incomplete, compact_literals = self._scoped_group(
+                    i, match, normalized
                 )
                 consumed = cursor
                 after = normalized[cursor : cursor + 100]

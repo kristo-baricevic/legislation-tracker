@@ -300,9 +300,12 @@ def test_later_page_cannot_erase_an_earlier_citation(settings):
             ]
 
     provider = Provider(erase)
-    with pytest.raises(ProviderError):
-        reconcile_review(preflight, review, provider, "", lambda: None, 100)
+    result, _, _ = reconcile_review(preflight, review, provider, "", lambda: None, 100)
     assert len(provider.requests) > 1
+    assert "src_0002" in {
+        q["source_ref"] for q in result["policy_changes"][0]["source_quotes"]
+    }
+    validate_reconciliation(result, preflight.source_snapshot)
 
 
 def test_no_reader_item_still_requires_every_dependency_receipt(settings):
@@ -452,7 +455,7 @@ def test_policy_presentation_grouping_preserves_draft_receipt_positions(settings
 
 
 def test_applicable_history_over_100kb_is_retained_without_resending_it(settings):
-    preflight, review = _fixture(settings, count=200)
+    preflight, review = _fixture(settings, count=300)
     settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = 100000
     settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS = 100000
     settings.LLM_READER_MODEL_CAPACITIES = {
@@ -493,19 +496,8 @@ def test_applicable_history_over_100kb_is_retained_without_resending_it(settings
     )
     assert calls > 5
     assert result["factual_records"] == original_facts
-    assert len(result["policy_changes"][0]["source_quotes"]) == 201
-    assert (
-        max(
-            sum(
-                len(evidence[key].encode())
-                for key in request.request_envelope["dependency_review"][
-                    "retained_evidence_ids"
-                ]
-            )
-            for request in provider.requests
-        )
-        > 100000
-    )
+    assert len(result["policy_changes"][0]["source_quotes"]) == 301
+    assert sum(len(text.encode()) for text in evidence.values()) > 190000
     for request in provider.requests:
         descriptor = request.request_envelope["dependency_review"]
         packet = request.request_envelope["source_packet"]
@@ -514,7 +506,11 @@ def test_applicable_history_over_100kb_is_retained_without_resending_it(settings
             for source in packet["sources"]
             for passage in source["citation_passages"]
         }
-        assert not supplied & set(descriptor["retained_evidence_ids"])
+        assert not descriptor["retained_evidence_ids"]
+        assert (
+            len(packet["review_items"]["policy_changes:0"]["value"]["source_quotes"])
+            == 1
+        )
         assert supplied == set(descriptor["record_ids"]) | {"src_0001:p0001"}
         assert (
             sum(

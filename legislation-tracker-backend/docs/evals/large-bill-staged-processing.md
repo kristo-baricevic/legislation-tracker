@@ -90,7 +90,15 @@ The second review advanced the reader execution version to **13** and the contex
 
 Thirteen maintained regressions use actual ingestion, XML boundaries, source planning, and scoped context selection. They cover the reported 37,233-character source at both 1,000-byte and default 8,000-byte ownership targets; equivalent fully expanded wording; compound lists and ranges; deeper continuations; Roman/item numbering; quoted and external laws; and missing targets. Independent probes also verify numeric, suffixed, decimal, and hyphenated section identifiers. The original review reproduction and all thirteen new cases pass.
 
-The reader execution version is now **14**, and the context planner version is **4**, so confirmations and published-output freshness checks recognize this change. The historical reservation boundary remains **below version 13** because it belongs to the earlier transport migration; it is not a moving latest-version lock. There are no database migrations or provider-limit changes.
+That correction used reader execution version **14** and context planner version **4**, so confirmations and published-output freshness checks recognize this change. The historical reservation boundary remains **below version 13** because it belongs to the earlier transport migration; it is not a moving latest-version lock. There are no database migrations or provider-limit changes.
+
+### Fourth review
+
+Reader execution version **15** uses context planner **5**. A repeated structural kind starts its own path. Shorthand uses the numbering family of each legal level and checks the scoped source tree when a label has multiple possible meanings. Local qualifications include item and subitem scopes. The grant regression checks that both the public-hospital condition and the 50% match reach the grant owner.
+
+Reconciliation binds each page to the preceding item with a hash. The server carries forward validated citations, merges the page's additions, and replays that merge during publication checks. The 300-record regression retains all 301 citations for one item under the existing request and output ceilings.
+
+All reader stages identify ambiguous provider dispatches independently of planner freshness. The migration tests use reservation hashes captured from commits `563c64c`, `1365612`, `acf4eba`, and `2327c54`. They cover mapping, dependency review, and summary generation with ambiguous, ready, failed, and validated reservations. A separate durable-provider test simulates an unknown outcome, retries after a planner change, and checks that a different page can still proceed.
 
 ## Verification boundary and rollout
 
