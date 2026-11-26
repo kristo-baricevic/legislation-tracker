@@ -933,6 +933,20 @@ def test_post_reservation_modifier_stays_with_its_account(quote, expected):
             None,
             False,
         ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "Authorize appropriations.",
+            "grants",
+            None,
+            True,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "Authorize appropriations.",
+            "travel",
+            None,
+            False,
+        ),
     ],
 )
 def test_typed_funding_decision_retains_purpose_and_condition(
@@ -962,21 +976,32 @@ def test_typed_funding_decision_retains_purpose_and_condition(
 
 
 @pytest.mark.parametrize(
-    "operator,empty", [("all", False), ("any", False), ("all", True)]
+    "operator,empty,governing_report",
+    [
+        ("all", False, True),
+        ("all", False, False),
+        ("any", False, True),
+        ("all", True, True),
+    ],
 )
 def test_typed_funding_decision_requires_condition_in_every_alternative(
-    operator, empty
+    operator, empty, governing_report
 ):
     condition = "only if Congress appropriates $100"
+    report = "only if the agency publishes a report"
     sources = _sources(
-        "The Secretary shall spend $100 for grants "
-        + condition
-        + ". The agency publishes a report."
+        f"{condition}, the Secretary shall spend $100 for grants {report}."
+        if governing_report
+        else f"The Secretary shall spend $100 for grants {condition}. The agency publishes a report."
     )
+
     (key,) = factual_record_ids(sources)
     children = [
         {"operator": "leaf", "text": text, "evidence_ids": [key]}
-        for text in (condition, "The agency publishes a report.")
+        for text in (
+            condition,
+            report if governing_report else "The agency publishes a report.",
+        )
     ]
     tree = {"operator": operator, "children": [] if empty else children}
     money = dict(
@@ -989,7 +1014,7 @@ def test_typed_funding_decision_requires_condition_in_every_alternative(
         purpose="grants",
     )
     claim = _claim(key, "Spend funds.", conditions=tree, money=[money])
-    if operator == "all" and not empty:
+    if operator == "all" and not empty and governing_report:
         resolve_factual_records([_record(key, claims=[claim])], sources)
     else:
         with pytest.raises(ValidationError) as error:

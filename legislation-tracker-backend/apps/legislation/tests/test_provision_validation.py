@@ -851,7 +851,85 @@ def test_repeated_amount_retains_only_explicit_purposes(path, source, statement,
     _check_funding_statement(path, source, statement, valid)
 
 
-def _check_funding_statement(path, evidence, statement, valid, condition=None):
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "shared_subject,statement,valid",
+    [
+        (False, "The bill appropriates $100 for salaries.", True),
+        (False, "The Secretary shall spend $200 for grants.", False),
+        (
+            False,
+            "The Secretary shall spend $200 for grants only if Congress appropriates $200.",
+            True,
+        ),
+        (True, "The Secretary shall spend $100 for salaries.", False),
+        (True, "The Secretary shall spend $200 for grants.", False),
+        (
+            True,
+            "The Secretary shall spend $100 for salaries only if Congress appropriates $200.",
+            True,
+        ),
+    ],
+)
+def test_funding_obligation_retains_only_its_governing_clause(
+    path, shared_subject, statement, valid
+):
+    condition = "only if Congress appropriates $200"
+    head = (
+        "The Secretary shall both spend $100 for salaries and disburse $200 for grants"
+        if shared_subject
+        else "The bill appropriates $100 for salaries, and the Secretary shall spend $200 for grants"
+    )
+    _check_funding_statement(
+        path,
+        head + " " + condition + ".",
+        statement,
+        valid,
+        condition,
+        extra_amount="200",
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+def test_funding_obligation_retains_no_unrelated_prerequisite(path):
+    _check_funding_statement(
+        path,
+        "The bill appropriates $100 for grants.",
+        "The bill appropriates $100 for grants only if Congress cancels hospital funding.",
+        False,
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "purpose,valid", [("grants", True), ("travel", False), ("salaries", False)]
+)
+def test_repeated_amount_retains_authorized_purpose(path, purpose, valid):
+    source = "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries."
+    _check_funding_statement(
+        path, source, f"The bill authorizes $100 for {purpose}.", valid
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Congress does not authorize $100 for grants.",
+        "No funds are authorized to be appropriated for the $100 grant.",
+        "The agency estimates the grants will cost $100.",
+    ],
+)
+def test_repeated_amount_retains_absence_of_an_authorization(path, source):
+    _check_funding_statement(
+        path, source, "The bill authorizes $100 for grants.", False
+    )
+    _check_funding_statement(path, source, source, True)
+
+
+def _check_funding_statement(
+    path, evidence, statement, valid, condition=None, extra_amount=None
+):
     from hashlib import sha256
 
     from jsonschema import ValidationError
@@ -899,6 +977,10 @@ def _check_funding_statement(path, evidence, statement, valid, condition=None):
                 "evidence_ids": list(graph.units[0].own_passage_ids),
             }
         row["claims"][0]["money"][0].update(measure="dollars")
+        if extra_amount:
+            row["claims"][0]["money"].append(
+                {**row["claims"][0]["money"][0], "amount": extra_amount}
+            )
         findings = validate_provision(row, graph.units[0], graph)
         assert [(f.code, f.path) for f in findings] == (
             [] if valid else [("spending_authority_conflict", "explanations/0")]

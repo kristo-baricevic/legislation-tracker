@@ -39,9 +39,9 @@ _ENACTED_OUTLAY = re.compile(
     re.I,
 )
 _OUTLAY = r"(?:allocate|spend|appropriate|disburse|be\s+(?:allocated|spent|appropriated|disbursed))"
-_REQUIRED_OUTLAY = re.compile(rf"\b(?:must|shall|will)\s+{_OUTLAY}\b", re.I)
+_REQUIRED_OUTLAY = re.compile(rf"\b(?:must|shall|will)\s+(?:both\s+)?{_OUTLAY}\b", re.I)
 _FUNDING_PREDICATE = re.compile(
-    rf"\b(?:(?:must|shall|will|may)\s+{_OUTLAY}|"
+    rf"\b(?:(?:must|shall|will|may)\s+(?:both\s+)?{_OUTLAY}|"
     rf"{_ENACTED_OUTLAY.pattern}|(?:is|are)\s+(?:hereby\s+)?authorized|authorizes)\b",
     re.I,
 )
@@ -100,6 +100,25 @@ _MAIN_CLAUSE = re.compile(
 )
 
 
+def _independent_prefix(text):
+    """Split off earlier decisions that have a different grammatical subject."""
+    clauses = list(_funding_clauses(text))
+    for index in range(len(clauses) - 1, 0, -1):
+        clause = clauses[index]
+        predicate = _FUNDING_PREDICATE.search(clause)
+        if (
+            predicate
+            and re.match(
+                r"^(?:(?:and|but|while|whereas)\s+)?(?:the|an?|this|Congress|it|there)\b",
+                clause[: predicate.start()],
+                re.I,
+            )
+            and any(_FUNDING_PREDICATE.search(prior) for prior in clauses[:index])
+        ):
+            return " ".join(clauses[:index]), " ".join(clauses[index:])
+    return "", text
+
+
 def _funding_scopes(text):
     start = 0
     for boundary in re.finditer(r"(?<=[.;!?])\s+|$", text):
@@ -116,6 +135,10 @@ def _funding_scopes(text):
             tail = sentence[condition.end() :]
             resume = _MAIN_CLAUSE.search(tail) if not main.strip() else None
             end = condition.end() + resume.start() if resume else len(sentence)
+            if main.strip():
+                prefix, main = _independent_prefix(main)
+                if prefix:
+                    yield prefix, frozenset(prerequisites), False
             prerequisites.add(_condition_key(sentence[condition.start() : end]))
             # A funding predicate in the prerequisite supplies no spending authority.
             yield sentence[condition.end() : end], frozenset(), True
@@ -166,7 +189,14 @@ def _purpose(text):
         maxsplit=1,
         flags=re.I,
     )[0]
-    return _words(re.sub(r"\s+and\s*$", "", purpose, flags=re.I))
+    return _words(
+        re.sub(
+            r"\s+and(?:\s+(?:also\s+)?(?:spend|allocate|disburse|appropriate))?\s*$",
+            "",
+            purpose,
+            flags=re.I,
+        )
+    )
 
 
 def _amount_purpose(clause, match, end):
@@ -201,7 +231,7 @@ def _outlay_authority(text):
 
 _NEGATIVE_SUBJECT = re.compile(
     r"\b(?:no\s+(?:(?:such|federal|additional|public)\s+)*(?:funds?|money|amounts?|sums?|part|portion)|none)\b"
-    r"[^.;!?]*?\b(?:is|are|may|must|shall|will)\s+(?:(?:hereby|be)\s+)*(?:appropriated|allocated|disbursed|spent)\b",
+    r"[^.;!?]*?\b(?:is|are|may|must|shall|will)\s+(?:(?:hereby|be)\s+)*(?:authorized|appropriated|allocated|disbursed|spent)\b",
     re.I,
 )
 
@@ -218,8 +248,14 @@ def _clause_decisions(clause, prerequisites, subordinate):
         decision = _AUTHORIZED_SUM.sub(r"\g<amount>", decision)
     authorized = _AUTHORIZATION.search(decision) or _AUTHORIZES_AMOUNT.search(decision)
     authority = "nonoperative"
-    if outlay and not (authorized or subordinate or _NEGATIVE_SUBJECT.search(decision)):
-        authority = _outlay_authority(decision)
+    negated = _NEGATIVE_SUBJECT.search(decision) or re.search(
+        r"\b(?:not|never)\s+(?:hereby\s+)?authoriz", decision, re.I
+    )
+    if not subordinate and not negated:
+        if authorized:
+            authority = "authorization"
+        elif outlay:
+            authority = _outlay_authority(decision)
     wording = _words(clause)
     matches = list(re.finditer(_DOLLAR, decision, re.I))
     for index, match in enumerate(matches):
@@ -250,16 +286,16 @@ def _unsupported(amount, purpose, authority, prerequisites, wording, cited):
     if not candidates:
         return True
     named = {rule.purpose for rule in candidates if rule.purpose}
-    restricted = any(
-        rule.authority == "nonoperative" or rule.prerequisites for rule in candidates
-    )
+    restricted = len({(rule.authority, rule.prerequisites) for rule in candidates}) > 1
     if not purpose and len(named) > 1:
         return True
     for decision in candidates:
         if (
             decision.authority == "nonoperative"
-            or not decision.prerequisites <= prerequisites
+            or decision.prerequisites != prerequisites
         ):
+            continue
+        if (authority == "authorization") != (decision.authority == "authorization"):
             continue
         if authority == "appropriated" and decision.authority != "appropriated":
             continue
@@ -310,31 +346,37 @@ def claim_prerequisites(condition):
     children = [claim_prerequisites(child) for child in condition["children"]]
     if not children:
         return set()
-    # A prerequisite within an alternative only governs if every branch requires it.
-    return (
-        set.union(*children)
-        if condition["operator"] == "all"
-        else set.intersection(*children)
-    )
+    if condition["operator"] == "all":
+        return set.union(*children)
+    common = set.intersection(*children)
+    # Alternatives without an equivalent common branch cannot be verified
+    # against an unqualified claim simply because their intersection is empty.
+    return common if common in children else {None}
 
 
 def required_claim_conflicts(claim, money, cited):
-    if claim.get("modality") != "required":
-        return False
     action = claim.get("action", "")
     prerequisites = claim_prerequisites(claim.get("conditions"))
     for scope, prerequisite, subordinate in _funding_scopes(action):
-        if subordinate or not (
+        if subordinate:
+            continue
+        if claim.get("modality") in {"required", "permitted"} and re.match(
+            r"\s*authorize\b", scope, re.I
+        ):
+            authority = "authorization"
+        elif claim.get("modality") == "required" and (
             _asserts_outlay(scope)
             or re.search(r"\b(?:spend|allocate|appropriate|disburse)\b", scope, re.I)
         ):
+            authority = _outlay_authority(scope)
+        else:
             continue
         purposes = {_words(money.get("purpose")), _purpose(scope)} - {""}
         if any(
             _unsupported(
                 amount,
                 purpose,
-                _outlay_authority(scope),
+                authority,
                 prerequisites | prerequisite,
                 _words(scope),
                 cited,
