@@ -148,6 +148,12 @@ class FundingDecision:
 
 def _purpose(text):
     match = re.search(r"\bfor\s+(.+)", text, re.I | re.S)
+    if not match:
+        match = re.search(
+            r"\bto\s+(?=(?:fund|pay for|cover|finance|support)\b)(.+)",
+            text,
+            re.I | re.S,
+        )
     if not match or re.match(
         r"(?:each of (?:the )?|the )?(?:fiscal |calendar )?years?\b", match[1], re.I
     ):
@@ -261,10 +267,21 @@ def _unsupported(amount, purpose, authority, prerequisites, wording, cited):
             continue
         if purpose and decision.purpose and decision.purpose != purpose:
             continue
-        if restricted and not decision.purpose and not decision.prerequisites:
-            # If neither grammar nor a named account identifies which repeated
-            # sum this assertion concerns, require the source's own wording.
-            if wording != decision.wording:
+        if not decision.purpose:
+            if purpose:
+                # Even a verbatim action cannot establish a separate typed
+                # purpose absent from the citation.
+                if (
+                    wording != decision.wording
+                    or f" {purpose} " not in f" {decision.wording} "
+                ):
+                    continue
+            elif (
+                restricted
+                and not decision.prerequisites
+                and wording != decision.wording
+            ):
+                # Unknown accounts with competing decisions stay unresolved.
                 continue
         return False
     return True

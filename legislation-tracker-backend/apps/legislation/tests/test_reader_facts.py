@@ -429,10 +429,16 @@ def test_repeated_eligibility_passages_remain_citable_in_a_staged_plan(
 
 
 @pytest.mark.parametrize(
-    "mandatory,source_is_authorization", [(True, True), (False, True), (True, False)]
+    "mandatory,source_is_authorization,purpose",
+    [
+        (True, True, None),
+        (False, True, None),
+        (True, False, None),
+        (True, False, "grant funding"),
+    ],
 )
 def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
-    mandatory, source_is_authorization
+    mandatory, source_is_authorization, purpose
 ):
     import json
     from pathlib import Path
@@ -448,7 +454,11 @@ def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
     output = _output(sources)
     claim = _claim(
         key,
-        "Spend the grant funding." if mandatory else "Authorize appropriations.",
+        (
+            ("Spend the grant funding." if purpose else "Spend the funding.")
+            if mandatory
+            else "Authorize appropriations."
+        ),
         modality="required" if mandatory else "permitted",
     )
     claim["money"] = [
@@ -457,7 +467,7 @@ def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
             currency="USD",
             measure="dollars",
             comparator=None,
-            purpose="grant funding",
+            purpose=purpose,
             period="each of fiscal years 2027 through 2029",
             base=None,
         )
@@ -468,14 +478,14 @@ def test_s4387_authorization_is_not_a_mandatory_typed_outlay(
     output["money_checks"][key] = "financial"
     output["financial_items"] = [
         dict(
-            label="Grant funding",
+            label="Grant funding" if purpose else "Funding",
             amount_display="$15 million annually",
             fiscal_years=[],
             text=quote,
             source_quotes=policy["source_quotes"],
         )
     ]
-    if mandatory and source_is_authorization:
+    if mandatory and (source_is_authorization or purpose):
         with pytest.raises(ValidationError) as failure:
             resolve_discovery(output, sources)
         assert failure.value.validator == "reader_amount_conflict"
@@ -801,6 +811,12 @@ def _validate_cited_money(quote, statement, *, typed, amount, basis=None):
             "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 and Congress authorizes $15 million to be appropriated for general use.",
             "2000000",
             "The Secretary must spend $2 million for grants.",
+            False,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for grants and Congress authorizes $15 million to be appropriated for general use.",
+            "2000000",
+            "The Secretary must spend $2 million for grants.",
             True,
         ),
         (
@@ -909,6 +925,13 @@ def test_post_reservation_modifier_stays_with_its_account(quote, expected):
             "grants",
             "only if Congress appropriates $100",
             True,
+        ),
+        (
+            "There is appropriated $100.",
+            "There is appropriated $100.",
+            "grants",
+            None,
+            False,
         ),
     ],
 )

@@ -812,12 +812,43 @@ def test_repeated_amount_retains_source_wording_when_accounts_are_unresolved(
         "The bill appropriates $100 for grants.",
         "The Secretary must spend $100 for grants.",
         None,
+        (
+            "There is appropriated $100.",
+            "The bill appropriates $100 to fund grants.",
+            False,
+        ),
     ],
 )
 def test_repeated_amount_retains_neutral_or_negated_authority(
     path, evidence, statement
 ):
     _check_funding_statement(path, evidence, statement or evidence, statement is None)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source,statement,valid",
+    [
+        (
+            "There is appropriated $100.",
+            "The bill appropriates $100 for grants.",
+            False,
+        ),
+        ("There is appropriated $100.", "The bill appropriates $100.", True),
+        (
+            "There is appropriated $100 for grants.",
+            "The bill appropriates $100 for grants.",
+            True,
+        ),
+        (
+            "There is appropriated $100 pursuant to schedule A.",
+            "There is appropriated $100 pursuant to schedule A.",
+            True,
+        ),
+    ],
+)
+def test_repeated_amount_retains_only_explicit_purposes(path, source, statement, valid):
+    _check_funding_statement(path, source, statement, valid)
 
 
 def _check_funding_statement(path, evidence, statement, valid, condition=None):
