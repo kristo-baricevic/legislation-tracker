@@ -565,3 +565,57 @@ def test_old_cache_cannot_preserve_a_swapped_percentage_decision(
         pk=old_key, kind="reader-validation", result_json={"valid": not valid}
     )
     assert _reader_result_valid(saved) is valid
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "source,prose,valid",
+    [
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for hospital grants.",
+            "The Secretary shall allocate $2 million for hospital grants.",
+            True,
+        ),
+        (
+            "Reserve not less than 20 percent of the total amount appropriated to carry out this Act for a fiscal year and not reserved under section 4.",
+            "Reserve 20% of the total appropriation.",
+            False,
+        ),
+    ],
+)
+def test_old_cache_rechecks_financial_qualifiers(source_bill, source, prose, valid):
+    from hashlib import sha256
+
+    from apps.legislation.enhancements.shared import _reader_result_valid
+    from apps.legislation.models import BillEnhancement, BillProcessingCache
+
+    saved = BillEnhancement.objects.create(
+        bill=source_bill,
+        status="succeeded",
+        source_fingerprint="financial-source",
+        output_schema_version="1.4",
+        source_snapshot_json=[
+            {
+                "source_ref": "src_0001",
+                "quoted_text": source,
+                "text_sha256": sha256(source.encode()).hexdigest(),
+            }
+        ],
+        result_json={
+            "schema_version": "1.4",
+            "explanations": [],
+            "summary": [
+                {
+                    "text": prose,
+                    "source_quotes": [{"source_ref": "src_0001", "quote": source}],
+                }
+            ],
+        },
+    )
+    previous = sha256(
+        f"bill-validation:projection-11:{saved.source_fingerprint}:1.4:2:{saved.validation_digest}".encode()
+    ).hexdigest()
+    BillProcessingCache.objects.create(
+        pk=previous, kind="reader-validation", result_json={"valid": not valid}
+    )
+    assert _reader_result_valid(saved) is valid

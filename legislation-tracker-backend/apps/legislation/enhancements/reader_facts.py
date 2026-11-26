@@ -144,14 +144,9 @@ def factual_records_schema(sources, *, aggregate=False):
 
 
 def _validate_detail_numbers(detail, evidence, path):
-    import re
-
+    from .funding_roles import authorization_only_amounts, required_claim_conflicts
     from .percentage_bases import cited_percentage_bases, percentage_base_conflicts
-    from .provision_validation import _amounts
-    from .reader_integrity import (
-        authorization_only_amounts,
-        validate_numbers,
-    )
+    from .reader_integrity import validate_numbers
 
     def strings(value):
         if isinstance(value, str):
@@ -167,9 +162,7 @@ def _validate_detail_numbers(detail, evidence, path):
     text = " ".join(strings(detail))
     quotes = [evidence[pid] for pid in record_evidence_ids(detail)]
     cited = cited_percentage_bases(q["quote"] for q in quotes)
-    required_outlay = detail.get("modality") == "required" and re.search(
-        r"\b(?:spend|allocate|appropriate|disburse)\b", detail.get("action", ""), re.I
-    )
+    authorization_only = authorization_only_amounts(quote["quote"] for quote in quotes)
     for money in detail.get("money", []):
         amount = money.get("amount")
         if amount is not None:
@@ -182,9 +175,7 @@ def _validate_detail_numbers(detail, evidence, path):
                 "u.s. dollars",
             }:
                 text += f" ${amount}"
-                if required_outlay and _amounts(
-                    f"${amount}"
-                ) & authorization_only_amounts(quotes):
+                if required_claim_conflicts(detail, amount, authorization_only):
                     raise output_error("reader_amount_conflict", path)
             if str(money.get("measure") or "").lower() in {
                 "%",
@@ -209,6 +200,11 @@ def resolve_factual_records(records, sources, *, aggregate=False):
     record_evidence_ids(records)
     schema = factual_records_schema(sources, aggregate=aggregate)
     Draft202012Validator(schema).validate(records)
+    return resolve_validated_factual_records(records, sources)
+
+
+def resolve_validated_factual_records(records, sources):
+    """Resolve ownership and evidence after the containing schema passes."""
     expected = factual_record_ids(sources)
     actual = [record["record_id"] for record in records]
     if len(actual) != len(set(actual)) or set(actual) != set(expected):

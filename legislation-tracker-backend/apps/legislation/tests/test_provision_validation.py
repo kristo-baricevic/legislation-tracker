@@ -598,3 +598,37 @@ def test_source_first_checks_each_appropriation_percentage_basis(swapped):
             )
         ]
     )
+
+
+@pytest.mark.parametrize(
+    "source,valid",
+    [
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for hospital grants.",
+            True,
+        ),
+        (
+            "There are authorized to be appropriated $2 million for hospital grants.",
+            False,
+        ),
+    ],
+)
+def test_source_first_distinguishes_grant_allocation_from_authorizing_account(
+    source, valid
+):
+    graph = build_source_graph("1", "IH", "SEC. 1. FUNDING\n" + source)
+    row = explanation(graph)
+    row["summary"] = "The Secretary shall allocate $2 million for hospital grants."
+    row["claims"][0]["action"] = "Allocate funding."
+    row["claims"][0]["money"][0].update(
+        amount="2000000", currency="USD", measure="dollars"
+    )
+    findings = validate_provision(row, graph.units[0], graph)
+    assert [(f.code, f.path) for f in findings] == (
+        []
+        if valid
+        else [
+            ("spending_authority_conflict", "explanations/0"),
+            ("spending_authority_conflict", "claims/0/money/0"),
+        ]
+    )

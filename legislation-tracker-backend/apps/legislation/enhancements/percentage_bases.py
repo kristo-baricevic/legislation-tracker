@@ -11,9 +11,16 @@ _BASIS = r"(?:total|entire|full|remaining|remainder)"
 _SHORTHAND = rf"{_BASIS}(?:\s+(?:annual\s+)?(?:amounts?|sums?|funds?))?"
 _DIRECT_BASE = re.compile(
     rf"\s+of\s+(?:the\s+)?(?P<base>"
-    rf"(?:{_BASIS}\s+(?:of\s+(?:the\s+)?)?)?(?:annual\s+)?{_ACCOUNT}"
-    rf"(?:\s+(?:remaining|not reserved|after (?:the |any )?(?:set[ -]aside|reservation)))?"
+    rf"(?P<account>(?:{_BASIS}\s+(?:of\s+(?:the\s+)?)?)?(?:annual\s+)?{_ACCOUNT})"
     rf"|{_SHORTHAND}(?=\s*(?:$|[,.;]|\b(?:and|or|for|to|is|are|shall|must|may)\b)))\b",
+    re.I,
+)
+# A rate's account may carry its authority and fiscal period before a deduction.
+# Stop at a destination, another coordinated claim, or another rate.
+_ACCOUNT_END = re.compile(
+    r"[,;.!?%]|\b(?:and|or|but)\b(?!\s+not\s+reserved\b)|"
+    r"\bfor\s+(?!(?:(?:each|a|any|that|the|such|current|next|prior)\s+)*fiscal\s+years?\b)|"
+    r"\bto\s+(?!(?:carry\s+out|implement|administer)\b)|\d[\d,]*(?:\.\d+)?\s*percent\b",
     re.I,
 )
 _OF = re.compile(r"\s+of\b", re.I)
@@ -28,10 +35,20 @@ def appropriation_base(text):
     """Classify one basis phrase, including H.R.9300's post-reservation wording."""
     # A standalone shorthand can refer back to the appropriations account.
     # A named, unrelated denominator (e.g. "total enrollment") cannot.
-    if not re.search(_ACCOUNT, text, re.I) and not re.fullmatch(
-        rf"(?:the\s+)?{_SHORTHAND}", text.strip(), re.I
-    ):
-        return None
+    account = re.search(_ACCOUNT, text, re.I)
+    if account:
+        return _qualified_account(text, 0, account.end())
+    if re.fullmatch(rf"(?:the\s+)?{_SHORTHAND}", text.strip(), re.I):
+        return _basis_of_phrase(text)
+    return None
+
+
+def _qualified_account(text, start, account_end):
+    stop = _ACCOUNT_END.search(text, account_end)
+    return _basis_of_phrase(text[start : stop.start() if stop else None])
+
+
+def _basis_of_phrase(text):
     if re.search(
         rf"^(?:the\s+)?(?:remaining|remainder)\b|{_ACCOUNT}\s+remaining\b|"
         r"\b(?:not reserved|after (?:the |any )?(?:set[ -]aside|reservation))\b",
@@ -55,7 +72,12 @@ def percentage_bases(text):
                 governing = appropriation_base(fronted[1])
             end = rate.end()
             direct = _DIRECT_BASE.match(clause, end)
-            if direct:
+            if direct and direct["account"]:
+                # Include the same qualifying phrase that a fronted account supplies.
+                basis = _qualified_account(
+                    clause, direct.start("account"), direct.end("account")
+                )
+            elif direct:
                 basis = appropriation_base(direct["base"])
             elif _OF.match(clause, end):
                 # An explicit different denominator overrides a fronted account.

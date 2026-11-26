@@ -7,46 +7,13 @@ Amounts stay attached to each item's cited evidence, never the entire bill.
 import re
 
 from .diagnostics import output_error
+from .funding_roles import authorization_only_amounts, dollar_amounts, mandatory_outlays
 from .percentage_bases import (
     cited_percentage_bases,
     percentage_base_conflicts,
     percentage_bases,
     percentages,
 )
-from .provision_validation import _amounts
-
-_AUTHORIZATION = re.compile(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", re.I)
-_OUTLAY = r"(?:allocate|spend|appropriate|disburse|be\s+(?:allocated|spent|appropriated|disbursed))"
-_REQUIRED_OUTLAY = re.compile(rf"\b(?:must|shall|will)\s+{_OUTLAY}\b", re.I)
-_FUNDING_PREDICATE = re.compile(
-    rf"\b(?:(?:must|shall|will|may)\s+{_OUTLAY}|"
-    r"(?:is|are)\s+(?:hereby\s+)?(?:authorized|appropriated|spent|allocated|disbursed)|"
-    r"allocates|spends|appropriates|disburses|authorizes)\b",
-    re.I,
-)
-
-
-def _funding_clauses(text):
-    """Split coordinated funding decisions, preserving amount lists under one verb."""
-    for sentence in re.split(r"(?<=[.;])\s+", text):
-        parts = []
-        for part in re.split(
-            r"(?<=,)\s+|\s+(?=(?:and|but|while|whereas)\b)", sentence, flags=re.I
-        ):
-            if parts and _FUNDING_PREDICATE.search(part):
-                yield " ".join(parts)
-                parts = []
-            parts.append(part)
-        yield " ".join(parts)
-
-
-def authorization_only_amounts(quotes):
-    authorized, other = set(), set()
-    for quote in quotes:
-        for clause in _funding_clauses(quote["quote"]):
-            bucket = authorized if _AUTHORIZATION.search(clause) else other
-            bucket.update(_amounts(clause))
-    return authorized - other
 
 
 def validate_numbers(item, *, path):
@@ -55,9 +22,9 @@ def validate_numbers(item, *, path):
         str(item.get(key) or "") for key in ("text", "amount_display", "label", "title")
     ]
     prose = "\n".join(fields)
-    if _amounts(prose) - _amounts(evidence) or percentages(prose) - percentages(
-        evidence
-    ):
+    if dollar_amounts(prose) - dollar_amounts(evidence) or percentages(
+        prose
+    ) - percentages(evidence):
         raise output_error("reader_amount_conflict", path)
     cited = cited_percentage_bases(q["quote"] for q in item["source_quotes"])
     for field in fields:
@@ -67,15 +34,13 @@ def validate_numbers(item, *, path):
     # A matching dollar figure is not enough: authorization does not itself
     # require spending. Keep this check amount-scoped so a separate mandatory
     # allocation in the same evidence is not mistaken for an authorization.
-    authorization_only = authorization_only_amounts(item["source_quotes"])
-    if authorization_only:
-        for field in fields:
-            for clause in _funding_clauses(field):
-                if (
-                    _REQUIRED_OUTLAY.search(clause)
-                    and _amounts(clause) & authorization_only
-                ):
-                    raise output_error("reader_amount_conflict", path)
+    authorization_only = authorization_only_amounts(
+        q["quote"] for q in item["source_quotes"]
+    )
+    if authorization_only and any(
+        mandatory_outlays(field) & authorization_only for field in fields
+    ):
+        raise output_error("reader_amount_conflict", path)
 
 
 def financial_signal_text(text):
@@ -93,7 +58,7 @@ def requires_financial_item(text):
     # operative funding without a fixed total and percentage set-asides.
     text = financial_signal_text(text)
     return bool(
-        _amounts(text)
+        dollar_amounts(text)
         or re.search(
             r"\b(?:appropriat(?:ed|ion|ions)|authorized to be appropriated|"
             r"(?:shall|may|must) appropriate\s+(?:funds|money|sums)|"
@@ -129,7 +94,7 @@ def validate_financial_coverage(output, catalogs):
         prose = "\n".join(
             item["amount_display"] + " " + item["text"] for item in supporting
         )
-        if _amounts(passage) - _amounts(prose) or percentages(passage) - percentages(
-            prose
-        ):
+        if dollar_amounts(passage) - dollar_amounts(prose) or percentages(
+            passage
+        ) - percentages(prose):
             raise output_error("reader_coverage_incomplete", ["financial_items", key])

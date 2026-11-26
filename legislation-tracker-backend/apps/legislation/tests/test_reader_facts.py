@@ -673,3 +673,165 @@ def test_mixed_authority_is_amount_scoped_in_typed_claims(
         resolve_factual_records([_record(key, claims=[claim])], sources)
     if not valid:
         assert error.value.validator == "reader_amount_conflict"
+
+
+def _validate_cited_money(quote, statement, *, typed, amount, basis=None):
+    from apps.legislation.enhancements.reader_integrity import validate_numbers
+
+    if not typed:
+        validate_numbers(
+            {"text": statement, "source_quotes": [{"quote": quote}]}, path=["summary"]
+        )
+        return
+    sources = _sources(quote)
+    (key,) = factual_record_ids(sources)
+    claim = _claim(
+        key,
+        "Reserve funding." if basis else "Allocate funding.",
+        money=[
+            dict(
+                amount=amount,
+                currency=None if basis else "USD",
+                measure="percent" if basis else "dollars",
+                base=basis,
+                comparator=None,
+                purpose=None,
+                period=None,
+            )
+        ],
+    )
+    resolve_factual_records([_record(key, claims=[claim])], sources)
+
+
+@pytest.mark.parametrize("typed", [False, True], ids=["prose", "mapped-claim"])
+@pytest.mark.parametrize(
+    "quote,amount,statement,valid",
+    [
+        (
+            "There are authorized to be appropriated $2 million for hospital grants. The estimated cost of training is also $2 million.",
+            "2000000",
+            "The Secretary shall allocate $2 million for hospital grants.",
+            False,
+        ),
+        (
+            "The estimated cost of training is $2 million. There are authorized to be appropriated $2 million for grants.",
+            "2000000",
+            "The Secretary shall allocate $2 million for hospital grants.",
+            False,
+        ),
+        (
+            "Congress authorizes $15 million to be appropriated for general use and the Secretary shall allocate $2 million for grants.",
+            "15000000",
+            "The Secretary must spend $15 million for grants.",
+            False,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for hospital grants.",
+            "2000000",
+            None,
+            True,
+        ),
+        (
+            "From funds authorized to be appropriated under section 3, the Secretary shall allocate $2 million for hospital grants.",
+            "2000000",
+            None,
+            True,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the $15 million authorized to be appropriated under section 3.",
+            "2000000",
+            None,
+            True,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the $15 million authorized to be appropriated under section 3.",
+            "15000000",
+            "The Secretary must allocate $15 million.",
+            False,
+        ),
+        (
+            "The $2 million authorized to be appropriated under section 3 shall be allocated for grants.",
+            "2000000",
+            None,
+            True,
+        ),
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 and Congress authorizes $15 million to be appropriated for general use.",
+            "2000000",
+            "The Secretary must spend $2 million for grants.",
+            True,
+        ),
+        (
+            "There are authorized to be appropriated $2 million for hospital grants.",
+            "2000000",
+            "The Secretary must allocate $2 million.",
+            False,
+        ),
+        (
+            "Of the $15 million authorized to be appropriated under section 3, $2 million shall be allocated for grants.",
+            "2000000",
+            None,
+            True,
+        ),
+    ],
+)
+def test_allocation_from_authorized_funds(typed, quote, amount, statement, valid):
+    with nullcontext() if valid else pytest.raises(ValidationError) as error:
+        _validate_cited_money(quote, statement or quote, typed=typed, amount=amount)
+    if not valid:
+        assert error.value.validator == "reader_amount_conflict"
+
+
+@pytest.mark.parametrize("typed", [False, True], ids=["prose", "mapped-claim"])
+@pytest.mark.parametrize(
+    "account_first", [False, True], ids=["rate-first", "account-first"]
+)
+@pytest.mark.parametrize("base", ["remaining", "total"])
+def test_hr9300_post_reservation_scope_in_either_word_order(typed, account_first, base):
+    import json
+    from pathlib import Path
+
+    pinned = json.loads(
+        (Path(__file__).parent / "fixtures/harness/119hr9300ih.json").read_text()
+    )["evidence"][3]["quote"]
+    account, action = pinned.split("From ", 1)[1].split(", the Secretary shall ", 1)
+    if account_first:
+        quote = pinned
+    else:
+        rate, purpose = action.split(" to award ", 1)
+        quote = f"The Secretary shall {rate} of {account} to award {purpose}"
+    valid = base == "remaining"
+    with nullcontext() if valid else pytest.raises(ValidationError) as error:
+        _validate_cited_money(
+            quote,
+            f"Reserve at least 20% of the {base} appropriation.",
+            typed=typed,
+            amount="20",
+            basis=base + " appropriation",
+        )
+    if not valid:
+        assert error.value.validator == "reader_amount_conflict"
+
+
+@pytest.mark.parametrize(
+    "quote,expected",
+    [
+        (
+            "Reserve 2% of the total amount appropriated for a fiscal year for rural grants "
+            "and 20% of the total amount appropriated for that fiscal year and not reserved under section 4.",
+            [("2", "total"), ("20", "remaining")],
+        ),
+        (
+            "Reserve 2% of the total appropriation for grants that are not reserved for veterans.",
+            [("2", "total")],
+        ),
+        (
+            "Reserve 2% of the total appropriation. Funds not reserved under section 4 support training.",
+            [("2", "total")],
+        ),
+    ],
+)
+def test_post_reservation_modifier_stays_with_its_account(quote, expected):
+    from apps.legislation.enhancements.percentage_bases import percentage_bases
+
+    assert [(str(rate), base) for rate, base in percentage_bases(quote)] == expected

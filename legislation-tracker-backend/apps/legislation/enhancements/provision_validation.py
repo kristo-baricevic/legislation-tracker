@@ -7,6 +7,12 @@ from decimal import Decimal, InvalidOperation
 from jsonschema import ValidationError
 
 from .citations import citation_spans
+from .funding_roles import (
+    authorization_only_amounts,
+    dollar_amounts,
+    mandatory_outlays,
+    required_claim_conflicts,
+)
 from .percentage_bases import (
     cited_percentage_bases,
     percentage_base_conflicts,
@@ -24,24 +30,6 @@ class Finding:
     evidence_ids: tuple[str, ...]
     outcome: str
     message: str
-
-
-def _amounts(text):
-    multipliers = {
-        "": 1,
-        "thousand": 1000,
-        "million": 1000000,
-        "billion": 1000000000,
-        "trillion": 1000000000000,
-    }
-    return {
-        Decimal(amount.replace(",", "")) * multipliers[magnitude.lower()]
-        for amount, magnitude in re.findall(
-            r"\$\s*([\d,]+(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion)\b)?",
-            text,
-            re.I,
-        )
-    }
 
 
 def required_conditions(unit, graph):
@@ -276,10 +264,15 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
         for code, path, message in check_accounting(explanation, unit, graph):
             add(code, "unresolved", path, message)
     source = "\n".join(graph.passages[p].text for p in unit.own_passage_ids)
+    cited_authorizations = authorization_only_amounts(
+        graph.passages[pid].text for pid in ids
+    )
     cited_bases = cited_percentage_bases(graph.passages[pid].text for pid in ids)
     has_conditions = bool(required_conditions(unit, graph))
     prose = " ".join([explanation["summary"], *explanation["details"]])
     for index, sentence in enumerate([explanation["summary"], *explanation["details"]]):
+        if cited_authorizations and mandatory_outlays(sentence) & cited_authorizations:
+            add("spending_authority_conflict", path=f"explanations/{index}")
         if any(
             percentage_base_conflicts(rate, basis, cited_bases)
             for rate, basis in percentage_bases(sentence)
@@ -320,7 +313,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
             add("external_qualification_omitted", "unresolved")
     # Compare only explicit currency amounts. Other numeric quantities need their
     # units and roles and cannot safely be classified by this lexical detector.
-    if _amounts(prose) - _amounts(source):
+    if dollar_amounts(prose) - dollar_amounts(source):
         add("amount_conflict")
     if re.search(r"\bshall (?:be fined|impose a fine)\b", source, re.I) and re.search(
         r"\b(?:may|might|could) (?:be fined|impose a fine)\b", prose, re.I
@@ -398,7 +391,7 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
         source,
         re.I,
     )
-    if _amounts(source) - stated or (
+    if dollar_amounts(source) - stated or (
         "financial" in unit.inventory_kinds
         and financial_action
         and not any(c["money"] for c in claims)
@@ -456,6 +449,9 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
                         )
                 else:
                     pending.extend(current["children"])
+        claim_authorizations = authorization_only_amounts(
+            graph.passages[pid].text for pid in claim["evidence_ids"]
+        )
         claim_bases = cited_percentage_bases(
             graph.passages[pid].text for pid in claim["evidence_ids"]
         )
@@ -497,19 +493,26 @@ def validate_provision(explanation, unit, graph, *, require_coverage=False):
             except InvalidOperation:
                 is_percentage = False
             if (
-                _amounts(source)
+                dollar_amounts(source)
                 and money["amount"] is not None
                 and money["currency"] != "USD"
                 and not is_percentage
             ):
                 add("currency_conflict", path=f"claims/{claim_index}/money")
             if money["currency"] == "USD" and money["amount"] is not None:
+                if required_claim_conflicts(
+                    claim, money["amount"], claim_authorizations
+                ):
+                    add(
+                        "spending_authority_conflict",
+                        path=f"claims/{claim_index}/money/{money_index}",
+                    )
                 try:
                     amount = Decimal(money["amount"].replace(",", ""))
                 except InvalidOperation:
                     add("invalid_amount", path="claims.money.amount")
                 else:
-                    if amount not in _amounts(source):
+                    if amount not in dollar_amounts(source):
                         add("amount_conflict", path="claims.money.amount")
     if has_conditions and condition_leaves:
         # Require the full governing tail in one leaf. Splitting a conjunction
