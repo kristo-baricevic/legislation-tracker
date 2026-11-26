@@ -144,6 +144,7 @@ def factual_records_schema(sources, *, aggregate=False):
 
 
 def _validate_detail_numbers(detail, evidence, path):
+    from .citations import citation_spans
     from .funding_roles import funding_decisions, required_claim_conflicts
     from .percentage_bases import cited_percentage_bases, percentage_base_conflicts
     from .reader_integrity import validate_numbers
@@ -153,14 +154,14 @@ def _validate_detail_numbers(detail, evidence, path):
             yield value
         elif isinstance(value, dict):
             for key, child in value.items():
-                if key != "evidence_ids":
+                if key not in {"evidence_ids", "conditions", "exceptions"}:
                     yield from strings(child)
         elif isinstance(value, list):
             for child in value:
                 yield from strings(child)
 
     text = " ".join(strings(detail))
-    quotes = [evidence[pid] for pid in record_evidence_ids(detail)]
+    quotes = [evidence[pid] for pid in detail["evidence_ids"]]
     cited = cited_percentage_bases(q["quote"] for q in quotes)
     cited_funding = funding_decisions(quote["quote"] for quote in quotes)
     for money in detail.get("money", []):
@@ -193,6 +194,25 @@ def _validate_detail_numbers(detail, evidence, path):
         path=path,
         factual_claim=detail if "action" in detail else None,
     )
+    # A condition can cite another section. Its amounts belong to that leaf,
+    # while the principal rule is supported by the claim's own citations.
+    pending = [*detail.get("exceptions", [])]
+    if detail.get("conditions"):
+        pending.append(detail["conditions"])
+    while pending:
+        node = pending.pop()
+        if node["operator"] == "leaf":
+            quotes = [evidence[pid] for pid in node["evidence_ids"]]
+            if any(citation_spans(quote["quote"], node["text"]) for quote in quotes):
+                # The leaf can quote the predicate after "if". Its place in the
+                # tree makes it a prerequisite, not an assertion of spending.
+                continue
+            validate_numbers(
+                {"text": node["text"], "source_quotes": quotes},
+                path=path,
+            )
+        else:
+            pending.extend(node["children"])
 
 
 def resolve_factual_records(records, sources, *, aggregate=False):
