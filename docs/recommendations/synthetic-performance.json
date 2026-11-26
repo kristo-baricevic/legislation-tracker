@@ -9,31 +9,31 @@
     "vote_records": 40000
   },
   "cold_routing_and_initial_bills": {
-    "milliseconds": 3061.79,
-    "data_queries": 7,
+    "milliseconds": 1410.83,
+    "data_queries": 10,
     "control_queries": 3
   },
   "initial_bills": {
-    "milliseconds": 59.08,
-    "data_queries": 5,
+    "milliseconds": 20.08,
+    "data_queries": 8,
     "control_queries": 3
   },
   "continuation_bills": {
-    "milliseconds": 28.65,
-    "data_queries": 5,
+    "milliseconds": 17.01,
+    "data_queries": 7,
     "control_queries": 3
   },
   "cold_activity": {
-    "milliseconds": 1643.14,
-    "data_queries": 8,
+    "milliseconds": 1609.0,
+    "data_queries": 9,
     "control_queries": 11
   },
   "cached_representatives": {
-    "milliseconds": 264.79,
-    "data_queries": 2,
+    "milliseconds": 180.98,
+    "data_queries": 4,
     "control_queries": 3
   },
-  "catalog_json_bytes": 15136607,
-  "catalog_peak_python_bytes": 127097148,
-  "database": 160014
+  "catalog_json_bytes": 15136125,
+  "catalog_peak_python_bytes": 123070905,
+  "database": 160006
 }

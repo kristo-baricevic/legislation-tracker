@@ -50,15 +50,17 @@ The opt-in test creates 10,000 federal bills, 500 representatives, 30 topics, 30
 
 | Request/work | Milliseconds | Data queries | Transaction/control queries |
 | --- | ---: | ---: | ---: |
-| First route/import plus initial bill ranking | 505.06 | 7 | 3 |
-| Fresh initial bill ranking after import | 276.35 | 7 | 3 |
-| Stable bill continuation | 25.35 | 5 | 3 |
-| Cold public activity catalog | 1617.45 | 8 | 11 |
-| Cached representative ranking | 220.14 | 2 | 3 |
+| First route/import plus initial bills | 1410.83 | 10 | 3 |
+| Repeat initial bills request | 20.08 | 8 | 3 |
+| Stable bill continuation | 17.01 | 7 | 3 |
+| Cold public activity catalog | 1609.00 | 9 | 11 |
+| Representative recommendations with a warm public catalog | 180.98 | 4 | 3 |
 
-The steady initial request creates a **new** ranking; it is not served from the preceding private snapshot. The first request separately includes one-time Django URL/module imports. Local test budgets are 500/150/2000/250 ms respectively for steady initial/continuation/cold activity/cached representatives; query ceilings are 15/8/12/5. These single local samples are not production percentiles, throughput, quality scores, or a before/after improvement claim.
+The representative request starts with the public activity catalog cached and the user's ranking uncached. It ranks the candidates and returns five populated cards. Four data queries read the activity revision, the user's follows and dismissals, the selected cards' public facts, and their current research runs. The three transaction-control statements are counted separately. The repeat initial bills request uses the same user and filters as the first request.
 
-The catalog is **15,130,625 bytes** of compact JSON, below its 16 MiB cap. Rebuilding under `tracemalloc` peaked at **127,017,084 bytes** (~121.1 MiB) of Python allocations. This is not process RSS or a guaranteed production memory bound. A larger/richer corpus may exceed the byte limit, rebuilding resource budget, or timeout and intentionally return 503. Activity examples are bounded, but source data are streamed and exact evidence is computed before serialization; corpus-scale memory remains a limitation to evaluate before rollout. Existing public cache backend configuration controls shared reuse and gate semantics.
+Local latency budgets are 500/150/2000/250 ms for repeat initial bills, continuation, cold activity and representative recommendations respectively. Data-query ceilings are 15/8/12/5. Timings are single local observations.
+
+The catalog is **15,136,125 bytes** of compact JSON. Rebuilding under `tracemalloc` peaked at **123,070,905 bytes** of Python allocations. A larger/richer corpus may exceed the byte limit, rebuilding resource budget, or timeout and intentionally return 503. Activity examples are bounded, but source data are streamed and exact evidence is computed before serialization; corpus-scale memory remains a limitation to evaluate before rollout. Existing public cache backend configuration controls shared reuse and gate semantics.
 
 ## Quality evaluation still required
 

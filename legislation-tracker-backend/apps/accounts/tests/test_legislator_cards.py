@@ -12,6 +12,7 @@ from apps.research.models import (
     RepresentativeBiography,
     RepresentativePortrait,
     ResearchSource,
+    ResearchSourcePolicy,
 )
 
 
@@ -86,6 +87,33 @@ def test_card_batch_queries_do_not_grow_per_representative_and_topics_are_combin
         representative=reps[0], period=period - 2, status="failed"
     )
 
+    source = ResearchSource.objects.create(
+        provider="congress",
+        url="https://example.org/source",
+        attribution="Congress",
+        license="public domain",
+        content_hash="profile",
+    )
+    portraits = []
+    for index, rep in enumerate(reps):
+        url = f"https://example.org/{index}.jpg"
+        portraits.append(
+            RepresentativePortrait.objects.create(
+                representative=rep,
+                source=source,
+                image_url=url,
+                object_key=f"{index}.jpg",
+            )
+        )
+        ResearchSourcePolicy.objects.create(
+            representative=rep,
+            kind="portrait",
+            url=url,
+            approved=True,
+            license=source.license,
+            attribution=source.attribution if index == 0 else "other",
+        )
+
     def metric(id, name, count):
         return {
             "topic": {"id": id, "name": name},
@@ -107,7 +135,11 @@ def test_card_batch_queries_do_not_grow_per_representative_and_topics_are_combin
     with CaptureQueriesContext(connection) as multiple:
         cards = cards_for_representatives([rep.pk for rep in reps], activities)
     assert len(multiple) == len(single)
-    assert len(multiple) <= 5
+    assert len(multiple) <= 2
+    assert cards[reps[0].pk]["portrait"]["url"] == (
+        f"/api/representatives/{reps[0].pk}/portraits/{portraits[0].pk}/"
+    )
+    assert cards[reps[1].pk]["portrait"]["url"] == portraits[1].image_url
     assert cards[reps[0].pk]["top_topics"] == [
         {"id": 9, "name": "Education", "count": 6},
         {"id": 4, "name": "Budget", "count": 3},

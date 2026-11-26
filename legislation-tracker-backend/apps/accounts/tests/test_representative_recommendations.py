@@ -174,3 +174,39 @@ def test_anonymous_and_database_failures_keep_privacy_headers():
     assert response.status_code == 503
     assert response["Retry-After"] == "5"
     assert response["Cache-Control"] == "private, no-store"
+
+
+def test_cached_activity_keeps_query_budget_and_cards_show_new_research():
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+    from django.utils import timezone
+
+    from apps.congress.topic_activity import representative_activity_catalog
+    from apps.research.models import ResearchRun
+
+    api, user = client()
+    health = topic()
+    TrackedTopic.objects.create(user=user, topic=health)
+    rep = representative()
+    for number in range(8):
+        bill(number + 1, sponsor=rep, topics=(health,))
+    representative_activity_catalog()
+    for expected_status in ("not_started", "succeeded"):
+        with CaptureQueriesContext(connection) as queries:
+            response = api.get(PATH)
+        assert response.status_code == 200
+        (result,) = response.json()["results"]
+        assert result["representative_id"] == rep.pk
+        assert result["card"]["research"]["status"] == expected_status
+        if connection.vendor == "postgresql":
+            data_queries = [
+                q["sql"]
+                for q in queries
+                if q["sql"].startswith("SELECT") or q["sql"].startswith("(SELECT")
+            ]
+            assert len(data_queries) <= 4, data_queries
+        if expected_status == "not_started":
+            year = timezone.now().year
+            ResearchRun.objects.create(
+                representative=rep, period=year + year % 2, status="succeeded"
+            )

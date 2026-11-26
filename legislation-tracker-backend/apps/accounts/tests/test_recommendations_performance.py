@@ -4,7 +4,7 @@ import json
 import os
 import time
 import tracemalloc
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -45,8 +45,23 @@ def measured(call):
     }
 
 
-def test_synthetic_postgresql_query_and_latency_budget():
+def test_synthetic_postgresql_query_and_latency_budget(settings):
+    # The manifest and 500 member records must fit together in the test cache.
+    default = settings.CACHES["default"]
+    if default["BACKEND"] == "django.core.cache.backends.locmem.LocMemCache":
+        settings.CACHES = {
+            **settings.CACHES,
+            "default": {
+                **default,
+                "OPTIONS": {**default.get("OPTIONS", {}), "MAX_ENTRIES": 2048},
+            },
+        }
+
     assert connection.vendor == "postgresql"
+    # Keep observations inside the rolling activity window on future runs.
+    vote_day = datetime.now(UTC).date() - timedelta(days=1)
+    introduced = vote_day - timedelta(days=50)
+    cosponsored = vote_day - timedelta(days=28)
     reps = Representative.objects.bulk_create(
         [
             Representative(
@@ -71,7 +86,7 @@ def test_synthetic_postgresql_query_and_latency_budget():
                 title=f"Synthetic distinct proposal {i}",
                 status="introduced",
                 sponsor=reps[i % 500],
-                introduced_at=date(2025, 1, 10),
+                introduced_at=introduced,
             )
             for i in range(10_000)
         ],
@@ -90,7 +105,7 @@ def test_synthetic_postgresql_query_and_latency_budget():
             BillCosponsor(
                 bill=bill,
                 representative=reps[(i + shift) % 500],
-                sponsorship_date=date(2025, 2, 1),
+                sponsorship_date=cosponsored,
             )
             for i, bill in enumerate(bills)
             for shift in (1, 7, 23)
@@ -105,7 +120,7 @@ def test_synthetic_postgresql_query_and_latency_budget():
                 chamber="house",
                 session_number=1,
                 roll_number=i + 1,
-                vote_date=datetime(2025, 3, 1, tzinfo=UTC),
+                vote_date=datetime.combine(vote_day, datetime.min.time(), UTC),
                 question="On Passage",
                 result="passed",
                 source_url=f"https://clerk.house.gov/Votes/2025{i + 1}",
@@ -152,6 +167,8 @@ def test_synthetic_postgresql_query_and_latency_budget():
         lambda: api.get("/api/tracking/representative-recommendations/")
     )
     assert result.status_code == 200
+    assert result.json()["count"] == len(result.json()["results"]) == 5
+    assert all(row["card"]["latest_bill"] for row in result.json()["results"])
     plan = candidate_query(load_profile(user.id))[:501].explain(
         analyze=True, buffers=True, format="json"
     )

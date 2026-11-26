@@ -9,14 +9,23 @@ from django.core.files.storage import default_storage
 from .models import RepresentativePortrait, ResearchSource, ResearchSourcePolicy
 
 
-def may_serve_portrait(portrait):
+def approved_portrait_policy(representative_id, url, license, attribution):
     return ResearchSourcePolicy.objects.filter(
-        representative_id=portrait.representative_id,
+        representative_id=representative_id,
         kind="portrait",
-        url=portrait.image_url,
+        url=url,
         approved=True,
-        license=portrait.source.license,
-        attribution=portrait.source.attribution,
+        license=license,
+        attribution=attribution,
+    )
+
+
+def may_serve_portrait(portrait):
+    return approved_portrait_policy(
+        portrait.representative_id,
+        portrait.image_url,
+        portrait.source.license,
+        portrait.source.attribution,
     ).exists()
 
 

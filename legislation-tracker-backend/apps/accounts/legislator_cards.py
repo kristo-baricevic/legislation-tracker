@@ -1,6 +1,7 @@
 """Batch-load saved profile facts, without starting research or fetching donors."""
 
-from django.db.models import F, Prefetch
+from django.db.models import Exists, OuterRef, Prefetch
+from django.db.models.functions import JSONObject
 from django.utils import timezone
 
 from apps.legislation.models import Bill
@@ -9,87 +10,87 @@ from apps.research.models import (
     RepresentativePortrait,
     ResearchRun,
 )
-from apps.research.portraits import may_serve_portrait
+from apps.research.portraits import approved_portrait_policy
 
 
-def with_card_facts(queryset, prefix="representative__"):
-    return queryset.prefetch_related(
-        Prefetch(
-            f"{prefix}researchrun_set",
-            queryset=ResearchRun.objects.filter(
-                period=timezone.now().year + timezone.now().year % 2
+def with_card_facts(queryset):
+    # Each scalar subquery returns at most one row per representative, even
+    # when multiple biographies, portraits and bills exist for the same person.
+    source = JSONObject(
+        url="source__url", attribution="source__attribution", license="source__license"
+    )
+    latest_bio = RepresentativeBiography.objects.filter(
+        representative_id=OuterRef("pk")
+    ).order_by("-pk")
+    latest_photo = RepresentativePortrait.objects.filter(
+        representative_id=OuterRef("pk")
+    ).order_by("-pk")
+    latest_bill = Bill.objects.filter(
+        sponsor_id=OuterRef("pk"), introduced_at__isnull=False
+    ).order_by("-introduced_at", "-pk")
+    policy = approved_portrait_policy(
+        OuterRef("representative_id"),
+        OuterRef("image_url"),
+        OuterRef("source__license"),
+        OuterRef("source__attribution"),
+    )
+    return (
+        queryset.only("pk")
+        .annotate(
+            card_bio=latest_bio.values(data=JSONObject(text="text", source=source))[:1],
+            card_photo=latest_photo.values(
+                data=JSONObject(
+                    id="pk",
+                    object_key="object_key",
+                    url="image_url",
+                    approved=Exists(policy),
+                    source=source,
+                )
+            )[:1],
+            card_bill=latest_bill.values(
+                data=JSONObject(
+                    id="pk",
+                    title="title",
+                    bill_number="bill_number",
+                    introduced_at="introduced_at",
+                    session="session",
+                )
+            )[:1],
+        )
+        .prefetch_related(
+            Prefetch(
+                "researchrun_set",
+                queryset=ResearchRun.objects.filter(
+                    period=timezone.now().year + timezone.now().year % 2
+                )
+                .select_related("work_item")
+                .order_by("-created_at", "-pk")[:1],
+                to_attr="card_runs",
             )
-            .select_related("work_item")
-            .order_by("-created_at")[:1],
-            to_attr="card_runs",
-        ),
-        Prefetch(
-            f"{prefix}representativebiography_set",
-            queryset=RepresentativeBiography.objects.select_related("source").order_by(
-                "-id"
-            )[:1],
-            to_attr="card_bios",
-        ),
-        Prefetch(
-            f"{prefix}representativeportrait_set",
-            queryset=RepresentativePortrait.objects.select_related("source").order_by(
-                "-id"
-            )[:1],
-            to_attr="card_photos",
-        ),
-        Prefetch(
-            f"{prefix}sponsored_bills",
-            queryset=Bill.objects.filter(introduced_at__isnull=False).order_by(
-                F("introduced_at").desc(), "-id"
-            )[:1],
-            to_attr="card_bills",
-        ),
+        )
     )
 
 
 def card_facts(rep):
-    bio = next(iter(getattr(rep, "card_bios", [])), None)
-    photo = next(iter(getattr(rep, "card_photos", [])), None)
-    bill = next(iter(getattr(rep, "card_bills", [])), None)
+    photo = getattr(rep, "card_photo", None)
     run = next(iter(getattr(rep, "card_runs", [])), None)
-    from apps.research.views import run_data
-
-    job = run_data(run)
-
-    def source(item):
-        return {
-            "url": item.source.url,
-            "attribution": item.source.attribution,
-            "license": item.source.license,
-        }
-
     return {
-        "biography": {"text": bio.text, "source": source(bio)} if bio else None,
+        "biography": getattr(rep, "card_bio", None),
         "portrait": (
             {
                 "url": (
-                    f"/api/representatives/{rep.pk}/portraits/{photo.pk}/"
-                    if photo.object_key and may_serve_portrait(photo)
-                    else photo.image_url
+                    f"/api/representatives/{rep.pk}/portraits/{photo['id']}/"
+                    if photo["object_key"] and photo["approved"]
+                    else photo["url"]
                 ),
-                "source": source(photo),
+                "source": photo["source"],
             }
             if photo
             else None
         ),
-        "latest_bill": (
-            {
-                "id": bill.pk,
-                "title": bill.title,
-                "bill_number": bill.bill_number,
-                "introduced_at": bill.introduced_at,
-                "session": bill.session,
-            }
-            if bill
-            else None
-        ),
+        "latest_bill": getattr(rep, "card_bill", None),
         "research": {
-            "status": job["status"] if job else "not_started",
+            "status": run.effective_status if run else "not_started",
             "period": (
                 run.period if run else timezone.now().year + timezone.now().year % 2
             ),
@@ -124,7 +125,7 @@ def cards_for_representatives(ids, activities=None):
         except RecommendationError:
             activities = {}
     cards = {}
-    for rep in with_card_facts(Representative.objects.filter(pk__in=ids), prefix=""):
+    for rep in with_card_facts(Representative.objects.filter(pk__in=ids)):
         activity = activities.get(rep.pk)
         topics = {}
         for channel in ("sponsor", "active_cosponsor"):

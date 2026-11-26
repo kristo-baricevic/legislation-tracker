@@ -4,12 +4,15 @@ import hashlib
 import json
 import re
 from fractions import Fraction
+from itertools import islice
 
+from django.db.models import F, Value
 from django.utils import timezone
 from rest_framework.response import Response
 
 from apps.congress.topic_activity import (
     cosine,
+    cosine_vector,
     quantize_fraction,
     representative_activity_catalog,
 )
@@ -55,6 +58,8 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismisse
     for vector in references.values():
         for key, value in vector.items():
             mean[key] = mean.get(key, Fraction(0)) + value / len(references)
+    directions = {key: cosine_vector(vector) for key, vector in vectors.items()}
+    mean_direction = cosine_vector(mean)
     at, ar = bool(followed_topics), bool(mean)
     if not at and not ar:
         return [], "insufficient_metadata"
@@ -67,22 +72,24 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismisse
         ):
             continue
         vector = vectors[rep_id]
-        matched_evidence = sum(
-            bool(set(unit) & matched_topics & vector.keys())
-            for unit in item["union_topic_sets"]
+        matching = matched_topics.intersection(vector)
+        matches = (
+            unit for unit in item["union_topic_sets"] if not matching.isdisjoint(unit)
         )
         if (
             not member["is_current"]
             or rep_id in followed_reps
             or item["union_count"] < 5
-            or matched_evidence < 3
+            or next(islice(matches, 2, 3), None) is None
         ):
             continue
         topic_score = sum(
             (vector.get(topic_id, Fraction(0)) for topic_id in followed_topics),
             Fraction(0),
         )
-        reference_score = cosine(vector, mean) if ar else Fraction(0)
+        reference_score = (
+            cosine(directions[rep_id], mean_direction) if ar else Fraction(0)
+        )
         if not topic_score and not reference_score:
             continue
         cross = min(topic_score, reference_score) if at and ar else Fraction(0)
@@ -94,6 +101,38 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismisse
             item["union_tagged_count"], item["union_count"] + 20
         )
         score = quantize_fraction(base * evidence_discount)
+        candidates.append(
+            {
+                "id": rep_id,
+                "vector": vector,
+                "score": score,
+                "tie": (
+                    -score,
+                    -len(set(followed_topics) & vector.keys()),
+                    -item["union_tagged_count"],
+                    member["bioguide_id"],
+                    rep_id,
+                ),
+                "reference_score": reference_score,
+            }
+        )
+    candidates.sort(key=lambda item: item["tie"])
+    selected, redundancy = [], {}
+    while candidates and len(selected) < 6:
+        chosen = min(
+            candidates,
+            key=lambda item: (
+                -(
+                    Fraction(9, 10) * item["score"]
+                    - Fraction(1, 10) * redundancy.get(item["id"], Fraction(0))
+                ),
+                item["tie"],
+            ),
+        )
+        rep_id = chosen["id"]
+        item = records[str(rep_id)]
+        vector = chosen["vector"]
+        member = item["activity"]["representative"]
         reasons = []
         explicit = sorted(
             (topic_id for topic_id in followed_topics if vector.get(topic_id, 0) > 0),
@@ -109,11 +148,11 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismisse
                     "channel_evidence": _topic_evidence(item["activity"], topic_id),
                 }
             )
-        if references and reference_score:
+        if references and chosen["reference_score"]:
             reference_id = min(
                 references,
                 key=lambda identifier: (
-                    -cosine(vector, references[identifier]),
+                    -cosine(directions[rep_id], directions[identifier]),
                     records[str(identifier)]["activity"]["representative"][
                         "bioguide_id"
                     ],
@@ -142,47 +181,21 @@ def ranking(catalog, followed_topics, followed_reps, eligible_ids=None, dismisse
                         },
                     }
                 )
-        candidates.append(
+        selected.append(
             {
-                "id": rep_id,
-                "vector": vector,
-                "score": score,
-                "tie": (
-                    -score,
-                    -len(set(followed_topics) & vector.keys()),
-                    -item["union_tagged_count"],
-                    member["bioguide_id"],
-                    rep_id,
-                ),
-                "payload": {
-                    "representative_id": rep_id,
-                    "bioguide_id": member["bioguide_id"],
-                    "name": member["name"],
-                    "score": float(score),
-                    "reasons": reasons,
-                    "topic_activity_evidence": item["activity"],
-                },
+                "representative_id": rep_id,
+                "bioguide_id": member["bioguide_id"],
+                "name": member["name"],
+                "score": float(chosen["score"]),
+                "reasons": reasons,
+                "topic_activity_evidence": item["activity"],
             }
         )
-    candidates.sort(key=lambda item: item["tie"])
-    selected, redundancy = [], {}
-    while candidates and len(selected) < 6:
-        chosen = min(
-            candidates,
-            key=lambda item: (
-                -(
-                    Fraction(9, 10) * item["score"]
-                    - Fraction(1, 10) * redundancy.get(item["id"], Fraction(0))
-                ),
-                item["tie"],
-            ),
-        )
-        selected.append(chosen["payload"])
         candidates.remove(chosen)
         for item in candidates:
             redundancy[item["id"]] = max(
                 redundancy.get(item["id"], Fraction(0)),
-                cosine(item["vector"], chosen["vector"]),
+                cosine(directions[item["id"]], directions[rep_id]),
             )
     return selected, None if selected else "no_matches"
 
@@ -240,20 +253,51 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         shown_ids = {int(value) for value in shown.split(",") if value}
         filters = read_filters(request.query_params)
         filters.pop("sort", None)  # Bill sort does not reorder people.
+
+        # Fetch the three kinds of user preference in a single snapshot.
+        def preferences(query, kind, identifier, name, slug):
+            return query.order_by().values_list(Value(kind), F(identifier), name, slug)
+
+        rows = preferences(
+            TrackedTopic.objects.filter(user=request.user),
+            "topic",
+            "topic_id",
+            F("topic__name"),
+            F("topic__slug"),
+        ).union(
+            preferences(
+                TrackedLegislator.objects.filter(user=request.user),
+                "representative",
+                "representative_id",
+                F("representative__name"),
+                Value(""),
+            ),
+            preferences(
+                request.user.dismissed_representatives.all(),
+                "dismissed",
+                "pk",
+                Value(""),
+                Value(""),
+            ),
+            all=True,
+        )
+        topics, reps, dismissed = [], {}, set()
         with read_snapshot():
-            dismissed = set(
-                request.user.dismissed_representatives.values_list("pk", flat=True)
-            )
-            topics = list(
-                TrackedTopic.objects.filter(user=request.user)
-                .order_by("topic_id")
-                .values("topic_id", "topic__slug", "topic__name")
-            )
-            reps = dict(
-                TrackedLegislator.objects.filter(user=request.user)
-                .order_by("representative_id")
-                .values_list("representative_id", "representative__name")
-            )
+            revision = activity_revision()
+            for kind, identifier, name, slug in rows:
+                if kind == "topic":
+                    topics.append(
+                        {
+                            "topic_id": identifier,
+                            "topic__name": name,
+                            "topic__slug": slug,
+                        }
+                    )
+                elif kind == "representative":
+                    reps[identifier] = name
+                else:
+                    dismissed.add(identifier)
+        topics.sort(key=lambda item: item["topic_id"])
         followed_topics = {
             item["topic_id"]: item["topic__name"]
             for item in topics
@@ -265,7 +309,7 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
                     topics,
                     reps,
                     sorted(dismissed),
-                    activity_revision(),
+                    revision,
                     activity_day().isoformat(),
                 ],
                 sort_keys=True,
@@ -289,7 +333,9 @@ class RepresentativeRecommendationView(PrivateRecommendationView):
         elif not followed_topics and not reps:
             results, empty, catalog = [], "unsupported_follows_only", None
         else:
-            catalog = representative_activity_catalog(wait_for_build=True)
+            catalog = representative_activity_catalog(
+                wait_for_build=True, revision=revision
+            )
             if filters:
                 from apps.congress.models import BillCosponsor
                 from apps.legislation.models import Bill
