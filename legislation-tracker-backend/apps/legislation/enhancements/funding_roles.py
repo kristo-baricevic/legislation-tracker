@@ -8,6 +8,22 @@ from apps.legislation.extraction.federal_structure import STATUTORY_ABBREVIATION
 
 _DOLLAR = r"\$\s*(\d[\d,]*(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion)\b)?"
 
+_NUMBER_WITH_SCALE = (
+    r"\d[\d,]*(?:\.\d+)?(?:\s+(?:thousand|million|billion|trillion)\b)?"
+)
+_NAMED_DOLLARS = re.compile(
+    rf"\bUSD\s+(?P<prefix>{_NUMBER_WITH_SCALE})|"
+    rf"(?<![\w$.,])(?P<suffix>{_NUMBER_WITH_SCALE})\s+(?:dollars?|USD)\b",
+    re.I,
+)
+
+
+def _currency_text(text):
+    """Read USD 100 and 100 dollars through the same rules as $100."""
+    return _NAMED_DOLLARS.sub(
+        lambda match: "$" + (match["prefix"] or match["suffix"]), text
+    )
+
 
 def malformed_dollar_amount(text):
     return bool(re.search(r"\$\s*,", text))
@@ -23,7 +39,7 @@ def dollar_amounts(text):
     }
     return {
         Decimal(amount.replace(",", "")) * multipliers[magnitude.lower()]
-        for amount, magnitude in re.findall(_DOLLAR, text, re.I)
+        for amount, magnitude in re.findall(_DOLLAR, _currency_text(text), re.I)
     }
 
 
@@ -81,6 +97,17 @@ def _amount_comparator(prefix, suffix):
     return "exact"
 
 
+# An explicitly named monetary object can assert spending authority even when
+# a reader omits the figure. A duty to provide guidance is a different claim.
+_MONEY_NOUN = r"(?:(?:the|such|these|those|federal|additional|available|appropriated|grant|public)\s+)*(?:funds|funding|money|sums)\b"
+_UNQUANTIFIED_MONEY = re.compile(
+    rf"\b(?:authorizes?|appropriates?|provides?|allocates?|disburses?|spends?|pays?|obligates?)\s+{_MONEY_NOUN}|"
+    rf"\b(?:is|are|be)\s+(?:hereby\s+)?(?:appropriated|provided|allocated|spent|paid|obligated|disbursed)\s+{_MONEY_NOUN}|"
+    rf"\b{_MONEY_NOUN}\s+(?:is|are|must be|shall be)\s+(?:hereby\s+)?(?:authorized|appropriated|provided|made available|allocated|spent|paid|obligated|disbursed)\b",
+    re.I,
+)
+
+
 _AUTHORIZATION = re.compile(r"\bauthoriz\w*\s+to\s+be\s+appropriated\b", re.I)
 _AUTHORIZES_AMOUNT = re.compile(
     rf"\bauthorizes?\s+(?:the appropriation of\s+)?(?:(?:{_BOUND_PATTERN})\s+)?{_DOLLAR}",
@@ -94,7 +121,7 @@ _ENACTED_OUTLAY = re.compile(
     re.I,
 )
 _PROVIDED = re.compile(
-    rf"\b(?:provides|funds)\s+(?:(?:{_BOUND_PATTERN})\s+)?(?:{_DOLLAR}|funding\b|an? amount\b)|"
+    rf"\b(?:provides|funds)\s+(?:(?:{_BOUND_PATTERN})\s+)?(?:{_DOLLAR}|{_MONEY_NOUN}|an? amount\b)|"
     r"\b(?:is|are)\s+(?:hereby\s+)?(?:provided|made available)\b|"
     r"\bmakes\s+(?:available\b|[^.;!?]*?\bavailable\b)",
     re.I,
@@ -180,7 +207,7 @@ def _independent_prefix(text):
     return "", text
 
 
-def _funding_scopes(text):
+def funding_scopes(text):
     start = 0
     for boundary in re.finditer(r"(?<=[.;!?])\s+|$", text):
         end = boundary.start()
@@ -227,7 +254,7 @@ def _asserts_outlay(text):
 
 @dataclass(frozen=True)
 class FundingDecision:
-    amount: Decimal
+    amount: Decimal | None
     purpose: str
     authority: str
     prerequisites: frozenset[str]
@@ -318,7 +345,11 @@ def _clause_decisions(clause, prerequisites, subordinate):
     outlay = _asserts_outlay(decision)
     if outlay:
         decision = _AUTHORIZED_SUM.sub(r"\g<amount>", decision)
-    authorized = _AUTHORIZATION.search(decision) or _AUTHORIZES_AMOUNT.search(decision)
+    authorized = (
+        _AUTHORIZATION.search(decision)
+        or _AUTHORIZES_AMOUNT.search(decision)
+        or re.search(rf"\bauthorizes?\s+{_MONEY_NOUN}", decision, re.I)
+    )
     authority = "nonoperative"
     negated = _NEGATIVE_SUBJECT.search(decision) or re.search(
         r"\b(?:not|never)\s+(?:hereby\s+)?authoriz", decision, re.I
@@ -330,6 +361,14 @@ def _clause_decisions(clause, prerequisites, subordinate):
             authority = _outlay_authority(decision)
     wording = _words(clause)
     matches = list(re.finditer(_DOLLAR, decision, re.I))
+    if (
+        not matches
+        and authority != "nonoperative"
+        and _UNQUANTIFIED_MONEY.search(decision)
+    ):
+        yield FundingDecision(
+            None, _purpose(decision), authority, prerequisites, wording
+        )
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(decision)
         comparator = _amount_comparator(
@@ -353,9 +392,9 @@ def _clause_decisions(clause, prerequisites, subordinate):
 def funding_decisions(texts):
     return [
         rule
-        for text in texts
-        if "$" in text
-        for scope, prerequisites, subordinate in _funding_scopes(text)
+        for text in map(_currency_text, texts)
+        if "$" in text or _UNQUANTIFIED_MONEY.search(text)
+        for scope, prerequisites, subordinate in funding_scopes(text)
         for clause in _funding_clauses(scope)
         for rule in _clause_decisions(clause, prerequisites, subordinate)
     ]
@@ -375,7 +414,7 @@ _SUPPORTED_AUTHORITIES = {
 
 
 def _unsupported(amount, purpose, authority, comparator, prerequisites, wording, cited):
-    candidates = [rule for rule in cited if rule.amount == amount]
+    candidates = [rule for rule in cited if amount is None or rule.amount == amount]
     if not candidates:
         return True
     named = {rule.purpose for rule in candidates if rule.purpose}
@@ -416,7 +455,7 @@ def _unsupported(amount, purpose, authority, comparator, prerequisites, wording,
 
 
 def funding_statement_conflicts(text, cited, prerequisites=frozenset()):
-    return "$" in text and any(
+    return any(
         d.authority != "nonoperative"
         and _unsupported(
             d.amount,
@@ -450,7 +489,7 @@ def claim_prerequisites(condition):
 def required_claim_conflicts(claim, money, cited):
     action = claim.get("action", "")
     prerequisites = claim_prerequisites(claim.get("conditions"))
-    for scope, prerequisite, subordinate in _funding_scopes(action):
+    for scope, prerequisite, subordinate in funding_scopes(action):
         if subordinate:
             continue
         if claim.get("modality") in {"required", "permitted"} and re.match(
