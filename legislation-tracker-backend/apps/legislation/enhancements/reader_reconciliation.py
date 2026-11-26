@@ -103,14 +103,20 @@ def _deferred(sources):
 
 
 def reconciliation_call_bound(sources):
-    """Authorize up to eight initial pages and four recovery calls per owner.
+    """Reserve initial dependency pages and four recovery calls per owner.
 
     A page checks the owner's items together. Item counts and generated prose
     sizes are unknown until mapping completes. The reservation is a spending
     ceiling, not a Cartesian product of hypothetical per-item retries.
     """
     pending = _deferred(sources)
-    return sum(min(8, len(records)) + 4 for records in pending.values())
+    # Small owners can spend one call per record. For dense owners, budget
+    # one page per eight records. Larger generated items can still require
+    # a confirmed continuation, which reuses already validated pages.
+    return sum(
+        max(min(8, len(records)), (len(records) + 7) // 8) + 4
+        for records in pending.values()
+    )
 
 
 def _base_items(review, owners):
