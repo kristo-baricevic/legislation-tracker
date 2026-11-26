@@ -432,7 +432,11 @@ class OpenAICompatibleEnhancementProvider:
         )
         if schema is PROVIDER_OUTPUT_SCHEMA:
             result = harness.apply_derived_source_refs(result)
-        return harness.decode_bill_result(result, schema)
+        return harness.decode_bill_result(
+            result,
+            schema,
+            allow_native_conditions=self._structured_output_mode() != "json_schema",
+        )
 
     def repair_citations(
         self, *, api_key=None, request=None, payload=None, timeout_seconds=None
@@ -676,7 +680,7 @@ class OpenAICompatibleEnhancementProvider:
                         response_id=response_id,
                         resolved_model=resolved_model,
                     )
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 pass
 
         parts = [output_text] if isinstance(output_text, str) else []

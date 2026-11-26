@@ -127,14 +127,20 @@ def staged_wire_schema(schema):
     return schema
 
 
-def decode_bill_result(result, schema):
+def decode_bill_result(result, schema, *, allow_native_conditions=False):
     if "factual_records" not in schema.get("properties", {}):
         return result
     try:
         for record in result.output["factual_records"]:
             for claim in record["claims"]:
                 for field in ("conditions", "exceptions"):
-                    claim[field] = json.loads(claim[field])
+                    node = claim[field]
+                    # Without a response schema the prompt describes native JSON.
+                    # The reader validates both representations against the same
+                    # recursive schema and cited evidence after transport decoding.
+                    if allow_native_conditions and not isinstance(node, str):
+                        continue
+                    claim[field] = json.loads(node)
     except (KeyError, ValueError, TypeError, RecursionError) as error:
         raise ProviderError(
             "invalid_output",
@@ -304,7 +310,7 @@ def parse_json_output(
     usage = usage or ProviderUsage()
     try:
         output = json.loads(output_text)
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, RecursionError) as error:
         from ..diagnostics import json_parse_diagnostic
 
         parser = json_parse_diagnostic(error, output_text)

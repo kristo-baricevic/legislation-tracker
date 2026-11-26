@@ -475,3 +475,99 @@ def test_anthropic_pages_split_before_union_limit(settings):
         )
         == 40
     )
+
+
+@pytest.mark.parametrize("mode", ["json_object", "prompt_json"])
+@pytest.mark.parametrize("payload_kind", ["native", "stringified", "invalid_tree"])
+def test_fallback_map_uses_native_condition_contract(settings, mode, payload_kind):
+    from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.reader_discovery import (
+        INSTRUCTIONS,
+        POLICY_INSTRUCTIONS,
+        discovery_schema,
+        resolve_discovery,
+    )
+    from apps.legislation.enhancements.reader_facts import FACTUAL_MAP_INSTRUCTIONS
+    from .test_reader_facts import _output, _sources
+
+    base = dependency_request(settings, "openrouter")
+    sources = _sources(
+        "The agency must report while the program operates unless the agency closes."
+    )
+    env = dict(base.request_envelope)
+    env.pop("dependency_review")
+    env.update(
+        output_schema_version="1.4",
+        source_review=True,
+        output_schema=discovery_schema(sources),
+        source_packet={"sources": sources},
+        instructions=INSTRUCTIONS
+        + POLICY_INSTRUCTIONS
+        + "\n"
+        + FACTUAL_MAP_INSTRUCTIONS,
+    )
+    request = replace(base, source_snapshot=sources, request_envelope=env)
+    output = _output(sources)
+    record = output["factual_records"][0]
+    leaf = {
+        "operator": "leaf",
+        "text": "The program operates.",
+        "evidence_ids": [record["record_id"]],
+    }
+    claim = record["claims"][0]
+    claim.update(
+        conditions={"operator": "all", "children": [leaf]},
+        exceptions=[{**leaf, "text": "The agency closes."}],
+    )
+    wire = copy.deepcopy(output)
+    wire_claim = wire["factual_records"][0]["claims"][0]
+    if payload_kind == "invalid_tree":
+        wire_claim["conditions"] = {"operator": "all", "children": []}
+    elif payload_kind == "stringified":
+        for field in ("conditions", "exceptions"):
+            wire_claim[field] = json.dumps(wire_claim[field])
+    calls = []
+    provider = _sdk_provider("openrouter", _sdk_response(wire), calls)
+    provider.structured_output_mode = mode
+    result = provider.enhance_bill(
+        api_key="offline", request=request, timeout_seconds=1
+    )
+    (call,) = calls
+    assert call.get("response_format") == (
+        {"type": "json_object"} if mode == "json_object" else None
+    )
+    assert call["messages"][0]["content"] == env["instructions"]
+    assert (
+        "factual_records" in call["messages"][0]["content"]
+        and "JSON" in call["messages"][0]["content"]
+    )
+    if payload_kind == "invalid_tree":
+        with pytest.raises(ValidationError):
+            resolve_discovery(result.output, sources)
+    else:
+        assert (
+            resolve_discovery(result.output, sources)["factual_records"]
+            == output["factual_records"]
+        )
+
+
+def test_completed_fallback_keeps_usage_if_json_decoder_reaches_depth_limit(
+    settings, monkeypatch
+):
+    request = dependency_request(settings, "openrouter")
+    calls = []
+    provider = _sdk_provider("openrouter", _sdk_response({}), calls)
+    provider.structured_output_mode = "prompt_json"
+
+    def depth_limit(*args):
+        raise RecursionError("decoder depth limit")
+
+    monkeypatch.setattr(json.JSONDecoder, "raw_decode", depth_limit)
+    with pytest.raises(ProviderError) as failure:
+        provider.enhance_bill(api_key="offline", request=request, timeout_seconds=1)
+    assert len(calls) == 1
+    assert failure.value.validation_code == "provider_invalid_json"
+    assert failure.value.response_id == "dependency-response"
+    assert failure.value.usage.total_tokens == 165
+    assert not failure.value.outcome_unknown
