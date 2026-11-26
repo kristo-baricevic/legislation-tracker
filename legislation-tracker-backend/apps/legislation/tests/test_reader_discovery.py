@@ -315,9 +315,9 @@ def test_new_financial_provision_needs_no_nlp_target_and_keeps_amount_and_source
     output = {
         "financial_items": [
             {
-                "label": "Housing grants",
+                "label": "First grant",
                 "amount_display": "$100 million",
-                "text": "Provides a $100 million first grant.",
+                "text": "The first grant must be $100 million.",
                 "fiscal_years": [],
                 "source_quotes": [{"source_ref": "src_0001", "quote_id": "p0001"}],
             }
@@ -330,6 +330,12 @@ def test_new_financial_provision_needs_no_nlp_target_and_keeps_amount_and_source
     assert result["financial_items"][0]["source_quotes"][0]["quote"].endswith(
         "$100,000,000."
     )
+    item = output["financial_items"][0]
+    faithful = item["text"]
+    item["text"] = "Provides a $100 million first grant."
+    with pytest.raises(ValidationError, match="cited source"):
+        resolve_discovery(output, sources)
+    item["text"] = faithful
     output["financial_items"][0]["source_quotes"][0]["quote_id"] = "p9999"
     with pytest.raises(ValidationError):
         resolve_discovery(output, sources)
