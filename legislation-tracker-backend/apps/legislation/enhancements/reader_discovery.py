@@ -471,11 +471,9 @@ def resolve_discovery(
         raise
     facts = None
     if any(s.get("factual_map") for s in sources):
-        from .reader_facts import resolve_factual_records
+        from .reader_facts import resolve_validated_factual_records
 
-        facts = resolve_factual_records(
-            output["factual_records"], sources, aggregate=aggregate
-        )
+        facts = resolve_validated_factual_records(output["factual_records"], sources)
         for record in facts:
             key = record["record_id"]
             if output.get("policy_checks", {}).get(key) == "explained" and not any(
