@@ -459,3 +459,13 @@ def test_declared_definition_scope_controls_sibling(inherited, scope):
       </paragraph></section>""")
     context, _ = _context(index, "applicant")
     assert ("hospital in Alaska" in context) == (scope == "paragraph")
+
+
+def test_missing_scope_cannot_apply_an_unrelated_restriction_to_the_entire_act():
+    index = _index("""
+      <section id="grant"><enum>1.</enum><text>Award hospital grants.</text></section>
+      <section id="pilot"><enum>2.</enum><text>Only Alaska hospitals are eligible under this subparagraph.</text></section>""")
+    grant, _ = _context(index, "grant")
+    _, missing = _context(index, "pilot")
+    assert "Alaska" not in grant
+    assert "this subparagraph" in missing

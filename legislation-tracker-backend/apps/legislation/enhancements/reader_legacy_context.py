@@ -22,6 +22,7 @@ class _PreviousIndex(DependencyIndex):
     definition_levels = inherited_definition_levels + "|paragraph"
     scope_candidate = QUALIFICATION
     use_external_markup = False
+    resolve_missing_scope = False
 
     def _retain_incoming_reference(self, origin, target):
         if (

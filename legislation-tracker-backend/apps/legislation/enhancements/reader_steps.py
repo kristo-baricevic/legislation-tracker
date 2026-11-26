@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from jsonschema import ValidationError
 
@@ -209,34 +209,45 @@ class DurableReaderProvider:
             )
             ambiguous = BillEnhancementCallCache.objects.filter(status="dispatching")
             if ambiguous.exists():
-                keys = historical_dispatch_keys(
-                    request, adapter, dispatch_request.requested_model
-                )
-                keys.update((stable_key, pinned_key))
                 blocked = (
                     ambiguous.filter(
-                        Q(fingerprint__in=keys) | Q(dispatch_identity__in=keys)
+                        Q(dispatch_identity__in={stable_key, pinned_key})
+                        | Q(fingerprint__in={logical_fingerprint, fingerprint})
                     )
                     .values_list("pk", flat=True)
                     .first()
                 )
-                if not blocked and request.historical_dependency_sources:
-                    legacy_keys = historical_dispatch_keys(
-                        request,
-                        adapter,
-                        dispatch_request.requested_model,
-                        previous_context=True,
-                    )
-                    blocked = (
-                        ambiguous.filter(
-                            Q(fingerprint__in=legacy_keys)
-                            | Q(dispatch_identity__in=legacy_keys)
-                        )
-                        .values_list("pk", flat=True)
-                        .first()
-                    )
                 if blocked:
                     raise unresolved_reservation(blocked)
+                # Modern steps already carry the stable wire identity checked
+                # above. Only legacy or orphaned reservations need historical
+                # source metadata reconstructed while holding the billing lock.
+                modern = BillEnhancementStep.objects.filter(
+                    request_fingerprint=OuterRef("pk"),
+                    attempt__enhancement__source_manifest_json__execution_settings__reader_execution_version__gte=15,
+                )
+                legacy = ambiguous.filter(~Exists(modern))
+                if legacy.exists():
+                    for previous_context in (
+                        (False, True)
+                        if request.historical_dependency_sources
+                        else (False,)
+                    ):
+                        keys = historical_dispatch_keys(
+                            request,
+                            adapter,
+                            dispatch_request.requested_model,
+                            previous_context=previous_context,
+                        )
+                        blocked = (
+                            legacy.filter(
+                                Q(fingerprint__in=keys) | Q(dispatch_identity__in=keys)
+                            )
+                            .values_list("pk", flat=True)
+                            .first()
+                        )
+                        if blocked:
+                            raise unresolved_reservation(blocked)
             rerun = self.attempt.enhancement.rerun_after
             if rerun:
                 import hashlib
@@ -481,9 +492,24 @@ class DurableReaderProvider:
                     for i in s.get("review_quote_ids", [])
                 ],
             )
+            # A newly dispatched retry has its own outcome. Keep earlier known
+            # receipts on their steps, never on the new ambiguous reservation.
             cached.status = "dispatching"
             cached.dispatch_identity = stable_key
-            cached.save(update_fields=["status", "dispatch_identity", "updated_at"])
+            cached.response_id = cached.resolved_model = cached.diagnostic_code = ""
+            cached.result_json = None
+            cached.save(
+                update_fields=[
+                    "status",
+                    "dispatch_identity",
+                    "response_id",
+                    "resolved_model",
+                    "diagnostic_code",
+                    "result_json",
+                    "updated_at",
+                ]
+            )
+
         try:
             self.paid_calls += 1
             from .private_diagnostics import capture_step

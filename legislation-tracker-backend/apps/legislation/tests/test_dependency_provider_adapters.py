@@ -427,6 +427,9 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
                 inspect(child)
 
     inspect(schema)
+    from apps.legislation.enhancements.reader_capacity import schema_fits
+
+    assert schema_fits(schema, provider_name)
     assert "#/$defs/condition" not in json.dumps(schema)
     assert result.output == output
     assert result.usage.total_tokens == 165
@@ -435,3 +438,40 @@ def test_staged_http_wire_contract(settings, monkeypatch, provider_name, stage):
             resolve_discovery(result.output, sources)["factual_records"]
             == output["factual_records"]
         )
+
+
+def test_anthropic_pages_split_before_union_limit(settings):
+    from apps.legislation.enhancements.reader_capacity import schema_fits
+    from apps.legislation.enhancements.reader_reconciliation import reconcile_review
+
+    base, review = _fixture(settings, count=40)
+    settings.LLM_READER_MODEL_CAPACITIES["anthropic/model"] = {
+        "context_tokens": 300000,
+        "output_tokens": 100000,
+        "visible_fraction": 1,
+    }
+    settings.LLM_READER_MAX_OUTPUT_TOKENS = 100000
+    settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES = (
+        settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS
+    ) = 200000
+    provider = Provider()
+    result, _, count = reconcile_review(
+        replace(base, provider="anthropic"),
+        review,
+        provider,
+        "offline",
+        lambda: None,
+        100,
+    )
+    assert count >= 3
+    assert all(
+        schema_fits(r.request_envelope["output_schema"], "anthropic")
+        for r in provider.requests
+    )
+    assert (
+        sum(
+            len(p["descriptor"]["record_ids"])
+            for p in result["dependency_review"]["pages"]
+        )
+        == 40
+    )

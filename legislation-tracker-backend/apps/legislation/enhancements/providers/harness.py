@@ -100,6 +100,10 @@ def select_bill_schema(request, input_payload) -> Any:
         from ..coverage_contract import provision_schema
 
         schema = provision_schema(input_payload["source_packet"]["coverage_checklist"])
+    return staged_wire_schema(schema)
+
+
+def staged_wire_schema(schema):
     if "condition" in schema.get("$defs", {}) and "factual_records" in schema.get(
         "properties", {}
     ):

@@ -331,6 +331,7 @@ class DependencyIndex:
     definition_levels = inherited_definition_levels = SCOPE_NAMES
     scope_candidate = SCOPE
     use_external_markup = True
+    resolve_missing_scope = True
 
     def __init__(self, text, sections):
         self.text = text
@@ -683,6 +684,15 @@ class DependencyIndex:
                 for match in SCOPE.finditer(normalized):
                     scope = self.scope(i, match[1])
                     level = match[1].casefold()
+                    if (
+                        self.resolve_missing_scope
+                        and level != "act"
+                        and scope == self.quote_scope(i)
+                    ):
+                        # A missing structural parent cannot impose a rule on
+                        # every section of the bill (or of the quoted law).
+                        self.unresolved[i].add(match[0])
+                        continue
                     if level not in LEVELS:
                         if not QUALIFICATION.search(normalized):
                             continue
