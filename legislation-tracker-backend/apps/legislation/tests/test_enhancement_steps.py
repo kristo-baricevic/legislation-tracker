@@ -365,6 +365,10 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
     with enhancement_settings, override_settings(LLM_SOURCE_FIRST_ENABLED=True):
         doc = source_bill.documents.first()
         doc.extracted_text = "SEC. 1. REPORT\nThe Secretary shall publish a report.\nSEC. 2. REPORT\nThe Secretary shall publish a report."
+        if invalid_prior:
+            doc.extracted_text += (
+                "\nSEC. 3. REPORT\nThe Secretary shall publish a report."
+            )
         doc.save()
         first = _pending_attempt(enhancement_owner, source_bill)
         monkeypatch.setattr("apps.legislation.tasks.get_provider", lambda _: Provider())
@@ -413,23 +417,42 @@ def test_partial_retry_promotes_without_regenerating_accepted_units(
         enhancement.save(update_fields=["result_json"])
         enhancement.refresh_from_db()
         assert enhancement_payload(enhancement, detail=True)["result"] is None
-        assert reusable_publication(enhancement, first.credential) is None
+        reusable = reusable_publication(enhancement, first.credential)
         if invalid_prior:
             # A confirmed regeneration must be able to replace the invalid row.
+            sibling = prior["provisions"][2]
+            assert reusable["provisions"] == [sibling]
             phase[0] = 1
+            from rest_framework.test import APIClient
+
+            client = APIClient()
+            client.force_authenticate(enhancement_owner)
+            estimate = client.get(
+                f"/api/bills/{source_bill.pk}/enhancements/estimate/"
+            ).data
             regenerated = retry_enhancement_attempt(
                 user=enhancement_owner,
                 bill=source_bill,
                 enhancement_id=enhancement.pk,
-                confirmed=_confirmation(source_bill, first.credential),
+                confirmed={
+                    key: estimate[key]
+                    for key in (
+                        "source_fingerprint",
+                        "request_fingerprint",
+                        "credential_revision",
+                    )
+                },
             ).attempt
-            assert regenerated.reused_result_json is None
+            assert regenerated.reused_result_json == reusable
             run_bill_enhancement_attempt(regenerated.pk, regenerated.dispatch_token)
             enhancement.refresh_from_db()
             assert enhancement.published_attempt_id == regenerated.pk
             assert enhancement.result_completeness == "complete"
+            assert enhancement.result_json["provisions"][2] == sibling
+            assert sibling["unit_id"] not in requests[-1]
             assert enhancement_payload(enhancement, detail=True)["result"] is not None
             return
+        assert reusable is None
         enhancement.result_json = prior
         enhancement.save(update_fields=["result_json"])
         enhancement.refresh_from_db()

@@ -64,17 +64,63 @@ def _source_first_inputs(saved, document):
     return document, sections
 
 
-def _source_first_result_valid(saved, inputs):
-    from dataclasses import replace
-
-    from .provision_pipeline import _plan_built_graph, run_analysis
+def _source_first_graph(inputs):
     from .source_graph import build_source_graph
 
     document, sections = inputs
     text = document.extracted_text or document.raw_text or ""
-    graph = build_source_graph(
+    return build_source_graph(
         str(document.pk), document.version_label, text, xml_sections=sections
     )
+
+
+def source_first_reuse(saved):
+    """Reuse individually verified siblings even when an old partial reader fails."""
+    from .provision_pipeline import verified_reuse_row
+    from .source_first_schema import VERSION
+
+    result = saved.result_json
+    if not isinstance(result, dict) or result.get("schema_version") != VERSION:
+        return None
+    document = saved.bill.documents.filter(
+        pk=saved.source_manifest_json.get("document_id")
+    ).first()
+    inputs = _source_first_inputs(saved, document)
+    if inputs is None:
+        return None
+    if _reader_result_valid(saved, source_first_inputs=inputs):
+        return result
+    graph = _source_first_graph(inputs)
+    if result.get("document_fingerprint") != graph.document_fingerprint:
+        return None
+    units = {unit.id: unit for unit in graph.units}
+    provisions = result.get("provisions")
+    if not isinstance(provisions, list):
+        return None
+    rows = []
+    for row in provisions:
+        if not isinstance(row, dict) or row.get("status") != "explained":
+            continue
+        try:
+            verified_reuse_row(row, units, graph)
+        except (KeyError, TypeError, ValueError):
+            continue
+        rows.append(row)
+    if rows:
+        return {
+            "schema_version": VERSION,
+            "document_fingerprint": graph.document_fingerprint,
+            "provisions": rows,
+        }
+    return None
+
+
+def _source_first_result_valid(saved, inputs):
+    from dataclasses import replace
+
+    from .provision_pipeline import _plan_built_graph, run_analysis
+
+    graph = _source_first_graph(inputs)
     result = saved.result_json
     plan = _plan_built_graph(graph, reuse_result=result)
     if saved.result_completeness == "partial":

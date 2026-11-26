@@ -139,6 +139,20 @@ def plan_analysis(graph, limits=None, reuse_result=None):
     return _plan_built_graph(graph, limits, reuse_result)
 
 
+def verified_reuse_row(row, units, graph):
+    clean = {
+        k: v
+        for k, v in row.items()
+        if k not in {"id", "evidence", "source_limitations"}
+    }
+    unit = units.get(row["unit_id"])
+    if unit is None or validate_provision(clean, unit, graph, require_coverage=True):
+        raise ValueError("reused_output_invalid")
+    if hydrate_evidence(clean, graph) != row:
+        raise ValueError("reused_evidence_invalid")
+    return clean
+
+
 def _plan_built_graph(graph, limits=None, reuse_result=None):
     """Internal fast path for a graph just built from authoritative text."""
     limits = limits or {}
@@ -163,18 +177,7 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
         for row in reuse_result["provisions"]:
             if row["status"] != "explained":
                 continue
-            clean = {
-                k: v
-                for k, v in row.items()
-                if k not in {"id", "evidence", "source_limitations"}
-            }
-            unit = units.get(row["unit_id"])
-            if unit is None or validate_provision(
-                clean, unit, graph, require_coverage=True
-            ):
-                raise ValueError("reused_output_invalid")
-            if hydrate_evidence(clean, graph) != row:
-                raise ValueError("reused_evidence_invalid")
+            clean = verified_reuse_row(row, units, graph)
             reused.append(clean)
     reused_ids = {r["unit_id"] for r in reused}
     batches, unresolved = [], {}
