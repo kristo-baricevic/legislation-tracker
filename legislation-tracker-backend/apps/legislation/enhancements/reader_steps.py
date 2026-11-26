@@ -27,7 +27,7 @@ from .reader_cache import (
     envelope_dispatch_identity,
     historical_dispatch_key_groups,
     remap,
-    router_alias_request,
+    router_model_request,
 )
 from .reader_citations import recover_reader_items, resolve_reader_citations
 from .reader_discovery import resolve_discovery
@@ -62,16 +62,12 @@ def unresolved_reservation(fingerprint):
 
 
 def _different_router_model(model):
-    # A surviving step recorded the actual model submitted, even when its
-    # reservation only stored a hash of the logical alias. Older steps may
-    # lack this diagnostic but their attempt still carries an established pin.
+    # A later pin on an attempt does not establish what an earlier call
+    # sent. Only an explicit concrete model on that dispatch step rules it out.
     return (
-        Q(diagnostics__requested_model__endswith=":free")
+        Q(diagnostics__has_key="requested_model")
+        & Q(diagnostics__requested_model__endswith=":free")
         & ~Q(diagnostics__requested_model=model)
-    ) | (
-        ~Q(diagnostics__has_key="requested_model")
-        & Q(attempt__pinned_model__endswith=":free")
-        & ~Q(attempt__pinned_model=model)
     )
 
 
@@ -286,8 +282,10 @@ class DurableReaderProvider:
                 and dispatch_request.requested_model.endswith(":free")
             )
             if concrete_router:
-                alias = router_alias_request(request)
+                direct = router_model_request(request, dispatch_request.requested_model)
+                alias = router_model_request(request, "openrouter/free")
                 alias_key = envelope_dispatch_identity(alias, adapter)
+                keys.add(envelope_dispatch_identity(direct, adapter))
             lock_keys = keys | {alias_key} if concrete_router else keys
             # Serialize overlapping generations without creating a second permanent
             # cache row per paid call. SQLite serializes writes at the database.
@@ -314,11 +312,15 @@ class DurableReaderProvider:
                 if blocked:
                     raise unresolved_reservation(blocked)
                 if concrete_router:
-                    other_model = BillEnhancementStep.objects.filter(
-                        _different_router_model(dispatch_request.requested_model),
-                        request_fingerprint=OuterRef("pk"),
+                    steps = BillEnhancementStep.objects.filter(
+                        request_fingerprint=OuterRef("pk")
                     )
-                    possible_alias = ambiguous.filter(~Exists(other_model))
+                    possible = ~Exists(steps) | Exists(
+                        steps.exclude(
+                            _different_router_model(dispatch_request.requested_model)
+                        )
+                    )
+                    possible_alias = ambiguous.filter(possible)
                     blocked = (
                         possible_alias.filter(dispatch_identity=alias_key)
                         .values_list("pk", flat=True)
@@ -335,12 +337,22 @@ class DurableReaderProvider:
                 )
                 legacy = ambiguous.filter(~Exists(modern))
                 if legacy.exists():
-                    candidates = [(request, legacy)]
-                    if concrete_router and request.requested_model != "openrouter/free":
-                        candidates.append((alias, legacy.filter(~Exists(other_model))))
-                    for candidate, reservations in candidates:
+                    plans = [(None, legacy)]
+                    if concrete_router:
+                        alias_rows = legacy.filter(possible)
+                        if request.requested_model == "openrouter/free":
+                            plans = [
+                                (None, alias_rows),
+                                (direct.requested_model, legacy),
+                            ]
+                        else:
+                            plans.append(("openrouter/free", alias_rows))
+                    for planner_model, reservations in plans:
                         for group in historical_dispatch_key_groups(
-                            candidate, adapter, dispatch_request.requested_model
+                            request,
+                            adapter,
+                            dispatch_request.requested_model,
+                            planner_model=planner_model,
                         ):
                             blocked = (
                                 reservations.filter(

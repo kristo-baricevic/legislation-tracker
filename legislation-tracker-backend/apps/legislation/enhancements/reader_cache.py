@@ -109,8 +109,8 @@ def call_identity(
     return hashlib.sha256(canonical_json_bytes(key)).hexdigest(), references
 
 
-def dispatch_identity(request, adapter):
-    """Identify the provider operation independently of our planner and validator."""
+def envelope_dispatch_identity(request, adapter):
+    """Existing reservation format, including the planner's requested model."""
     return hashlib.sha256(
         canonical_json_bytes(
             {
@@ -124,11 +124,42 @@ def dispatch_identity(request, adapter):
     ).hexdigest()
 
 
-def historical_dispatch_key_groups(request, adapter, dispatched_model):
+def dispatch_identity(request, adapter, provider):
+    if request.provider != "openrouter":
+        return envelope_dispatch_identity(request, adapter)
+    from .providers.openai_compatible import OpenAICompatibleEnhancementProvider
+
+    if not isinstance(provider, OpenAICompatibleEnhancementProvider):
+        # Test and diagnostic providers can wrap the adapter. Build the same
+        # standard transport arguments without contacting the upstream.
+        provider = OpenAICompatibleEnhancementProvider()
+    arguments = provider.bill_dispatch_arguments(request)
+    return hashlib.sha256(
+        canonical_json_bytes({"openrouter": arguments, "adapter": adapter})
+    ).hexdigest()
+
+
+def router_model_request(request, model):
+    """Recreate the planner envelope for a previous alias or concrete selection."""
+    envelope = request.request_envelope
+    if "requested_model" in envelope:
+        envelope = {**envelope, "requested_model": model}
+    return replace(request, requested_model=model, request_envelope=envelope)
+
+
+def historical_dispatch_key_groups(
+    request, adapter, dispatched_model, *, planner_model=None
+):
     """Try direct hashes and saved source inventories before rebuilding a plan."""
     candidates = [request]
     if request.legacy_dependency_request:
         candidates.append(request.legacy_dependency_request())
+    if planner_model:
+        # Old dependency descriptors are rebuilt by a closure over the original
+        # preflight. Change its model spelling after that callback returns too.
+        candidates = [
+            router_model_request(candidate, planner_model) for candidate in candidates
+        ]
     for mode in ("current", "saved", "rebuilt"):
         for candidate in candidates:
             if mode == "current":
