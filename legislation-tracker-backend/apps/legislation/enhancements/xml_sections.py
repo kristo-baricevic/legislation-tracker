@@ -80,51 +80,73 @@ def _table_row_levels(root):
     """
     levels = {}
 
-    def walk(element, columns=None, figure_columns=frozenset(), in_header=False):
+    def walk(
+        element, columns=None, figure_columns=frozenset(), in_header=False, spans=None
+    ):
         tag = _xml_tag(element)
         if tag in {"table", "tgroup"}:
-            inherited = columns or {}
-            columns = dict(inherited)
+            columns = dict(columns or {})
             figures = set(figure_columns)
-            for ordinal, spec in enumerate(
-                child for child in element if _xml_tag(child) == "colspec"
-            ):
+            specs = [child for child in element if _xml_tag(child) == "colspec"]
+            # OASIS colnum starts at one. Congress also publishes zero-based
+            # tgroups. Use zero-based offsets internally in both dialects.
+            origin = 0 if any(spec.get("colnum") == "0" for spec in specs) else 1
+            next_column = 0
+            for spec in specs:
                 name = spec.get("colname")
-                position = spec.get("colnum", "")
-                position = int(position) if position.isdigit() else ordinal
+                number = spec.get("colnum", "")
+                position = int(number) - origin if number.isdecimal() else next_column
+                next_column = position + 1
                 if name:
                     columns[name] = position
-                    if spec.get("coldef", "").startswith("fig"):
-                        figures.add(position)
+                if spec.get("coldef", "").startswith("fig"):
+                    figures.add(position)
             figure_columns = frozenset(figures)
+        if tag in {"table", "tgroup", "thead", "tbody", "tfoot"}:
+            spans = {}
         if tag in {"thead", "tfoot"}:
             in_header = True
         if tag == "row":
             entries = [child for child in element if _xml_tag(child) == "entry"]
-            nonempty = [entry for entry in entries if "".join(entry.itertext()).strip()]
-            if in_header or len(nonempty) != 1:
-                return
-            content = " ".join("".join(nonempty[0].itertext()).split())
-            if not any(character.isalpha() for character in content):
+            if in_header or spans is None:
                 return
 
             def position(name, fallback):
                 if name in (columns or {}):
                     return columns[name]
                 number = re.fullmatch(r"(?:col|column)(\d+)", name or "", re.I)
-                return int(number[1]) if number else fallback
+                return max(0, int(number[1]) - 1) if number else fallback
 
             cursor = 0
+            # A cell can span both rows and columns. Track occupied intervals
+            # without allocating one item per declared row or column.
+            occupied = sorted(spans)
+            for interval in occupied:
+                spans[interval] -= 1
+                if not spans[interval]:
+                    del spans[interval]
+            filled = []
             for entry in entries:
-                start = position(entry.get("namest") or entry.get("colname"), cursor)
-                if entry is nonempty[0]:
-                    if start not in figure_columns:
-                        levels[element] = start
-                    return
-                cursor = position(entry.get("nameend"), start) + 1
+                for left, right in occupied:
+                    if left <= cursor <= right:
+                        cursor = right + 1
+                namest = entry.get("namest")
+                start = position(namest or entry.get("colname"), cursor)
+                end = position(entry.get("nameend"), start) if namest else start
+                more = entry.get("morerows", "")
+                if more.isdecimal() and int(more):
+                    spans[start, end] = int(more)
+                cursor = end + 1
+                content = "".join(entry.itertext()).strip()
+                if content:
+                    filled.append((start, content))
+            if len(filled) == 1:
+                start, content = filled[0]
+                if start not in figure_columns and any(c.isalpha() for c in content):
+                    levels[element] = start
             return
         for child in element:
-            walk(child, columns, figure_columns, in_header)
+            walk(child, columns, figure_columns, in_header, spans)
 
     walk(root)
     return levels
@@ -266,9 +288,9 @@ def _flat_spans(raw, root, nodes, text, marker):
     return _strip_markers(annotated, marker, normalize=True)
 
 
-def xml_boundaries(raw, text):
+def xml_boundaries(raw, text, *, row_levels=_table_row_levels):
     root = ElementTree.fromstring(raw)
-    table_row_levels = _table_row_levels(root)
+    table_row_levels = row_levels(root)
 
     def outer_bodies(node):
         tag = _xml_tag(node)
@@ -448,13 +470,13 @@ def read_stored_xml(document):
         ) from exc
 
 
-def aligned_xml_sections(raw, text):
+def aligned_xml_sections(raw, text, *, row_levels=_table_row_levels):
     if raw is None:
         return ()
     from .source_packet import PreflightUnavailable
 
     try:
-        return xml_boundaries(raw, text)
+        return xml_boundaries(raw, text, row_levels=row_levels)
     except (ValueError, KeyError, ElementTree.ParseError, DefusedXmlException) as exc:
         raise PreflightUnavailable(
             "Stored XML could not be aligned with the bill text",
@@ -462,12 +484,12 @@ def aligned_xml_sections(raw, text):
         ) from exc
 
 
-def stored_xml_sections(document, text):
+def stored_xml_sections(document, text, *, row_levels=_table_row_levels):
     raw, digest = read_stored_xml(document)
     if raw is None:
         return ()
     if text is None:
         text = document.extracted_text or document.raw_text or ""
-    sections = aligned_xml_sections(raw, text)
+    sections = aligned_xml_sections(raw, text, row_levels=row_levels)
     sections.xml_sha256 = digest
     return sections

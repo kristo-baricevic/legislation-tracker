@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from apps.legislation.extraction.federal_structure import parse_federal_structure
 from apps.legislation.extraction.types import ExpectedExtractionRejection
 
-CONTEXT_PLANNER_VERSION = 7
+CONTEXT_PLANNER_VERSION = 8
 UNIT_BYTES = 24_000
 CONTAINERS = {
     "legis-body",
@@ -328,6 +328,7 @@ def _text_nodes(text, sections):
 
 
 class DependencyIndex:
+    table_scopes = {"tgroup", "table"}
     definition_levels = inherited_definition_levels = SCOPE_NAMES
     scope_candidate = SCOPE
     use_external_markup = True
@@ -912,10 +913,15 @@ class DependencyIndex:
                     for scope, defining in self.definitions[_normalize(match[0])]:
                         if self._descendant(i, scope):
                             self.definition_links[i].add(defining)
-        table_parts = defaultdict(lambda: {"heads": [], "labels": [], "rows": []})
+        table_parts = defaultdict(lambda: {"heads": [], "rows": []})
         for i, node in enumerate(self.nodes):
             table = next(
-                (p for p in self.ancestors(i) if self.nodes[p].tag == "table"), None
+                (
+                    p
+                    for p in self.ancestors(i)
+                    if self.nodes[p].tag in self.table_scopes
+                ),
+                None,
             )
             if table is None:
                 continue
@@ -923,8 +929,6 @@ class DependencyIndex:
                 table_parts[table]["heads"].append(i)
             elif node.tag == "row":
                 table_parts[table]["rows"].append(i)
-                if node.table_label_level is not None:
-                    table_parts[table]["labels"].append(i)
         for parts in table_parts.values():
             active = {}
             for row in parts["rows"]:

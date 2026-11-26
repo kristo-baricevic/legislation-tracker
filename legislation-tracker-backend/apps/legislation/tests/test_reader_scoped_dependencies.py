@@ -4,7 +4,12 @@ import pytest
 
 from apps.ingestion.document_download import extract_document_text
 from apps.legislation.enhancements.reader_dependencies import DependencyIndex
-from apps.legislation.enhancements.xml_sections import xml_boundaries
+from apps.legislation.enhancements.xml_sections import (
+    stored_xml_sections,
+    xml_boundaries,
+)
+
+from .test_large_bill_planning_regression import _stored_document
 
 
 def _index(body):
@@ -414,6 +419,86 @@ def test_table_rows_inherit_only_the_active_service_and_location():
     assert all(old not in navy for old in ("Army account", "Alabama", "Alaska"))
     for context in (army, navy_first, navy):
         assert "Amounts in thousands of dollars" in context
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("first", [1, 0], ids=["cals", "zero-based-congress"])
+def test_mixed_named_and_implicit_table_columns_keep_governing_accounts(
+    first, settings, tmp_path
+):
+    settings.STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": tmp_path},
+        }
+    }
+    raw = f"""<bill><engrossed-amendment-body>
+      <section><enum>4601.</enum><table><tgroup cols="3">
+        <colspec colname="account" colnum="{first}"/>
+        <colspec colname="location" colnum="{first + 1}"/>
+        <colspec colname="amount" colnum="{first + 2}" coldef="fig"/>
+        <thead><row><entry namest="account" nameend="amount">Thousands of dollars</entry></row></thead>
+        <tbody>
+          <row id="account"><entry colname="account">Army construction</entry></row>
+          <row id="state"><entry/><entry>Alaska</entry></row>
+          <row><entry namest="account" nameend="location"/><entry>Pending approval</entry></row>
+          <row id="project"><entry>Anchorage housing</entry><entry colname="amount">25</entry></row>
+          <row><entry>Navy construction</entry></row>
+          <row id="next"><entry>Georgia housing</entry><entry colname="amount">30</entry></row>
+        </tbody>
+      </tgroup></table></section></engrossed-amendment-body></bill>""".encode()
+    document = _stored_document(raw, tmp_path)
+    document.refresh_from_db()
+    index = DependencyIndex(
+        document.extracted_text, stored_xml_sections(document, document.extracted_text)
+    )
+    levels = {node.identity: node.table_label_level for node in index.nodes}
+    assert (levels["account"], levels["state"]) == (0, 1)
+    project, _ = _context(index, "project")
+    assert "Army construction" in project
+    assert "Alaska" in project and "Thousands of dollars" in project
+    assert "Pending approval" not in project and "Navy construction" not in project
+    following, _ = _context(index, "next")
+    assert "Navy construction" in following
+    assert "Army construction" not in following and "Alaska" not in following
+
+
+def test_implicit_column_after_rowspan_and_sparse_colspec_keeps_nested_heading():
+    index = _index("""
+      <section><enum>1.</enum><table><tgroup cols="5">
+        <colspec colname="account" colnum="1"/>
+        <colspec colname="region" colnum="3"/>
+        <colspec colname="amount" coldef="fig"/>
+        <tbody>
+          <row><entry colname="account">Army construction</entry></row>
+          <row><entry namest="account" nameend="region" morerows="1"/><entry>Not appropriated</entry></row>
+          <row><entry>Not obligated</entry></row>
+          <row><entry colname="account" morerows="1"/></row>
+          <row><entry>Alaska</entry></row>
+          <row id="project"><entry>Anchorage housing</entry><entry colname="amount">25</entry></row>
+        </tbody>
+      </tgroup></table></section>""")
+    project, _ = _context(index, "project")
+    assert "Army construction" in project and "Alaska" in project
+    assert "Not appropriated" not in project and "Not obligated" not in project
+
+
+def test_table_group_has_its_own_columns_headings_and_units():
+    index = _index("""
+      <section><enum>1.</enum><table>
+        <tgroup cols="2"><thead><row><entry>Thousands of dollars</entry></row></thead>
+          <tbody><row><entry>Army construction</entry></row>
+            <row id="army"><entry>Army project</entry><entry>25</entry></row></tbody></tgroup>
+        <tgroup cols="2"><thead><row><entry>Number of buildings</entry></row></thead>
+          <tbody><row id="buildings"><entry>Housing project</entry><entry>5</entry></row></tbody></tgroup>
+      </table></section>""")
+    army, _ = _context(index, "army")
+    buildings, _ = _context(index, "buildings")
+    assert "Thousands of dollars" in army and "Number of buildings" not in army
+    assert "Number of buildings" in buildings
+    assert (
+        "Army construction" not in buildings and "Thousands of dollars" not in buildings
+    )
 
 
 @pytest.mark.parametrize(

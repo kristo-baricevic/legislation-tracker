@@ -5,11 +5,14 @@ received them. Reconstruct those fields over the original ownership intervals.
 This inventory is used only for matching a reservation, never for generation.
 """
 
+import re
 from bisect import bisect_right
 from functools import cached_property, partial
 
 from django.conf import settings
 from django.db.models import Q
+
+from apps.ingestion.document_download import _xml_tag
 
 from .providers.base import ProviderError
 from .reader_capacity import capacity
@@ -18,7 +21,62 @@ from .reader_dependencies import QUALIFICATION, DependencyIndex
 from .xml_sections import stored_xml_sections
 
 
+def _historical_table_row_levels(root):
+    """Recreate the 2327c54 table metadata used in pre-v15 charge keys."""
+    levels = {}
+
+    def walk(element, columns=None, figure_columns=frozenset(), in_header=False):
+        tag = _xml_tag(element)
+        if tag in {"table", "tgroup"}:
+            inherited = columns or {}
+            columns = dict(inherited)
+            figures = set(figure_columns)
+            for ordinal, spec in enumerate(
+                child for child in element if _xml_tag(child) == "colspec"
+            ):
+                name = spec.get("colname")
+                position = spec.get("colnum", "")
+                position = int(position) if position.isdigit() else ordinal
+                if name:
+                    columns[name] = position
+                    if spec.get("coldef", "").startswith("fig"):
+                        figures.add(position)
+            figure_columns = frozenset(figures)
+        if tag in {"thead", "tfoot"}:
+            in_header = True
+        if tag == "row":
+            entries = [child for child in element if _xml_tag(child) == "entry"]
+            nonempty = [entry for entry in entries if "".join(entry.itertext()).strip()]
+            if in_header or len(nonempty) != 1:
+                return
+            content = " ".join("".join(nonempty[0].itertext()).split())
+            if not any(character.isalpha() for character in content):
+                return
+
+            def position(name, fallback):
+                if name in (columns or {}):
+                    return columns[name]
+                number = re.fullmatch(r"(?:col|column)(\d+)", name or "", re.I)
+                return int(number[1]) if number else fallback
+
+            cursor = 0
+            for entry in entries:
+                start = position(entry.get("namest") or entry.get("colname"), cursor)
+                if entry is nonempty[0]:
+                    if start not in figure_columns:
+                        levels[element] = start
+                    return
+                cursor = position(entry.get("nameend"), start) + 1
+            return
+        for child in element:
+            walk(child, columns, figure_columns, in_header)
+
+    walk(root)
+    return levels
+
+
 class _PreviousIndex(DependencyIndex):
+    table_scopes = {"table"}
     inherited_definition_levels = (
         "Act|division|title|subtitle|chapter|section|subsection"
     )
@@ -92,7 +150,9 @@ class HistoricalReaderSources:
             # the *file* digest independently and aligns XML to that text.
             pinned_xml = manifest.get("document_xml_sha256")
             try:
-                sections = stored_xml_sections(doc, text)
+                sections = stored_xml_sections(
+                    doc, text, row_levels=_historical_table_row_levels
+                )
                 if (
                     manifest.get("source_kind") == "xml_full_review" and not sections
                 ) or (

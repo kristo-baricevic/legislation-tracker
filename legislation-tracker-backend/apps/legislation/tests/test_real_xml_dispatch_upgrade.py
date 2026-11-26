@@ -37,13 +37,41 @@ from .test_enhancement_service import (
     enhancement_settings,
 )
 from .test_large_bill_staged_flow import (
+    GRANT,
     RecordedModel,
     _confirmation,
     _cross_section_source,
 )
 
+
+def _table_source():
+    # Separate the project and both headers into different owned chunks.
+    directory = "".join(
+        f"<row><entry>Location {i}</entry><entry>{'Housing inventory. ' * 22}</entry></row>"
+        for i in range(75)
+    )
+    table = (
+        '<table><tgroup cols="3"><colspec colname="account" colnum="1"/>'
+        '<colspec colname="state" colnum="2"/><colspec colname="amount" colnum="3"/>'
+        '<tbody><row><entry colname="account">Army construction</entry></row>'
+        f"{directory}<row><entry/><entry>Alaska</entry></row>"
+        f"<row><entry>Anchorage</entry><entry>{GRANT}</entry></row></tbody></tgroup></table>"
+    )
+    return (
+        _cross_section_source()
+        .replace(f"<text>{GRANT}</text>".encode(), table.encode())
+        .replace(b"legis-body>", b"engrossed-amendment-body>")
+    )
+
+
 # (orphaned key, SHA-256 of provider envelope)
 CAPTURES = {
+    "table_summary": [
+        (
+            "ea604a5f0ff641826e95c73c52cb375813158818f5d9d5062f3b41e20e9c8d66",
+            "cfbe3035b859bfd19a9bd3de1da1e19b92e8a6130d6cb66fc5520b26f2895380",
+        ),
+    ],
     "s1071": [
         (
             "a3989ab9762cd6c3e0faf24adbb456fba6f94739447e69b3644a66b38ca87058",
@@ -88,6 +116,7 @@ CAPTURES = {
         ("cross_section", 0, "orphan"),
         ("cross_section", 1, "orphan"),
         ("summary", 0, "orphan"),
+        ("table_summary", 0, "orphan"),
     ],
     ids=[
         "s1071-identical",
@@ -101,6 +130,7 @@ CAPTURES = {
         "cross-identical",
         "cross-different",
         "summary-identical",
+        "mixed-grid-summary-identical",
     ],
 )
 def test_worker_respects_real_xml_orphan(
@@ -121,6 +151,9 @@ def test_worker_respects_real_xml_orphan(
             LLM_ENHANCEMENT_MAX_REQUEST_BYTES=24000,
             LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS=24000,
         )
+    elif source == "table_summary":
+        raw = _table_source()
+        limits = dict(LLM_READER_OWNED_TOKEN_TARGET=0)
     else:
         raw = _cross_section_source().replace(
             b"</legis-body>",
@@ -185,7 +218,7 @@ def test_worker_respects_real_xml_orphan(
             envelope = request.request_envelope
             selected = (
                 envelope.get("source_packet", {}).get("validated_changes")
-                if source == "summary"
+                if source.endswith("summary")
                 else envelope.get("dependency_review")
             )
             if selected:
@@ -215,7 +248,8 @@ def test_worker_respects_real_xml_orphan(
             == "pending"
         )
         assert model.calls and (
-            source == "summary" or all(stage == "map" for stage, _, _ in model.calls)
+            source.endswith("summary")
+            or all(stage == "map" for stage, _, _ in model.calls)
         )
         if history == "saved":
             old = deepcopy(attempt.enhancement)
