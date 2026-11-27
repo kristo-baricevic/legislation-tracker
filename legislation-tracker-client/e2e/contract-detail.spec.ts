@@ -148,11 +148,12 @@ test("a visitor can reconstruct and paginate exact evidence and open document li
   await expect(textLink).toHaveAttribute("href", /^\/documents\/\d+$/);
   await expect(downloadLink).toHaveAttribute("href", /\/api\/documents\/\d+\/download\/$/);
   expect((await request.get(await downloadLink.getAttribute("href") as string)).status()).toBe(200);
-  const readerResponse = page.waitForResponse(response => response.url().includes("/text/") && response.request().method() === "GET");
+  const reader = (await textLink.getAttribute("target")) === "_blank" ? page.waitForEvent("popup") : Promise.resolve(page);
+  const readerResponse = page.context().waitForEvent("response",response => response.url().includes("/text/") && response.request().method() === "GET");
   await textLink.click();
   expect((await readerResponse).status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "Rural Hospital Grants Act", exact: true })).toBeVisible();
-  await expect(page.getByText("Full bill text, not a summary. Wording is preserved from the stored source.")).toBeVisible();
+  await expect((await reader).getByRole("heading", { name: "Rural Hospital Grants Act", exact: true })).toBeVisible();
+  await expect((await reader).getByLabel("Find in bill text")).toBeVisible();
 });
 
 test("a visitor can inspect linked and paginated key terms", async ({ page, request }) => {
@@ -200,10 +201,10 @@ test("a visitor can select, search, and filter the complete voting record", asyn
   await expect(voting.getByRole("heading", { name: "Not voting — 1" })).toBeVisible();
 
   await voting.getByLabel("Search members").fill("Casey");
-  await expect(voting.getByText("Casey Chen")).toBeVisible();
-  await expect(voting.getByText("Alex Avery")).toHaveCount(0);
+  await expect(voting.getByRole("link", {name:"Casey Chen",exact:true})).toBeVisible();
+  await expect(voting.getByRole("link", {name:"Alex Avery",exact:true})).toHaveCount(0);
   await voting.getByLabel("Search members").fill("");
   await voting.getByLabel("Party").selectOption("Republican");
-  await expect(voting.getByText("Drew Diaz")).toBeVisible();
-  await expect(voting.getByText("Casey Chen")).toHaveCount(0);
+  await expect(voting.getByRole("link", {name:"Drew Diaz",exact:true})).toBeVisible();
+  await expect(voting.getByRole("link", {name:"Casey Chen",exact:true})).toHaveCount(0);
 });

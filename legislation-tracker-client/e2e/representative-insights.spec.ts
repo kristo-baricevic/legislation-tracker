@@ -22,13 +22,12 @@ test("a visitor can audit current representative evidence and a pairwise compari
 
   await page.goto(`/representatives/${alex!.id}?congress=119`);
   await expect(page.getByRole("heading", { name: "Alex Avery" })).toBeVisible();
-  await expect(page.getByText("2 / 2 roll calls")).toBeVisible();
-  await expect(
-    page.getByText("Complete official roll-call coverage."),
-  ).toBeVisible();
-  await expect(page.getByText("Rules Committee")).toBeVisible();
-  await expect(page.getByRole("link", { name: /HR E2E: Rural Hospital Grants Act/ })).toBeVisible();
-
+  await expect(page.getByRole("button",{name:"Rural Hospital Grants Act",exact:true}).first()).toBeVisible();
+  await page.getByRole("tab",{name:"Votes"}).click();
+  await expect(page.getByRole("list",{name:"Vote results"}).getByRole("listitem")).toHaveCount(2);
+  await expect(page.getByRole("list",{name:"Vote results"}).getByRole("link",{name:/Rural Hospital Grants Act/}).first()).toHaveAttribute("href",/^\/bills\/\d+$/);
+  await page.getByRole("tab",{name:"Committees"}).click();
+  await expect(page.getByText("Rules Committee",{exact:true}).first()).toBeVisible();
   await page.goto(
     `/representatives/compare?ids=${alex!.id},${blair!.id}&congress=119`,
   );
