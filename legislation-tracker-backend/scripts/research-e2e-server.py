@@ -44,6 +44,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.wsgi import get_wsgi_application
 from django.db import close_old_connections
+from django.utils import timezone
 
 from apps.campaign_finance.models import CandidateIdentity, RepresentativeCandidate
 from apps.congress.models import Representative
@@ -110,6 +111,10 @@ for number, chamber, fec in [
 
 
 def fec_page(path, params):
+    if path in {"communication_costs/by_candidate/", "electioneering/by_candidate/", "schedules/schedule_e/by_candidate/"}:
+        return {"results": [], "pagination": {"pages": 1}}
+    if path == "candidates/search/" and params.get("candidate_id") in {"H0NY00001", "S0NY00001", "S0NY00002", "H8NY15148"}:
+        return {"results": [{"candidate_id": params["candidate_id"], "cycles": [2026]}], "pagination": {"pages": 1}}
     if path == "candidates/search/":
         return {"results": [], "pagination": {"pages": 1}}
     if path.endswith("/committees/"):
@@ -259,7 +264,7 @@ def worker(stop_after_page=False):
         close_old_connections()
         work = (
             IngestionWorkItem.objects.filter(
-                kind="representative_research", status="pending"
+                kind="representative_research", status="pending", available_at__lte=timezone.now()
             )
             .order_by("id")
             .first()

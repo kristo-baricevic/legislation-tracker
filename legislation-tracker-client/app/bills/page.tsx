@@ -141,7 +141,6 @@ function BillsCatalog() {
   }), [trackingFilter]);
   const currentCongressRef = useRef<number | null>(null);
   const queryInputRef = useRef(queryInput);
-  const suppressNextQueryDebounceRef = useRef(true);
 
   const loadFilterMeta = useCallback(async () => {
     setFilterMetaReady(false);
@@ -191,7 +190,6 @@ function BillsCatalog() {
     setTopicIdFilter(nextTopicId ? String(nextTopicId) : "");
     setTopicFuzzyFilter(params.get("topic") ?? "");
     if (nextQuery !== queryInputRef.current) {
-      suppressNextQueryDebounceRef.current = true;
       queryInputRef.current = nextQuery;
       setQueryInput(nextQuery);
     }
@@ -200,17 +198,14 @@ function BillsCatalog() {
   }, [searchParamsKey]);
 
   useEffect(() => {
-    if (suppressNextQueryDebounceRef.current) {
-      suppressNextQueryDebounceRef.current = false;
-      return;
-    }
+    const nextQuery = queryInput.trim();
+    if (nextQuery === queryFilter) return;
     const timeout = window.setTimeout(() => {
-      const nextQuery = queryInput.trim();
       setQueryFilter(nextQuery);
       setPageNum(1);
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [queryInput]);
+  }, [queryInput, queryFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -578,7 +573,6 @@ function BillsCatalog() {
       setTopicFuzzyFilter(typeof query.topic === "string" ? query.topic : "");
       const nextQuery = typeof query.q === "string" ? query.q : "";
       if (nextQuery !== queryInputRef.current) {
-        suppressNextQueryDebounceRef.current = true;
         queryInputRef.current = nextQuery;
         setQueryInput(nextQuery);
       }
@@ -607,7 +601,7 @@ function BillsCatalog() {
           <div className="responsive-field-grid">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted">Full-text search</span>
-              <SearchInput value={queryInput} onChange={(event) => { setPageNum(1); queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, etc." className="rounded border border-control bg-paper px-2 py-1 text-ink" />
+              <SearchInput value={queryInput} onChange={(event) => { queryInputRef.current = event.target.value; setQueryInput(event.target.value); }} placeholder="Words in title, summary, etc." className="rounded border border-control bg-paper px-2 py-1 text-ink" />
             </label>
             <SelectField label="Sort" value={sort} options={[
               { value: "recent_activity", label: "Recent activity" },

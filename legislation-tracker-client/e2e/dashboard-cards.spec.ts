@@ -214,6 +214,26 @@ for (const width of [1280, 390]) test(`refreshing topics and recommendations kee
   expect(await row.boundingBox()).toEqual(box);
 });
 
+test("opening a saved search on page two keeps that page until the search changes", async ({page}) => {
+  await fixtures(page);
+  await page.clock.install();
+  await page.route("**/api/bills/?**", route => {
+    const second = new URL(route.request().url()).searchParams.get("page") === "2";
+    return route.fulfill({json:{count:21,next:null,previous:second ? "prev" : null,results:[second ? other : bill]}});
+  });
+  await page.goto("/bills?session=119&q=test&page=2");
+  await expect(page.getByRole("link", {name:other.title, exact:true})).toBeVisible();
+  await page.clock.fastForward(1000);
+  await expect(page).toHaveURL(/[?&]page=2(?:&|$)/);
+  await expect(page.getByRole("link", {name:other.title, exact:true})).toBeVisible();
+  await page.getByPlaceholder("Words in title, summary, etc.").fill("changed");
+  await page.clock.fastForward(1000);
+  await expect(page.getByRole("link", {name:bill.title, exact:true})).toBeVisible();
+  const params = new URL(page.url()).searchParams;
+  expect(params.get("q")).toBe("changed");
+  expect(params.has("page")).toBe(false);
+});
+
 for (const width of [1280, 390]) test(`catalog pagination retains content during requests at ${width}px`, async ({ page }) => {
   await page.setViewportSize({width,height:900});
   await fixtures(page);
@@ -267,7 +287,7 @@ for (const width of [1280, 390]) test(`bill tracking does not flash the wrong ac
   await page.setViewportSize({width,height:900});
   await fixtures(page);
   let release!: () => void;
-  await page.route("**/api/tracking/", async route => {
+  await page.route(url => url.pathname === "/api/tracking/" && url.searchParams.get("view") === "membership", async route => {
     await new Promise<void>(resolve => {release = resolve;});
     await route.fulfill({json:{bills:[{id:1,bill,created_at:"2026-01-01"}],topics:[],legislators:[],is_staff:false}});
   });
@@ -276,6 +296,7 @@ for (const width of [1280, 390]) test(`bill tracking does not flash the wrong ac
   await expect(control).toBeDisabled();
   await expect(page.getByRole("button",{name:"Track bill",exact:true})).toHaveCount(0);
   await page.screenshot({path:info.outputPath(`tracking-pending-${width}.png`)});
+  await expect.poll(() => Boolean(release)).toBe(true);
   release();
   await expect(page.getByRole("button",{name:"Tracked bill",exact:true})).toBeEnabled();
 });
@@ -534,7 +555,7 @@ test("dashboard to bill and back reuses unchanged cards without loading the dire
   expect(paths.filter(p => p === "/api/auth/session/current/")).toHaveLength(1);
 });
 
-test("readers see the live panel without samples or automatic ingestion requests", async ({ page }) => {
+test("ordinary readers cannot access ingestion controls or trigger ingestion requests", async ({ page }) => {
   const writes: string[] = [];
   const ingestionRequests: string[] = [];
   page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method()) && request.url().includes("/api/")) writes.push(request.url()); });
@@ -543,8 +564,7 @@ test("readers see the live panel without samples or automatic ingestion requests
   await fixtures(page); await page.goto("/");
   await expect(page.getByRole("button", { name: bill.title, exact: true })).toBeVisible();
   const panel = page.getByRole("region", { name: "Legislation ingestion" });
-  await expect(panel).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
+  await expect(panel).toHaveCount(0);
   await expect(page.getByLabel("Show ingestion telemetry preview")).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   expect(writes).toEqual([]);
@@ -556,15 +576,15 @@ test("staff dashboard never exposes sample telemetry even with a legacy preferen
   page.on("request", request => { if (request.url().includes("/api/ingestion/")) ingestionRequests.push(request.url()); });
   await page.addInitScript(() => localStorage.setItem("legislation-tracker-ingestion-telemetry", "true"));
   await fixtures(page);
-  await page.route("**/api/tracking/", route => route.fulfill({ json: { bills: [], topics: [], legislators: [], is_staff: true } }));
+  await page.route("**/api/auth/session/current/**", route => route.fulfill({ json: { authenticated: true, user: { email: "admin@example.com", is_superuser: true } } }));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Refresh telemetry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Expand legislation ingestion" })).toBeVisible();
   const toggle = page.getByLabel("Show ingestion telemetry preview");
   await expect(toggle).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Show sample data")).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("button", { name: "Refresh telemetry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Expand legislation ingestion" })).toBeVisible();
   await expect(toggle).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   expect(ingestionRequests).toEqual([]);
@@ -718,13 +738,13 @@ test("absent summary and version order are honest; stale comparisons never repla
 
 test("telemetry separates incremental readiness from historical inventory gaps", async ({page}) => {
   await fixtures(page);
-  await page.route("**/api/tracking/",route=>route.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:true}}));
+  await page.route("**/api/auth/session/current/**", route => route.fulfill({ json: { authenticated: true, user: { email: "admin@example.com", is_superuser: true } } }));
   await page.route("**/api/ingestion/telemetry/**",route=>route.fulfill({json:{observed_at:"2026-10-09T18:10:00Z",counts_by_kind_and_status:[],stale_leases:0,discovery_run:null,recent_work_states:[]}}));
   let valid=true;
   await page.route("**/api/ingestion/source-readiness/**",route=>route.fulfill({json:{available:true,age_seconds:1,complete:true,missing_unqueued_metadata:9,ready_to_start:valid?3:null,incremental_discoverable_count_available:valid,discovery_basis:{cursor_at:"2026-10-09T18:00:00Z",from_date_time:"2026-10-09T17:55:00Z"},discovery_checked_completed_at:"2026-10-09T18:10:00Z"}}));
   await page.goto("/");
   const panel=page.getByRole("region",{name:"Legislation ingestion"});
-  await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  await panel.getByRole("button",{name:"Expand legislation ingestion"}).click();
   await panel.getByText("Source & technical details", {exact:true}).click();
   const ready=panel.getByRole("heading",{name:"Ready for incremental discovery"}).locator("..");
   const gaps=panel.getByRole("heading",{name:"Missing unqueued metadata"}).locator("..");
