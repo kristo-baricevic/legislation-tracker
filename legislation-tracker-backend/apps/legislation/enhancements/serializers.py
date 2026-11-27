@@ -7,6 +7,7 @@ from rest_framework import serializers
 from apps.legislation.models import BillEnhancement, BillEnhancementAttempt
 
 from .citations import citation_spans
+from .funding_publication import project_provisions, project_staged_item
 from .prompts import LEGAL_INFORMATION_DISCLAIMER, TRUNCATED_COVERAGE_NOTICE
 from .service import retry_allowed
 
@@ -40,16 +41,24 @@ def _attempt_payload(attempt: BillEnhancementAttempt) -> dict:
     }
 
 
-def _expanded_result(enhancement: BillEnhancement):
+def _expanded_result(enhancement: BillEnhancement, *, preview_only=False):
     if enhancement.result_json is None:
         return None
-    result = copy.deepcopy(enhancement.result_json)
+    raw = enhancement.result_json
+    if preview_only and raw.get("schema_version") != "2.0-source-first":
+        result = {
+            key: copy.deepcopy(raw[key])
+            for key in ("schema_version", "summary", "overview")
+            if key in raw
+        }
+    else:
+        result = copy.deepcopy(raw)
     if result.get("schema_version") == "2.0-source-first":
-        return result
+        return project_provisions(result)
     sources = {
         source["source_ref"]: source for source in enhancement.source_snapshot_json
     }
-    if result.get("schema_version") == "1.4":
+    if result.get("schema_version") == "1.4" and not preview_only:
         from .reader_targets import snapshot_targets
 
         targets = {
@@ -155,6 +164,7 @@ def _expanded_result(enhancement: BillEnhancement):
                             ),
                         }
                     )
+                project_staged_item(item, category, sources)
                 continue
             item["cited_sources"] = [
                 {
@@ -168,6 +178,7 @@ def _expanded_result(enhancement: BillEnhancement):
                 for source_ref in item.get("source_refs", [])
                 if source_ref in sources
             ]
+            project_staged_item(item, category, sources)
     return result
 
 

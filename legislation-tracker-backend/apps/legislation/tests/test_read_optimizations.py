@@ -243,7 +243,7 @@ def test_enhanced_card_reads_are_batched(count, schema):
         BillProcessingCache.objects.create(
             pk=validation_key(saved),
             kind="reader-validation",
-            result_json={"valid": True},
+            result_json={"valid": True, "preview": f"Saved summary {n}"},
         )
         rows.append({"bill": {"id": bill.pk}})
     with CaptureQueriesContext(connection) as queries:
@@ -293,7 +293,7 @@ def test_resolved_card_history_is_never_loaded_when_another_card_has_no_result(
     BillProcessingCache.objects.create(
         pk=validation_key(current),
         kind="reader-validation",
-        result_json={"valid": True},
+        result_json={"valid": True, "preview": "Enhanced"},
     )
     if other_result == "stale":
         second_manifest["document_content_hash"] = "old"

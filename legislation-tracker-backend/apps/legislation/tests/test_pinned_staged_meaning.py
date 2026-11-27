@@ -264,6 +264,14 @@ def test_pinned_terms_survive_map_reconciliation_and_publication(
         .replace(GRANT.encode(), primary.encode())
         .replace(MATCHING.encode(), escape(rules[1][0]).encode())
     )
+    if bill == "119s1071eah":
+        # Use the military provision's subject in its headings as well as its
+        # operative text. The shared fixture otherwise calls it a school grant.
+        raw = (
+            raw.replace(b"School grants", b"Notification")
+            .replace(b"Grant requirements", b"Disinterment requirements")
+            .replace(b"Matching contribution", b"Disinterment")
+        )
     if len(rules) > 2:
         raw = raw.replace(
             b"</legis-body>",
@@ -329,10 +337,20 @@ def test_pinned_terms_survive_map_reconciliation_and_publication(
         primary_item = next(
             p for p in saved_review["policy_drafts"] if p["title"] == rules[0][2]
         )
-        assert any(joint in p["text"] for p in review["policy_changes"])
+        if bill == "119s1071eah":
+            assert any(joint in p["text"] for p in review["policy_changes"])
+        else:
+            assert any(
+                all(rule[1] in p["text"] for rule in rules[:2])
+                for p in review["policy_changes"]
+            )
         assert primary_item["text"] == joint
         assert all(
             any(rule[1] in q["quote"] for q in primary_item["source_quotes"])
             for rule in rules[:2]
         )
-        assert result["summary"][0]["text"] == joint
+        public_summary = result["summary"][0]["text"]
+        if bill == "119s1071eah":
+            assert public_summary == joint
+        else:
+            assert all(rule[1] in public_summary for rule in rules[:2])

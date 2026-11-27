@@ -16,9 +16,9 @@ function Condition({ node }: { node: AnalysisCondition }) {
 
 export default function SourceFirstAnalysis({ result }: { result: SourceFirstResult }) {
   const explained = result.provisions.filter(p => p.status === "explained").length;
-  const moneyCount = result.provisions.reduce((n, p) => n + p.claims.reduce((sum, c) => sum + c.money.length, 0), 0);
+  const moneyCount = result.provisions.reduce((n, p) => n + p.claims.reduce((sum, c) => sum + (c.funding_text ? 1 : c.money.length), 0), 0);
   const financialItems = result.provisions.flatMap(p => p.claims.flatMap(c => c.money));
-  const onlyHarmThresholds = financialItems.length > 0 && financialItems.every(item => item.measure?.trim().toLowerCase() === "financial harm threshold");
+  const onlyHarmThresholds = result.provisions.every(p => p.claims.every(c => !c.funding_text)) && financialItems.length > 0 && financialItems.every(item => item.measure?.trim().toLowerCase() === "financial harm threshold");
   return <div className="mt-5 max-w-3xl space-y-6 leading-relaxed">
     {result.coverage.unresolved_unit_ids.length > 0 && <p className="border-l-2 border-amber-400 pl-3 text-sm">Partial AI analysis: {explained} of {result.provisions.length} provisions explained. Unresolved provisions remain available below.</p>}
     {!!result.coverage.context_limited_unit_ids?.length && <p className="border-l-2 border-amber-400 pl-3 text-sm">This analysis explains the supplied bill text. It does not explain the referenced outside law or establish its full legal effect.</p>}
@@ -30,8 +30,8 @@ export default function SourceFirstAnalysis({ result }: { result: SourceFirstRes
       {provision.status === "explained" ? <>
         <p className="font-semibold">{provision.summary}</p>
         {provision.details.length > 0 && <ul className="list-disc space-y-2 pl-5">{provision.details.map((detail, i) => <li key={i}>{detail}</li>)}</ul>}
-        {!!provision.claims.length && <details><summary className="cursor-pointer font-semibold">All rules and requirements ({provision.claims.length})</summary><ul className="mt-3 list-disc space-y-2 pl-5">{provision.claims.map((claim, i) => <li key={i}>{claimLabel(claim)}{claim.conditions && <Condition node={claim.conditions} />}{claim.exceptions.map((node, n) => <div key={n}><p>Exception:</p><Condition node={node} /></div>)}</li>)}</ul></details>}
-        {provision.claims.flatMap(claim => claim.money.map(money => ({ claim, money }))).map(({ claim, money }, i) => <div key={i} className="border-l-2 border-amber-400 pl-3 text-sm">
+        {!!provision.claims.length && <details><summary className="cursor-pointer font-semibold">All rules and requirements ({provision.claims.length})</summary><ul className="mt-3 list-disc space-y-2 pl-5">{provision.claims.map((claim, i) => <li key={i}>{claim.funding_text ?? claimLabel(claim)}{!claim.funding_text && claim.conditions && <Condition node={claim.conditions} />}{!claim.funding_text && claim.exceptions.map((node, n) => <div key={n}><p>Exception:</p><Condition node={node} /></div>)}</li>)}</ul></details>}
+        {provision.claims.filter(claim => !claim.funding_text).flatMap(claim => claim.money.map(money => ({ claim, money }))).map(({ claim, money }, i) => <div key={i} className="border-l-2 border-amber-400 pl-3 text-sm">
           <p className="font-semibold">{claimLabel(claim)}</p>
           <p className="font-semibold">{money.amount === null ? "Amount not specified" : `${money.comparator ?? ""} ${money.currency ?? ""} ${money.amount}`.trim()}</p>
           <p>{money.purpose ?? "Purpose needs source review"}</p>

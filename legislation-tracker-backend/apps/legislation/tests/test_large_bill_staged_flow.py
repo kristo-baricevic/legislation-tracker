@@ -520,10 +520,16 @@ def test_large_dependency_finishes_or_reports_real_gap_without_repaying(
         )
         latest = client.get(f"/api/bills/{document.bill_id}/enhancements/latest/")
         assert latest.status_code == 200
-        assert [
-            (s["text"], s["source_quotes"])
-            for s in latest.data["active_reader"]["result"]["summary"]
-        ] == [(s["text"], s["source_quotes"]) for s in result["summary"]]
+        public = latest.data["active_reader"]["result"]
+        assert MATCHING in public["summary"][0]["text"]
+        assert (
+            public["summary"][0]["source_quotes"]
+            == result["summary"][0]["source_quotes"]
+        )
+        assert any(
+            GRANT in item["text"] and MATCHING in item["text"]
+            for item in public["source_review"]["policy_changes"]
+        )
         if mode == "complete" and os.environ.get("STAGED_READER_CLIENT"):
             server = request.getfixturevalue("live_server")
             login = APIClient().post(

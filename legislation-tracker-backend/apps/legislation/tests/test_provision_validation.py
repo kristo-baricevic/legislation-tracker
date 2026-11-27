@@ -1054,6 +1054,47 @@ def test_funding_amount_comparator_stays_with_amount_and_condition(path, bound, 
     )
 
 
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source,statement,extra_amount",
+    [
+        (
+            "The Secretary {rule} spend $100 for grants.",
+            "The Secretary is required to spend $100 for grants.",
+            None,
+        ),
+        ("There is {rule} $100 for grants.", "The bill provides grants of $100.", None),
+        (
+            "There is appropriated {rule} for grants.",
+            "The bill appropriates $100 per year for grants.",
+            None,
+        ),
+        (
+            "There is appropriated {rule} for grants.",
+            "The bill appropriates exactly $100 for grants.",
+            "50",
+        ),
+    ],
+)
+@pytest.mark.parametrize("faithful", [False, True])
+def test_funding_public_contract(path, source, statement, extra_amount, faithful):
+    if "required" in statement:
+        rules = ("may", "shall")
+    elif "provides" in statement:
+        rules = ("authorized to be appropriated", "appropriated")
+    elif "per year" in statement:
+        rules = ("a total of $100", "$100 per year")
+    else:
+        rules = ("between $50 and $100", "exactly $100")
+    _check_funding_statement(
+        path,
+        source.format(rule=rules[faithful]),
+        statement,
+        faithful,
+        extra_amount=extra_amount if not faithful else None,
+    )
+
+
 def _check_funding_statement(
     path,
     evidence,

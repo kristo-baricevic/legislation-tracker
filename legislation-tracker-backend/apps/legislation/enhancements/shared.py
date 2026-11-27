@@ -157,7 +157,7 @@ def validation_key(saved):
 
     from .reader_cache import VALIDATOR_VERSION
 
-    identity = f"bill-validation:projection-17:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}"
+    identity = f"bill-validation:projection-18:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}"
     if saved.output_schema_version == "2.0-source-first":
         identity += f":{saved.result_completeness}"
     return hashlib.sha256(identity.encode()).hexdigest()
@@ -184,6 +184,7 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
     fingerprint = validation_key(saved)
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
+        saved.public_preview = cached.result_json.get("preview", "")
         return cached.result_json["valid"]
     valid = True
     try:
@@ -209,9 +210,33 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
             )
     except (ValidationError, KeyError, TypeError, ValueError):
         valid = False
+    saved.public_preview = ""
+    if valid:
+        from .serializers import _expanded_result
+
+        public = _expanded_result(saved, preview_only=True)
+        if public.get("schema_version") == "2.0-source-first":
+            saved.public_preview = public["synopsis"]["text"]
+        else:
+            saved.public_preview = " ".join(
+                item["text"]
+                for item in public.get("summary", public.get("overview", []))
+            )
+    if len(saved.public_preview) > 800:
+        from .funding_publication import funding_context
+
+        if funding_context([saved.public_preview]):
+            saved.public_preview = (
+                "Read the cited bill text for the full funding terms."
+            )
+        else:
+            saved.public_preview = saved.public_preview[:800]
     BillProcessingCache.objects.get_or_create(
         pk=fingerprint,
-        defaults={"kind": "reader-validation", "result_json": {"valid": valid}},
+        defaults={
+            "kind": "reader-validation",
+            "result_json": {"valid": valid, "preview": saved.public_preview},
+        },
     )
     return valid
 

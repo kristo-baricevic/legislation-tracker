@@ -29,6 +29,7 @@ from .test_source_first_schema import explanation
         (33, "coverage"),
         (1, "unresolved"),
         (1, "synopsis"),
+        (0, "authority"),
         (1, "completeness"),
     ],
 )
@@ -92,7 +93,14 @@ def test_saved_reader_validates_its_publication_without_planning_missing_work(
             pk=old, kind="reader-validation", result_json={"valid": False}
         )
     if corruption:
-        if corruption == "summary":
+        if corruption == "authority":
+            output["provisions"][0][
+                "summary"
+            ] = "The Secretary may keep the $100 for grants."
+            output["synopsis"]["text"] = output["provisions"][0]["summary"]
+            # A prior validator might have accepted this result. Neither an
+            # old boolean receipt nor its preview is public evidence.
+        elif corruption == "summary":
             output["provisions"][0]["summary"] = "The Secretary must pay $999."
         elif corruption == "evidence":
             output["provisions"][0]["evidence"][0]["text"] = "Different source."
@@ -103,11 +111,18 @@ def test_saved_reader_validates_its_publication_without_planning_missing_work(
         elif corruption == "synopsis":
             output["synopsis"]["text"] = "The Secretary must pay $999."
         elif corruption == "completeness":
-            assert client.get(url).data["result"] == output
+            assert client.get(url).data["result"]["coverage"] == output["coverage"]
             saved.result_completeness = "complete"
         saved.result_json = output
         saved.save()
         saved.refresh_from_db()
+        if corruption == "authority":
+            old_key = sha256(
+                f"bill-validation:projection-17:{saved.source_fingerprint}:{saved.output_schema_version}:2:{saved.validation_digest}:{saved.result_completeness}".encode()
+            ).hexdigest()
+            BillProcessingCache.objects.create(
+                pk=old_key, kind="reader-validation", result_json={"valid": True}
+            )
 
     planner = Mock(wraps=provision_pipeline._plan_built_graph)
     prepare = Mock(wraps=provision_pipeline._call)
@@ -115,9 +130,31 @@ def test_saved_reader_validates_its_publication_without_planning_missing_work(
     monkeypatch.setattr(provision_pipeline, "_call", prepare)
     response = client.get(url)
     assert response.status_code == 200
-    assert response.data["result"] == (None if corruption else output)
-    assert BillProcessingCache.objects.get(pk=validation_key(saved)).result_json == {
-        "valid": not corruption
-    }
+    public = response.data["result"]
+    if corruption and corruption != "authority":
+        assert public is None
+    else:
+        assert public["coverage"] == output["coverage"]
+        assert public["provisions"][1:] == output["provisions"][1:]
+        expected = "SEC. 1. PAYMENT\nThe Secretary shall pay $100."
+        assert public["provisions"][0]["summary"] == expected
+        assert public["provisions"][0]["claims"][0]["funding_text"] == expected
+        assert public["synopsis"]["text"] == expected
+    receipt = BillProcessingCache.objects.get(pk=validation_key(saved)).result_json
+    assert receipt["valid"] is (public is not None)
+    assert receipt["preview"] == (public["synopsis"]["text"] if public else "")
+    if corruption == "authority":
+        from apps.accounts.dashboard_bill_cards import add_card_summaries
+        from apps.legislation.enhancements.shared import source_first_reuse
+
+        # Reuse the private checkpoint without a provider call. The same public
+        # projection also supplies the warm card receipt, and a repeated read.
+        assert (
+            source_first_reuse(saved)["provisions"][0]["unit_id"] == graph.units[0].id
+        )
+        assert client.get(url).data["result"] == public
+        row = {"bill": {"id": bill.pk}}
+        add_card_summaries([row])
+        assert row["bill"]["card_summary"] == " ".join(expected.split())
     planner.assert_not_called()
     prepare.assert_not_called()

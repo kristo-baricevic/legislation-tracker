@@ -19,8 +19,8 @@ async function check() {
     await page.goto(origin + "/bills/" + billId + "?tab=changes");
     const enhanced = page.getByRole("button", {name:"Enhanced", exact:true});
     await enhanced.click();
-    await expect(page.getByText("School grants require a non-Federal contribution equal to 50 percent of the grant amount.", {exact:false}).first()).toBeVisible();
-    await expect(page.getByText("The Secretary must award grants to qualifying schools, requiring a non-Federal matching contribution equal to 50 percent of the grant amount.", {exact:false}).first()).toBeVisible();
+    await expect(page.getByText("A grant under section 1 of this Act is subject to a non-Federal matching contribution equal to 50 percent of the grant amount.", {exact:false}).first()).toBeVisible();
+    await expect(page.getByText("The Secretary shall award grants to qualifying schools under section 2 of this Act.", {exact:false}).first()).toBeVisible();
     await page.getByRole("tab",{name:"Money",exact:true}).click();
     await expect(page.getByRole("tabpanel")).toContainText("50 percent");
   } finally {

@@ -217,6 +217,6 @@ def replaces_invalid_publication(enhancement, candidate):
         and BillProcessingCache.objects.filter(
             pk=validation_key(enhancement),
             kind="reader-validation",
-            result_json={"valid": False},
+            result_json__valid=False,
         ).exists()
     )

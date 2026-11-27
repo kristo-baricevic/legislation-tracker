@@ -134,11 +134,13 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     result = enhancement_payload(attempt.enhancement, detail=True)["result"]
     assert result["explanations"] == []
     money = result["source_review"]["financial_items"]
-    assert money[0]["amount_display"] == "$100 million"
+    assert "$100,000,000" in money[0]["text"]
+    assert "The first housing grant shall be" in money[0]["text"]
     assert "$100,000,000" in money[0]["cited_sources"][0]["quoted_text"]
     assert money[0]["cited_sources"][0]["start_char"] == 0
     policy = result["source_review"]["policy_changes"]
-    assert policy[0]["title"] == "Help build homes"
+    assert policy[0]["title"] == "Funding provision"
+    assert "The first housing grant shall be $100,000,000." in policy[0]["text"]
     assert "policy_drafts" not in result["source_review"]
     assert "$100,000,000" in policy[0]["cited_sources"][0]["quoted_text"]
     with enhancement_settings:

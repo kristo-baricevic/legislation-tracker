@@ -102,7 +102,7 @@ export function LegacyReaderChanges({ children }: { children: ReactNode }) {
   if (!result || identity?.documentId == null) return <>{children}</>;
   const rows = [
     ...result.key_impacts.map(item => ({ ...item, label: "Change" })),
-    ...result.obligations.map(item => ({ text: `${item.actor} ${{ required: "must", prohibited: "must not", permitted: "may" }[item.modality]} ${item.action}${item.conditions ? ` ${item.conditions}` : ""}`, cited_sources: item.cited_sources, label: "Requirement" })),
+    ...result.obligations.map(item => ({ text: item.funding_text ?? `${item.actor} ${{ required: "must", prohibited: "must not", permitted: "may", unspecified: "" }[item.modality]} ${item.action}${item.conditions ? ` ${item.conditions}` : ""}`, cited_sources: item.cited_sources, label: "Requirement" })),
     ...result.funding_and_timing.map(item => ({ ...item, label: item.kind === "funding" ? "Money" : "Timing" })),
     ...result.uncertain_language.map(item => ({ ...item, text: `${item.text} ${item.why_it_matters}`, label: "Uncertainty" })),
   ];

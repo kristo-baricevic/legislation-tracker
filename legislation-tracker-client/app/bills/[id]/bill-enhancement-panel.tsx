@@ -92,8 +92,8 @@ function EnhancementResult({ enhancement }: { enhancement: BillEnhancement }) {
           <ul className="mt-2 space-y-4">
             {result.obligations.map((item, index) => (
               <li key={`${item.action}-${index}`}>
-                <p><strong>{item.actor}</strong> {({ required: "must", prohibited: "must not", permitted: "may" } as const)[item.modality]} {item.action}</p>
-                {item.conditions && <p className="mt-1 text-sm text-slate-600 dark:text-green-500">{item.conditions}</p>}
+                <p>{item.funding_text ?? <><strong>{item.actor}</strong> {({ required: "must", prohibited: "must not", permitted: "may", unspecified: "" } as const)[item.modality]} {item.action}</>}</p>
+                {!item.funding_text && item.conditions && <p className="mt-1 text-sm text-slate-600 dark:text-green-500">{item.conditions}</p>}
                 <CitedSources sources={item.cited_sources} />
               </li>
             ))}

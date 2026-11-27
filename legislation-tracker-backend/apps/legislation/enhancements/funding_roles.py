@@ -87,6 +87,12 @@ _BOUND_SUFFIX = re.compile(r"^\s*(or less|or more|at most|at least|exactly)\b", 
 
 
 def _amount_comparator(prefix, suffix):
+    if re.search(r"\bbetween\s*$", prefix, re.I) and re.match(
+        r"\s+and\s+\$", suffix, re.I
+    ):
+        return "range start"
+    if re.search(rf"\bbetween\s+{_DOLLAR}\s+and\s*$", prefix, re.I):
+        return "range end"
     if match := _BOUND_PREFIX.search(prefix):
         return _BOUND_NAMES[match[1].casefold()]
     if match := _BOUND_SUFFIX.match(suffix):
@@ -260,6 +266,7 @@ class FundingDecision:
     prerequisites: frozenset[str]
     wording: str
     comparator: str = "exact"
+    timing: tuple[str, ...] = ()
 
 
 def _purpose(text):
@@ -335,6 +342,44 @@ _NEGATIVE_SUBJECT = re.compile(
 )
 
 
+_TIMING = re.compile(
+    r"\b(?:per (?:fiscal |calendar )?(?:year|month|quarter|day)|annually|monthly|quarterly|"
+    r"(?:for |in )?(?:each of )?(?:fiscal|calendar) years?\s+\d{4}(?:\s*(?:through|to|[-–])\s*\d{4})?)\b",
+    re.I,
+)
+
+
+def _funding_period(text):
+    periods = set()
+    for match in _TIMING.finditer(text):
+        phrase = match[0].lower()
+        if (
+            phrase in {"per year", "per fiscal year", "per calendar year", "annually"}
+            or "each of" in phrase
+        ):
+            periods.add("annual")
+        elif phrase in {"monthly", "per month"}:
+            periods.add("monthly")
+        elif phrase in {"quarterly", "per quarter"}:
+            periods.add("quarterly")
+        if years := re.findall(r"\d{4}", phrase):
+            periods.add(
+                ("fiscal " if "fiscal" in phrase else "calendar ") + "-".join(years)
+            )
+        elif phrase not in {
+            "monthly",
+            "per month",
+            "quarterly",
+            "per quarter",
+            "per year",
+            "per fiscal year",
+            "per calendar year",
+            "annually",
+        }:
+            periods.add(phrase)
+    return tuple(sorted(periods))
+
+
 def _clause_decisions(clause, prerequisites, subordinate):
     for source in _AUTH_SOURCE.finditer(clause):
         for amount in dollar_amounts(source[0]):
@@ -372,7 +417,7 @@ def _clause_decisions(clause, prerequisites, subordinate):
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(decision)
         comparator = _amount_comparator(
-            decision[: match.start()], decision[match.end() : end]
+            decision[: match.start()], decision[match.end() :]
         )
         if index + 1 < len(matches):
             following = _BOUND_PREFIX.search(decision, match.end(), end)
@@ -386,13 +431,23 @@ def _clause_decisions(clause, prerequisites, subordinate):
             prerequisites,
             wording,
             comparator,
+            _funding_period(decision),
         )
+
+
+def _funding_language(text):
+    text = _currency_text(text)
+    text = re.sub(r"\b(?:is|are) required to\b", "must", text, flags=re.I)
+    # Put the funding object in the same position as "provides $100 for grants".
+    return re.sub(
+        rf"\bprovides ([\w-]+) of ({_DOLLAR})", r"provides \2 for \1", text, flags=re.I
+    )
 
 
 def funding_decisions(texts):
     return [
         rule
-        for text in map(_currency_text, texts)
+        for text in map(_funding_language, texts)
         if "$" in text or _UNQUANTIFIED_MONEY.search(text)
         for scope, prerequisites, subordinate in funding_scopes(text)
         for clause in _funding_clauses(scope)
@@ -413,7 +468,9 @@ _SUPPORTED_AUTHORITIES = {
 }
 
 
-def _unsupported(amount, purpose, authority, comparator, prerequisites, wording, cited):
+def _unsupported(
+    amount, purpose, authority, comparator, prerequisites, wording, cited, timing=None
+):
     candidates = [rule for rule in cited if amount is None or rule.amount == amount]
     if not candidates:
         return True
@@ -430,6 +487,7 @@ def _unsupported(amount, purpose, authority, comparator, prerequisites, wording,
         if (
             decision.authority not in _SUPPORTED_AUTHORITIES[authority]
             or decision.comparator != comparator
+            or (timing is not None and decision.timing != timing)
         ):
             continue
         if purpose and decision.purpose and decision.purpose != purpose:
@@ -465,6 +523,7 @@ def funding_statement_conflicts(text, cited, prerequisites=frozenset()):
             prerequisites | d.prerequisites,
             d.wording,
             cited,
+            d.timing,
         )
         for d in funding_decisions([text])
     )

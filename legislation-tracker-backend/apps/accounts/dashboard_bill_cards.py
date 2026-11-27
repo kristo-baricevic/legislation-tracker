@@ -37,10 +37,6 @@ def _card_candidate_batches(bill_ids, status, chosen, documents):
         "validation_digest",
         "result_completeness",
         "output_schema_version",
-    ).annotate(
-        clauses=F("result_json__summary"),
-        overview=F("result_json__overview"),
-        synopsis=F("result_json__synopsis__text"),
     )
 
     # The initial probe fetches just one preview per bill, regardless of history.
@@ -134,7 +130,7 @@ def _enhanced_cards(bills):
                     pk__in=[
                         validation_key(row) for row in rows if row.status == "succeeded"
                     ]
-                ).values_list("pk", "result_json__valid")
+                ).values_list("pk", "result_json")
             )
             for row in rows:
                 if row.bill_id in chosen:
@@ -150,9 +146,12 @@ def _enhanced_cards(bills):
                 elif not source_compatible(row, bill, identity=(document, contract)):
                     continue
                 if row.status == "succeeded":
-                    valid = validity.get(validation_key(row))
-                    if valid is None:
+                    receipt = validity.get(validation_key(row))
+                    if receipt is None:
                         valid = _reader_result_valid(row, source_first_inputs=inputs)
+                    else:
+                        valid = receipt["valid"]
+                        row.public_preview = receipt.get("preview", "")
                     if not valid:
                         continue
                 chosen[bill.pk] = row
@@ -208,15 +207,7 @@ def add_card_summaries(rows):
         )
         saved = enhanced.get(bill.pk)
         if saved and saved.status == "succeeded":
-            clauses = saved.clauses or saved.overview or []
-            summary = (
-                " ".join(
-                    c["text"] for c in clauses if isinstance(c, dict) and c.get("text")
-                )
-                or summary
-            )
-            if saved.output_schema_version == "2.0-source-first":
-                summary = saved.synopsis or summary
+            summary = saved.public_preview or summary
         card.update(
             card_summary=" ".join(summary.split())[:800],
             enhancement_status=saved.status if saved else None,
