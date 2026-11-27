@@ -29,4 +29,3 @@ export async function fixtures(page: Page) {
     await route.fulfill({ json: value });
   });
 }
-
