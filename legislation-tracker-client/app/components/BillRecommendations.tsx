@@ -69,7 +69,7 @@ export default function BillRecommendations({ onOpenBill, onDismissBill, filters
   const [completedPage, setCompletedPage] = React.useState<string | null>(null);
   const [paging, setPaging] = React.useState<string | null>(null);
   const generation = state.scope ? `${state.scope.sessionGeneration}:${state.scope.interestGeneration}:${filterQuery}` : "";
-  const dashboardLoading = useDashboardLoading("bills", state.loading);
+  const dashboardLoading = useDashboardLoading("bills", state.loading && !state.data);
   async function follow(id: number) {
     const scope = state.scope ?? capturePersonalizedScope();
     if (!isPersonalizedScopeCurrent(scope)) return;

@@ -1,13 +1,14 @@
-"""Experimental source ownership targets measured with a conservative byte estimate."""
+"""Bounded source ownership with exact, citeable legal dependencies."""
 
 import hashlib
 import re
-from functools import lru_cache
+from bisect import bisect_left, bisect_right
 
 from django.conf import settings
 
 from .reader_capacity import capacity
-from .source_graph import build_source_graph
+from .reader_citations import citation_passages
+from .reader_dependencies import CONTEXT_PLANNER_VERSION, DependencyIndex
 
 
 def owned_spans(text, left, right, target):
@@ -27,73 +28,122 @@ def owned_spans(text, left, right, target):
         left = end
 
 
-def planned_sources(document, text, first_ref, target, xml_sections):
-    graph = build_source_graph(
-        str(document.pk), document.version_label, text, xml_sections=xml_sections
-    )
+def _citable_owners(sources, owners, first_ref, cell_edges):
+    """Give repeated nonblank passages their own exact, unambiguous source.
 
-    @lru_cache(maxsize=4096)
-    def dependency(a, b):
-        data = text[a:b].encode()
-        return {
-            "start": a,
-            "end": b,
-            "bytes": len(data),
-            "sha256": hashlib.sha256(data).hexdigest(),
-        }
+    Quote matching remains strict. A repeated passage cannot be selected inside
+    its larger owner, but the exact same passage is unique when it is the whole
+    owner. Split before assigning final references or building dependency edges,
+    preserving all structural owners that overlap each new source interval.
+    """
+    selected, ownership, sizes = [], [], []
+    for source, structural in zip(sources, owners, strict=True):
+        # A citeable account must not include the neighboring location just
+        # because both cells fit in one 800-character provider passage.
+        start, stop = source["start_char"], source["end_char"]
+        edges = cell_edges[
+            bisect_right(cell_edges, start) : bisect_left(cell_edges, stop)
+        ]
+        pieces = []
+        for end in [*edges, stop]:
+            quoted = source["quoted_text"][
+                start - source["start_char"] : end - source["start_char"]
+            ]
+            passages = citation_passages({"quoted_text": quoted})
+            if any(p["quote_id"] is None and p["text"].strip() for p in passages):
+                pieces.extend(p["text"] for p in passages)
+            else:
+                pieces.append(quoted)
+            start = end
+        start = source["start_char"]
+        for quoted in pieces:
+            end = start + len(quoted)
+            selected.append(
+                {
+                    **source,
+                    "start_char": start,
+                    "end_char": end,
+                    "quoted_text": quoted,
+                    "text_sha256": hashlib.sha256(quoted.encode()).hexdigest(),
+                }
+            )
+            ownership.append(
+                [owner for owner in structural if owner[0] < end and owner[1] > start]
+            )
+            sizes.append(len(quoted.encode()))
+            start = end
+    for number, source in enumerate(selected, first_ref):
+        source["source_ref"] = f"src_{number:04d}"
+    return selected, ownership, sizes
 
+
+def planned_sources(
+    document, text, first_ref, target, xml_sections, *, index_class=DependencyIndex
+):
+    index = index_class(text, xml_sections)
     limits = capacity()
     input_ceiling = min(
         settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES,
         settings.LLM_ENHANCEMENT_MAX_ESTIMATED_INPUT_TOKENS,
-        limits["context_tokens"] - 1024,
+        limits["context_tokens"]
+        - min(limits["output_tokens"], settings.LLM_READER_MAX_OUTPUT_TOKENS)
+        - 1024,
     )
-    by_span = {}
-    for unit in graph.units:
-        for pid in unit.own_passage_ids:
-            passage = graph.passages[pid]
-            by_span[passage.start, passage.end] = unit
-
-    # Preamble and inter-section gaps have their own ownership too.
-    boundaries = sorted(
-        {0, len(text), *(offset for span in by_span for offset in span)}
-    )
-    sources = []
-    for left, right in zip(boundaries, boundaries[1:], strict=False):
-        unit = by_span.get((left, right))
+    sources, owners, source_sizes = [], [], []
+    for left, right, unit in index.ownership_units():
         for start, end in owned_spans(text, left, right, target):
             owned = text[start:end]
-            context = []
-            if (start, end) != (left, right):
-                context.extend([(left, start), (end, right)])
-            if unit:
-                context.extend(
-                    (graph.passages[pid].start, graph.passages[pid].end)
-                    for pid in unit.context_passage_ids
+            size = len(owned.encode())
+            # A long project description owns a bounded slice of its cell.
+            # Its amount and other coordinates come from separate row cells.
+            owner = (
+                (start, end, unit)
+                if unit is not None and index.nodes[unit].row_cell_ranges
+                else (left, right, unit)
+            )
+            # Pack adjacent siblings, including their separating whitespace.
+            # Keep reusable parent introductions separate: otherwise a short
+            # governing lead-in would drag a whole neighboring chunk into every
+            # child's request. Ownership remains a lossless source partition.
+            previous_unit = owners[-1][-1][2] if owners else None
+            siblings = (
+                unit is not None
+                and previous_unit is not None
+                and (
+                    unit == previous_unit
+                    or (
+                        index.nodes[unit].parent == index.nodes[previous_unit].parent
+                        # A project owns its amount even when the next project
+                        # is under exactly the same account and location.
+                        and index.nodes[unit].inherited_cell_ranges is None
+                        and index.nodes[previous_unit].inherited_cell_ranges is None
+                        and not index.nodes[unit].row_cell_ranges
+                        and not index.nodes[previous_unit].row_cell_ranges
+                    )
                 )
-            # Merge overlaps before counting context; preserve independent source offsets.
-            fragments = [
-                (x, y)
-                for a, b in context
-                for x, y in ((a, min(start, b)), (max(end, a), b))
-                if x < y
-            ]
-            merged = []
-            for x, y in sorted(fragments):
-                if merged and x <= merged[-1][1]:
-                    merged[-1] = (merged[-1][0], max(merged[-1][1], y))
-                else:
-                    merged.append((x, y))
-            remaining = max(0, input_ceiling - len(owned.encode()))
-            dependencies, included, missing = [], [], []
-            for a, b in merged:
-                item = dependency(a, b)
-                dependencies.append(item)
-                if item["bytes"] <= remaining:
-                    included.append(text[a:b])
-                    remaining -= item["bytes"]
-                else:
-                    missing.append([a, b])
+            )
+            complete_unit = unit is not None and (left, right) == (
+                index.nodes[unit].start,
+                index.nodes[unit].end,
+            )
+            if (
+                sources
+                and sources[-1]["end_char"] == start
+                and source_sizes[-1] + size <= target
+                and (not owned.strip() or (siblings and complete_unit))
+            ):
+                source = sources[-1]
+                source["end_char"] = end
+                source["quoted_text"] += owned
+                source["text_sha256"] = hashlib.sha256(
+                    source["quoted_text"].encode()
+                ).hexdigest()
+                if owned.strip():
+                    owners[-1].append(owner)
+                source_sizes[-1] += size
+                continue
+            owners.append([owner])
+            source_sizes.append(size)
             sources.append(
                 {
                     "source_ref": f"src_{first_ref + len(sources):04d}",
@@ -105,15 +155,98 @@ def planned_sources(document, text, first_ref, target, xml_sections):
                     "quoted_text": owned,
                     "text_sha256": hashlib.sha256(owned.encode()).hexdigest(),
                     "discovery_source": True,
-                    "dependencies": dependencies,
-                    "omitted_dependency_ranges": missing,
-                    "unresolved_dependencies": (
-                        list(unit.unresolved_dependencies) if unit else []
-                    ),
-                    "section_context": "\n".join(included),
-                    "section_context_complete": bool(
-                        unit and not unit.unresolved_dependencies and not missing
-                    ),
+                    "context_planner_version": CONTEXT_PLANNER_VERSION,
                 }
             )
+    sources, owners, source_sizes = _citable_owners(
+        sources,
+        owners,
+        first_ref,
+        sorted(
+            {
+                edge
+                for node in index.nodes
+                for span in node.inherited_cell_ranges or ()
+                for edge in span
+            }
+        ),
+    )
+    return _attach_context(index, sources, owners, source_sizes, input_ceiling)
+
+
+def _attach_context(index, sources, owners, sizes, input_ceiling, selected_refs=None):
+    text = index.text
+    starts = [s["start_char"] for s in sources]
+    ends = [s["end_char"] for s in sources]
+    catalogs = []
+    for source in sources:
+        cursor, entries = source["start_char"], []
+        for passage in citation_passages(source):
+            stop = cursor + len(passage["text"])
+            entries.append((cursor, stop, passage))
+            cursor = stop
+        catalogs.append(entries)
+    for number, (source, owned_units) in enumerate(zip(sources, owners, strict=True)):
+        if selected_refs is not None and source["source_ref"] not in selected_refs:
+            continue
+        required, unresolved = set(), set()
+        for owner in set(owned_units):
+            if not text[owner[0] : owner[1]].strip():
+                continue
+            ranges, missing = index.required(*owner)
+            required.update(ranges)
+            unresolved.update(missing)
+        required = sorted(required)
+        referenced = set()
+        for left, right in required:
+            referenced.update(
+                range(bisect_right(ends, left), bisect_left(starts, right))
+            )
+        referenced.discard(number)
+        dependencies = [sources[i] for i in sorted(referenced)]
+        quote_ids = {}
+        context_bytes = 0
+        for i in sorted(referenced):
+            selected = {
+                p["quote_id"]
+                for a, b, p in catalogs[i]
+                if any(a < right and b > left for left, right in required)
+            }
+            quote_ids[sources[i]["source_ref"]] = sorted(
+                selected, key=lambda v: v or ""
+            )
+            context_bytes += sum(
+                len(p["text"].encode())
+                for _, _, p in catalogs[i]
+                if p["quote_id"] in selected
+            )
+        total = sizes[number] + context_bytes
+        complete_sections = []
+        for _, _, unit in owned_units:
+            section = index.scope(unit, "section") if unit is not None else None
+            if section is not None:
+                node = index.nodes[section]
+                complete_sections.append(
+                    any(a <= node.start and b >= node.end for a, b in required)
+                )
+        source.update(
+            context_source_refs=[s["source_ref"] for s in dependencies],
+            context_quote_ids=quote_ids,
+            dependencies=[
+                {
+                    "start": s["start_char"],
+                    "end": s["end_char"],
+                    "sha256": s["text_sha256"],
+                }
+                for s in dependencies
+            ],
+            # The final serialized envelope is checked separately, including
+            # citation schemas and output allowance. Never remove dependencies
+            # merely to make this cheaper raw-text check pass.
+            omitted_dependency_ranges=(list(required) if total > input_ceiling else []),
+            unresolved_dependencies=sorted(unresolved),
+            section_context_complete=bool(complete_sections)
+            and all(complete_sections)
+            and not unresolved,
+        )
     return sources

@@ -12,9 +12,24 @@ test('simulated reader output renders full explanations and source tooltips with
     return route.fallback();
   });
   await page.route('**/api/auth/session/current/', r => r.fulfill({json:{authenticated:true,user:{email:'simulation@example.test'}}}));
-  await page.route('**/api/tracking/', r => r.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:false}}));
+  await page.route('**/api/capabilities/', r => r.fulfill({json:{llm_enhancements:true}}));
+  await page.route(url => url.pathname === '/api/tracking/', r => r.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:false}}));
   await page.route('**/enhancements/latest/', r => r.fulfill({json:{...simulated,active_reader:simulated}}));
   await page.route('**/enhancements/', r => r.fulfill({json:{count:0,results:[]}}));
+  await page.route(url => url.pathname === '/api/bills/460/', r => r.fulfill({json:{
+    id:460, bill_number:'H.R. 460', session:119, title:'Simulated reader bill', jurisdiction:'federal',
+    status:'introduced', documents:[], topics:[], summary_preview:'', latest_contract:{
+      id:fixture.source_manifest.contract_id, contract_hash:fixture.source_manifest.contract_hash,
+      document:fixture.source_manifest.document_id, document_version_label:'Introduced',
+      computed_at:'2026-01-01', schema_version:'2.1-legal-nlp', coverage_note:'Simulated bill text',
+      orientation:{purpose_clause:null,purpose_line_item_id:null},
+      reader_stats:{line_item_count:0,financial_item_count:0,timeline_item_count:0,definition_item_count:0,section_group_count:0}
+    },
+    sponsor:null, sponsor_name:null, introduced_at:null, last_action_at:null, summary_has_more:false,
+    summary_source:null, summary_version_code:null, summary_action_date:null, summary_last_updated_at:null,
+    processing_status:'complete', source_api_id:null, congress_gov_url:null,
+    created_at:'2026-01-01', updated_at:'2026-01-01'
+  }}));
   await page.goto('/bills/460?tab=changes');
   await expect(page.getByText(fixture.result.summary[0].text,{exact:false})).toBeVisible();
   for(const p of fixture.result.source_review.policy_changes) {

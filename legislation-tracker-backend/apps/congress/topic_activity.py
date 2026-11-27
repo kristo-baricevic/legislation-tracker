@@ -96,11 +96,17 @@ def quantize_fraction(value):
     return Fraction(integer, 1_000_000)
 
 
+def cosine_vector(weights):
+    values = {key: float(weight) for key, weight in weights.items()}
+    return values, math.sqrt(math.fsum(value**2 for value in values.values()))
+
+
 def cosine(left, right):
-    keys = sorted(left.keys() | right.keys())
-    dot = math.fsum(float(left.get(key, 0)) * float(right.get(key, 0)) for key in keys)
-    left_norm = math.sqrt(math.fsum(float(left.get(key, 0)) ** 2 for key in keys))
-    right_norm = math.sqrt(math.fsum(float(right.get(key, 0)) ** 2 for key in keys))
+    left_values, left_norm = left
+    right_values, right_norm = right
+    dot = math.fsum(
+        value * right_values.get(key, 0.0) for key, value in left_values.items()
+    )
     value = (
         min(1.0, max(0.0, dot / (left_norm * right_norm)))
         if left_norm and right_norm
@@ -731,6 +737,7 @@ def representative_activity_catalog(
     refresh_before=0,
     representative_ids=None,
     wait_for_build=False,
+    revision=None,
 ):
     requested = (
         None if representative_ids is None else {str(pk) for pk in representative_ids}
@@ -741,9 +748,9 @@ def representative_activity_catalog(
     if capture > now or now.timestamp() - capture.timestamp() >= 300:
         raise RecommendationError()
     day = capture.astimezone(ZoneInfo("America/New_York")).date()
-    key = (
-        f"representative-topic-activity:v4:{policy.version}:{day}:{activity_revision()}"
-    )
+    if revision is None:
+        revision = activity_revision()
+    key = f"representative-topic-activity:v4:{policy.version}:{day}:{revision}"
     cached = cache_call("get", key)
     token = secrets.token_hex(16)
     owns_gate = False

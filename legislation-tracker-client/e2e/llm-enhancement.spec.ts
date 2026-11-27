@@ -96,9 +96,7 @@ test(`a user saves a key and reads a durable enhancement for ${billNumber}`, asy
   await expect(enhanced).toBeEnabled({ timeout: 25_000 });
   await enhanced.click();
   await expect(enhanced).toHaveAttribute("aria-pressed", "true");
-  const summary = reader ? "Rural hospitals would receive $100 in grants." : sourceFirst
-    ? "The Secretary must award $100 in grants to rural hospitals."
-    : "The bill directs the Secretary to award grants to rural hospitals.";
+  const summary = "The Secretary shall award $100 in grants to rural hospitals.";
   await expect(page.getByRole("paragraph").filter({hasText: summary}).first()).toBeVisible();
   await page.getByRole("button", { name: "Original", exact: true }).click();
   await expect(enhanced).toHaveAttribute("aria-pressed", "false");
@@ -126,7 +124,7 @@ test(`a user saves a key and reads a durable enhancement for ${billNumber}`, asy
   const result = (await detailResponse.json()).result;
   if (reader) {
     expect(result.schema_version).toBe("1.4");
-    expect(result.source_review.financial_items[0].amount_display).toBe("$100");
+    expect(result.source_review.financial_items[0].text).toContain(summary);
     await page.getByRole("tab", {name: "Money"}).click();
     await expect(page.getByRole("tabpanel").filter({hasText: "$100"})).toBeVisible();
     await captureView("money");

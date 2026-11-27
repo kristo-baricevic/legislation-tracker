@@ -79,11 +79,21 @@ conditions even when they share the same entry. All entries must be source-backe
 """
 
 
+def _supplied_passages(source):
+    """Keep global quote IDs while limiting context to what this call received."""
+    allowed = source.get("allowed_quote_ids")
+    return [
+        passage
+        for passage in citation_passages(source)
+        if allowed is None or passage["quote_id"] in allowed
+    ]
+
+
 def policy_passages(sources):
     return [
         f"{s['source_ref']}:{p['quote_id']}"
         for s in sources
-        for p in citation_passages(s)
+        for p in _supplied_passages(s)
         if p["quote_id"]
         and (
             s.get("review_quote_ids") is None or p["quote_id"] in s["review_quote_ids"]
@@ -235,7 +245,7 @@ def money_candidates(sources):
     return [
         f"{s['source_ref']}:{p['quote_id']}"
         for s in sources
-        for p in citation_passages(s)
+        for p in _supplied_passages(s)
         if p["quote_id"]
         and (
             s.get("review_quote_ids") is None or p["quote_id"] in s["review_quote_ids"]
@@ -248,10 +258,10 @@ def money_candidates(sources):
     ]
 
 
-def discovery_schema(sources):
+def discovery_schema(sources, *, aggregate=False):
     quote_variants = []
     for s in sources:
-        ids = [p["quote_id"] for p in citation_passages(s) if p["quote_id"]]
+        ids = [p["quote_id"] for p in _supplied_passages(s) if p["quote_id"]]
         if ids:
             quote_variants.append(
                 {
@@ -288,7 +298,7 @@ def discovery_schema(sources):
                 "type": "array",
                 "items": {"type": "integer", "minimum": 1700, "maximum": 9999},
             },
-            "source_quotes": quotes,
+            "source_quotes": copy.deepcopy(quotes),
         },
     }
     change = {
@@ -297,7 +307,7 @@ def discovery_schema(sources):
         "required": ["text", "source_quotes"],
         "properties": {
             "text": {"type": "string", "minLength": 1, "maxLength": 400},
-            "source_quotes": quotes,
+            "source_quotes": copy.deepcopy(quotes),
         },
     }
     candidates = money_candidates(sources)
@@ -337,7 +347,7 @@ def discovery_schema(sources):
                         "description": "One or two complete plain-English sentences, at most 65 words, ending with punctuation.",
                         "pattern": r"^(?:\S+\s+){0,64}\S*[.!?]$",
                     },
-                    "source_quotes": quotes,
+                    "source_quotes": copy.deepcopy(quotes),
                 },
             },
         }
@@ -351,10 +361,22 @@ def discovery_schema(sources):
                 for key in keys
             },
         }
+    if any(s.get("factual_map") for s in sources):
+        from .reader_facts import factual_records_schema
+
+        facts = factual_records_schema(sources, aggregate=aggregate)
+        schema["$defs"] = facts.pop("$defs")
+        schema["required"].append("factual_records")
+        schema["properties"]["factual_records"] = facts
     return schema
 
 
-def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()):
+def resolve_discovery(
+    output, sources, *, aggregate=False, retained_financial=(), reconciled=False
+):
+    from .reader_facts import record_evidence_ids
+
+    record_evidence_ids(output)
     # Source quotations and names can legitimately contain Arabic. Generated
     # prose must not introduce an unrelated Arabic word into an English rule.
     arabic_words = r"[\u0620-\u064a\u066e-\u06d3]+"
@@ -362,7 +384,8 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
     if generated:
         source_words = set(
             re.findall(
-                arabic_words, " ".join(s.get("quoted_text", "") for s in sources)
+                arabic_words,
+                " ".join(p["text"] for s in sources for p in _supplied_passages(s)),
             )
         )
         if generated - source_words:
@@ -375,7 +398,7 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
         owned = {
             (s["source_ref"], p["quote_id"])
             for s in sources
-            for p in citation_passages(s)
+            for p in _supplied_passages(s)
             if p["quote_id"]
             and (
                 s.get("review_quote_ids") is None
@@ -390,8 +413,13 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
             for item in rows:
                 quotes = item.get("source_quotes", []) if isinstance(item, dict) else []
                 if not isinstance(quotes, list) or any(
-                    not isinstance(q, dict) for q in quotes
+                    not isinstance(q, dict)
+                    or not isinstance(q.get("source_ref"), str)
+                    or not isinstance(q.get("quote_id"), str)
+                    for q in quotes
                 ):
+                    # Leave malformed identifiers for schema validation before
+                    # using them as hash keys or dropping a context-only finding.
                     kept.append(item)
                     continue
                 local = [
@@ -405,7 +433,7 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
                     ]
                     kept.append(item)
             output[category] = kept
-    schema = discovery_schema(sources)
+    schema = discovery_schema(sources, aggregate=aggregate)
     if aggregate:
         schema["properties"]["financial_items"].pop("maxItems", None)
         if retained_financial:
@@ -419,6 +447,14 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
             schema["properties"]["policy_changes"]["items"]["properties"][
                 "source_quotes"
             ].pop("maxItems", None)
+        if reconciled:
+            # Receipts are checked by validate_source_review before this path.
+            # A rule with many independently reviewed conditions may retain
+            # more citations than any one bounded map or reconciliation page.
+            for category in ("financial_items", "additional_changes"):
+                items = schema["properties"][category]["items"]
+                generated = items.get("anyOf", [items])[0]
+                generated["properties"]["source_quotes"].pop("maxItems", None)
     try:
         Draft202012Validator(schema).validate(output)
     except ValidationError as error:
@@ -433,6 +469,25 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
         ):
             raise output_error("reader_policy_wording", path) from error
         raise
+    facts = None
+    if any(s.get("factual_map") for s in sources):
+        from .reader_facts import resolve_validated_factual_records
+
+        facts = resolve_validated_factual_records(output["factual_records"], sources)
+        for record in facts:
+            key = record["record_id"]
+            if output.get("policy_checks", {}).get(key) == "explained" and not any(
+                record[field] for field in ("claims", "definitions", "references")
+            ):
+                raise output_error(
+                    "reader_coverage_incomplete", ["source_review", "factual_records"]
+                )
+            if output["money_checks"].get(key) == "financial" and not any(
+                claim["money"] for claim in record["claims"]
+            ):
+                raise output_error(
+                    "reader_coverage_incomplete", ["source_review", "factual_records"]
+                )
     financial_citations = {
         f"{q['source_ref']}:{q['quote_id']}"
         for item in output["financial_items"]
@@ -461,7 +516,7 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
             validate_policy_copy(item)
     catalogs = {
         s["source_ref"]: {
-            p["quote_id"]: p["text"] for p in citation_passages(s) if p["quote_id"]
+            p["quote_id"]: p["text"] for p in _supplied_passages(s) if p["quote_id"]
         }
         for s in sources
     }
@@ -469,6 +524,8 @@ def resolve_discovery(output, sources, *, aggregate=False, retained_financial=()
 
     validate_financial_coverage(output, catalogs)
     resolved = copy.deepcopy(output)
+    if facts is not None:
+        resolved["factual_records"] = facts
     for category in ("financial_items", "additional_changes", "policy_changes"):
         for item in resolved.get(category, []):
             first = item["source_quotes"][0]
@@ -529,9 +586,13 @@ def retain_missing_financial_rules(review, sources):
                 a < right and b > left for a, b in covered for left, right in ranges
             ):
                 continue
-            fragments, quotes = [], []
+            # Keep recovered rows within their actual owned sources. Combining
+            # several owners into one row would assign only the first owner's
+            # deferred conditions and could make one immutable row unbounded.
+            parts = {}
             for left, right in ranges:
                 cursor = left
+                touched = []
                 for scan in scans.values():
                     offset = scan["start_char"]
                     if scan["end_char"] <= left or offset >= right:
@@ -544,37 +605,67 @@ def retain_missing_financial_rules(review, sources):
                                 raise output_error(
                                     "reader_coverage_incomplete", ["financial_items"]
                                 )
-                            fragments.append(passage["text"][a - offset : b - offset])
+                            part = parts.setdefault(
+                                scan["source_ref"], {"fragments": [], "quotes": []}
+                            )
+                            if scan["source_ref"] not in touched:
+                                touched.append(scan["source_ref"])
+                            part["fragments"].append(
+                                passage["text"][a - offset : b - offset]
+                            )
                             quote = {
                                 "source_ref": scan["source_ref"],
                                 "quote": passage["text"],
                             }
-                            if quote not in quotes:
-                                quotes.append(quote)
+                            if quote not in part["quotes"]:
+                                part["quotes"].append(quote)
                             cursor = b
                         offset = end
                 if cursor != right:
                     raise output_error(
                         "reader_coverage_incomplete", ["financial_items"]
                     )
-                fragments.append(" ")
+                for ref in touched:
+                    parts[ref]["fragments"].append(" ")
             item = target["facts"]["item"]
-            review["financial_items"].append(
-                {
-                    "text": "".join(fragments).strip(),
-                    "source_quotes": quotes,
-                    "label": (item.get("financial_action") or "Financial rule")
-                    .replace("_", " ")
-                    .capitalize(),
-                    "amount_display": "See provision",
-                    "fiscal_years": [],
-                }
-            )
+            for part in parts.values():
+                review["financial_items"].append(
+                    {
+                        "text": "".join(part["fragments"]).strip(),
+                        "source_quotes": part["quotes"],
+                        "label": (item.get("financial_action") or "Financial rule")
+                        .replace("_", " ")
+                        .capitalize(),
+                        "amount_display": "See provision",
+                        "fiscal_years": [],
+                    }
+                )
+
+
+def retained_financial_indices(items, sources):
+    """Identify oversized rows reproduced exactly from known source provisions."""
+    oversized = [
+        item
+        for item in items
+        if len(item["text"]) > 1600 or len(item["source_quotes"]) > 24
+    ]
+    if not oversized:
+        return set()
+    # Rebuild independently of the other displayed rows. Another recovered
+    # owner may cover a different part of the same known financial target.
+    reconstruction = {"financial_items": []}
+    retain_missing_financial_rules(reconstruction, sources)
+    recovered = reconstruction["financial_items"]
+    return {
+        i for i, item in enumerate(items) if item in oversized and item in recovered
+    }
 
 
 def validate_source_review(review, sources):
+    from .reader_facts import record_evidence_ids
     from .reader_targets import _validate_quotes
 
+    record_evidence_ids(review.get("factual_records", []))
     scan_sources = [s for s in sources if s.get("discovery_source")]
     source_map = {s["source_ref"]: s for s in scan_sources}
     expected = list(source_map)
@@ -591,8 +682,26 @@ def validate_source_review(review, sources):
         fields |= {"policy_changes", "policy_checks"}
         if "policy_drafts" in review:
             fields.add("policy_drafts")
+    mapped = any(s.get("factual_map") for s in scan_sources)
+    if mapped:
+        fields.add("factual_records")
+        if "dependency_review" in review:
+            fields.add("dependency_review")
     if set(review) != fields:
         raise output_error("reader_target_invalid", ["source_review"])
+    reconciled = False
+    reconciled_retained = set()
+    if mapped and (
+        "dependency_review" in review
+        or any(s.get("deferred_context_source_refs") for s in scan_sources)
+    ):
+        from .reader_reconciliation import validate_reconciliation
+
+        # Known financial targets belong to separate context sources in a real
+        # preflight. Reconciliation needs those targets to verify recovered
+        # source wording; factual ownership still comes from factual_map flags.
+        reconciled_retained = validate_reconciliation(review, sources)
+        reconciled = True
     # Revalidate the stored prose shape and every server-resolved citation.
     for category in (
         "financial_items",
@@ -619,29 +728,15 @@ def validate_source_review(review, sources):
                     "reader_coverage_incomplete", ["source_review", "policy_changes"]
                 )
     # Revalidate every stored inventory, including pre-policy results.
-    oversized = [
-        item
-        for item in review["financial_items"]
-        if len(item["text"]) > 1600 or len(item["source_quotes"]) > 24
-    ]
-    retained_indices = []
-    if oversized:
-        reconstruction = {
-            "financial_items": [
-                item for item in review["financial_items"] if item not in oversized
-            ]
-        }
-        start = len(reconstruction["financial_items"])
-        retain_missing_financial_rules(reconstruction, sources)
-        recovered = reconstruction["financial_items"][start:]
-        retained_indices = [
-            i for i, item in enumerate(review["financial_items"]) if item in recovered
-        ]
+    retained_indices = (
+        retained_financial_indices(review["financial_items"], sources)
+        | reconciled_retained
+    )
     wire = copy.deepcopy(
         {
             k: v
             for k, v in review.items()
-            if k not in {"reviewed_sources", "policy_drafts"}
+            if k not in {"reviewed_sources", "policy_drafts", "dependency_review"}
         }
     )
     for category in ("financial_items", "additional_changes", "policy_changes"):
@@ -663,6 +758,7 @@ def validate_source_review(review, sources):
         scan_sources,
         aggregate=True,
         retained_financial=[wire["financial_items"][i] for i in retained_indices],
+        reconciled=reconciled,
     )
     if set(review["money_checks"]) != set(money_candidates(scan_sources)):
         raise output_error(

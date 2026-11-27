@@ -7,6 +7,7 @@ from rest_framework import serializers
 from apps.legislation.models import BillEnhancement, BillEnhancementAttempt
 
 from .citations import citation_spans
+from .funding_publication import project_provisions, project_staged_item
 from .prompts import LEGAL_INFORMATION_DISCLAIMER, TRUNCATED_COVERAGE_NOTICE
 from .service import retry_allowed
 
@@ -40,16 +41,24 @@ def _attempt_payload(attempt: BillEnhancementAttempt) -> dict:
     }
 
 
-def _expanded_result(enhancement: BillEnhancement):
+def _expanded_result(enhancement: BillEnhancement, *, preview_only=False):
     if enhancement.result_json is None:
         return None
-    result = copy.deepcopy(enhancement.result_json)
+    raw = enhancement.result_json
+    if preview_only and raw.get("schema_version") != "2.0-source-first":
+        result = {
+            key: copy.deepcopy(raw[key])
+            for key in ("schema_version", "summary", "overview")
+            if key in raw
+        }
+    else:
+        result = copy.deepcopy(raw)
     if result.get("schema_version") == "2.0-source-first":
-        return result
+        return project_provisions(result)
     sources = {
         source["source_ref"]: source for source in enhancement.source_snapshot_json
     }
-    if result.get("schema_version") == "1.4":
+    if result.get("schema_version") == "1.4" and not preview_only:
         from .reader_targets import snapshot_targets
 
         targets = {
@@ -93,6 +102,11 @@ def _expanded_result(enhancement: BillEnhancement):
     )
     rows = [(category, result.get(category, [])) for category in categories]
     if result.get("source_review"):
+        # Typed maps and reconciliation receipts are durable validation state,
+        # not reader copy. Keep them in the saved result without multiplying
+        # public dashboard payloads by the number of source/dependency pages.
+        result["source_review"].pop("factual_records", None)
+        result["source_review"].pop("dependency_review", None)
         drafts = result["source_review"].pop("policy_drafts", None)
         if drafts is not None:
             from types import SimpleNamespace
@@ -150,6 +164,7 @@ def _expanded_result(enhancement: BillEnhancement):
                             ),
                         }
                     )
+                project_staged_item(item, category, sources)
                 continue
             item["cited_sources"] = [
                 {
@@ -163,6 +178,7 @@ def _expanded_result(enhancement: BillEnhancement):
                 for source_ref in item.get("source_refs", [])
                 if source_ref in sources
             ]
+            project_staged_item(item, category, sources)
     return result
 
 
@@ -206,14 +222,7 @@ def enhancement_payload(
     if detail:
         from .shared import _reader_result_valid
 
-        eligible = (
-            enhancement.result_json is None
-            or (
-                enhancement.output_schema_version == "2.0-source-first"
-                and enhancement.result_completeness == "partial"
-            )
-            or _reader_result_valid(enhancement)
-        )
+        eligible = enhancement.result_json is None or _reader_result_valid(enhancement)
         payload["result"] = _expanded_result(enhancement) if eligible else None
         payload["attempts"] = [_attempt_payload(attempt) for attempt in attempts]
         payload["poll_after_seconds"] = (

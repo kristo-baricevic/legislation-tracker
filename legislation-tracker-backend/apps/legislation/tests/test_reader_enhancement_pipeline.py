@@ -58,8 +58,13 @@ def install_reader(bill, count=10):
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("asserts_duty_to_award", [False, True])
 def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
-    source_bill, enhancement_owner, enhancement_settings, monkeypatch
+    source_bill,
+    enhancement_owner,
+    enhancement_settings,
+    monkeypatch,
+    asserts_duty_to_award,
 ):
     c = install_reader(source_bill)
     document = source_bill.documents.get()
@@ -82,7 +87,7 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
                         {
                             "label": "Housing grants",
                             "amount_display": "$100 million",
-                            "text": "Provides a $100 million first housing grant.",
+                            "text": "The first housing grant must be $100 million.",
                             "fiscal_years": [],
                             "source_quotes": [quote],
                         }
@@ -92,7 +97,11 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
                     "policy_changes": [
                         {
                             "title": "Help build homes",
-                            "text": "The government must provide a $100 million first housing grant.",
+                            "text": (
+                                "The government must provide a $100 million first housing grant."
+                                if asserts_duty_to_award
+                                else "The bill sets the first housing grant at $100 million."
+                            ),
                             "source_quotes": [quote],
                         }
                     ],
@@ -102,7 +111,10 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
                 output = {
                     "schema_version": "1.4",
                     "summary": [
-                        {"text": "Provides housing grants.", "source_quotes": [quote]}
+                        {
+                            "text": "The bill sets the first housing grant at $100 million.",
+                            "source_quotes": [quote],
+                        }
                     ],
                     "explanations": [],
                 }
@@ -112,16 +124,23 @@ def test_discovery_publishes_new_money_with_citations_when_nlp_found_none(
     with enhancement_settings:
         attempt = _pending_attempt(enhancement_owner, source_bill)
         outcome = run_bill_enhancement_attempt(attempt.pk, attempt.dispatch_token)
+    if asserts_duty_to_award:
+        assert outcome["status"] == "failed"
+        attempt.enhancement.refresh_from_db()
+        assert attempt.enhancement.result_json is None
+        return
     assert outcome["status"] == "succeeded"
     attempt.enhancement.refresh_from_db()
     result = enhancement_payload(attempt.enhancement, detail=True)["result"]
     assert result["explanations"] == []
     money = result["source_review"]["financial_items"]
-    assert money[0]["amount_display"] == "$100 million"
+    assert "$100,000,000" in money[0]["text"]
+    assert "The first housing grant shall be" in money[0]["text"]
     assert "$100,000,000" in money[0]["cited_sources"][0]["quoted_text"]
     assert money[0]["cited_sources"][0]["start_char"] == 0
     policy = result["source_review"]["policy_changes"]
-    assert policy[0]["title"] == "Help build homes"
+    assert policy[0]["title"] == "Funding provision"
+    assert "The first housing grant shall be $100,000,000." in policy[0]["text"]
     assert "policy_drafts" not in result["source_review"]
     assert "$100,000,000" in policy[0]["cited_sources"][0]["quoted_text"]
     with enhancement_settings:
@@ -261,6 +280,7 @@ def test_reader_preflight_pins_contract_and_exposes_all_targets(
         "summary_repair",
         "summary_repair_yield",
         "summary_bad",
+        "summary_truncated",
     ],
 )
 def test_reader_pipeline_publishes_only_complete_current_targets(
@@ -270,6 +290,7 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
 
     c = install_reader(source_bill)
     requests = []
+    confirmed_retry = False
 
     class Provider:
         def enhance_bill(self, *, request, **kwargs):
@@ -331,9 +352,23 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
             output = {"schema_version": "1.4", "summary": [], "explanations": []}
             if not targets:
                 s = request.source_snapshot[0]
-                invalid_summary = mode.startswith("summary_") and (
-                    mode == "summary_bad"
-                    or not request.request_envelope.get("summary_repair")
+                if mode == "summary_truncated" and not confirmed_retry:
+                    from apps.legislation.enhancements.providers.base import (
+                        ProviderError,
+                    )
+
+                    raise ProviderError(
+                        "invalid_output",
+                        validation_code="provider_output_limit",
+                        usage=ProviderUsage(10, 5, 15),
+                    )
+                invalid_summary = (
+                    not confirmed_retry
+                    and mode.startswith("summary_")
+                    and (
+                        mode == "summary_bad"
+                        or not request.request_envelope.get("summary_repair")
+                    )
                 )
                 output["summary"] = [
                     {
@@ -464,10 +499,65 @@ def test_reader_pipeline_publishes_only_complete_current_targets(
     else:
         assert outcome["status"] != "succeeded"
         assert a.enhancement.result_json is None
-        assert len(requests) == (4 if mode == "summary_bad" else 1)
-        if mode == "summary_bad":
+        retry_summary = mode in {"summary_bad", "summary_truncated"}
+        assert len(requests) == (4 if retry_summary else 1)
+        if retry_summary:
+            from rest_framework.test import APIClient
+
+            from .test_large_bill_staged_flow import _confirmation
+
             assert a.steps.filter(status="validated").count() == 2
             assert a.steps.filter(status="failed").count() == 2
+            terminal = requests[-1].request_envelope
+            if mode == "summary_bad":
+                assert terminal["summary_repair"] == "reader_amount_conflict"
+            else:
+                assert (
+                    terminal["max_output_tokens"]
+                    > requests[-2].request_envelope["max_output_tokens"]
+                )
+            client = APIClient()
+            client.force_authenticate(enhancement_owner)
+            with (
+                enhancement_settings,
+                override_settings(LLM_READER_CALLS_PER_DELIVERY=8),
+            ):
+                if mode == "summary_truncated":
+                    from apps.legislation.enhancements.reader_steps import (
+                        DurableReaderProvider,
+                    )
+
+                    # Before the fix, each confirmed retry replayed both failed
+                    # cache rows, created no paid step and recorded no call key.
+                    a.citation_resolution_json.pop("failed_reader_call", None)
+                    a.save(update_fields=["citation_resolution_json"])
+                    legacy = _confirmation(client, source_bill, a.enhancement_id)
+                    with monkeypatch.context() as old:
+                        old.setattr(
+                            DurableReaderProvider,
+                            "_confirmed_failure",
+                            None,
+                            raising=False,
+                        )
+                        failed = run_bill_enhancement_attempt(
+                            legacy.pk, legacy.dispatch_token
+                        )
+                    legacy.refresh_from_db()
+                    assert failed["status"] == "failed"
+                    assert not legacy.steps.exists() and len(requests) == 4
+                    legacy.citation_resolution_json.pop("failed_reader_call", None)
+                    legacy.save(update_fields=["citation_resolution_json"])
+                retry = _confirmation(client, source_bill, a.enhancement_id)
+                confirmed_retry = True
+                result = run_bill_enhancement_attempt(retry.pk, retry.dispatch_token)
+            assert result["status"] == "succeeded"
+            retry.enhancement.refresh_from_db()
+            assert (
+                retry.enhancement.result_json["summary"][0]["text"]
+                == "Requires a report within 90 days."
+            )
+            assert len(requests) == 5 and requests[-1].request_envelope == terminal
+            assert list(retry.steps.values_list("status", flat=True)) == ["validated"]
 
 
 @pytest.mark.django_db
@@ -498,15 +588,18 @@ def test_reader_checkpoint_reuses_plan_but_detects_changed_source(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "version",
+    ["reader_cache.VALIDATOR_VERSION", "reader_dependencies.CONTEXT_PLANNER_VERSION"],
+    ids=["output-validation", "source-ownership"],
+)
 def test_validation_upgrade_changes_confirmation_identity(
-    source_bill, enhancement_settings, monkeypatch
+    source_bill, enhancement_settings, monkeypatch, version
 ):
     install_reader(source_bill, count=0)
     with enhancement_settings:
         before = build_enhancement_preflight(source_bill)
-        monkeypatch.setattr(
-            "apps.legislation.enhancements.reader_cache.VALIDATOR_VERSION", 999
-        )
+        monkeypatch.setattr(f"apps.legislation.enhancements.{version}", 999)
         after = build_enhancement_preflight(source_bill)
     assert after.request_fingerprint != before.request_fingerprint
     assert after.worker_guard != before.worker_guard

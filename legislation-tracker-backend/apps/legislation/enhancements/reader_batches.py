@@ -18,6 +18,7 @@ from .reader_citations import (
     READER_ID_SCHEMA,
     READER_PROMPT_VERSION,
     bounded_reader_schema,
+    cached_citations,
     citation_passages,
     resolve_reader_citations,
 )
@@ -81,10 +82,12 @@ Do not claim the guide is exhaustive when the source packet is truncated.
 
 def reader_execution_settings():
     from .reader_cache import VALIDATOR_VERSION
+    from .reader_dependencies import CONTEXT_PLANNER_VERSION
 
     return {
         "policy_grouping_version": 7,
-        "reader_execution_version": 9,
+        "reader_execution_version": 17,
+        "context_planner_version": CONTEXT_PLANNER_VERSION,
         "model_capacities": getattr(settings, "LLM_READER_MODEL_CAPACITIES", {}),
         **(
             {"owned_token_target": owned_token_target()} if owned_token_target() else {}
@@ -125,6 +128,9 @@ def reader_input_guard(bill):
                     [
                         document.pk,
                         document.version_label,
+                        document.object_storage_key,
+                        document.content_hash,
+                        document.content_type,
                         document.extracted_text or document.raw_text,
                     ]
                     if document
@@ -193,14 +199,17 @@ def _output_fits(sources, *, summary=False):
     return _output_allowance(sources, summary=summary) <= capacity()["output_tokens"]
 
 
-def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True):
+@cached_citations
+def build_reader_preflight(
+    document, *, xml_sections=(), reuse_publication=True, source_planner=None
+):
     from .reader_capacity import fits
     from .source_packet import (
         PreflightUnavailable,
         _request_envelope,
         _text_hash,
-        _within_limits,
         canonical_json_bytes,
+        needs_large_document_review,
         select_document_sources,
     )
     from .types import EnhancementPreflight
@@ -294,9 +303,9 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
             ),
         )
     try:
-        if xml_sections:
+        if xml_sections or needs_large_document_review(text) or owned_token_target():
             # Full-source review drives the final summary. Do not build the
-            # legacy text-based selector over a multi-megabyte XML document.
+            # legacy selective summary over a document requiring many requests.
             raise PreflightUnavailable(
                 "Use the full review", reason="request_too_large"
             )
@@ -463,38 +472,81 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
         if xml_sections
         else discovery_sources(text, next_ref)
     )
-    if owned_token_target():
+    dependency_planning = bool(
+        owned_token_target()
+        or xml_sections
+        or needs_large_document_review(text)
+        or any(s.get("section_context_complete") is False for s in scans)
+    )
+    if dependency_planning:
         from .reader_chunking import planned_sources
 
-        scans = planned_sources(
-            document, text, next_ref, owned_token_target(), xml_sections
+        planner = source_planner or planned_sources
+        scans = planner(
+            document, text, next_ref, owned_token_target() or 8000, xml_sections
         )
-        missing = [s["source_ref"] for s in scans if s["omitted_dependency_ranges"]]
-        if missing:
-            raise PreflightUnavailable(
-                "Required legal context exceeds the selected model budget",
-                reason="request_too_large",
-                coverage={"unresolved_source_refs": missing},
-            )
     if next_ref + len(scans) > 10000:
         raise PreflightUnavailable(
             "Full review exceeds source capacity", reason="request_too_large"
         )
     for source in scans:
         source["policy_review"] = True
-        e = _request_envelope(document.bill, [source], truncated=False)
+    source_map = {s["source_ref"]: s for s in scans}
+
+    def discovery_envelope(source, request_sources):
+        # Discovery sends selected verbatim passages. Building and then
+        # discarding compacted copies of every whole dependency source makes
+        # large-bill planning repeat the same normalization thousands of times.
+        e = _request_envelope(document.bill, [], truncated=False)
+        e["source_packet"]["quote_layout"] = "verbatim_citation_passages"
+        e["source_packet"]["sources"] = [{} for _ in request_sources]
         e.update(
             output_schema_version=READER_VERSION,
             prompt_version=READER_PROMPT_VERSION,
             source_packet_version=READER_PROMPT_VERSION,
             instructions=DISCOVERY_INSTRUCTIONS + POLICY_INSTRUCTIONS,
-            output_schema=discovery_schema([source]),
+            output_schema=discovery_schema(request_sources),
             max_output_tokens=settings.LLM_READER_MAX_OUTPUT_TOKENS,
             source_review=True,
         )
-        wire = e["source_packet"]["sources"][0]
-        wire.pop("quoted_text")
-        wire["citation_passages"] = passages(source["quoted_text"])
+        if any(s.get("factual_map") for s in request_sources):
+            from .reader_facts import FACTUAL_MAP_INSTRUCTIONS
+
+            e["instructions"] += "\n" + FACTUAL_MAP_INSTRUCTIONS
+        for wire, supplied in zip(
+            e["source_packet"]["sources"], request_sources, strict=True
+        ):
+            wire.clear()
+            wire.update(
+                {
+                    key: supplied[key]
+                    for key in (
+                        "source_ref",
+                        "section_label",
+                        "review_quote_ids",
+                        "unresolved_dependencies",
+                        "section_context_complete",
+                        "factual_map",
+                    )
+                    if key in supplied
+                }
+            )
+            allowed = supplied.get("allowed_quote_ids")
+            wire["citation_passages"] = [
+                p
+                for p in passages(supplied["quoted_text"])
+                if allowed is None or p["quote_id"] in allowed
+            ]
+        if dependency_planning:
+            e["instructions"] += (
+                "\nReview only passages selected by each source's review_quote_ids. "
+                "Sources with an empty list are supporting definitions or conditions: "
+                "cite them when relevant, but do not generate separate findings for them. "
+                "Every finding must cite an owned passage first. Preserve material "
+                "qualifications from supporting sources. Other source passages are "
+                "mapped independently; do not infer that an unsupplied condition, "
+                "definition, or exception does not exist. Respect unresolved_dependencies."
+            )
         e["source_packet"]["existing_changes"] = [
             t["original_text"]
             for t in all_targets
@@ -504,19 +556,109 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
                 for a, _ in t["evidence_ranges"]
             )
         ]
-        # Complete adjacent sections belong to other requests. Supplying them
-        # as uncitable prose caused duplicate rules with unrelated citations.
-        # Oversized sections retain their own context, not neighboring sections.
         if source.get("section_context"):
-            wire.pop("section_context", None)
+            e["source_packet"]["sources"][0].pop("section_context", None)
             e["source_packet"]["section_context"] = source["section_context"]
-        if not _within_limits(canonical_json_bytes(e)):
-            raise PreflightUnavailable(
-                "Full-source review request exceeds limits", reason="request_too_large"
+        return e
+
+    # First identify requests that require staged dependencies. Source text is
+    # never discarded: every dependency already has its own map owner, and the
+    # exact outstanding quote IDs become reconciliation obligations.
+    review_parts = []
+    staged = False
+    for source in scans:
+        if dependency_planning:
+            owned_source = {
+                **source,
+                "review_quote_ids": [
+                    p["quote_id"]
+                    for p in passages(source["quoted_text"])
+                    if p["quote_id"]
+                ],
+            }
+            dependency_refs = list(dict.fromkeys(source.get("context_source_refs", [])))
+            if any(
+                ref not in source_map or ref == source["source_ref"]
+                for ref in dependency_refs
+            ):
+                raise PreflightUnavailable(
+                    "Source dependency references are inconsistent",
+                    reason="source_unavailable",
+                )
+            context_sources = [
+                {**source_map[ref], "review_quote_ids": []} for ref in dependency_refs
+            ]
+            selections = source.get("context_quote_ids")
+            if selections is not None:
+                for context in context_sources:
+                    allowed = selections.get(context["source_ref"])
+                    catalog = passages(context["quoted_text"])
+                    known = {p["quote_id"] for p in catalog}
+                    if not isinstance(allowed, list) or any(
+                        q not in known for q in allowed
+                    ):
+                        raise PreflightUnavailable(
+                            "Source dependency passages are inconsistent",
+                            reason="source_unavailable",
+                        )
+                    context["allowed_quote_ids"] = list(dict.fromkeys(allowed))
+            # The complete plan retains this provenance once. Individual work
+            # units need the selected source text/IDs, not a copy of every
+            # supporting source's own dependency graph.
+            for supplied in [owned_source, *context_sources]:
+                for key in (
+                    "context_source_refs",
+                    "context_quote_ids",
+                    "dependencies",
+                    "omitted_dependency_ranges",
+                ):
+                    supplied.pop(key, None)
+        else:
+            owned_source, context_sources = source, []
+        e = discovery_envelope(source, [owned_source, *context_sources])
+        defer = bool(context_sources) and not fits(e)
+        staged = staged or defer
+        review_parts.append((source, owned_source, context_sources, defer))
+
+    if staged:
+        for source in scans:
+            source["factual_map"] = True
+    for source, owned_source, context_sources, defer in review_parts:
+        if staged:
+            owned_source["factual_map"] = True
+        e = discovery_envelope(source, [owned_source, *context_sources])
+        if context_sources and (defer or not fits(e)):
+            source["deferred_context_source_refs"] = [
+                s["source_ref"] for s in context_sources
+            ]
+            source["deferred_context_quote_ids"] = {
+                s["source_ref"]: [
+                    p["quote_id"]
+                    for p in passages(s["quoted_text"])
+                    if p["quote_id"]
+                    and (
+                        s.get("allowed_quote_ids") is None
+                        or p["quote_id"] in s["allowed_quote_ids"]
+                    )
+                ]
+                for s in context_sources
+            }
+            source["staged_dependency_ranges"] = source.get(
+                "omitted_dependency_ranges", []
             )
+            # False means this map is provisional. The final publication gate
+            # requires every deferred record page, rather than pretending its
+            # raw text was present in the first request.
+            owned_source["section_context_complete"] = False
+            source["section_context_complete"] = False
+            context_sources = []
+            e = discovery_envelope(source, [owned_source])
+        source["omitted_dependency_ranges"] = []
         from .reader_sizing import pack_source_review
 
-        for selected, packed_envelope in pack_source_review(source, e):
+        for selected, packed_envelope in pack_source_review(
+            owned_source, e, context_sources=context_sources
+        ):
             batches.append(selected)
             envelopes.append(packed_envelope)
     snapshot = main_sources + target_sources + scans
@@ -549,6 +691,11 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
     identity = {
         "document_id": document.pk,
         "document_content_hash": _text_hash(text),
+        **(
+            {"document_xml_sha256": xml_sections.xml_sha256}
+            if getattr(xml_sections, "xml_sha256", None)
+            else {}
+        ),
         "contract_id": contract.pk if contract else None,
         "contract_hash": contract.contract_hash if contract else None,
         "document_version_label": document.version_label,
@@ -577,6 +724,18 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
             "complete_document": True,
             "total_chunks": len(scans),
             "reviewed_source_refs": [s["source_ref"] for s in scans],
+            **(
+                {
+                    "dependency_resolution": "staged",
+                    "sources_requiring_reconciliation": [
+                        s["source_ref"]
+                        for s in scans
+                        if s.get("deferred_context_source_refs")
+                    ],
+                }
+                if staged
+                else {}
+            ),
         },
         "summary_seed_coverage": selected_envelope["source_packet"]["coverage"],
         "reader": {
@@ -617,35 +776,46 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
         raise PreflightUnavailable(
             "Source changed while preparing requests", reason="source_unavailable"
         )
-    # Grouping is lossless and local; no paid compiler or compiler reserve.
+    from .reader_reconciliation import reconciliation_call_bound
+
+    dependency_reserve = (
+        reconciliation_call_bound(scans, p.provider, p.requested_model) if staged else 0
+    )
     planned = 1 + len(batches)
-    if planned > settings.LLM_READER_MAX_CALLS:
+    if planned + dependency_reserve > settings.LLM_READER_MAX_CALLS:
         if settings.LLM_READER_MAX_CALLS > 0:
             raise PreflightUnavailable(
                 "Complete reader plan exceeds configured call budget",
                 reason="request_too_large",
             )
     reserve = (
-        min(8, settings.LLM_READER_MAX_CALLS - planned)
+        min(8, settings.LLM_READER_MAX_CALLS - planned - dependency_reserve)
         if settings.LLM_READER_MAX_CALLS > 0
         else 8
     )
     summary_reserve = max(0, len(scans) - 1)
     if settings.LLM_READER_MAX_CALLS > 0:
         summary_reserve = min(
-            summary_reserve, max(0, settings.LLM_READER_MAX_CALLS - planned - reserve)
+            summary_reserve,
+            max(
+                0,
+                settings.LLM_READER_MAX_CALLS - planned - reserve - dependency_reserve,
+            ),
         )
     budget.update(
         planned_calls=planned,
         split_call_reserve=reserve,
         summary_call_reserve=summary_reserve,
-        maximum_calls=planned + reserve + summary_reserve,
+        dependency_call_reserve=dependency_reserve,
+        maximum_calls=planned + reserve + summary_reserve + dependency_reserve,
         maximum_input=settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
         + sum(len(canonical_json_bytes(e)) for e in envelopes)
-        + (reserve + summary_reserve) * settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
-        + (planned + reserve + summary_reserve) * 1024,
+        + (reserve + summary_reserve + dependency_reserve)
+        * settings.LLM_ENHANCEMENT_MAX_REQUEST_BYTES
+        + (planned + reserve + summary_reserve + dependency_reserve) * 1024,
         maximum_output=sum(e["max_output_tokens"] for e in [main, *envelopes])
-        + (reserve + summary_reserve) * settings.LLM_READER_MAX_OUTPUT_TOKENS,
+        + (reserve + summary_reserve + dependency_reserve)
+        * settings.LLM_READER_MAX_OUTPUT_TOKENS,
     )
     from .reader_capacity import capacity
 
@@ -669,6 +839,7 @@ def build_reader_preflight(document, *, xml_sections=(), reuse_publication=True)
     )
 
 
+@cached_citations
 def execute_reader_batches(preflight, provider, api_key, checkpoint):
     main_refs = {
         s["source_ref"] for s in preflight.request_envelope["source_packet"]["sources"]
@@ -711,11 +882,49 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
         try:
             checkpoint(combined, completed)
             saved = plan.saved_result(node_key) if plan else None
+            if index == 0 and combined.output.get("source_review"):
+                from .reader_discovery import retain_missing_financial_rules
+
+                # Recovered source wording is part of the inventory that must
+                # receive dependency receipts and feed the final summary. This
+                # also reconstructs it when a saved summary has no receipts.
+                retain_missing_financial_rules(
+                    combined.output["source_review"], preflight.source_snapshot
+                )
             if index == 0 and saved is not None:
                 combined.output["summary"] = saved["summary"]
+                if "reconciled_source_review" in saved:
+                    combined.output["source_review"] = copy.deepcopy(
+                        saved["reconciled_source_review"]
+                    )
                 completed += 1
                 continue
             if index == 0 and combined.output.get("source_review"):
+                if preflight.source_manifest["budget"].get("dependency_call_reserve"):
+                    from .reader_reconciliation import reconcile_review
+
+                    stage = "dependency_reconciliation"
+                    review, reconciled, dependency_calls = reconcile_review(
+                        preflight,
+                        combined.output["source_review"],
+                        provider,
+                        api_key,
+                        lambda combined=combined, completed=completed: checkpoint(
+                            combined, completed
+                        ),
+                        maximum_calls if plan else maximum_calls - calls,
+                    )
+                    combined.output["source_review"] = review
+                    combined = replace(
+                        combined,
+                        usage=combine_usage(combined.usage, reconciled.usage),
+                        response_id=reconciled.response_id or combined.response_id,
+                        resolved_model=reconciled.resolved_model
+                        or combined.resolved_model,
+                    )
+                    calls += dependency_calls
+                    completed += dependency_calls
+                    stage = "main_analysis"
                 from .reader_summary import summarize_review
 
                 summarized, summary_calls = summarize_review(
@@ -730,7 +939,23 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                 )
                 if summarized is not None:
                     if plan:
-                        plan.complete(node_key, summarized.output)
+                        plan.complete(
+                            node_key,
+                            {
+                                **summarized.output,
+                                **(
+                                    {
+                                        "reconciled_source_review": copy.deepcopy(
+                                            combined.output["source_review"]
+                                        )
+                                    }
+                                    if combined.output["source_review"].get(
+                                        "dependency_review"
+                                    )
+                                    else {}
+                                ),
+                            },
+                        )
                     combined.output["summary"] = summarized.output["summary"]
                     combined = replace(
                         combined,
@@ -778,12 +1003,18 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                 )
                 review["reviewed_sources"].extend(
                     s["source_ref"]
-                    for s in request.source_snapshot
+                    # The first source owns this review. The remaining sources
+                    # supply citations, and are reviewed by their own work units.
+                    for s in request.source_snapshot[:1]
                     if s["source_ref"] not in review["reviewed_sources"]
                 )
                 review["financial_items"].extend(valid["financial_items"])
                 review["additional_changes"].extend(valid["additional_changes"])
                 review["money_checks"].update(valid["money_checks"])
+                if "factual_records" in valid:
+                    review.setdefault("factual_records", []).extend(
+                        valid["factual_records"]
+                    )
                 if "policy_changes" in valid:
                     review.setdefault("policy_changes", []).extend(
                         valid["policy_changes"]
@@ -882,18 +1113,22 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
                     )
                     combined = replace(combined, usage=error.usage)
                     continue
-            if isinstance(error, ProviderError) and (
-                error.validation_code == "provider_output_limit"
-                or (
-                    request.request_envelope.get("source_review")
-                    and request.request_envelope.get("policy_retry")
-                    and error.validation_code
-                    in {
-                        "reader_policy_wording",
-                        "reader_coverage_incomplete",
-                        "reader_amount_conflict",
-                        "reader_target_invalid",
-                    }
+            if (
+                stage != "dependency_reconciliation"
+                and isinstance(error, ProviderError)
+                and (
+                    error.validation_code == "provider_output_limit"
+                    or (
+                        request.request_envelope.get("source_review")
+                        and request.request_envelope.get("policy_retry")
+                        and error.validation_code
+                        in {
+                            "reader_policy_wording",
+                            "reader_coverage_incomplete",
+                            "reader_amount_conflict",
+                            "reader_target_invalid",
+                        }
+                    )
                 )
             ):
                 from .reader_sizing import recover_output_limit, split_reader_request
@@ -946,10 +1181,6 @@ def execute_reader_batches(preflight, provider, api_key, checkpoint):
         from .policy_compilation import group_policy_drafts
 
         review = combined.output.get("source_review", {})
-        if "financial_items" in review:
-            from .reader_discovery import retain_missing_financial_rules
-
-            retain_missing_financial_rules(review, preflight.source_snapshot)
         if "policy_changes" in review:
             review["policy_drafts"] = copy.deepcopy(review["policy_changes"])
             review["policy_changes"] = group_policy_drafts(

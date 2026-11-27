@@ -1417,8 +1417,9 @@ export interface EnhancementAtomicItem {
 }
 
 export interface EnhancementObligation {
+  funding_text?: string;
   actor: string;
-  modality: "required" | "prohibited" | "permitted";
+  modality: "required" | "prohibited" | "permitted" | "unspecified";
   action: string;
   conditions: string | null;
   source_refs: string[];
@@ -1488,7 +1489,7 @@ export interface SourceFirstResult {
     id: string; unit_id: string; status: "explained" | "unresolved";
     summary: string; details: string[]; unresolved_reason: string | null;
     source_limitations?: string[];
-    claims: Array<{ actor: string | null; action: string; modality: string;
+    claims: Array<{ funding_text?: string; actor: string | null; action: string; modality: string;
       money: Array<{ amount: string | null; currency: string | null; measure: string | null;
         comparator: string | null; purpose: string | null; period: string | null; base: string | null }>;
       conditions: AnalysisCondition | null; exceptions: AnalysisCondition[]; evidence_ids: string[] }>;

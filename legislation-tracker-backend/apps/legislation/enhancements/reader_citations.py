@@ -2,6 +2,9 @@
 
 import copy
 import re
+from collections import OrderedDict
+from contextvars import ContextVar
+from functools import wraps
 
 from jsonschema import Draft202012Validator, ValidationError
 
@@ -10,6 +13,25 @@ from .diagnostics import output_error
 from .reader_targets import READER_SCHEMA, validate_reader_explanations
 
 READER_PROMPT_VERSION = "reader-8-policy-explanations"
+_PASSAGE_CACHE = ContextVar("reader_passage_cache", default=None)
+
+
+def cached_citations(function):
+    """Reuse immutable passage catalogs only for one planning/worker operation."""
+
+    @wraps(function)
+    def run(*args, **kwargs):
+        if _PASSAGE_CACHE.get() is not None:
+            return function(*args, **kwargs)
+        token = _PASSAGE_CACHE.set(OrderedDict())
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _PASSAGE_CACHE.reset(token)
+
+    return run
+
+
 READER_ID_SCHEMA = copy.deepcopy(READER_SCHEMA)
 READER_ID_SCHEMA["properties"].pop("source_review")
 for category in ("summary", "explanations"):
@@ -50,6 +72,11 @@ def citation_passages(source):
     uniquely. Nothing is inferred or repaired from generated prose.
     """
     text = source["quoted_text"]
+    cache = _PASSAGE_CACHE.get()
+    if cache is not None and text in cache:
+        cache.move_to_end(text)
+        # Callers may annotate wire catalogs; never share mutable entries.
+        return [{"quote_id": key, "text": value} for key, value in cache[text]]
     canonical = _canonical(text)
     passages = []
     start = 0
@@ -68,6 +95,10 @@ def citation_passages(source):
             }
         )
         start = end
+    if cache is not None:
+        cache[text] = tuple((p["quote_id"], p["text"]) for p in passages)
+        if len(cache) > 4096:
+            cache.popitem(last=False)
     return passages
 
 

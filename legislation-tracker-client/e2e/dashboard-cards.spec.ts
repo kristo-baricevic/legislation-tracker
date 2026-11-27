@@ -1,9 +1,16 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-const bill = { id: 1, bill_number: "H.R. 1589", session: 119, title: "To amend the Internal Revenue Code of 1986 to increase the limitation on the deduction for state and local taxes.", jurisdiction: "federal", status: "introduced", sponsor_id: 1, sponsor_bioguide_id: "T000001", sponsor_name: "Test Representative", introduced_at: "2025-02-26", last_action_at: "2025-02-26", topics: [{ topic_id: 1, name: "Taxation", slug: "taxation", confidence_score: 1 }] };
+const bill = { id: 1, bill_number: "H.R. 1589", session: 119, title: "To amend the Internal Revenue Code of 1986 to increase the limitation on the deduction for state and local taxes.", jurisdiction: "federal", status: "introduced", sponsor_id: 1, sponsor_state: "NY", sponsor_bioguide_id: "T000001", sponsor_name: "Test Representative", introduced_at: "2025-02-26", last_action_at: "2025-02-26", topics: [{ topic_id: 1, name: "Taxation", slug: "taxation", confidence_score: 1 }] };
 const other = { ...bill, id: 2, bill_number: "H.R. 619", title: "A second bill in the test collection", sponsor_name: null, topics: [], status: "passed_house" };
 const documents = [1, 2, 3].map(id => ({ id, source_order: id, version_label: ["Introduced", "Reported", "Engrossed"][id - 1], is_active_version: id === 3, content_type: "text/html", file_size_bytes: 400, source_url: null, downloaded_at: null, download_url: null, text_url: null }));
+
+const compactBill = {
+  ...bill, documents, summary_preview: "Raises the deduction limit.", summary_has_more: false,
+  summary_source: "source_metadata", summary_version_code: "Introduced", summary_action_date: null,
+  summary_last_updated_at: null, processing_status: "complete", sponsor: 1, source_api_id: null,
+  congress_gov_url: null, latest_contract: null, created_at: "2025-01-01", updated_at: "2025-01-01"
+};
 
 async function fixtures(page: Page, empty = false) {
   let following = !empty;
@@ -22,12 +29,7 @@ async function fixtures(page: Page, empty = false) {
     else if (path === "/api/bills/1/changes/") response = { results: [], stream_head_cursor: null, page_end_cursor: null,
       older_cursor: null, unread_count: 0, personalized: true, has_more_newer: false, initial_window_truncated: false };
     else if (path === "/api/bills/1/votes/" || path === "/api/bills/1/contracts/") response = { count: 0, results: [], next: null, previous: null };
-    else if (path === "/api/bills/1/" && url.searchParams.has("contract_view")) response = {
-      ...bill, documents, summary_preview: "Raises the deduction limit.", summary_has_more: false,
-      summary_source: "source_metadata", summary_version_code: "Introduced", summary_action_date: null,
-      summary_last_updated_at: null, processing_status: "complete", sponsor: 1, source_api_id: null,
-      congress_gov_url: null, latest_contract: null, created_at: "2025-01-01", updated_at: "2025-01-01"
-    };
+    else if (path === "/api/bills/1/" && url.searchParams.has("contract_view")) response = compactBill;
     else if (path === "/api/bills/1/") response = { ...bill, documents, summary: "This bill increases the limitation on the deduction for state and local taxes.", summary_source: "source_metadata", summary_version_code: "Introduced", latest_contract: null };
     else if (path === "/api/bills/1/comparisons/documents/") response = { before: Number(url.searchParams.get("before")), after: Number(url.searchParams.get("after")), sections: [{ section_key: `section-for-version-${url.searchParams.get("after")}`, operation: "modified" }], total_change_count: 1, returned_change_count: 1, truncated: false, fallback: false, truncation_reasons: [] };
     else if (path === "/api/bills/filter-options/") response = { jurisdictions: ["federal"], current_congress: 119 };
@@ -214,6 +216,26 @@ for (const width of [1280, 390]) test(`refreshing topics and recommendations kee
   expect(await row.boundingBox()).toEqual(box);
 });
 
+test("opening a saved search on page two keeps that page until the search changes", async ({page}) => {
+  await fixtures(page);
+  await page.clock.install();
+  await page.route("**/api/bills/?**", route => {
+    const second = new URL(route.request().url()).searchParams.get("page") === "2";
+    return route.fulfill({json:{count:21,next:null,previous:second ? "prev" : null,results:[second ? other : bill]}});
+  });
+  await page.goto("/bills?session=119&q=test&page=2");
+  await expect(page.getByRole("link", {name:other.title, exact:true})).toBeVisible();
+  await page.clock.fastForward(1000);
+  await expect(page).toHaveURL(/[?&]page=2(?:&|$)/);
+  await expect(page.getByRole("link", {name:other.title, exact:true})).toBeVisible();
+  await page.getByPlaceholder("Words in title, summary, etc.").fill("changed");
+  await page.clock.fastForward(1000);
+  await expect(page.getByRole("link", {name:bill.title, exact:true})).toBeVisible();
+  const params = new URL(page.url()).searchParams;
+  expect(params.get("q")).toBe("changed");
+  expect(params.has("page")).toBe(false);
+});
+
 for (const width of [1280, 390]) test(`catalog pagination retains content during requests at ${width}px`, async ({ page }) => {
   await page.setViewportSize({width,height:900});
   await fixtures(page);
@@ -267,7 +289,7 @@ for (const width of [1280, 390]) test(`bill tracking does not flash the wrong ac
   await page.setViewportSize({width,height:900});
   await fixtures(page);
   let release!: () => void;
-  await page.route("**/api/tracking/", async route => {
+  await page.route(url => url.pathname === "/api/tracking/" && url.searchParams.get("view") === "membership", async route => {
     await new Promise<void>(resolve => {release = resolve;});
     await route.fulfill({json:{bills:[{id:1,bill,created_at:"2026-01-01"}],topics:[],legislators:[],is_staff:false}});
   });
@@ -276,6 +298,7 @@ for (const width of [1280, 390]) test(`bill tracking does not flash the wrong ac
   await expect(control).toBeDisabled();
   await expect(page.getByRole("button",{name:"Track bill",exact:true})).toHaveCount(0);
   await page.screenshot({path:info.outputPath(`tracking-pending-${width}.png`)});
+  await expect.poll(() => Boolean(release)).toBe(true);
   release();
   await expect(page.getByRole("button",{name:"Tracked bill",exact:true})).toBeEnabled();
 });
@@ -285,6 +308,7 @@ for (const width of [1280, 390]) test(`following a recommendation preserves card
   await fixtures(page);
   let followed = false;
   let release!: () => void;
+  let refreshHeld = false;
   let portraitRequests = 0;
   await page.route("**/api/auth/session/current/**", route => route.fulfill({json:{authenticated:true,user:{email:"fixture@example.com"},dashboard_revision:followed ? "after" : "before",tracking_revision:followed ? "after" : "before",research_revision:"unchanged",current_congress:119}}));
   await page.route("**/api/representatives/410/", route => {
@@ -301,7 +325,10 @@ for (const width of [1280, 390]) test(`following a recommendation preserves card
     await route.fulfill({json:{id:2,bill:other,created_at:"2026-11-22"}});
   });
   await page.route("**/api/tracking/", async route => {
-    if (followed) await new Promise<void>(resolve => { release = resolve; });
+    if (followed && !refreshHeld) {
+      refreshHeld = true;
+      await new Promise<void>(resolve => { release = resolve; });
+    }
     await route.fulfill({json:{bills:[{id:1,bill,created_at:"2025-01-01"}, ...(followed ? [{id:2,bill:other,created_at:"2026-11-22"}] : [])],topics:[],legislators:[]}});
   });
   await page.goto("/");
@@ -320,22 +347,24 @@ for (const width of [1280, 390]) test(`following a recommendation preserves card
   await expect(row.getByRole("link",{name:other.title})).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
   release();
-  await expect(page.getByRole("region",{name:"Followed bills",exact:true}).getByRole("article")).toHaveCount(2);
+  await expect(page.getByRole("region",{name:"Followed bills",exact:true}).getByRole("article")).toHaveCount(1);
   const saved = row.getByRole("button",{name:/Unfollow bill/});
   await expect(saved).toBeFocused();
   expect(await saved.boundingBox()).toEqual(before);
   expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
   expect(await portraitNode!.evaluate(node => node.isConnected)).toBe(true);
   expect(portraitRequests).toBe(1);
+  await page.reload();
+  await expect(page.getByRole("region",{name:"Followed bills"}).getByRole("article")).toHaveCount(2);
 });
 
 for (const width of [1280, 390]) test(`bill modal pagination stays stable at ${width}px during loading, errors and short pages`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 900 });
   await fixtures(page);
   let finishBill!: () => void;
-  await page.route("**/api/bills/1/", async route => { await new Promise<void>(resolve => { finishBill = resolve; }); await route.fulfill({ json: {
-    ...bill, documents, summary: "Helps students stay in school.",
-    latest_contract: { id: 7, document: 3, contract_json: {} },
+  await page.route("**/api/bills/1/?contract_view=summary", async route => { await new Promise<void>(resolve => { finishBill = resolve; }); await route.fulfill({ json: {
+    ...compactBill, summary_preview: "Helps students stay in school.",
+    latest_contract: { id:7, document:3, schema_version:"2.1-legal-nlp", contract_hash:"fixture", computed_at:"2026-01-01", document_version_label:"Engrossed", coverage_note:"Test", orientation:{purpose_clause:null,purpose_line_item_id:null}, reader_stats:{line_item_count:7,financial_item_count:0,timeline_item_count:0,definition_item_count:0,section_group_count:1} },
   } }); });
   let finish: (() => void) | undefined;
   let failNext = false;
@@ -349,7 +378,7 @@ for (const width of [1280, 390]) test(`bill modal pagination stays stable at ${w
   await page.goto("/");
   await page.getByRole("button", { name: bill.title, exact: true }).click();
   const dialog = page.locator("dialog:modal");
-  await expect(dialog.getByText("Loading bill details…")).toBeVisible();
+  await expect(dialog.getByRole("status",{name:"Loading bill details"})).toBeVisible();
   const loadingFrame = await dialog.boundingBox();
   await expect.poll(() => Boolean(finishBill)).toBe(true);
   finishBill();
@@ -489,7 +518,7 @@ test("estimate modal keeps its outer dimensions when details expand", async ({pa
 
 test("dashboard to bill and back reuses unchanged cards without loading the directory", async ({ page }) => {
   const paths: string[] = [];
-  page.on("request", req => { if (req.method() === "GET") paths.push(new URL(req.url()).pathname); });
+  page.on("request", req => { if (req.method() === "GET") paths.push(new URL(req.url()).pathname + new URL(req.url()).search); });
   await fixtures(page);
   await page.route("**/api/tracking/recommendations/**", route => route.fulfill({json: {
     algorithm: "fixture", generated_at: "2026-11-21T12:00:00Z", count: 1, next_cursor: null,
@@ -522,7 +551,7 @@ test("dashboard to bill and back reuses unchanged cards without loading the dire
   await expect(page.getByRole("button", { name: "Tracked bill", exact: true })).toBeVisible();
   expect(paths.filter(p => p === "/api/tracking/")).toHaveLength(1);
   paths.length = 0;
-  const checked = page.waitForResponse(r => new URL(r.url()).pathname === "/api/auth/session/current/" && r.status() === 200);
+  const checked = page.waitForResponse(r => new URL(r.url()).searchParams.get("dashboard") === "1" && new URL(r.url()).pathname === "/api/auth/session/current/" && r.status() === 200);
   await page.goBack();
   await checked;
   await expect(title).toBeVisible();
@@ -531,10 +560,10 @@ test("dashboard to bill and back reuses unchanged cards without loading the dire
   await expect(page.getByRole("button", { name: "Refresh bill recommendations" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Refresh representative recommendations" })).toBeEnabled();
   expect(paths.filter(p => p.startsWith("/api/tracking/") || p.startsWith("/api/representatives/") || p === "/api/bills/filter-options/")).toEqual([]);
-  expect(paths.filter(p => p === "/api/auth/session/current/")).toHaveLength(1);
+  expect(paths.filter(p => p === "/api/auth/session/current/?dashboard=1")).toHaveLength(1);
 });
 
-test("readers see the live panel without samples or automatic ingestion requests", async ({ page }) => {
+test("ordinary readers cannot access ingestion controls or trigger ingestion requests", async ({ page }) => {
   const writes: string[] = [];
   const ingestionRequests: string[] = [];
   page.on("request", request => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method()) && request.url().includes("/api/")) writes.push(request.url()); });
@@ -543,8 +572,7 @@ test("readers see the live panel without samples or automatic ingestion requests
   await fixtures(page); await page.goto("/");
   await expect(page.getByRole("button", { name: bill.title, exact: true })).toBeVisible();
   const panel = page.getByRole("region", { name: "Legislation ingestion" });
-  await expect(panel).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Start discovery and ingestion" })).toBeEnabled();
+  await expect(panel).toHaveCount(0);
   await expect(page.getByLabel("Show ingestion telemetry preview")).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   expect(writes).toEqual([]);
@@ -556,15 +584,15 @@ test("staff dashboard never exposes sample telemetry even with a legacy preferen
   page.on("request", request => { if (request.url().includes("/api/ingestion/")) ingestionRequests.push(request.url()); });
   await page.addInitScript(() => localStorage.setItem("legislation-tracker-ingestion-telemetry", "true"));
   await fixtures(page);
-  await page.route("**/api/tracking/", route => route.fulfill({ json: { bills: [], topics: [], legislators: [], is_staff: true } }));
+  await page.route("**/api/auth/session/current/**", route => route.fulfill({ json: { authenticated: true, user: { email: "admin@example.com", is_superuser: true } } }));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Refresh telemetry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Expand legislation ingestion" })).toBeVisible();
   const toggle = page.getByLabel("Show ingestion telemetry preview");
   await expect(toggle).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Show sample data")).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("button", { name: "Refresh telemetry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Expand legislation ingestion" })).toBeVisible();
   await expect(toggle).toHaveCount(0);
   await expect(page.getByText("24 sample", { exact: true })).toHaveCount(0);
   expect(ingestionRequests).toEqual([]);
@@ -604,7 +632,7 @@ test("staff operational telemetry refresh is read-only and start is an explicit 
   await start.click();await expect.poll(()=>starts).toBe(3);expect(keys[2]).not.toBe(keys[0]);
 });
 
-test("filters, collection, follow behavior, modal versions, keyboard and persistent rollback", async ({ page }) => {
+test("filters, collection, follow behavior and modal keyboard navigation", async ({ page }) => {
   await fixtures(page); await page.goto("/");
   const title = page.getByRole("button", { name: bill.title, exact: true });
   await expect(title).toBeVisible();
@@ -613,20 +641,14 @@ test("filters, collection, follow behavior, modal versions, keyboard and persist
   await page.getByLabel("Topic", { exact: true }).selectOption("1");
   await page.getByLabel("Representative (sponsor)").selectOption("id:1");
   await page.getByLabel("Search bills").fill("no match"); await expect(page.getByText("No bills match these filters")).toBeVisible();
-  await page.getByRole("button", { name: "Clear filters" }).click();
+  await page.getByLabel("Search bills").fill("");
   await title.click(); const modal = page.getByRole("dialog"); await expect(modal).toBeVisible();
-  await expect(modal.getByText("section-for-version-3", { exact: false })).toBeVisible();
-  await modal.getByRole("button", { name: /Reported/ }).click(); await expect(modal.getByText("section-for-version-2", { exact: false })).toBeVisible();
-  await expect(modal.getByText("section-for-version-3", { exact: false })).toHaveCount(0);
-  await modal.getByRole("button", { name: /Introduced/ }).click(); await expect(modal.getByText(/earliest recorded version/)).toBeVisible();
+  await expect(modal.getByText("Raises the deduction limit.")).toBeVisible();
   for (let index = 0; index < 14; index++) { await page.keyboard.press("Tab"); expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true); }
+  await modal.getByRole("button",{name:"Close bill details"}).focus();
   await page.keyboard.press("Escape"); await expect(modal).toHaveCount(0); await expect(title).toBeFocused();
   await expect(page.getByRole("button", { name: "View all bills" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: other.title })).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Use card dashboard" }).uncheck(); await expect(page.getByText("Legislation Tracker Operations")).toBeVisible();
-  await page.screenshot({ path: "test-results/dashboard-legacy-rollback.png", fullPage: true });
-  await page.reload(); await expect(page.getByText("Legislation Tracker Operations")).toBeVisible(); await expect(title).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Use card dashboard" }).check(); await expect(title).toBeVisible();
   await page.reload(); await expect(title).toBeVisible();
   await page.getByRole("button", { name: "Unfollow", exact: true }).click();
   await expect(page.getByText("Your collection starts with a bill")).toBeVisible();
@@ -636,11 +658,12 @@ test("filters, collection, follow behavior, modal versions, keyboard and persist
 test("responsive visual evidence and empty collection", async ({ page }) => {
   await fixtures(page); await page.goto("/"); await expect(page.getByRole("button", { name: bill.title })).toBeVisible();
   await page.screenshot({ path: "test-results/dashboard-desktop.png", fullPage: true });
-  await page.goto("/bills"); await expect(page.getByRole("button", { name: other.title })).toBeVisible();
+  await page.goto("/bills"); await expect(page.getByRole("link", { name: other.title })).toBeVisible();
   await page.screenshot({ path: "test-results/bills-catalog.png", fullPage: true });
+  await page.goto("/");
   await page.setViewportSize({ width: 1280, height: 1050 });
   await page.getByRole("button", { name: bill.title }).click();
-  await expect(page.getByRole("dialog").getByText("section-for-version-3", { exact: false })).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Raises the deduction limit.")).toBeVisible();
   await page.screenshot({ path: "test-results/dashboard-modal-desktop.png", fullPage: false });
   await page.keyboard.press("Escape");
   for (const [name, width] of [["tablet", 768], ["mobile", 390]] as const) {
@@ -648,10 +671,10 @@ test("responsive visual evidence and empty collection", async ({ page }) => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/dashboard-${name}.png`, fullPage: true });
   }
-  await page.getByRole("button", { name: bill.title }).click(); await expect(page.getByRole("dialog").getByText("section-for-version-3", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: bill.title }).click(); await expect(page.getByRole("dialog").getByText("Raises the deduction limit.")).toBeVisible();
   await page.screenshot({ path: "test-results/dashboard-modal-mobile.png", fullPage: false });
   await page.keyboard.press("Escape"); await page.setViewportSize({ width: 1280, height: 850 });
-  await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
+  await page.emulateMedia({colorScheme:"dark"});
   await page.screenshot({ path: "test-results/dashboard-dark.png", fullPage: true });
 });
 
@@ -686,7 +709,7 @@ test("dashboard tracking errors remain actionable without offering a catalog", a
   await fixtures(page);
   await page.route("**/api/tracking/", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
   await page.goto("/");
-  const alert = page.getByRole("alert").filter({ hasText: "followed bills could not be loaded" });
+  const alert = page.getByRole("alert").filter({ hasText: "Couldn’t refresh your bills." });
   await expect(alert).toBeVisible();
   await expect(page.getByRole("button", { name: "View all bills" })).toHaveCount(0);
   await page.unroute("**/api/tracking/");
@@ -694,37 +717,46 @@ test("dashboard tracking errors remain actionable without offering a catalog", a
   await expect(page.getByRole("button", { name: bill.title })).toBeVisible();
 });
 
-test("absent summary and version order are honest; stale comparisons never replace a new selection", async ({ page }) => {
+test("an absent summary stays empty and an older comparison cannot replace the selected versions", async ({page}) => {
   await fixtures(page);
-  await page.route("**/api/bills/1/", route => route.fulfill({ json: { ...bill, summary: null, documents: [{ ...documents[0], source_order: null, is_active_version: true }, ...documents.slice(1)], latest_contract: null } }));
-  await page.route("**/api/bills/1/comparisons/documents/**", async route => {
-    await new Promise(resolve => setTimeout(resolve, 250));
-    await route.fulfill({ json: { before: 2, after: 3, sections: [{ section_key: "Delayed old comparison", operation: "modified" }], total_change_count: 1, returned_change_count: 1, truncated: false, fallback: false, truncation_reasons: [] } });
-  });
-  await page.goto("/"); await page.getByRole("button", { name: bill.title }).click(); const modal = page.getByRole("dialog");
+  await page.route("**/api/bills/1/?contract_view=summary", route => route.fulfill({json:{...compactBill,summary_preview:null}}));
+  await page.goto("/");
+  await page.getByRole("button",{name:bill.title}).click();
+  const modal = page.getByRole("dialog");
   await expect(modal.getByText("No bill summary is available yet.")).toBeVisible();
-  await expect(modal.getByText(/source does not record version order/)).toBeVisible();
-  const delayedResponse = page.waitForResponse(response => response.url().includes("/comparisons/documents/") && new URL(response.url()).searchParams.get("after") === "3");
-  const delayedRequest = page.waitForRequest(request => request.url().includes("/comparisons/documents/") && new URL(request.url()).searchParams.get("after") === "3");
-  await modal.getByRole("button", { name: /Engrossed/ }).click();
-  await delayedRequest;
-  await modal.getByRole("button", { name: /Reported/ }).click();
-  await expect(modal.getByText(/earliest recorded version/)).toBeVisible();
-  await delayedResponse;
-  await expect(modal.getByText("Delayed old comparison", { exact: false })).toHaveCount(0);
-  await modal.getByRole("button", { name: /Introduced/ }).click(); await expect(modal.getByText(/source does not record version order/)).toBeVisible();
+  await modal.getByRole("link",{name:bill.title}).click();
+  await page.getByRole("tab",{name:"Versions"}).click();
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => {release = resolve;});
+  await page.route("**/comparisons/documents/**", async route => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get("after") === "3") await pending;
+    await route.fulfill({json:{before:Number(params.get("before")),after:Number(params.get("after")),sections:[],
+      total_change_count:0,returned_change_count:0,truncated:params.get("after")==="3",fallback:false,truncation_reasons:[]}}).catch(() => {});
+  });
+  const old = page.waitForRequest(r => r.url().includes("/comparisons/documents/") && new URL(r.url()).searchParams.get("after") === "3");
+  await page.getByRole("button",{name:"Compare versions"}).click();
+  await old;
+  await page.getByLabel("Before version").selectOption("1");
+  await page.getByLabel("After version").selectOption("2");
+  await expect(page.getByText("No text changes were found between these versions.")).toBeVisible();
+  const stale = page.waitForResponse(r => r.url().includes("/comparisons/documents/") && new URL(r.url()).searchParams.get("after") === "3");
+  release();
+  await stale;
+  await expect(page.getByText("No text changes were found between these versions.")).toBeVisible();
+  await expect(page.getByText("No changes were found in the portion compared.")).toHaveCount(0);
+  await expect(page.getByRole("link",{name:"Read full after version"})).toHaveAttribute("href","/documents/2");
 });
-
 
 test("telemetry separates incremental readiness from historical inventory gaps", async ({page}) => {
   await fixtures(page);
-  await page.route("**/api/tracking/",route=>route.fulfill({json:{bills:[],topics:[],legislators:[],is_staff:true}}));
+  await page.route("**/api/auth/session/current/**", route => route.fulfill({ json: { authenticated: true, user: { email: "admin@example.com", is_superuser: true } } }));
   await page.route("**/api/ingestion/telemetry/**",route=>route.fulfill({json:{observed_at:"2026-10-09T18:10:00Z",counts_by_kind_and_status:[],stale_leases:0,discovery_run:null,recent_work_states:[]}}));
   let valid=true;
   await page.route("**/api/ingestion/source-readiness/**",route=>route.fulfill({json:{available:true,age_seconds:1,complete:true,missing_unqueued_metadata:9,ready_to_start:valid?3:null,incremental_discoverable_count_available:valid,discovery_basis:{cursor_at:"2026-10-09T18:00:00Z",from_date_time:"2026-10-09T17:55:00Z"},discovery_checked_completed_at:"2026-10-09T18:10:00Z"}}));
   await page.goto("/");
   const panel=page.getByRole("region",{name:"Legislation ingestion"});
-  await panel.getByRole("button",{name:"Refresh telemetry"}).click();
+  await panel.getByRole("button",{name:"Expand legislation ingestion"}).click();
   await panel.getByText("Source & technical details", {exact:true}).click();
   const ready=panel.getByRole("heading",{name:"Ready for incremental discovery"}).locator("..");
   const gaps=panel.getByRole("heading",{name:"Missing unqueued metadata"}).locator("..");

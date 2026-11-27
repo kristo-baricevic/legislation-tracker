@@ -446,6 +446,13 @@ def test_exact_condition_with_display_whitespace_preserves_meaning():
         "text": "only if the applicant is enrolled and employed.",
         "evidence_ids": list(graph.units[0].own_passage_ids),
     }
+    assert any(
+        f.code == "spending_authority_conflict" and f.path == "explanations/0"
+        for f in validate_provision(row, graph.units[0], graph)
+    )
+    row["summary"] = (
+        "The Secretary must pay $100 only if the applicant is enrolled and employed."
+    )
     assert not validate_provision(row, graph.units[0], graph)
 
 
@@ -557,3 +564,656 @@ def test_percentage_in_section_with_dollars_does_not_require_usd_currency():
     assert "currency_conflict" in {
         f.code for f in validate_provision(row, graph.units[0], graph)
     }
+
+
+@pytest.mark.parametrize("swapped", [None, "prose", "claim"])
+def test_source_first_checks_each_appropriation_percentage_basis(swapped):
+    source = (
+        "The Secretary shall reserve 2 percent of the total appropriation for Tribal "
+        "grants and 20 percent of the remaining appropriation for implementation."
+    )
+    graph = build_source_graph("1", "IH", "SEC. 1. FUNDING\n" + source)
+    row = explanation(graph)
+    row["summary"] = (
+        source.replace("the total", "the remaining") if swapped == "prose" else source
+    )
+    claim = row["claims"][0]
+    claim["action"] = "Reserve funding."
+    claim["money"] = [
+        dict(
+            amount=rate,
+            currency=None,
+            measure="percent",
+            comparator="exact",
+            purpose=None,
+            period=None,
+            base=base + " appropriation",
+        )
+        for rate, base in [
+            ("2", "remaining" if swapped == "claim" else "total"),
+            ("20", "remaining"),
+        ]
+    ]
+    findings = validate_provision(row, graph.units[0], graph)
+    assert [(f.code, f.path) for f in findings] == (
+        []
+        if swapped is None
+        else [
+            (
+                "percentage_base_conflict",
+                "explanations/0" if swapped == "prose" else "claims/0/money/0/base",
+            )
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "source,valid",
+    [
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for hospital grants.",
+            True,
+        ),
+        (
+            "There are authorized to be appropriated $2 million for hospital grants.",
+            False,
+        ),
+    ],
+)
+def test_source_first_distinguishes_grant_allocation_from_authorizing_account(
+    source, valid
+):
+    graph = build_source_graph("1", "IH", "SEC. 1. FUNDING\n" + source)
+    row = explanation(graph)
+    row["summary"] = "The Secretary shall allocate $2 million for hospital grants."
+    row["claims"][0]["action"] = "Allocate funding."
+    row["claims"][0]["money"][0].update(
+        amount="2000000", currency="USD", measure="dollars"
+    )
+    findings = validate_provision(row, graph.units[0], graph)
+    assert [(f.code, f.path) for f in findings] == (
+        []
+        if valid
+        else [
+            ("spending_authority_conflict", "explanations/0"),
+            ("spending_authority_conflict", "claims/0/money/0"),
+        ]
+    )
+
+
+@pytest.mark.parametrize("path", ["provision", "reader"])
+@pytest.mark.parametrize(
+    "statement,enacted,valid",
+    [
+        ("The bill appropriates $100 for grants.", False, False),
+        ("There is appropriated $100 for grants.", False, False),
+        ("$100 is appropriated for grants.", False, False),
+        ("The bill authorizes $100 for grants.", False, True),
+        ("If Congress appropriates $100, grants may proceed.", False, True),
+        ("If grants qualify, the bill appropriates $100.", False, False),
+        ("The bill appropriates $100 for grants.", True, True),
+        ("There is appropriated $100 for grants.", True, True),
+        ("$100 is appropriated for grants.", True, True),
+    ],
+)
+def test_enacted_appropriation_requires_operative_evidence(
+    path, statement, enacted, valid
+):
+    evidence = (
+        "There is appropriated $100 for grants."
+        if enacted
+        else "There is authorized to be appropriated $100 for grants."
+    )
+    _check_funding_statement(path, evidence, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["provision", "reader"])
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "unless at least $100 is appropriated",
+        "unless $100 is appropriated",
+        "only if Congress later appropriates $100",
+        "unless Congress approves the plan and appropriates $100",
+        "unless the U.S. Congress, after review, appropriates at least $100",
+    ],
+)
+@pytest.mark.parametrize(
+    "case", ["unsupported", "faithful", "independent", "condition-only"]
+)
+def test_conditional_funding_is_not_enacted(path, condition, case):
+    rule = "No grant may be awarded " + condition + "."
+    evidence = (
+        rule
+        if case == "condition-only"
+        else "There is authorized to be appropriated $100 for grants. " + rule
+    )
+    if case == "independent":
+        evidence += " The bill appropriates $100 for grants."
+    statement = rule if case == "faithful" else "The bill appropriates $100 for grants."
+    _check_funding_statement(
+        path, evidence, statement, case in {"faithful", "independent"}, condition
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "statement,extra,valid",
+    [
+        ("The bill appropriates $100 for grants.", "", False),
+        ("The bill appropriates $100 for salaries.", "", True),
+        ("The bill authorizes $100 for grants.", "", True),
+        ("The bill appropriates $100.", "", False),
+        (
+            "The bill appropriates $100 for grants.",
+            " There is appropriated $100 for grants.",
+            True,
+        ),
+    ],
+)
+def test_repeated_amount_retains_its_funding_purpose(
+    path, reverse, statement, extra, valid
+):
+    rules = [
+        "There is authorized to be appropriated $100 for grants.",
+        "There is appropriated $100 for salaries.",
+    ]
+    _check_funding_statement(
+        path, " ".join(reversed(rules) if reverse else rules) + extra, statement, valid
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "statement,extra,valid",
+    [
+        ("The Secretary shall spend $100 for grants.", "", False),
+        (
+            "The Secretary shall spend $100 for grants only if Congress appropriates $100.",
+            "",
+            True,
+        ),
+        (
+            "The Secretary shall spend $100 for grants only if Congress approves the report.",
+            "",
+            False,
+        ),
+        (
+            "The Secretary shall spend $100 for grants.",
+            " The Secretary shall spend $100 for salaries.",
+            False,
+        ),
+        (
+            "The Secretary shall spend $100 for grants.",
+            " The Secretary shall spend $100 for grants.",
+            True,
+        ),
+    ],
+)
+def test_funding_obligation_retains_its_prerequisite(path, statement, extra, valid):
+    condition = "only if Congress appropriates $100"
+    source = "The Secretary shall spend $100 for grants " + condition + "."
+    _check_funding_statement(path, source + extra, statement, valid, condition)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "enactment",
+    [
+        "For salaries, there is appropriated $100.",
+        "The bill appropriates for salaries the sum of $100.",
+    ],
+)
+@pytest.mark.parametrize("purpose,valid", [("grants", False), ("salaries", True)])
+def test_repeated_amount_retains_preposed_purpose(path, enactment, purpose, valid):
+    source = "There is authorized to be appropriated $100 for grants. " + enactment
+    _check_funding_statement(
+        path, source, f"The bill appropriates $100 for {purpose}.", valid
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "statement,valid",
+    [
+        ("The bill appropriates $100 for grants.", False),
+        ("The Secretary shall allocate $100 for grants.", True),
+    ],
+)
+def test_repeated_amount_retains_enacted_or_obligated_authority(path, statement, valid):
+    source = "There is authorized to be appropriated $100 for grants. The Secretary shall allocate $100 for grants."
+    _check_funding_statement(path, source, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "statement,valid",
+    [
+        ("The bill appropriates $100 for grants.", False),
+        ("The bill appropriates $100 pursuant to the second schedule.", True),
+    ],
+)
+def test_repeated_amount_retains_source_wording_when_accounts_are_unresolved(
+    path, statement, valid
+):
+    evidence = (
+        "There is authorized to be appropriated $100 pursuant to the first schedule. "
+        "The bill appropriates $100 pursuant to the second schedule."
+    )
+    _check_funding_statement(path, evidence, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "The agency estimates a cost of $100 for grants.",
+        "No funds are appropriated for the $100 grant.",
+        "The bill does not appropriate $100 for grants.",
+    ],
+)
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "The bill appropriates $100 for grants.",
+        "The Secretary must spend $100 for grants.",
+        None,
+    ],
+)
+def test_repeated_amount_retains_neutral_or_negated_authority(
+    path, evidence, statement
+):
+    _check_funding_statement(path, evidence, statement or evidence, statement is None)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source,statement,valid",
+    [
+        (
+            "There is appropriated $100.",
+            "The bill appropriates $100 for grants.",
+            False,
+        ),
+        (
+            "There is appropriated $100.",
+            "The bill appropriates $100 to fund grants.",
+            False,
+        ),
+        ("There is appropriated $100.", "The bill appropriates $100.", True),
+        (
+            "There is appropriated $100 for grants.",
+            "The bill appropriates $100 for grants.",
+            True,
+        ),
+        (
+            "There is appropriated $100 pursuant to schedule A.",
+            "There is appropriated $100 pursuant to schedule A.",
+            True,
+        ),
+    ],
+)
+def test_repeated_amount_retains_only_explicit_purposes(path, source, statement, valid):
+    _check_funding_statement(path, source, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "shared_subject,statement,valid",
+    [
+        (False, "The bill appropriates $100 for salaries.", True),
+        (False, "The Secretary shall spend $200 for grants.", False),
+        (
+            False,
+            "The Secretary shall spend $200 for grants only if Congress appropriates $200.",
+            True,
+        ),
+        (True, "The Secretary shall spend $100 for salaries.", False),
+        (True, "The Secretary shall spend $200 for grants.", False),
+        (
+            True,
+            "The Secretary shall spend $100 for salaries only if Congress appropriates $200.",
+            True,
+        ),
+    ],
+)
+def test_funding_obligation_retains_only_its_governing_clause(
+    path, shared_subject, statement, valid
+):
+    condition = "only if Congress appropriates $200"
+    head = (
+        "The Secretary shall both spend $100 for salaries and disburse $200 for grants"
+        if shared_subject
+        else "The bill appropriates $100 for salaries, and the Secretary shall spend $200 for grants"
+    )
+    _check_funding_statement(
+        path,
+        head + " " + condition + ".",
+        statement,
+        valid,
+        condition,
+        extra_amount="200",
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+def test_funding_obligation_retains_no_unrelated_prerequisite(path):
+    _check_funding_statement(
+        path,
+        "The bill appropriates $100 for grants.",
+        "The bill appropriates $100 for grants only if Congress cancels hospital funding.",
+        False,
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "purpose,valid", [("grants", True), ("travel", False), ("salaries", False)]
+)
+def test_repeated_amount_retains_authorized_purpose(path, purpose, valid):
+    source = "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries."
+    _check_funding_statement(
+        path, source, f"The bill authorizes $100 for {purpose}.", valid
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Congress does not authorize $100 for grants.",
+        "No funds are authorized to be appropriated for the $100 grant.",
+        "The agency estimates the grants will cost $100.",
+    ],
+)
+def test_repeated_amount_retains_absence_of_an_authorization(path, source):
+    _check_funding_statement(
+        path, source, "The bill authorizes $100 for grants.", False
+    )
+    _check_funding_statement(path, source, source, True)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source,statement,valid",
+    [
+        (
+            "There is appropriated $100 for grants. The Secretary may leave all of the funds unobligated.",
+            "The Secretary must spend $100 for grants.",
+            False,
+        ),
+        (
+            "There is appropriated $100 for grants. The Secretary may leave all of the funds unobligated.",
+            "The bill appropriates $100 for grants.",
+            True,
+        ),
+        (
+            "There is appropriated $100 for grants.",
+            "The bill provides $100 for grants.",
+            True,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants.",
+            "The bill provides $100 for grants.",
+            False,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants.",
+            "The bill authorizes $100 for grants.",
+            True,
+        ),
+        (
+            "The Secretary must spend $100 for grants.",
+            "The Secretary must spend $100 for grants.",
+            True,
+        ),
+    ],
+)
+def test_funding_authority_strength(path, source, statement, valid):
+    _check_funding_statement(path, source, statement, valid)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "The Secretary shall pay $100 for grants.",
+        "The Secretary must obligate $100 for grants.",
+        "$100 must be spent for grants.",
+    ],
+)
+@pytest.mark.parametrize("operative", [False, True])
+def test_funding_authority_strength_of_mandatory_verbs(path, statement, operative):
+    _check_funding_statement(
+        path,
+        statement if operative else "There is appropriated $100 for grants.",
+        statement,
+        operative,
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source_bound,claimed_bound,valid",
+    [
+        ("not more than ", "exactly ", False),
+        ("not more than ", "up to ", True),
+        ("at least ", "exactly ", False),
+        ("at most ", "at least ", False),
+        ("at least ", "at most ", False),
+        ("at least ", "no less than ", True),
+        ("exactly ", "exactly ", True),
+        ("at most ", "", False),
+    ],
+)
+def test_funding_amount_comparator(path, source_bound, claimed_bound, valid):
+    source = f"There is appropriated {source_bound}$100 for grants."
+    _check_funding_statement(
+        path,
+        source,
+        f"The bill appropriates {claimed_bound}$100 for grants.",
+        valid,
+        comparator_case=True,
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "statement,valid",
+    [
+        ("The bill provides up to $100 for grants.", True),
+        ("The bill provides at least $100 for grants.", False),
+        ("The bill appropriates at least $100 for salaries.", True),
+        ("The bill appropriates up to $100 for salaries.", False),
+    ],
+)
+def test_funding_amount_comparator_stays_with_each_purpose(path, statement, valid):
+    source = (
+        "The bill appropriates at most $100 for grants and at least $100 for salaries."
+    )
+    _check_funding_statement(path, source, statement, valid, comparator_case=True)
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize("bound,valid", [("up to", True), ("at least", False)])
+def test_funding_amount_comparator_stays_with_amount_and_condition(path, bound, valid):
+    source = (
+        "The bill appropriates at most $100 for grants only if grants qualify. "
+        "The bill appropriates at least $200 for salaries."
+    )
+    statement = f"The bill appropriates {bound} $100 for grants only if grants qualify."
+    _check_funding_statement(
+        path,
+        source,
+        statement,
+        valid,
+        condition="only if grants qualify",
+        extra_amount="200",
+        comparator_case=True,
+    )
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize(
+    "source,statement,extra_amount",
+    [
+        (
+            "The Secretary {rule} spend $100 for grants.",
+            "The Secretary is required to spend $100 for grants.",
+            None,
+        ),
+        ("There is {rule} $100 for grants.", "The bill provides grants of $100.", None),
+        (
+            "There is appropriated {rule} for grants.",
+            "The bill appropriates $100 per year for grants.",
+            None,
+        ),
+        (
+            "There is appropriated {rule} for grants.",
+            "The bill appropriates exactly $100 for grants.",
+            "50",
+        ),
+    ],
+)
+@pytest.mark.parametrize("faithful", [False, True])
+def test_funding_public_contract(path, source, statement, extra_amount, faithful):
+    if "required" in statement:
+        rules = ("may", "shall")
+    elif "provides" in statement:
+        rules = ("authorized to be appropriated", "appropriated")
+    elif "per year" in statement:
+        rules = ("a total of $100", "$100 per year")
+    else:
+        rules = ("between $50 and $100", "exactly $100")
+    _check_funding_statement(
+        path,
+        source.format(rule=rules[faithful]),
+        statement,
+        faithful,
+        extra_amount=extra_amount if not faithful else None,
+    )
+
+
+def _check_funding_statement(
+    path,
+    evidence,
+    statement,
+    valid,
+    condition=None,
+    extra_amount=None,
+    comparator_case=False,
+):
+    from hashlib import sha256
+
+    from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.reader_citations import resolve_reader_citations
+
+    if path == "reader":
+        source = {
+            "source_ref": "src_0001",
+            "quoted_text": evidence,
+            "text_sha256": sha256(evidence.encode()).hexdigest(),
+        }
+        output = {
+            "schema_version": "1.4",
+            "explanations": [],
+            "summary": [
+                {
+                    "text": statement,
+                    "source_quotes": [{"source_ref": "src_0001", "quote_id": "p0001"}],
+                }
+            ],
+        }
+        if valid:
+            assert (
+                resolve_reader_citations(output, [], [source])["summary"][0][
+                    "source_quotes"
+                ][0]["quote"]
+                == evidence
+            )
+        else:
+            with pytest.raises(ValidationError) as error:
+                resolve_reader_citations(output, [], [source])
+            assert error.value.validator == "reader_amount_conflict"
+    else:
+        graph = build_source_graph("1", "IH", "SEC. 1. GRANTS\n" + evidence)
+        row = explanation(graph)
+        row["summary"] = statement
+        row["claims"][0].update(
+            action="Appropriate funds for grants.", modality="permitted"
+        )
+        if condition:
+            row["claims"][0]["conditions"] = {
+                "operator": "leaf",
+                "text": condition + ".",
+                "evidence_ids": list(graph.units[0].own_passage_ids),
+            }
+        row["claims"][0]["money"][0].update(measure="dollars")
+        if extra_amount:
+            row["claims"][0]["money"].append(
+                {**row["claims"][0]["money"][0], "amount": extra_amount}
+            )
+        findings = validate_provision(row, graph.units[0], graph)
+        if comparator_case and not valid:
+            assert findings and {f.code for f in findings} <= {
+                "spending_authority_conflict",
+                "comparator_conflict",
+            }
+            return
+        assert [(f.code, f.path) for f in findings] == (
+            [] if valid else [("spending_authority_conflict", "explanations/0")]
+        )
+
+
+@pytest.mark.parametrize(
+    "action", ["Appropriates $100 for grants.", "$100 is appropriated for grants."]
+)
+def test_enacted_claim_cannot_hide_behind_authorization_summary(action):
+    graph = build_source_graph(
+        "1",
+        "IH",
+        "SEC. 1. GRANTS\nThere is authorized to be appropriated $100 for grants.",
+    )
+    row = explanation(graph)
+    row["summary"] = "The bill authorizes $100 for grants."
+    row["claims"][0].update(action=action, modality="required")
+    row["claims"][0]["money"][0].update(measure="dollars")
+    assert [
+        (f.code, f.path) for f in validate_provision(row, graph.units[0], graph)
+    ] == [("spending_authority_conflict", "claims/0/money/0")]
+
+
+@pytest.mark.parametrize("path", ["reader", "provision"])
+@pytest.mark.parametrize("bound", ["", "at most "])
+def test_punctuation_only_dollar_text_has_validation_outcome(path, bound):
+    from jsonschema import ValidationError
+
+    from apps.legislation.enhancements.funding_roles import dollar_amounts
+    from apps.legislation.enhancements.reader_integrity import validate_numbers
+
+    source = "The Secretary shall spend $100 for grants."
+    statement = f"The Secretary shall spend {bound}$,, for grants."
+    assert dollar_amounts("The source includes $,, and $100.") == {100}
+    if path == "reader":
+        with pytest.raises(ValidationError) as error:
+            validate_numbers(
+                {"text": statement, "source_quotes": [{"quote": source}]},
+                path=["summary"],
+            )
+        assert error.value.validator == "reader_amount_conflict"
+    else:
+        graph = build_source_graph("1", "IH", "SEC. 1. GRANTS\n" + source)
+        row = explanation(graph)
+        row["summary"] = statement
+        assert "amount_conflict" in {
+            f.code for f in validate_provision(row, graph.units[0], graph)
+        }
+
+
+def test_punctuation_before_percentage_in_source_is_not_a_number():
+    source = "The Secretary shall pay $100. Reports list the amount, percent of total, and date."
+    graph = build_source_graph("1", "IH", "SEC. 1. PAYMENT\n" + source)
+    row = explanation(graph)
+    assert not validate_provision(row, graph.units[0], graph)

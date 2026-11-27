@@ -416,23 +416,37 @@ class OpenAICompatibleEnhancementProvider:
         request=None,
         timeout_seconds=None,
     ) -> ProviderResult:
-        input_payload = {
-            "bill": request.request_envelope["bill"],
-            "source_packet": request.request_envelope["source_packet"],
-        }
-        schema = harness.select_bill_schema(request, input_payload)
+        arguments = self._bill_arguments(request)
+        schema = arguments["schema"]
         result = self._generate(
             api_key=api_key,
             request=request,
             timeout_seconds=timeout_seconds,
-            input_payload=input_payload,
-            instructions=request.request_envelope["instructions"],
-            schema=schema,
-            schema_name="bill_enhancement_v1_1",
+            **arguments,
         )
         if schema is PROVIDER_OUTPUT_SCHEMA:
             result = harness.apply_derived_source_refs(result)
-        return result
+        return harness.decode_bill_result(
+            result,
+            schema,
+            allow_native_conditions=self._structured_output_mode() != "json_schema",
+        )
+
+    def _bill_arguments(self, request):
+        envelope = request.request_envelope
+        payload = {"bill": envelope["bill"], "source_packet": envelope["source_packet"]}
+        return {
+            "input_payload": payload,
+            "instructions": envelope["instructions"],
+            "schema": harness.select_bill_schema(request, payload),
+            "schema_name": "bill_enhancement_v1_1",
+        }
+
+    def bill_dispatch_arguments(self, request):
+        """The SDK operation, excluding credentials, timeout and local plan metadata."""
+        return self._generation_arguments(
+            request=request, **self._bill_arguments(request)
+        )
 
     def repair_citations(
         self, *, api_key=None, request=None, payload=None, timeout_seconds=None
@@ -491,16 +505,8 @@ class OpenAICompatibleEnhancementProvider:
             stage="synopsis",
         )
 
-    def _generate(
-        self,
-        *,
-        api_key,
-        request,
-        timeout_seconds,
-        input_payload,
-        instructions,
-        schema,
-        schema_name,
+    def _generation_arguments(
+        self, *, request, input_payload, instructions, schema, schema_name
     ):
         max_output_tokens = harness.resolve_max_output_tokens(request, schema_name)
         model = self._model(request=request)
@@ -549,6 +555,27 @@ class OpenAICompatibleEnhancementProvider:
         if getattr(request, "provider", "") == "openrouter" and model.endswith(":free"):
             routing = kwargs.setdefault("extra_body", {})
             routing["provider"] = _free_routing()
+        return kwargs
+
+    def _generate(
+        self,
+        *,
+        api_key,
+        request,
+        timeout_seconds,
+        input_payload,
+        instructions,
+        schema,
+        schema_name,
+    ):
+        kwargs = self._generation_arguments(
+            request=request,
+            input_payload=input_payload,
+            instructions=instructions,
+            schema=schema,
+            schema_name=schema_name,
+        )
+        model, messages = kwargs["model"], kwargs["messages"]
         try:
             response = self._send(
                 api_key=api_key, timeout_seconds=timeout_seconds, **kwargs
@@ -676,7 +703,7 @@ class OpenAICompatibleEnhancementProvider:
                         response_id=response_id,
                         resolved_model=resolved_model,
                     )
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 pass
 
         parts = [output_text] if isinstance(output_text, str) else []

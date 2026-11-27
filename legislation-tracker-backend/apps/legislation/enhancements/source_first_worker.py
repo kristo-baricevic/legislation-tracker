@@ -200,3 +200,23 @@ def should_promote(existing, candidate):
     return new_missing < old_missing and all(
         new_rows.get(uid) == row for uid, row in old_accepted.items()
     )
+
+
+def replaces_invalid_publication(enhancement, candidate):
+    """A complete correction may supersede a rejected reader for the same source."""
+    from apps.legislation.models import BillProcessingCache
+
+    from .shared import validation_key
+
+    existing = enhancement.result_json
+    return bool(
+        existing
+        and existing.get("document_fingerprint")
+        == candidate.get("document_fingerprint")
+        and not candidate["coverage"]["unresolved_unit_ids"]
+        and BillProcessingCache.objects.filter(
+            pk=validation_key(enhancement),
+            kind="reader-validation",
+            result_json__valid=False,
+        ).exists()
+    )

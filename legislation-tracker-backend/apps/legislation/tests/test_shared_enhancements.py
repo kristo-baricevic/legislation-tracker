@@ -521,3 +521,147 @@ def test_shared_result_needs_no_key_and_hides_payer_history(
         client.get(f"/api/bills/{source_bill.pk}/enhancements/latest/").data["result"]
         == saved.result_json
     )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basis,valid", [("total", True), ("remaining", False)])
+def test_old_cache_cannot_preserve_a_swapped_percentage_decision(
+    source_bill, basis, valid
+):
+    from hashlib import sha256
+
+    from apps.legislation.enhancements.shared import _reader_result_valid
+    from apps.legislation.models import BillEnhancement, BillProcessingCache
+
+    quote = "Reserve 2% of the total appropriation for grants and 20% of the remaining appropriation for implementation."
+    saved = BillEnhancement.objects.create(
+        bill=source_bill,
+        status="succeeded",
+        source_fingerprint="source",
+        output_schema_version="1.4",
+        source_snapshot_json=[
+            {
+                "source_ref": "src_0001",
+                "quoted_text": quote,
+                "text_sha256": sha256(quote.encode()).hexdigest(),
+            }
+        ],
+        result_json={
+            "schema_version": "1.4",
+            "summary": [
+                {
+                    "text": f"Reserve 2% of the {basis} appropriation for grants.",
+                    "source_quotes": [{"source_ref": "src_0001", "quote": quote}],
+                }
+            ],
+            "explanations": [],
+        },
+    )
+    # 1ca8ad0's actual public validation key and its opposite decisions on these rows.
+    old_key = sha256(
+        f"bill-validation:projection-10:source:1.4:2:{saved.validation_digest}".encode()
+    ).hexdigest()
+    BillProcessingCache.objects.create(
+        pk=old_key, kind="reader-validation", result_json={"valid": not valid}
+    )
+    assert _reader_result_valid(saved) is valid
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "source,prose,valid,projection",
+    [
+        (
+            "The Secretary shall allocate $2 million of the amounts authorized to be appropriated under section 3 for hospital grants.",
+            "The Secretary shall allocate $2 million for hospital grants.",
+            True,
+            11,
+        ),
+        (
+            "Reserve not less than 20 percent of the total amount appropriated to carry out this Act for a fiscal year and not reserved under section 4.",
+            "Reserve 20% of the total appropriation.",
+            False,
+            11,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "The bill appropriates $100 for grants.",
+            False,
+            14,
+        ),
+        (
+            "The Secretary shall spend $100 for grants only if Congress appropriates $100.",
+            "The Secretary shall spend $100 for grants.",
+            False,
+            14,
+        ),
+        (
+            "The bill appropriates $100 for salaries, and the Secretary shall spend $200 for grants only if Congress appropriates $200.",
+            "The bill appropriates $100 for salaries.",
+            True,
+            15,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants. There is appropriated $100 for salaries.",
+            "The bill authorizes $100 for travel.",
+            False,
+            15,
+        ),
+        (
+            "There is appropriated $100 for grants.",
+            "The Secretary must spend $100 for grants.",
+            False,
+            16,
+        ),
+        (
+            "There is authorized to be appropriated $100 for grants.",
+            "The bill provides $100 for grants.",
+            False,
+            16,
+        ),
+        (
+            "There is appropriated at most $100 for grants.",
+            "The bill appropriates exactly $100 for grants.",
+            False,
+            16,
+        ),
+    ],
+)
+def test_old_cache_rechecks_financial_qualifiers(
+    source_bill, source, prose, valid, projection
+):
+    from hashlib import sha256
+
+    from apps.legislation.enhancements.shared import _reader_result_valid
+    from apps.legislation.models import BillEnhancement, BillProcessingCache
+
+    saved = BillEnhancement.objects.create(
+        bill=source_bill,
+        status="succeeded",
+        source_fingerprint="financial-source",
+        output_schema_version="1.4",
+        source_snapshot_json=[
+            {
+                "source_ref": "src_0001",
+                "quoted_text": source,
+                "text_sha256": sha256(source.encode()).hexdigest(),
+            }
+        ],
+        result_json={
+            "schema_version": "1.4",
+            "explanations": [],
+            "summary": [
+                {
+                    "text": prose,
+                    "source_quotes": [{"source_ref": "src_0001", "quote": source}],
+                }
+            ],
+        },
+    )
+    previous = sha256(
+        f"bill-validation:projection-{projection}:{saved.source_fingerprint}:1.4:2:{saved.validation_digest}".encode()
+    ).hexdigest()
+    BillProcessingCache.objects.create(
+        pk=previous, kind="reader-validation", result_json={"valid": not valid}
+    )
+    assert _reader_result_valid(saved) is valid

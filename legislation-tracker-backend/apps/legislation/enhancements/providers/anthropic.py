@@ -98,7 +98,9 @@ def _wire_schema(value, *, unsupported_keywords=()):
             out["items"] = normalize(out["items"])
         return out
 
-    return transform_schema(normalize(value))
+    return transform_schema(
+        normalize(harness.wire_schema(value, unsupported_keywords=unsupported_keywords))
+    )
 
 
 class AnthropicEnhancementProvider:
@@ -177,7 +179,7 @@ class AnthropicEnhancementProvider:
         )
         if schema is PROVIDER_OUTPUT_SCHEMA:
             result = harness.apply_derived_source_refs(result)
-        return result
+        return harness.decode_bill_result(result, schema)
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
         harness.ensure_citation_repair_fits(payload, request)

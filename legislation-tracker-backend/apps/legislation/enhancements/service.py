@@ -148,6 +148,8 @@ def retry_allowed(attempt: BillEnhancementAttempt | None) -> bool:
 
 
 def reusable_publication(enhancement, credential):
+    from .shared import source_first_reuse
+
     published = enhancement.published_attempt
     if (
         enhancement.output_schema_version == "2.0-source-first"
@@ -156,7 +158,7 @@ def reusable_publication(enhancement, credential):
         and published.credential_id == credential.pk
         and published.credential_revision == credential.revision
     ):
-        return enhancement.result_json
+        return source_first_reuse(enhancement)
     return None
 
 

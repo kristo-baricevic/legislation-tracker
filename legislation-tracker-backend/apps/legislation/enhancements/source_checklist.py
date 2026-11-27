@@ -58,7 +58,7 @@ def source_checklist(unit, graph):
 
 def check_accounting(row, unit, graph):
     """Check assignment and structural support, never certify meaning by keywords."""
-    from .provision_validation import _amounts
+    from .funding_roles import dollar_amounts
 
     def dollars(claims):
         values = set()
@@ -143,7 +143,7 @@ def check_accounting(row, unit, graph):
                 index,
                 f"Source block {source['start']}:{source['end']} requires a financial entry on its mapped claim. Preserve its purpose and restrictions; use a null amount when no fixed amount is stated, not zero or an invented dollar value.",
             )
-        if _amounts(graph.source_text[source["start"] : source["end"]]) - dollars(
+        if dollar_amounts(graph.source_text[source["start"] : source["end"]]) - dollars(
             claims
         ):
             add(
@@ -159,7 +159,7 @@ def check_accounting(row, unit, graph):
         ]
         supported_amounts = set().union(
             *(
-                _amounts(graph.source_text[item["start"] : item["end"]])
+                dollar_amounts(graph.source_text[item["start"] : item["end"]])
                 for item in mapped
             )
         )

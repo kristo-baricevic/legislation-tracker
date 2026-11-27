@@ -91,3 +91,18 @@ it("renders the corrected H.R. 1589 fine as mandatory and travel limits as nonfi
   expect(screen.getByText(/continuous physical presence fails.*90 days.*180 days/)).toBeVisible();
   expect(screen.queryByText("Purpose needs source review")).not.toBeInTheDocument();
 });
+
+it("uses the verified funding statement for the rule and suppresses contradictory money fields", async () => {
+  const saved = structuredClone(result);
+  const statement = "The Secretary may pay up to $100 for grants only after approval.";
+  const row = saved.provisions[0];
+  row.summary = statement;
+  row.claims[0].funding_text = statement;
+  row.claims[0].action = "must spend exactly $100";
+  row.claims[0].money[0].purpose = "Invented salaries";
+  render(<SourceFirstAnalysis result={saved} />);
+  await userEvent.click(screen.getByText("All rules and requirements (1)"));
+  expect(screen.getAllByText(statement)).toHaveLength(2);
+  expect(screen.queryByText(/must spend exactly/)).not.toBeInTheDocument();
+  expect(screen.queryByText("Invented salaries")).not.toBeInTheDocument();
+});

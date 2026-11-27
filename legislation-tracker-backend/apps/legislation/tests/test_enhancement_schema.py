@@ -181,3 +181,52 @@ def test_precise_citations_expand_to_short_verified_text_and_offsets():
     )
     assert citation["start_char"] == 110
     assert citation["end_char"] == 159
+
+
+def test_reader_presentation_keeps_evidence_without_exporting_internal_work():
+    from copy import deepcopy
+    from types import SimpleNamespace
+
+    from apps.legislation.enhancements.serializers import _expanded_result
+
+    text = "Schools must contribute 50 percent of project costs."
+    saved = {
+        "schema_version": "1.4",
+        "summary": [],
+        "explanations": [],
+        "source_review": {
+            "policy_changes": [
+                {
+                    "title": "School grants",
+                    "text": text,
+                    "source_quotes": [{"source_ref": "src_0001", "quote": text}],
+                }
+            ],
+            "factual_records": [{"record_id": "src_0001:p0001"}],
+            "dependency_review": {"version": 1, "pages": [{"private_work": True}]},
+        },
+    }
+    before = deepcopy(saved)
+    result = _expanded_result(
+        SimpleNamespace(
+            result_json=saved,
+            source_snapshot_json=[
+                {
+                    "source_ref": "src_0001",
+                    "quoted_text": text,
+                    "start_char": 120,
+                }
+            ],
+            source_manifest_json={
+                "document_id": 1,
+                "document_content_hash": "a" * 64,
+                "contract_id": None,
+                "contract_hash": None,
+            },
+        )
+    )
+    review = result["source_review"]
+    assert "factual_records" not in review
+    assert "dependency_review" not in review
+    assert review["policy_changes"][0]["cited_sources"][0]["quoted_text"] == text
+    assert saved == before

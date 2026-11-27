@@ -131,3 +131,56 @@ def test_summary_cannot_cite_a_passage_not_sent_to_provider():
     }
     with pytest.raises(ValidationError):
         resolve_reader_citations(output, [], [source])
+
+
+@pytest.mark.parametrize(
+    "display,valid",
+    [
+        ("up to $100", True),
+        ("up to 100 dollars", True),
+        ("exactly USD 100", False),
+        ("at least 100 USD", False),
+        ("exactly $100", False),
+        ("at least $100", False),
+        ("$100", False),
+    ],
+)
+def test_financial_amount_display_preserves_its_funding_bound(display, valid):
+    sources = discovery_sources(
+        "SEC. 1. School grants\nThere is appropriated at most $100 for school grants and at least $100 for salaries.",
+        1,
+    )
+    _, output = review()
+    output["financial_items"][0].update(
+        amount_display=display, text="The bill provides up to $100 for school grants."
+    )
+    if valid:
+        assert (
+            resolve_discovery(output, sources)["financial_items"][0]["amount_display"]
+            == display
+        )
+    else:
+        with pytest.raises(ValidationError) as error:
+            resolve_discovery(output, sources)
+        assert error.value.validator == "reader_amount_conflict"
+
+
+@pytest.mark.parametrize("salary_bound,valid", [("at least", True), ("up to", False)])
+def test_financial_amount_display_keeps_two_accounts_distinct(salary_bound, valid):
+    text = "The bill appropriates up to $100 for school grants and at least $100 for salaries."
+    sources = discovery_sources("SEC. 1. School grants\n" + text, 1)
+    _, output = review()
+    item = output["financial_items"][0]
+    item.update(
+        amount_display=f"Up to $100 for school grants and {salary_bound} $100 for salaries",
+        text=text,
+    )
+    if valid:
+        assert (
+            resolve_discovery(output, sources)["financial_items"][0]["amount_display"]
+            == item["amount_display"]
+        )
+    else:
+        with pytest.raises(ValidationError) as error:
+            resolve_discovery(output, sources)
+        assert error.value.validator == "reader_amount_conflict"

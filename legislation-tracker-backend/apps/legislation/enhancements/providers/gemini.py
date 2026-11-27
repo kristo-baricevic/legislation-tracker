@@ -140,7 +140,9 @@ class GeminiEnhancementProvider:
         usage_shape="gemini_usage",
         refusal_completion_profile="gemini_finish_reason",
         error_profile="gemini_status_code",
-        unsupported_schema_keywords=frozenset({"additionalProperties"}),
+        unsupported_schema_keywords=frozenset(
+            {"additionalProperties", "uniqueItems", "minLength", "maxLength", "pattern"}
+        ),
     )
 
     def __init__(self, *, client_factory: Callable[..., Any] | None = None):
@@ -216,7 +218,7 @@ class GeminiEnhancementProvider:
         )
         if schema is PROVIDER_OUTPUT_SCHEMA:
             result = harness.apply_derived_source_refs(result)
-        return result
+        return harness.decode_bill_result(result, schema)
 
     def repair_citations(self, *, api_key, request, payload, timeout_seconds):
         harness.ensure_citation_repair_fits(payload, request)

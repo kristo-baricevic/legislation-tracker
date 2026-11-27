@@ -205,9 +205,11 @@ def test_postgres_search_preserves_three_excerpts():
 
 
 @pytest.mark.parametrize("count", [1, 6, 20])
-def test_enhanced_card_reads_are_batched(count):
+@pytest.mark.parametrize("schema", ["1.3", "2.0-source-first"])
+def test_enhanced_card_reads_are_batched(count, schema):
     from apps.accounts.dashboard_bill_cards import add_card_summaries
     from apps.legislation.enhancements.shared import validation_key
+    from apps.legislation.enhancements.source_graph import document_fingerprint
     from apps.legislation.models import BillProcessingCache
 
     rows = []
@@ -222,18 +224,26 @@ def test_enhanced_card_reads_are_batched(count):
             bill=bill,
             status="succeeded",
             result_completeness="complete",
-            output_schema_version="1.3",
-            source_fingerprint=f"source-{n}",
+            output_schema_version=schema,
+            source_fingerprint=document_fingerprint(
+                str(doc.pk), "IH", doc.reader_text_hash, ()
+            ),
             source_manifest_json={
                 "document_id": doc.pk,
                 "document_content_hash": doc.reader_text_hash,
+                "source_kind": "pinned_passages",
+                "document_version_label": "IH",
             },
-            result_json={"summary": [{"text": f"Saved summary {n}"}]},
+            result_json=(
+                {"synopsis": {"text": f"Saved summary {n}"}}
+                if schema == "2.0-source-first"
+                else {"summary": [{"text": f"Saved summary {n}"}]}
+            ),
         )
         BillProcessingCache.objects.create(
             pk=validation_key(saved),
             kind="reader-validation",
-            result_json={"valid": True},
+            result_json={"valid": True, "preview": f"Saved summary {n}"},
         )
         rows.append({"bill": {"id": bill.pk}})
     with CaptureQueriesContext(connection) as queries:
@@ -283,7 +293,7 @@ def test_resolved_card_history_is_never_loaded_when_another_card_has_no_result(
     BillProcessingCache.objects.create(
         pk=validation_key(current),
         kind="reader-validation",
-        result_json={"valid": True},
+        result_json={"valid": True, "preview": "Enhanced"},
     )
     if other_result == "stale":
         second_manifest["document_content_hash"] = "old"

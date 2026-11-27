@@ -139,6 +139,20 @@ def plan_analysis(graph, limits=None, reuse_result=None):
     return _plan_built_graph(graph, limits, reuse_result)
 
 
+def verified_reuse_row(row, units, graph):
+    clean = {
+        k: v
+        for k, v in row.items()
+        if k not in {"id", "evidence", "source_limitations"}
+    }
+    unit = units.get(row["unit_id"])
+    if unit is None or validate_provision(clean, unit, graph, require_coverage=True):
+        raise ValueError("reused_output_invalid")
+    if hydrate_evidence(clean, graph) != row:
+        raise ValueError("reused_evidence_invalid")
+    return clean
+
+
 def _plan_built_graph(graph, limits=None, reuse_result=None):
     """Internal fast path for a graph just built from authoritative text."""
     limits = limits or {}
@@ -163,18 +177,7 @@ def _plan_built_graph(graph, limits=None, reuse_result=None):
         for row in reuse_result["provisions"]:
             if row["status"] != "explained":
                 continue
-            clean = {
-                k: v
-                for k, v in row.items()
-                if k not in {"id", "evidence", "source_limitations"}
-            }
-            unit = units.get(row["unit_id"])
-            if unit is None or validate_provision(
-                clean, unit, graph, require_coverage=True
-            ):
-                raise ValueError("reused_output_invalid")
-            if hydrate_evidence(clean, graph) != row:
-                raise ValueError("reused_evidence_invalid")
+            clean = verified_reuse_row(row, units, graph)
             reused.append(clean)
     reused_ids = {r["unit_id"] for r in reused}
     batches, unresolved = [], {}
@@ -552,7 +555,7 @@ def run_analysis(plan, invoke, checkpoint, *, recover=None):
         if validate_provision(row, units[uid], graph, require_coverage=True):
             failed[uid] = "combined_validation_failed"
             del accepted[uid]
-    synopsis = {"text": "", "explanation_ids": [], "status": "unavailable"}
+    synopsis_output = None
     if accepted and plan.maximum_calls > call_count:
         call = _call(
             "synopsis",
@@ -566,35 +569,45 @@ def run_analysis(plan, invoke, checkpoint, *, recover=None):
             plan.output_tokens,
         )
         if call.estimated_input <= plan.per_call_input:
-            output = dispatch(call)
-            try:
-                Draft202012Validator(SYNOPSIS_SCHEMA).validate(output)
-                refs = output["explanation_ids"]
-                if not refs or not set(refs) <= set(accepted):
-                    raise ValidationError("synopsis_evidence")
-                # Until independent semantic synthesis validation is available,
-                # the synopsis may select complete accepted sentences, not invent
-                # paraphrases or legal conclusions merely bearing a valid ID.
-                remaining = output["text"].strip()
-                for uid in refs:
-                    sentence = accepted[uid]["summary"]
-                    if remaining.startswith(sentence):
-                        remaining = remaining[len(sentence) :].lstrip()
-                    else:
-                        raise ValidationError("unsupported_synopsis")
-                if remaining:
+            synopsis_output = dispatch(call)
+    output = _publication(graph, plan.fingerprint, accepted, failed, synopsis_output)
+    return AnalysisResult(
+        output, "partial" if failed else "complete", call_count, tuple(findings)
+    )
+
+
+def _publication(graph, plan_fingerprint, accepted, failed, synopsis_output):
+    # Rebuild the same reader from the final unit dispositions at write and read time.
+    synopsis = {"text": "", "explanation_ids": [], "status": "unavailable"}
+    if accepted and synopsis_output is not None:
+        try:
+            Draft202012Validator(SYNOPSIS_SCHEMA).validate(synopsis_output)
+            refs = synopsis_output["explanation_ids"]
+            if not refs or not set(refs) <= set(accepted):
+                raise ValidationError("synopsis_evidence")
+            # Until independent semantic synthesis validation is available,
+            # the synopsis may select complete accepted sentences, not invent
+            # paraphrases or legal conclusions merely bearing a valid ID.
+            remaining = synopsis_output["text"].strip()
+            for uid in refs:
+                sentence = accepted[uid]["summary"]
+                if remaining.startswith(sentence):
+                    remaining = remaining[len(sentence) :].lstrip()
+                else:
                     raise ValidationError("unsupported_synopsis")
-                # A synopsis remains a generated claim, explicitly unreviewed.
-                synopsis = {
-                    **output,
-                    "status": (
-                        "partial"
-                        if failed or any(u.unresolved_dependencies for u in graph.units)
-                        else "complete"
-                    ),
-                }
-            except ValidationError:
-                pass
+            if remaining:
+                raise ValidationError("unsupported_synopsis")
+            # A synopsis remains a generated claim, explicitly unreviewed.
+            synopsis = {
+                **synopsis_output,
+                "status": (
+                    "partial"
+                    if failed or any(u.unresolved_dependencies for u in graph.units)
+                    else "complete"
+                ),
+            }
+        except ValidationError:
+            pass
     rows = []
     for unit in graph.units:
         row = accepted.get(unit.id) or {
@@ -606,11 +619,11 @@ def run_analysis(plan, invoke, checkpoint, *, recover=None):
             "unresolved_reason": failed.get(unit.id, "source_context_unresolved"),
         }
         rows.append(hydrate_evidence(row, graph))
-    output = {
+    return {
         "schema_version": VERSION,
         "document_fingerprint": graph.document_fingerprint,
         "pipeline_version": PROMPT_VERSION,
-        "plan_fingerprint": plan.fingerprint,
+        "plan_fingerprint": plan_fingerprint,
         "synopsis": synopsis,
         "provisions": rows,
         "coverage": {
@@ -642,6 +655,3 @@ def run_analysis(plan, invoke, checkpoint, *, recover=None):
             "semantic_review_status": "unreviewed",
         },
     }
-    return AnalysisResult(
-        output, "partial" if failed else "complete", call_count, tuple(findings)
-    )

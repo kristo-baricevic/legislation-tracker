@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import replace
 from typing import Any
@@ -64,7 +65,26 @@ def wire_schema(value_, *, unsupported_keywords=()):
 def select_bill_schema(request, input_payload) -> Any:
     schema = PROVIDER_OUTPUT_SCHEMA
     envelope = getattr(request, "request_envelope", None) or {}
-    if envelope.get("output_schema_version") == "1.4":
+    if envelope.get("output_schema_version") == "reader-dependency-1":
+        from ..reader_citations import READER_PROMPT_VERSION
+
+        # Reconciliation has its own page/check/item contract. Falling back to
+        # the legacy overview schema makes a conforming provider response fail
+        # dependency validation, even when the preflight request fits.
+        if (
+            envelope.get("prompt_version") != READER_PROMPT_VERSION
+            or not isinstance(envelope.get("dependency_review"), dict)
+            or not envelope["dependency_review"]
+            or not isinstance(envelope.get("output_schema"), dict)
+            or not envelope["output_schema"]
+        ):
+            raise ProviderError(
+                "invalid_output",
+                validation_code="source_snapshot_invalid",
+                usage=ProviderUsage(0, 0, 0),
+            )
+        schema = envelope["output_schema"]
+    elif envelope.get("output_schema_version") == "1.4":
         from ..reader_citations import READER_ID_SCHEMA, READER_PROMPT_VERSION
         from ..reader_targets import READER_SCHEMA
 
@@ -80,7 +100,56 @@ def select_bill_schema(request, input_payload) -> Any:
         from ..coverage_contract import provision_schema
 
         schema = provision_schema(input_payload["source_packet"]["coverage_checklist"])
+    return staged_wire_schema(schema)
+
+
+def staged_wire_schema(schema):
+    if "condition" in schema.get("$defs", {}) and "factual_records" in schema.get(
+        "properties", {}
+    ):
+        schema = copy.deepcopy(schema)
+        del schema["$defs"]["condition"]
+        if not schema["$defs"]:
+            del schema["$defs"]
+        fields = schema["properties"]["factual_records"]["items"]["properties"][
+            "claims"
+        ]["items"]["properties"]
+        tree = 'A leaf is {"operator":"leaf","text":"...","evidence_ids":["source_ref:quote_id"]}. A group has operator all or any and children containing nodes.'
+        fields["conditions"] = {
+            "type": "string",
+            "description": "JSON-encoded condition node or null. " + tree,
+        }
+        fields["exceptions"] = {
+            "type": "string",
+            "description": "JSON-encoded array of exception nodes. Use [] for none. "
+            + tree,
+        }
     return schema
+
+
+def decode_bill_result(result, schema, *, allow_native_conditions=False):
+    if "factual_records" not in schema.get("properties", {}):
+        return result
+    try:
+        for record in result.output["factual_records"]:
+            for claim in record["claims"]:
+                for field in ("conditions", "exceptions"):
+                    node = claim[field]
+                    # Without a response schema the prompt describes native JSON.
+                    # The reader validates both representations against the same
+                    # recursive schema and cited evidence after transport decoding.
+                    if allow_native_conditions and not isinstance(node, str):
+                        continue
+                    claim[field] = json.loads(node)
+    except (KeyError, ValueError, TypeError, RecursionError) as error:
+        raise ProviderError(
+            "invalid_output",
+            validation_code="reader_target_invalid",
+            usage=result.usage,
+            response_id=result.response_id,
+            resolved_model=result.resolved_model,
+        ) from error
+    return result
 
 
 def resolve_max_output_tokens(request, schema_name: str) -> int:
@@ -158,7 +227,7 @@ def decode_source_first_output(transport, result: ProviderResult) -> ProviderRes
 
     try:
         return replace(result, output=transport.decode(result.output))
-    except (ValidationError, KeyError, TypeError) as error:
+    except (ValidationError, KeyError, TypeError, RecursionError) as error:
         fields = {
             "provisions",
             "unit_id",
@@ -241,7 +310,7 @@ def parse_json_output(
     usage = usage or ProviderUsage()
     try:
         output = json.loads(output_text)
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, RecursionError) as error:
         from ..diagnostics import json_parse_diagnostic
 
         parser = json_parse_diagnostic(error, output_text)

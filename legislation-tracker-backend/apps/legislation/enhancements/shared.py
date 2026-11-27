@@ -64,30 +64,91 @@ def _source_first_inputs(saved, document):
     return document, sections
 
 
-def _source_first_result_valid(saved, inputs):
-    from .provision_pipeline import _plan_built_graph, run_analysis
+def _source_first_graph(inputs):
     from .source_graph import build_source_graph
 
     document, sections = inputs
     text = document.extracted_text or document.raw_text or ""
-    graph = build_source_graph(
+    return build_source_graph(
         str(document.pk), document.version_label, text, xml_sections=sections
     )
+
+
+def source_first_reuse(saved):
+    """Reuse individually verified siblings even when an old partial reader fails."""
+    from .provision_pipeline import verified_reuse_row
+    from .source_first_schema import VERSION
+
     result = saved.result_json
-    plan = _plan_built_graph(graph, reuse_result=result)
-    if plan.calls or plan.unresolved_unit_ids:
+    if not isinstance(result, dict) or result.get("schema_version") != VERSION:
+        return None
+    document = saved.bill.documents.filter(
+        pk=saved.source_manifest_json.get("document_id")
+    ).first()
+    inputs = _source_first_inputs(saved, document)
+    if inputs is None:
+        return None
+    if _reader_result_valid(saved, source_first_inputs=inputs):
+        return result
+    graph = _source_first_graph(inputs)
+    if result.get("document_fingerprint") != graph.document_fingerprint:
+        return None
+    units = {unit.id: unit for unit in graph.units}
+    provisions = result.get("provisions")
+    if not isinstance(provisions, list):
+        return None
+    rows = []
+    for row in provisions:
+        if not isinstance(row, dict) or row.get("status") != "explained":
+            continue
+        try:
+            verified_reuse_row(row, units, graph)
+        except (KeyError, TypeError, ValueError):
+            continue
+        rows.append(row)
+    if rows:
+        return {
+            "schema_version": VERSION,
+            "document_fingerprint": graph.document_fingerprint,
+            "provisions": rows,
+        }
+    return None
+
+
+def _source_first_result_valid(saved, inputs):
+    from .provision_pipeline import _publication, verified_reuse_row
+    from .provision_validation import validate_combined
+    from .source_graph import audit_graph
+
+    graph = _source_first_graph(inputs)
+    if audit_graph(graph, graph.source_text):
+        return False
+    result = saved.result_json
+    units = {unit.id: unit for unit in graph.units}
+    accepted, unresolved = {}, {}
+    for row in result["provisions"]:
+        if not isinstance(row, dict):
+            return False
+        uid = row["unit_id"]
+        if row["status"] == "explained":
+            accepted[uid] = verified_reuse_row(row, units, graph)
+        elif row["status"] == "unresolved":
+            unresolved[uid] = row["unresolved_reason"]
+        else:
+            return False
+    completeness = "partial" if unresolved else "complete"
+    if saved.result_completeness != completeness or validate_combined(
+        list(accepted.values())
+    ):
         return False
     synopsis = result["synopsis"]
-    from dataclasses import replace
-
-    projected = run_analysis(
-        replace(plan, maximum_calls=1),
-        lambda call: {k: synopsis[k] for k in ("text", "explanation_ids")},
-        lambda *args: None,
-    ).output
-    # Replanning reused units changes the plan fingerprint. The published result
-    # binds to the original confirmed plan, whose fingerprint the worker stored.
-    projected["plan_fingerprint"] = result.get("plan_fingerprint")
+    projected = _publication(
+        graph,
+        result["plan_fingerprint"],
+        accepted,
+        unresolved,
+        {k: synopsis[k] for k in ("text", "explanation_ids")},
+    )
     return projected == result
 
 
@@ -96,9 +157,10 @@ def validation_key(saved):
 
     from .reader_cache import VALIDATOR_VERSION
 
-    return hashlib.sha256(
-        f"bill-validation:projection-10:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}".encode()
-    ).hexdigest()
+    identity = f"bill-validation:projection-18:{saved.source_fingerprint}:{saved.output_schema_version}:{VALIDATOR_VERSION}:{saved.validation_digest}"
+    if saved.output_schema_version == "2.0-source-first":
+        identity += f":{saved.result_completeness}"
+    return hashlib.sha256(identity.encode()).hexdigest()
 
 
 def _reader_result_valid(saved, *, source_first_inputs=None):
@@ -122,6 +184,7 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
     fingerprint = validation_key(saved)
     cached = BillProcessingCache.objects.filter(pk=fingerprint).first()
     if cached:
+        saved.public_preview = cached.result_json.get("preview", "")
         return cached.result_json["valid"]
     valid = True
     try:
@@ -147,9 +210,33 @@ def _reader_result_valid(saved, *, source_first_inputs=None):
             )
     except (ValidationError, KeyError, TypeError, ValueError):
         valid = False
+    saved.public_preview = ""
+    if valid:
+        from .serializers import _expanded_result
+
+        public = _expanded_result(saved, preview_only=True)
+        if public.get("schema_version") == "2.0-source-first":
+            saved.public_preview = public["synopsis"]["text"]
+        else:
+            saved.public_preview = " ".join(
+                item["text"]
+                for item in public.get("summary", public.get("overview", []))
+            )
+    if len(saved.public_preview) > 800:
+        from .funding_publication import funding_context
+
+        if funding_context([saved.public_preview]):
+            saved.public_preview = (
+                "Read the cited bill text for the full funding terms."
+            )
+        else:
+            saved.public_preview = saved.public_preview[:800]
     BillProcessingCache.objects.get_or_create(
         pk=fingerprint,
-        defaults={"kind": "reader-validation", "result_json": {"valid": valid}},
+        defaults={
+            "kind": "reader-validation",
+            "result_json": {"valid": valid, "preview": saved.public_preview},
+        },
     )
     return valid
 
