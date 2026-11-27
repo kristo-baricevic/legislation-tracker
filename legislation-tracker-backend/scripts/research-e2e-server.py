@@ -37,9 +37,12 @@ os.environ.update(
 )
 # ruff: noqa: E402 -- configure the isolated database before importing Django models.
 import django
-
-django.setup()
 from django.conf import settings
+
+# The API and worker write concurrently. Acquire SQLite's writer lock on
+# entering atomic blocks so a read followed by an insert can wait its turn.
+settings.DATABASES["default"].setdefault("OPTIONS", {})["transaction_mode"] = "IMMEDIATE"
+django.setup()
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.wsgi import get_wsgi_application
