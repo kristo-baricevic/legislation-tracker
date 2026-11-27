@@ -87,6 +87,7 @@ def project_staged_item(item, category, sources):
         "action",
         "conditions",
         "why_it_matters",
+        "unresolved_reason",
         "explanation",
     )
     if not (

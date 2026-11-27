@@ -98,3 +98,55 @@ def test_reader_projects_funding_from_complete_pinned_passages(
     else:
         assert public[key][0]["text"] == expected
         assert _expanded_result(saved, preview_only=True)[key][0]["text"] == expected
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        "financial_items",
+        "policy_changes",
+        "obligations",
+        "explanations",
+        "glossary",
+        "additional_changes",
+        "uncertain_language",
+    ],
+)
+def test_secondary_reader_fields_cannot_reintroduce_unverified_funding(category):
+    from apps.legislation.enhancements.funding_publication import project_staged_item
+
+    source = "The Secretary may spend $100 for grants only after approval."
+    false = "The Secretary must spend $100 immediately."
+    item = {
+        "text": false,
+        "cited_sources": [{"source_ref": "s", "quoted_text": source}],
+    }
+    if category == "policy_changes":
+        item["title"] = false
+    elif category == "obligations":
+        item.update(
+            actor="The Secretary", modality="required", action=false, conditions=false
+        )
+    elif category == "financial_items":
+        item.update(label=false, amount_display=false, fiscal_years=[2035])
+    elif category == "uncertain_language":
+        item["why_it_matters"] = false
+    project_staged_item(item, category, {"s": {"quoted_text": source}})
+    assert item["text"] == source
+    assert false not in str(item)
+    if category == "financial_items":
+        assert item["amount_display"] == "$100"
+        assert not item["fiscal_years"]
+
+
+def test_unresolved_target_cannot_use_its_reason_to_publish_a_financial_claim():
+    from apps.legislation.enhancements.funding_publication import project_staged_item
+
+    item = {
+        "status": "unresolved",
+        "text": None,
+        "unresolved_reason": "The bill provides grants of $100.",
+    }
+    project_staged_item(item, "explanations", {})
+    assert item["text"] is None
+    assert item["unresolved_reason"] == UNRESOLVED
